@@ -1,6 +1,7 @@
 """文件写入器"""
 
 import json
+from dataclasses import asdict
 from pathlib import Path
 from typing import List, Optional
 from src.transcription.transcriber import TranscriptSegment
@@ -36,7 +37,7 @@ class FileWriter:
         Args:
             segments: 转写段列表
             filename: 文件名
-            format: 文件格式 (txt, srt, vtt)
+            format: 文件格式 (txt, srt, vtt, json)
             include_timestamps: 是否包含时间戳
 
         Returns:
@@ -50,6 +51,10 @@ class FileWriter:
             content = self.formatter.format_srt(segments)
         elif format == "vtt":
             content = self.formatter.format_vtt(segments)
+        elif format == "json":
+            content = json.dumps(
+                [asdict(segment) for segment in segments], ensure_ascii=False, indent=2
+            )
         else:
             raise ValueError(f"不支持的格式: {format}")
 
@@ -225,6 +230,7 @@ class FileWriter:
             paths["txt"] = self.write_transcript(segments, filename, "txt")
             paths["srt"] = self.write_transcript(segments, filename, "srt")
             paths["vtt"] = self.write_transcript(segments, filename, "vtt")
+            paths["json"] = self.write_transcript(segments, filename, "json")
             paths["summary"] = self.write_summary(summary, filename)
 
             logger.info(f"所有格式写入成功: {filename}")

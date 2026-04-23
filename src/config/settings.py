@@ -4,11 +4,44 @@ import os
 import configparser
 from pathlib import Path
 from typing import Any, Optional
-from src.config.constants import DEFAULT_CONFIG
 from src.utils.exceptions import ConfigurationError
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+DEFAULT_CONFIG = {
+    "app": {"name": "video2text", "version": "1.0.0", "log_level": "INFO"},
+    "transcription": {
+        "model_path": "large-v3",
+        "device": "cuda",
+        "language": "zh",
+        "beam_size": 5,
+        "best_of": 5,
+        "temperature": 0.0,
+        "compute_type": "float16",
+        "num_workers": 1,
+        "vad_filter": True,
+    },
+    "summarization": {
+        "ollama_url": "http://127.0.0.1:11434",
+        "model_name": "qwen2.5:7b-instruct-q4_K_M",
+        "max_length": 500,
+        "temperature": 0.7,
+    },
+    "preprocessing": {
+        "ffmpeg_path": "ffmpeg",
+        "audio_sample_rate": 16000,
+        "audio_channels": 1,
+        "supported_video_formats": ".mp4,.avi,.mov,.mkv,.flv,.wmv,.webm",
+    },
+    "output": {
+        "output_dir": "output",
+        "transcript_format": "txt,srt,vtt",
+        "summary_format": "txt",
+        "json_output": True,
+    },
+    "paths": {"models_dir": "models", "logs_dir": "logs", "video_dir": "video"},
+}
 
 
 class Settings:
@@ -126,6 +159,15 @@ class Settings:
             return self.config.getboolean(section, option)
         except (ValueError, configparser.NoSectionError, configparser.NoOptionError):
             return default
+
+    def get_list(self, key: str, default: Optional[list[str]] = None, separator: str = ",") -> list[str]:
+        """获取列表配置项"""
+        value = self.get(key)
+        if value is None:
+            return default.copy() if default is not None else []
+
+        items = [item.strip() for item in value.split(separator)]
+        return [item for item in items if item] or (default.copy() if default is not None else [])
 
     def get_section(self, section: str) -> dict:
         """获取配置节

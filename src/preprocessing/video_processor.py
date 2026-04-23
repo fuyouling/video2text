@@ -4,9 +4,9 @@ import subprocess
 from pathlib import Path
 from typing import Optional, Dict
 from dataclasses import dataclass
+from src.config.settings import Settings
 from src.utils.exceptions import VideoFileError
 from src.utils.logger import get_logger
-from src.config.constants import SUPPORTED_VIDEO_FORMATS
 
 logger = get_logger(__name__)
 
@@ -35,6 +35,13 @@ class VideoProcessor:
             ffmpeg_path: FFmpeg可执行文件路径
         """
         self.ffmpeg_path = ffmpeg_path
+        self.supported_video_formats = [
+            ext.lower()
+            for ext in Settings().get_list(
+                "preprocessing.supported_video_formats",
+                default=[".mp4", ".avi", ".mov", ".mkv", ".flv", ".wmv", ".webm"],
+            )
+        ]
         self._check_ffmpeg()
 
     def _check_ffmpeg(self) -> None:
@@ -74,10 +81,10 @@ class VideoProcessor:
         if not path.is_file():
             raise VideoFileError(f"路径不是文件: {video_path}")
 
-        if path.suffix.lower() not in SUPPORTED_VIDEO_FORMATS:
+        if path.suffix.lower() not in self.supported_video_formats:
             raise VideoFileError(
                 f"不支持的视频格式: {path.suffix}. "
-                f"支持的格式: {', '.join(SUPPORTED_VIDEO_FORMATS)}"
+                f"支持的格式: {', '.join(self.supported_video_formats)}"
             )
 
         cmd = [self.ffmpeg_path, "-v", "error", "-i", video_path, "-f", "null", "-"]

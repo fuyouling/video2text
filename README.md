@@ -115,8 +115,8 @@ log_level = INFO
 
 [transcription]
 model_path = large-v3
-device = auto
-language = auto
+device = cuda
+language = zh
 beam_size = 5
 best_of = 5
 temperature = 0.0
@@ -131,10 +131,11 @@ temperature = 0.7
 ffmpeg_path = ffmpeg
 audio_sample_rate = 16000
 audio_channels = 1
+supported_video_formats = .mp4,.avi,.mov,.mkv,.flv,.wmv,.webm
 
 [output]
 output_dir = output
-transcript_format = txt
+transcript_format = txt,srt,vtt
 summary_format = txt
 json_output = true
 
@@ -146,13 +147,45 @@ video_dir = video
 
 ## 输出格式
 
-处理完成后，会在输出目录生成以下文件：
+转写输出由 `config.ini` 中的 `output.transcript_format` 控制，支持以下格式：
 
-- `{video_name}.txt` - 转写文本（带时间戳）
-- `{video_name}.srt` - SRT字幕格式
-- `{video_name}.vtt` - VTT字幕格式
-- `{video_name}_summary.txt` - 文本摘要
-- `{video_name}_full.json` - 完整数据（JSON格式）
+- `txt` - 转写文本（可读格式）
+- `srt` - SRT 字幕格式
+- `vtt` - VTT 字幕格式
+- `json` - 转写分段结果的 JSON 数据
+
+例如：
+
+```ini
+[output]
+transcript_format = txt,srt,vtt
+json_output = true
+```
+
+以上配置表示：
+
+- 生成 `{video_name}.txt`
+- 生成 `{video_name}.srt`
+- 生成 `{video_name}.vtt`
+- 在运行完整管道 `run-pipeline` 时，额外生成 `{video_name}_full.json`
+
+如果你希望转写结果本身也输出为 JSON，可将配置改为：
+
+```ini
+[output]
+transcript_format = txt,srt,vtt,json
+json_output = true
+```
+
+此时会额外生成：
+
+- `{video_name}.json` - 转写分段结果 JSON
+
+说明：
+
+- `transcript_format` 只控制转写结果文件
+- `json_output` 控制完整管道输出的 `{video_name}_full.json`
+- `{video_name}_summary.txt` 为摘要输出，由 `summarize` 或 `run-pipeline` 生成
 
 ## 项目结构
 
@@ -202,20 +235,6 @@ video2text/
 
 确保 Ollama 服务正在运行：`ollama serve`
 
-### 4. 模型下载失败
-
-faster_whisper 会自动下载模型到 `models` 目录，确保网络连接正常。
-
 ## 许可证
 
 MIT License
-
-## 贡献
-
-欢迎提交 Issue 和 Pull Request！
-
-## 联系方式
-
-- 项目地址: [待填写]
-- 问题反馈: [待填写]
-- 技术支持: [待填写]

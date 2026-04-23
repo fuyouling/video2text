@@ -207,7 +207,8 @@ marimo/_lsp/
 __marimo__/
 
 # test data
-video/*.mp4
+video/*
+!video/
 
 # kilo 
 .kilo/
@@ -215,12 +216,15 @@ video/*.mp4
 # 特定文档
 docs/需求和环境信息.md
 docs/项目设计文档.md
+!docs/
 
 # 输出文件
 output/*
+!output/
 
 # large-v3模型文件
 models/large-v3/*
+!models/large-v3
 
 # vscode设置
 .vscode/

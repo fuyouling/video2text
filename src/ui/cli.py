@@ -28,10 +28,43 @@ from src.ui.progress import ProgressTracker, SimpleProgress
 app = typer.Typer(help="Video2Text - 视频转文本工具")
 console = Console()
 
+SUPPORTED_TRANSCRIPT_FORMATS = {"txt", "srt", "vtt", "json"}
+
 
 def get_settings() -> Settings:
     """获取配置"""
     return Settings()
+
+
+def get_transcript_output_formats(settings: Settings) -> list[str]:
+    """获取转写输出格式列表"""
+    formats = [
+        fmt.lower()
+        for fmt in settings.get_list("output.transcript_format", ["txt"])
+    ]
+    formats = [fmt for fmt in formats if fmt in SUPPORTED_TRANSCRIPT_FORMATS]
+
+    if not formats:
+        return ["txt"]
+
+    return formats
+
+
+def write_transcript_outputs(
+    file_writer: FileWriter,
+    segments: list,
+    video_name: str,
+    formats: list[str],
+) -> list[str]:
+    """按指定格式写入转写结果"""
+    output_paths = []
+
+    for output_format in formats:
+        output_paths.append(
+            file_writer.write_transcript(segments, video_name, format=output_format)
+        )
+
+    return output_paths
 
 
 def get_model_path(settings: Settings, model_name: Optional[str] = None) -> str:
@@ -159,18 +192,16 @@ def transcribe(
         progress.update(1, "保存结果")
         file_writer = FileWriter(output_dir)
         video_name = Path(input_path).stem
+        output_formats = get_transcript_output_formats(settings)
 
-        # 根据配置决定生成哪些格式
-        file_writer.write_transcript(segments, video_name, format="txt")
-        if settings.get_bool("output.generate_srt", True):
-            file_writer.write_transcript(segments, video_name, format="srt")
-        if settings.get_bool("output.generate_vtt", True):
-            file_writer.write_transcript(segments, video_name, format="vtt")
+        write_transcript_outputs(file_writer, segments, video_name, output_formats)
 
         progress.complete(f"转写完成，共 {len(segments)} 个段落")
 
         console.print(Panel.fit(f"[bold green]转写成功！[/bold green]"))
-        console.print(f"输出文件: {output_dir}/{video_name}.txt")
+        console.print(f"输出目录: {output_dir}")
+        for output_format in output_formats:
+            console.print(f"  - {video_name}.{output_format}")
 
         audio_path.unlink(missing_ok=True)
 
@@ -421,12 +452,9 @@ def run_pipeline(
         file_writer = FileWriter(output_dir)
         formatter = OutputFormatter()
         video_name = Path(input_path).stem
+        output_formats = get_transcript_output_formats(settings)
 
-        file_writer.write_transcript(segments, video_name, format="txt")
-        if settings.get_bool("output.generate_srt", True):
-            file_writer.write_transcript(segments, video_name, format="srt")
-        if settings.get_bool("output.generate_vtt", True):
-            file_writer.write_transcript(segments, video_name, format="vtt")
+        write_transcript_outputs(file_writer, segments, video_name, output_formats)
         file_writer.write_summary(summary, video_name)
 
         output_data = formatter.create_output_data(
@@ -438,19 +466,18 @@ def run_pipeline(
             summary=summary,
             processing_time=time.time() - start_time,
         )
-        file_writer.write_output_data(output_data, video_name)
+        if settings.get_bool("output.json_output", False):
+            file_writer.write_output_data(output_data, video_name)
 
         progress.complete(f"处理完成，共 {len(segments)} 个段落")
 
         console.print(Panel.fit(f"[bold green]处理成功！[/bold green]"))
         console.print(f"输出目录: {output_dir}")
-        console.print(f"  - {video_name}.txt (转写文本)")
-        if settings.get_bool("output.generate_srt", True):
-            console.print(f"  - {video_name}.srt (SRT字幕)")
-        if settings.get_bool("output.generate_vtt", True):
-            console.print(f"  - {video_name}.vtt (VTT字幕)")
+        for output_format in output_formats:
+            console.print(f"  - {video_name}.{output_format} (转写结果)")
         console.print(f"  - {video_name}_summary.txt (摘要)")
-        console.print(f"  - {video_name}_full.json (完整数据)")
+        if settings.get_bool("output.json_output", False):
+            console.print(f"  - {video_name}_full.json (完整数据)")
 
         audio_path.unlink(missing_ok=True)
 
