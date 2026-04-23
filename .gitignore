@@ -223,7 +223,7 @@ output/*
 !output/
 
 # large-v3模型文件
-#models/large-v3/*
+models/large-v3/model.bin
 #!models/large-v3
 
 # vscode设置

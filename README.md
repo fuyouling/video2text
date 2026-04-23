@@ -57,6 +57,12 @@ ollama serve
 ollama pull qwen2.5:7b-instruct-q4_K_M
 ```
 
+### 5. 模型文件下载
+```
+models/large-v3/model.bin 文件比较大不好上传github,下载地址
+https://huggingface.co/Systran/faster-whisper-large-v3/resolve/main/model.bin?download=true
+```
+
 ## 使用方法
 
 ### 转写视频
