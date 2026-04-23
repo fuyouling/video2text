@@ -1,0 +1,474 @@
+"""CLI命令定义"""
+
+import sys
+import time
+from pathlib import Path
+from typing import Optional
+import typer
+from rich.console import Console
+from rich.panel import Panel
+
+from src.config.settings import Settings
+from src.preprocessing.video_processor import VideoProcessor
+from src.transcription.transcriber import Transcriber
+from src.text_processing.text_cleaner import TextCleaner
+from src.text_processing.segment_merger import SegmentMerger
+from src.summarization.summarizer import Summarizer
+from src.storage.file_writer import FileWriter
+from src.storage.output_formatter import OutputFormatter
+from src.utils.logger import setup_logger, get_logger
+from src.utils.exceptions import (
+    Video2TextError,
+    VideoFileError,
+    TranscriptionError,
+    SummarizationError,
+)
+from src.ui.progress import ProgressTracker, SimpleProgress
+
+app = typer.Typer(help="Video2Text - 视频转文本工具")
+console = Console()
+
+
+def get_settings() -> Settings:
+    """获取配置"""
+    return Settings()
+
+
+def get_model_path(settings: Settings, model_name: Optional[str] = None) -> str:
+    """获取完整的模型路径
+
+    Args:
+        settings: 配置对象
+        model_name: 模型名称（可选）
+
+    Returns:
+        完整的模型路径
+    """
+    if model_name is None:
+        model_name = settings.get("transcription.model_path", "large-v3")
+
+    models_dir = settings.get("paths.models_dir", "models")
+
+    # 如果是绝对路径，直接使用
+    if Path(model_name).is_absolute():
+        return model_name
+
+    # 如果是相对路径且已存在，直接使用
+    if Path(model_name).exists():
+        return str(Path(model_name).resolve())
+
+    # 否则，拼接models_dir
+    model_path = Path(models_dir) / model_name
+
+    # 检查模型是否存在
+    if model_path.exists():
+        return str(model_path)
+
+    # 如果本地不存在，返回模型名称（让faster_whisper去下载）
+    logger = get_logger(__name__)
+    logger.warning(f"本地模型不存在: {model_path}，将尝试从Hugging Face下载")
+    return model_name
+
+
+@app.command()
+def transcribe(
+    input_path: str = typer.Argument(..., help="视频文件路径"),
+    output_dir: Optional[str] = typer.Option(
+        None, "--output-dir", "-o", help="输出目录"
+    ),
+    language: Optional[str] = typer.Option(None, "--language", "-l", help="语言代码"),
+    model: Optional[str] = typer.Option(None, "--model", "-m", help="转写模型"),
+    device: Optional[str] = typer.Option(None, "--device", "-d", help="设备类型"),
+    beam_size: Optional[int] = typer.Option(
+        None, "--beam-size", help="beam search大小"
+    ),
+    temperature: Optional[float] = typer.Option(None, "--temperature", help="温度参数"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="详细输出"),
+):
+    """转写视频为文本"""
+    try:
+        settings = get_settings()
+
+        # 从配置文件获取默认值
+        output_dir = output_dir or settings.get("output.output_dir", "output")
+        language = language or settings.get("transcription.language", "auto")
+        model = model or settings.get("transcription.model_path", "large-v3")
+        device = device or settings.get("transcription.device", "auto")
+        beam_size = beam_size or settings.get_int("transcription.beam_size", 5)
+        temperature = (
+            temperature
+            if temperature is not None
+            else settings.get_float("transcription.temperature", 0.0)
+        )
+
+        # 获取完整模型路径
+        model_path = get_model_path(settings, model)
+
+        # 设置日志
+        log_level = "DEBUG" if verbose else settings.get("app.log_level", "INFO")
+        setup_logger(
+            "video2text",
+            log_dir=settings.get("paths.logs_dir", "logs"),
+            level=log_level,
+        )
+
+        console.print(Panel.fit(f"[bold blue]Video2Text 转写模式[/bold blue]"))
+        console.print(f"输入文件: {input_path}")
+        console.print(f"输出目录: {output_dir}")
+        console.print(f"模型: {model_path}")
+        console.print(f"设备: {device}")
+
+        progress = ProgressTracker(5, "转写进度")
+
+        video_processor = VideoProcessor(
+            ffmpeg_path=settings.get("preprocessing.ffmpeg_path", "ffmpeg")
+        )
+        progress.update(1, "验证视频文件")
+        video_processor.validate_video(input_path)
+
+        video_info = video_processor.get_video_info(input_path)
+        console.print(f"视频时长: {video_info.duration:.2f}秒")
+
+        progress.update(1, "提取音频")
+        audio_path = Path(output_dir) / "temp_audio.wav"
+        video_processor.extract_audio(
+            input_path,
+            str(audio_path),
+            sample_rate=settings.get_int("preprocessing.audio_sample_rate", 16000),
+            channels=settings.get_int("preprocessing.audio_channels", 1),
+        )
+
+        progress.update(1, "加载转写模型")
+        transcriber = Transcriber(
+            model_path=model_path,
+            device=device,
+            compute_type=settings.get("transcription.compute_type", "float16"),
+            num_workers=settings.get_int("transcription.num_workers", 1),
+        )
+        transcriber.load_model()
+
+        progress.update(1, "执行转写")
+        segments = transcriber.transcribe(
+            str(audio_path),
+            language=language,
+            beam_size=beam_size,
+            temperature=temperature,
+            vad_filter=settings.get_bool("transcription.vad_filter", True),
+        )
+
+        progress.update(1, "保存结果")
+        file_writer = FileWriter(output_dir)
+        video_name = Path(input_path).stem
+
+        # 根据配置决定生成哪些格式
+        file_writer.write_transcript(segments, video_name, format="txt")
+        if settings.get_bool("output.generate_srt", True):
+            file_writer.write_transcript(segments, video_name, format="srt")
+        if settings.get_bool("output.generate_vtt", True):
+            file_writer.write_transcript(segments, video_name, format="vtt")
+
+        progress.complete(f"转写完成，共 {len(segments)} 个段落")
+
+        console.print(Panel.fit(f"[bold green]转写成功！[/bold green]"))
+        console.print(f"输出文件: {output_dir}/{video_name}.txt")
+
+        audio_path.unlink(missing_ok=True)
+
+    except Video2TextError as e:
+        console.print(f"[bold red]错误: {e}[/bold red]")
+        sys.exit(2)
+    except Exception as e:
+        console.print(f"[bold red]未知错误: {e}[/bold red]")
+        sys.exit(1)
+
+
+@app.command()
+def summarize(
+    input_path: str = typer.Argument(..., help="转写文本文件路径"),
+    output_dir: Optional[str] = typer.Option(
+        None, "--output-dir", "-o", help="输出目录"
+    ),
+    model: Optional[str] = typer.Option(None, "--model", "-m", help="总结模型"),
+    max_length: Optional[int] = typer.Option(None, "--max-length", help="最大长度"),
+    temperature: Optional[float] = typer.Option(None, "--temperature", help="温度参数"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="详细输出"),
+):
+    """总结转写文本"""
+    try:
+        settings = get_settings()
+
+        # 从配置文件获取默认值
+        output_dir = output_dir or settings.get("output.output_dir", "output")
+        model = model or settings.get(
+            "summarization.model_name", "qwen2.5:7b-instruct-q4_K_M"
+        )
+        max_length = max_length or settings.get_int("summarization.max_length", 500)
+        temperature = (
+            temperature
+            if temperature is not None
+            else settings.get_float("summarization.temperature", 0.7)
+        )
+
+        # 设置日志
+        log_level = "DEBUG" if verbose else settings.get("app.log_level", "INFO")
+        setup_logger(
+            "video2text",
+            log_dir=settings.get("paths.logs_dir", "logs"),
+            level=log_level,
+        )
+
+        console.print(Panel.fit(f"[bold blue]Video2Text 总结模式[/bold blue]"))
+        console.print(f"输入文件: {input_path}")
+        console.print(f"输出目录: {output_dir}")
+
+        progress = ProgressTracker(3, "总结进度")
+
+        progress.update(1, "读取转写文本")
+        text_path = Path(input_path)
+        if not text_path.exists():
+            raise VideoFileError(f"文件不存在: {input_path}")
+
+        with open(text_path, "r", encoding="utf-8") as f:
+            text = f.read()
+
+        console.print(f"文本长度: {len(text)} 字符")
+
+        progress.update(1, "生成摘要")
+        summarizer = Summarizer(
+            model_name=model,
+            ollama_url=settings.get(
+                "summarization.ollama_url", "http://127.0.0.1:11434"
+            ),
+            temperature=temperature,
+            max_length=max_length,
+        )
+
+        if not summarizer.check_connection():
+            raise SummarizationError("无法连接到Ollama服务")
+
+        if not summarizer.check_model():
+            console.print(f"[yellow]警告: 模型 {model} 不存在[/yellow]")
+            console.print(
+                "[yellow]请运行: ollama pull qwen2.5:7b-instruct-q4_K_M[/yellow]"
+            )
+            raise SummarizationError(f"模型 {model} 不存在")
+
+        summary = summarizer.summarize(text, max_length=max_length)
+
+        progress.update(1, "保存结果")
+        file_writer = FileWriter(output_dir)
+        video_name = text_path.stem
+        file_writer.write_summary(summary, video_name)
+
+        progress.complete("总结完成")
+
+        console.print(Panel.fit(f"[bold green]总结成功！[/bold green]"))
+        console.print(f"输出文件: {output_dir}/{video_name}_summary.txt")
+
+    except Video2TextError as e:
+        console.print(f"[bold red]错误: {e}[/bold red]")
+        sys.exit(4)
+    except Exception as e:
+        console.print(f"[bold red]未知错误: {e}[/bold red]")
+        sys.exit(1)
+
+
+@app.command()
+def run_pipeline(
+    input_path: str = typer.Argument(..., help="视频文件路径"),
+    output_dir: Optional[str] = typer.Option(
+        None, "--output-dir", "-o", help="输出目录"
+    ),
+    language: Optional[str] = typer.Option(None, "--language", "-l", help="语言代码"),
+    transcription_model: Optional[str] = typer.Option(
+        None, "--transcription-model", help="转写模型"
+    ),
+    summarization_model: Optional[str] = typer.Option(
+        None, "--summarization-model", help="总结模型"
+    ),
+    device: Optional[str] = typer.Option(None, "--device", "-d", help="设备类型"),
+    beam_size: Optional[int] = typer.Option(
+        None, "--beam-size", help="beam search大小"
+    ),
+    temperature: Optional[float] = typer.Option(
+        None, "--temperature", help="转写温度参数"
+    ),
+    summary_temperature: Optional[float] = typer.Option(
+        None, "--summary-temperature", help="总结温度参数"
+    ),
+    max_length: Optional[int] = typer.Option(None, "--max-length", help="最大长度"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="详细输出"),
+):
+    """运行完整处理管道"""
+    try:
+        settings = get_settings()
+
+        # 从配置文件获取默认值
+        output_dir = output_dir or settings.get("output.output_dir", "output")
+        language = language or settings.get("transcription.language", "auto")
+        transcription_model = transcription_model or settings.get(
+            "transcription.model_path", "large-v3"
+        )
+        summarization_model = summarization_model or settings.get(
+            "summarization.model_name", "qwen2.5:7b-instruct-q4_K_M"
+        )
+        device = device or settings.get("transcription.device", "auto")
+        beam_size = beam_size or settings.get_int("transcription.beam_size", 5)
+        temperature = (
+            temperature
+            if temperature is not None
+            else settings.get_float("transcription.temperature", 0.0)
+        )
+        summary_temperature = (
+            summary_temperature
+            if summary_temperature is not None
+            else settings.get_float("summarization.temperature", 0.7)
+        )
+        max_length = max_length or settings.get_int("summarization.max_length", 500)
+
+        # 获取完整模型路径
+        model_path = get_model_path(settings, transcription_model)
+
+        # 设置日志
+        log_level = "DEBUG" if verbose else settings.get("app.log_level", "INFO")
+        setup_logger(
+            "video2text",
+            log_dir=settings.get("paths.logs_dir", "logs"),
+            level=log_level,
+        )
+
+        console.print(Panel.fit(f"[bold blue]Video2Text 完整管道模式[/bold blue]"))
+        console.print(f"输入文件: {input_path}")
+        console.print(f"输出目录: {output_dir}")
+        console.print(f"转写模型: {model_path}")
+        console.print(f"总结模型: {summarization_model}")
+
+        start_time = time.time()
+        progress = ProgressTracker(7, "处理进度")
+
+        video_processor = VideoProcessor(
+            ffmpeg_path=settings.get("preprocessing.ffmpeg_path", "ffmpeg")
+        )
+        progress.update(1, "验证视频文件")
+        video_processor.validate_video(input_path)
+
+        video_info = video_processor.get_video_info(input_path)
+        console.print(f"视频时长: {video_info.duration:.2f}秒")
+
+        progress.update(1, "提取音频")
+        audio_path = Path(output_dir) / "temp_audio.wav"
+        video_processor.extract_audio(
+            input_path,
+            str(audio_path),
+            sample_rate=settings.get_int("preprocessing.audio_sample_rate", 16000),
+            channels=settings.get_int("preprocessing.audio_channels", 1),
+        )
+
+        progress.update(1, "加载转写模型")
+        transcriber = Transcriber(
+            model_path=model_path,
+            device=device,
+            compute_type=settings.get("transcription.compute_type", "float16"),
+            num_workers=settings.get_int("transcription.num_workers", 1),
+        )
+        transcriber.load_model()
+
+        progress.update(1, "执行转写")
+        segments = transcriber.transcribe(
+            str(audio_path),
+            language=language,
+            beam_size=beam_size,
+            temperature=temperature,
+            vad_filter=settings.get_bool("transcription.vad_filter", True),
+        )
+
+        progress.update(1, "处理文本")
+        text_cleaner = TextCleaner()
+        segment_merger = SegmentMerger(
+            max_gap=settings.get_float("text_processing.max_gap", 2.0),
+            min_length=settings.get_int("text_processing.min_length", 50),
+        )
+        merged_segments = segment_merger.merge_segments(segments)
+        processed_text = segment_merger.format_segments_as_text(
+            merged_segments, include_timestamps=False
+        )
+
+        progress.update(1, "生成摘要")
+        summarizer = Summarizer(
+            model_name=summarization_model,
+            ollama_url=settings.get(
+                "summarization.ollama_url", "http://127.0.0.1:11434"
+            ),
+            temperature=summary_temperature,
+            max_length=max_length,
+        )
+
+        if not summarizer.check_connection():
+            console.print("[yellow]警告: 无法连接到Ollama服务，跳过总结[/yellow]")
+            summary = "总结不可用"
+        elif not summarizer.check_model():
+            console.print(
+                f"[yellow]警告: 模型 {summarization_model} 不存在，跳过总结[/yellow]"
+            )
+            console.print(
+                "[yellow]请运行: ollama pull qwen2.5:7b-instruct-q4_K_M[/yellow]"
+            )
+            summary = "总结不可用"
+        else:
+            summary = summarizer.summarize(processed_text, max_length=max_length)
+
+        progress.update(1, "保存结果")
+        file_writer = FileWriter(output_dir)
+        formatter = OutputFormatter()
+        video_name = Path(input_path).stem
+
+        file_writer.write_transcript(segments, video_name, format="txt")
+        if settings.get_bool("output.generate_srt", True):
+            file_writer.write_transcript(segments, video_name, format="srt")
+        if settings.get_bool("output.generate_vtt", True):
+            file_writer.write_transcript(segments, video_name, format="vtt")
+        file_writer.write_summary(summary, video_name)
+
+        output_data = formatter.create_output_data(
+            video_name=video_name,
+            video_path=input_path,
+            duration=video_info.duration,
+            transcript_segments=segments,
+            processed_text=processed_text,
+            summary=summary,
+            processing_time=time.time() - start_time,
+        )
+        file_writer.write_output_data(output_data, video_name)
+
+        progress.complete(f"处理完成，共 {len(segments)} 个段落")
+
+        console.print(Panel.fit(f"[bold green]处理成功！[/bold green]"))
+        console.print(f"输出目录: {output_dir}")
+        console.print(f"  - {video_name}.txt (转写文本)")
+        if settings.get_bool("output.generate_srt", True):
+            console.print(f"  - {video_name}.srt (SRT字幕)")
+        if settings.get_bool("output.generate_vtt", True):
+            console.print(f"  - {video_name}.vtt (VTT字幕)")
+        console.print(f"  - {video_name}_summary.txt (摘要)")
+        console.print(f"  - {video_name}_full.json (完整数据)")
+
+        audio_path.unlink(missing_ok=True)
+
+    except Video2TextError as e:
+        console.print(f"[bold red]错误: {e}[/bold red]")
+        sys.exit(2)
+    except Exception as e:
+        console.print(f"[bold red]未知错误: {e}[/bold red]")
+        sys.exit(1)
+
+
+@app.command()
+def version():
+    """显示版本信息"""
+    from src import __version__
+
+    console.print(f"Video2Text v{__version__}")
+
+
+if __name__ == "__main__":
+    app()
