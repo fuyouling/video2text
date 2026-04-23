@@ -7,6 +7,9 @@ from typing import Optional
 import typer
 from rich.console import Console
 from rich.panel import Panel
+import subprocess
+import shutil
+import tempfile
 
 from src.config.settings import Settings
 from src.preprocessing.video_processor import VideoProcessor
@@ -39,8 +42,7 @@ def get_settings() -> Settings:
 def get_transcript_output_formats(settings: Settings) -> list[str]:
     """获取转写输出格式列表"""
     formats = [
-        fmt.lower()
-        for fmt in settings.get_list("output.transcript_format", ["txt"])
+        fmt.lower() for fmt in settings.get_list("output.transcript_format", ["txt"])
     ]
     formats = [fmt for fmt in formats if fmt in SUPPORTED_TRANSCRIPT_FORMATS]
 
@@ -181,13 +183,71 @@ def transcribe(
         transcriber.load_model()
 
         progress.update(1, "执行转写")
-        segments = transcriber.transcribe(
-            str(audio_path),
-            language=language,
-            beam_size=beam_size,
-            temperature=temperature,
-            vad_filter=settings.get_bool("transcription.vad_filter", True),
-        )
+        # 最大音频块时长（秒），可在配置中自定义
+        max_chunk_duration = settings.get_int("preprocessing.max_chunk_duration", 300)
+        if video_info.duration > max_chunk_duration:
+            # 使用临时目录存放切片文件
+            chunk_dir_path = tempfile.mkdtemp(prefix="audio_chunks_", dir=output_dir)
+            chunk_dir = Path(chunk_dir_path)
+            try:
+                split_cmd = [
+                    video_processor.ffmpeg_path,
+                    "-i",
+                    str(audio_path),
+                    "-f",
+                    "segment",
+                    "-segment_time",
+                    str(max_chunk_duration),
+                    "-acodec",
+                    "pcm_s16le",
+                    "-reset_timestamps",
+                    "1",
+                    str(chunk_dir / "chunk_%03d.wav"),
+                ]
+                try:
+                    subprocess.run(
+                        split_cmd, capture_output=True, text=True, check=True
+                    )
+                except subprocess.CalledProcessError as e:
+                    raise Video2TextError(
+                        f"音频切片失败: {e.stderr.strip() or e.stdout.strip()}"
+                    )
+                chunk_files = sorted(chunk_dir.glob("chunk_*.wav"))
+                # 初始化切片转写进度条
+                chunk_progress = ProgressTracker(len(chunk_files), "切片转写进度")
+                all_segments: list = []
+                cumulative_offset = 0.0
+                for idx, chunk_path in enumerate(chunk_files):
+                    chunk_segments = transcriber.transcribe(
+                        str(chunk_path),
+                        language=language,
+                        beam_size=beam_size,
+                        temperature=temperature,
+                        vad_filter=settings.get_bool("transcription.vad_filter", True),
+                    )
+                    # 更新切片转写进度
+                    chunk_progress.update(1, f"转写块 {idx + 1}/{len(chunk_files)}")
+                    # 调整时间戳
+                    for seg in chunk_segments:
+                        seg.start += cumulative_offset
+                        seg.end += cumulative_offset
+                    # 更新累积偏移量，以实际块时长为准
+                    if chunk_segments:
+                        cumulative_offset += max(s.end for s in chunk_segments)
+                    all_segments.extend(chunk_segments)
+                chunk_progress.complete("切片转写完成")
+                segments = all_segments
+            finally:
+                # 确保临时文件被删除
+                shutil.rmtree(chunk_dir, ignore_errors=True)
+        else:
+            segments = transcriber.transcribe(
+                str(audio_path),
+                language=language,
+                beam_size=beam_size,
+                temperature=temperature,
+                vad_filter=settings.get_bool("transcription.vad_filter", True),
+            )
 
         progress.update(1, "保存结果")
         file_writer = FileWriter(output_dir)
@@ -405,13 +465,71 @@ def run_pipeline(
         transcriber.load_model()
 
         progress.update(1, "执行转写")
-        segments = transcriber.transcribe(
-            str(audio_path),
-            language=language,
-            beam_size=beam_size,
-            temperature=temperature,
-            vad_filter=settings.get_bool("transcription.vad_filter", True),
-        )
+        # 最大音频块时长（秒），可在配置中自定义
+        max_chunk_duration = settings.get_int("preprocessing.max_chunk_duration", 300)
+        if video_info.duration > max_chunk_duration:
+            # 使用临时目录存放切片文件
+            chunk_dir_path = tempfile.mkdtemp(prefix="audio_chunks_", dir=output_dir)
+            chunk_dir = Path(chunk_dir_path)
+            try:
+                split_cmd = [
+                    video_processor.ffmpeg_path,
+                    "-i",
+                    str(audio_path),
+                    "-f",
+                    "segment",
+                    "-segment_time",
+                    str(max_chunk_duration),
+                    "-acodec",
+                    "pcm_s16le",
+                    "-reset_timestamps",
+                    "1",
+                    str(chunk_dir / "chunk_%03d.wav"),
+                ]
+                try:
+                    subprocess.run(
+                        split_cmd, capture_output=True, text=True, check=True
+                    )
+                except subprocess.CalledProcessError as e:
+                    raise Video2TextError(
+                        f"音频切片失败: {e.stderr.strip() or e.stdout.strip()}"
+                    )
+                chunk_files = sorted(chunk_dir.glob("chunk_*.wav"))
+                # 初始化切片转写进度条
+                chunk_progress = ProgressTracker(len(chunk_files), "切片转写进度")
+                all_segments: list = []
+                cumulative_offset = 0.0
+                for idx, chunk_path in enumerate(chunk_files):
+                    chunk_segments = transcriber.transcribe(
+                        str(chunk_path),
+                        language=language,
+                        beam_size=beam_size,
+                        temperature=temperature,
+                        vad_filter=settings.get_bool("transcription.vad_filter", True),
+                    )
+                    # 更新切片转写进度
+                    chunk_progress.update(1, f"转写块 {idx + 1}/{len(chunk_files)}")
+                    # 调整时间戳
+                    for seg in chunk_segments:
+                        seg.start += cumulative_offset
+                        seg.end += cumulative_offset
+                    # 更新累积偏移量，以实际块时长为准
+                    if chunk_segments:
+                        cumulative_offset += max(s.end for s in chunk_segments)
+                    all_segments.extend(chunk_segments)
+                chunk_progress.complete("切片转写完成")
+                segments = all_segments
+            finally:
+                # 确保临时文件被删除
+                shutil.rmtree(chunk_dir, ignore_errors=True)
+        else:
+            segments = transcriber.transcribe(
+                str(audio_path),
+                language=language,
+                beam_size=beam_size,
+                temperature=temperature,
+                vad_filter=settings.get_bool("transcription.vad_filter", True),
+            )
 
         progress.update(1, "处理文本")
         text_cleaner = TextCleaner()

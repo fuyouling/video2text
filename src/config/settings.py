@@ -32,6 +32,7 @@ DEFAULT_CONFIG = {
         "ffmpeg_path": "ffmpeg",
         "audio_sample_rate": 16000,
         "audio_channels": 1,
+        "max_chunk_duration": 300,
         "supported_video_formats": ".mp4,.avi,.mov,.mkv,.flv,.wmv,.webm",
     },
     "output": {
@@ -160,14 +161,18 @@ class Settings:
         except (ValueError, configparser.NoSectionError, configparser.NoOptionError):
             return default
 
-    def get_list(self, key: str, default: Optional[list[str]] = None, separator: str = ",") -> list[str]:
+    def get_list(
+        self, key: str, default: Optional[list[str]] = None, separator: str = ","
+    ) -> list[str]:
         """获取列表配置项"""
         value = self.get(key)
         if value is None:
             return default.copy() if default is not None else []
 
         items = [item.strip() for item in value.split(separator)]
-        return [item for item in items if item] or (default.copy() if default is not None else [])
+        return [item for item in items if item] or (
+            default.copy() if default is not None else []
+        )
 
     def get_section(self, section: str) -> dict:
         """获取配置节

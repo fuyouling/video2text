@@ -3,8 +3,10 @@
 import time
 from typing import Optional
 from src.utils.logger import get_logger
+from rich.console import Console
 
 logger = get_logger(__name__)
+console = Console()
 
 
 class ProgressTracker:
@@ -46,6 +48,7 @@ class ProgressTracker:
         if eta > 0:
             status += f" - ETA: {self._format_time(eta)}"
 
+        console.print(status)
         logger.info(status)
 
     def complete(self, message: Optional[str] = None):
@@ -60,6 +63,7 @@ class ProgressTracker:
         if message:
             status += f" - {message}"
 
+        console.print(status)
         logger.info(status)
 
     def _format_time(self, seconds: float) -> str:
