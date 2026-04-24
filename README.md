@@ -83,6 +83,11 @@ python -m src.main summarize output/sample.txt --output-dir output
 python -m src.main run-pipeline video/sample.mp4 --output-dir output
 ```
 
+### GUI
+```bash
+python -m src.ui.gui
+```
+
 ### 命令行参数
 
 #### 转写命令 (transcribe)
