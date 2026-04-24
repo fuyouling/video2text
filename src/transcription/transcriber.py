@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from src.utils.exceptions import TranscriptionError
 from src.utils.logger import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger("video2text")
 
 # 禁用 Hugging Face Hub 的警告
 os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"

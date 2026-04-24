@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from src.utils.logger import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger("video2text")
 
 LARGE_V3_CORE_FILES = [
     "config.json",
