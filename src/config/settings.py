@@ -1,5 +1,6 @@
-"""配置管理"""
+"""配置管理 - 支持绿色版"""
 
+import sys
 import os
 import configparser
 from pathlib import Path
@@ -42,38 +43,72 @@ DEFAULT_CONFIG = {
         "json_output": True,
     },
     "paths": {"models_dir": "models", "logs_dir": "logs", "video_dir": "video"},
+    "network": {"proxy": ""},
 }
 
 
 class Settings:
-    """应用程序配置类"""
+    """应用程序配置类 - 支持绿色版（便携版）"""
 
     def __init__(self, config_path: Optional[str] = None):
-        """初始化配置
-
-        Args:
-            config_path: 配置文件路径，如果为None则使用默认路径
-        """
+        """初始化配置"""
         self.config = configparser.ConfigParser()
-        self.config_path = config_path or self._get_default_config_path()
+
+        # 确定程序基目录
+        if getattr(sys, "frozen", False):
+            # 打包后的exe环境
+            self._base_dir = Path(sys.executable).parent
+        else:
+            # 开发环境
+            self._base_dir = Path(__file__).resolve().parent.parent.parent
+
+        # 确定配置文件路径
+        if config_path:
+            self.config_path = config_path
+        else:
+            self.config_path = self._get_default_config_path()
+
         self._load_default_config()
 
         if Path(self.config_path).exists():
             self.load()
         else:
             logger.info(f"配置文件不存在，使用默认配置: {self.config_path}")
+            # 如果是打包环境且配置文件不存在，保存默认配置
+            if getattr(sys, "frozen", False):
+                try:
+                    self.save()
+                    logger.info(f"已创建默认配置文件: {self.config_path}")
+                except Exception as e:
+                    logger.warning(f"无法创建默认配置文件: {e}")
 
     def _get_default_config_path(self) -> str:
-        """获取默认配置文件路径
-
-        Returns:
-            配置文件路径
-        """
+        """获取默认配置文件路径 - 支持绿色版"""
+        # 1. 优先使用环境变量
         env_config = os.environ.get("VIDEO2TEXT_CONFIG")
         if env_config:
             return env_config
 
-        return "config.ini"
+        # 2. 使用程序目录下的config.ini
+        config_path = self._base_dir / "config.ini"
+
+        # 3. 如果不存在，尝试当前工作目录
+        if not config_path.exists():
+            cwd_config = Path.cwd() / "config.ini"
+            if cwd_config.exists():
+                return str(cwd_config)
+
+        return str(config_path)
+
+    def _resolve_path(self, path_str: str) -> str:
+        """解析路径，如果是相对路径则基于程序目录"""
+        if not path_str or path_str.strip() == "":
+            return path_str
+
+        p = Path(path_str)
+        if not p.is_absolute():
+            return str(self._base_dir / path_str)
+        return path_str
 
     def _load_default_config(self) -> None:
         """加载默认配置"""
@@ -115,7 +150,20 @@ class Settings:
         """
         try:
             section, option = key.split(".", 1)
-            return self.config.get(section, option)
+            value = self.config.get(section, option)
+
+            # 对特定配置项解析路径（绿色版支持）
+            path_keys = [
+                "paths.models_dir",
+                "paths.logs_dir",
+                "paths.video_dir",
+                "output.output_dir",
+            ]
+
+            if key in path_keys:
+                return self._resolve_path(value)
+
+            return value
         except (ValueError, configparser.NoSectionError, configparser.NoOptionError):
             return default
 

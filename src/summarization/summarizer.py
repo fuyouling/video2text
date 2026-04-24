@@ -16,7 +16,7 @@ class Summarizer:
         model_name: str,
         ollama_url: str = "http://127.0.0.1:11434",
         temperature: float = 0.7,
-        max_length: int = 500,
+        max_length: int = 5000,
     ):
         """初始化总结器
 
@@ -58,7 +58,11 @@ class Summarizer:
             return False
 
     def summarize(
-        self, text: str, max_length: Optional[int] = None, language: str = "zh"
+        self,
+        text: str,
+        max_length: Optional[int] = None,
+        language: str = "zh",
+        custom_prompt: Optional[str] = None,
     ) -> str:
         """总结文本
 
@@ -66,6 +70,7 @@ class Summarizer:
             text: 输入文本
             max_length: 最大长度
             language: 语言
+            custom_prompt: 自定义提示词，为空则使用默认提示词
 
         Returns:
             总结文本
@@ -76,7 +81,10 @@ class Summarizer:
         max_len = max_length or self.max_length
 
         system_prompt = self._get_system_prompt(language)
-        user_prompt = self._get_user_prompt(text, max_len, language)
+        if custom_prompt and custom_prompt.strip():
+            user_prompt = f"{custom_prompt.strip()}\n\n文本内容：\n{text}"
+        else:
+            user_prompt = self._get_user_prompt(text, max_len, language)
 
         logger.info(f"开始总结文本，长度: {len(text)} 字符")
         logger.info(f"使用模型: {self.model_name}")
@@ -100,7 +108,11 @@ class Summarizer:
             raise SummarizationError(f"总结失败: {e}")
 
     def summarize_with_points(
-        self, text: str, num_points: int = 5, language: str = "zh"
+        self,
+        text: str,
+        num_points: int = 5,
+        language: str = "zh",
+        custom_prompt: Optional[str] = None,
     ) -> str:
         """生成要点总结
 
@@ -108,6 +120,7 @@ class Summarizer:
             text: 输入文本
             num_points: 要点数量
             language: 语言
+            custom_prompt: 自定义提示词，为空则使用默认提示词
 
         Returns:
             要点总结
@@ -116,7 +129,10 @@ class Summarizer:
             raise SummarizationError("输入文本为空")
 
         system_prompt = self._get_system_prompt(language)
-        user_prompt = self._get_points_prompt(text, num_points, language)
+        if custom_prompt and custom_prompt.strip():
+            user_prompt = f"{custom_prompt.strip()}\n\n文本内容：\n{text}"
+        else:
+            user_prompt = self._get_points_prompt(text, num_points, language)
 
         logger.info(f"开始生成要点总结，要点数: {num_points}")
 
@@ -135,7 +151,11 @@ class Summarizer:
             raise SummarizationError(f"要点总结失败: {e}")
 
     def extract_keywords(
-        self, text: str, num_keywords: int = 10, language: str = "zh"
+        self,
+        text: str,
+        num_keywords: int = 10,
+        language: str = "zh",
+        custom_prompt: Optional[str] = None,
     ) -> list:
         """提取关键词
 
@@ -143,6 +163,7 @@ class Summarizer:
             text: 输入文本
             num_keywords: 关键词数量
             language: 语言
+            custom_prompt: 自定义提示词，为空则使用默认提示词
 
         Returns:
             关键词列表
@@ -151,7 +172,10 @@ class Summarizer:
             raise SummarizationError("输入文本为空")
 
         system_prompt = self._get_system_prompt(language)
-        user_prompt = self._get_keywords_prompt(text, num_keywords, language)
+        if custom_prompt and custom_prompt.strip():
+            user_prompt = f"{custom_prompt.strip()}\n\n文本内容：\n{text}"
+        else:
+            user_prompt = self._get_keywords_prompt(text, num_keywords, language)
 
         logger.info(f"开始提取关键词，数量: {num_keywords}")
 

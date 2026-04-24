@@ -1,5 +1,6 @@
 """视频处理器"""
 
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Optional, Dict
@@ -45,7 +46,25 @@ class VideoProcessor:
         self._check_ffmpeg()
 
     def _check_ffmpeg(self) -> None:
-        """检查FFmpeg是否可用"""
+        """检查FFmpeg是否可用，按 PATH / 给定路径 / 常见位置 依次查找"""
+        resolved = shutil.which(self.ffmpeg_path)
+        if not resolved:
+            resolved = shutil.which("ffmpeg")
+        if not resolved:
+            common_paths = [
+                Path.home() / "ffmpeg" / "bin" / "ffmpeg.exe",
+                Path("C:/") / "ffmpeg" / "bin" / "ffmpeg.exe",
+            ]
+            for p in common_paths:
+                if p.exists():
+                    resolved = str(p)
+                    break
+        if not resolved:
+            raise VideoFileError(
+                "FFmpeg未找到。请安装FFmpeg并添加到系统PATH环境变量，"
+                "或在config.ini的[preprocessing]节中设置ffmpeg_path为FFmpeg的完整路径。"
+            )
+        self.ffmpeg_path = resolved
         try:
             result = subprocess.run(
                 [self.ffmpeg_path, "-version"],
@@ -55,9 +74,7 @@ class VideoProcessor:
             )
             if result.returncode != 0:
                 raise VideoFileError("FFmpeg不可用")
-            logger.info("FFmpeg检查通过")
-        except FileNotFoundError:
-            raise VideoFileError(f"FFmpeg未找到: {self.ffmpeg_path}")
+            logger.info("FFmpeg检查通过: %s", self.ffmpeg_path)
         except subprocess.TimeoutExpired:
             raise VideoFileError("FFmpeg检查超时")
 

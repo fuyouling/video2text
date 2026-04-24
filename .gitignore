@@ -208,7 +208,7 @@ __marimo__/
 
 # test data
 video/*
-!video/
+!video/readme.md
 
 # kilo 
 .kilo/
@@ -220,7 +220,7 @@ docs/项目设计文档.md
 
 # 输出文件
 output/*
-!output/
+!output/readme.md
 
 # large-v3模型文件
 models/large-v3/model.bin

@@ -3,14 +3,19 @@
 import logging
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, Signal, QObject
-from PySide6.QtGui import QFont, QTextCursor
+from PySide6.QtGui import QFont, QIcon, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
+    QComboBox,
+    QDoubleSpinBox,
     QFileDialog,
+    QFormLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -22,10 +27,11 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QSpinBox,
     QSplitter,
+    QStatusBar,
     QTabWidget,
     QTextEdit,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -47,14 +53,14 @@ SUPPORTED_TRANSCRIPT_FORMATS = {"txt", "srt", "vtt", "json"}
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _DEFAULT_OUTPUT_DIR = str(_PROJECT_ROOT / "output")
 
+_BTN_MIN_WIDTH = 100
+
 
 class UiLogSignal(QObject):
     message = Signal(str)
 
 
 class UiLogHandler(logging.Handler):
-    """将日志记录转发到 GUI QTextEdit 的自定义 Handler"""
-
     def __init__(self, signal: UiLogSignal) -> None:
         super().__init__()
         self._signal = signal
@@ -69,13 +75,11 @@ class UiLogHandler(logging.Handler):
         self._signal.message.emit(self.format(record))
 
 
-class PipelineWorker(QObject):
-    """后台工作线程，遍历选中视频并依次执行 转写→文本处理→总结 全流程"""
+class TranscribeWorker(QObject):
+    """后台转写线程"""
 
     progress = Signal(int, int)
-    file_completed = Signal(str)
-    all_done = Signal()
-    model_loaded = Signal()
+    finished = Signal(list, str)
 
     def __init__(
         self,
@@ -94,7 +98,15 @@ class PipelineWorker(QObject):
     def cancel(self) -> None:
         self._cancelled = True
 
-    def run(self) -> None:  # pylint: disable=too-many-locals
+    def _download_progress(self, downloaded: int, total: int) -> None:
+        if total > 0:
+            pct = (downloaded / total) * 100
+            logger = get_logger("video2text")
+            logger.info(
+                f"模型下载进度: {pct:.1f}% ({downloaded // (1024 * 1024)}MB / {total // (1024 * 1024)}MB)"
+            )
+
+    def run(self) -> None:
         logger = setup_logger(
             "video2text",
             log_dir=self.settings.get("paths.logs_dir", "logs"),
@@ -108,28 +120,14 @@ class PipelineWorker(QObject):
         models_dir = self.settings.get("paths.models_dir", "models")
         model_path_obj = Path(models_dir) / model_name
         model_path = str(model_path_obj) if model_path_obj.exists() else model_name
-
         device = self.settings.get("transcription.device", "auto")
         compute_type = self.settings.get("transcription.compute_type", "float16")
-        num_workers = self.settings.get_int("transcription.num_workers", 1)
         beam_size = self.settings.get_int("transcription.beam_size", 5)
         temperature = self.settings.get_float("transcription.temperature", 0.0)
         max_chunk_duration = self.settings.get_int(
             "preprocessing.max_chunk_duration", 300
         )
-
-        summarization_model = self.settings.get(
-            "summarization.model_name", "qwen2.5:7b-instruct-q4_K_M"
-        )
-        ollama_url = self.settings.get(
-            "summarization.ollama_url", "http://127.0.0.1:11434"
-        )
-        summary_max_length = self.settings.get_int("summarization.max_length", 500)
-        summary_temperature_value = self.settings.get_float(
-            "summarization.temperature", 0.7
-        )
-
-        output_formats = self._get_transcript_output_formats()
+        output_formats = self._get_output_formats()
 
         try:
             logger.info("正在加载转写模型...")
@@ -137,35 +135,33 @@ class PipelineWorker(QObject):
                 model_path=model_path,
                 device=device,
                 compute_type=compute_type,
-                num_workers=num_workers,
+                num_workers=self.settings.get_int("transcription.num_workers", 1),
             )
-            transcriber.load_model()
-            self.model_loaded.emit()
+            transcriber.load_model(progress_callback=self._download_progress)
             logger.info("转写模型加载完成")
         except Exception:
             logger.exception("加载转写模型失败")
-            self.all_done.emit()
+            self.finished.emit([], "")
             return
 
         total = len(self.video_files)
+        ffmpeg_path = self.settings.get("preprocessing.ffmpeg_path", "ffmpeg")
+
         for idx, video_path in enumerate(self.video_files):
             if self._cancelled:
-                logger.info("用户取消了处理")
                 break
 
             video_name = Path(video_path).stem
-            logger.info("开始处理 (%d/%d): %s", idx + 1, total, video_name)
+            logger.info("开始转写 (%d/%d): %s", idx + 1, total, video_name)
 
             temp_audio = Path(self.output_dir) / f"temp_{video_name}.wav"
             try:
-                video_processor = VideoProcessor(
-                    ffmpeg_path=self.settings.get("preprocessing.ffmpeg_path", "ffmpeg")
-                )
-                video_processor.validate_video(video_path)
-                video_info = video_processor.get_video_info(video_path)
+                vp = VideoProcessor(ffmpeg_path=ffmpeg_path)
+                vp.validate_video(video_path)
+                video_info = vp.get_video_info(video_path)
                 logger.info("视频时长: %.2f 秒", video_info.duration)
 
-                video_processor.extract_audio(
+                vp.extract_audio(
                     video_path,
                     str(temp_audio),
                     sample_rate=self.settings.get_int(
@@ -176,13 +172,13 @@ class PipelineWorker(QObject):
 
                 if video_info.duration > max_chunk_duration:
                     segments = self._transcribe_chunked(
-                        transcriber=transcriber,
-                        video_processor=video_processor,
-                        audio_path=temp_audio,
-                        language=language,
-                        beam_size=beam_size,
-                        temperature=temperature,
-                        max_chunk_duration=max_chunk_duration,
+                        transcriber,
+                        vp,
+                        temp_audio,
+                        language,
+                        beam_size,
+                        temperature,
+                        max_chunk_duration,
                     )
                 else:
                     segments = transcriber.transcribe(
@@ -195,52 +191,14 @@ class PipelineWorker(QObject):
                         ),
                     )
 
-                segment_merger = SegmentMerger(
-                    max_gap=self.settings.get_float("text_processing.max_gap", 2.0),
-                    min_length=self.settings.get_int("text_processing.min_length", 50),
-                )
-                merged_segments = segment_merger.merge_segments(segments)
-                processed_text = segment_merger.format_segments_as_text(
-                    merged_segments, include_timestamps=False
-                )
-
-                summarizer = Summarizer(
-                    model_name=summarization_model,
-                    ollama_url=ollama_url,
-                    temperature=summary_temperature_value,
-                    max_length=summary_max_length,
-                )
-                if summarizer.check_connection() and summarizer.check_model():
-                    summary = summarizer.summarize(
-                        processed_text, max_length=summary_max_length
-                    )
-                else:
-                    logger.warning("Ollama 服务不可用，跳过总结")
-                    summary = "总结不可用"
-
-                file_writer = FileWriter(self.output_dir)
+                fw = FileWriter(self.output_dir)
                 for fmt in output_formats:
-                    file_writer.write_transcript(segments, video_name, format=fmt)
-                file_writer.write_summary(summary, video_name)
+                    fw.write_transcript(segments, video_name, format=fmt)
 
-                if self.settings.get_bool("output.json_output", False):
-                    formatter = OutputFormatter()
-                    output_data = formatter.create_output_data(
-                        video_name=video_name,
-                        video_path=video_path,
-                        duration=video_info.duration,
-                        transcript_segments=segments,
-                        processed_text=processed_text,
-                        summary=summary,
-                        processing_time=0.0,
-                    )
-                    file_writer.write_output_data(output_data, video_name)
-
-                self.file_completed.emit(video_name)
-                logger.info("处理完成: %s", video_name)
+                logger.info("转写完成: %s (%d 段落)", video_name, len(segments))
 
             except Video2TextError:
-                logger.exception("处理失败 %s", video_path)
+                logger.exception("转写失败 %s", video_path)
             except Exception:
                 logger.exception("未知错误 %s", video_path)
             finally:
@@ -248,32 +206,29 @@ class PipelineWorker(QObject):
 
             self.progress.emit(idx + 1, total)
 
-        self.all_done.emit()
+        self.finished.emit([], "")
 
-    # ── internal helpers ────────────────────────────────────────────
-
-    def _get_transcript_output_formats(self) -> list[str]:
+    def _get_output_formats(self) -> list[str]:
         raw = self.settings.get_list("output.transcript_format", ["txt"])
-        formats = [
-            fmt.lower() for fmt in raw if fmt.lower() in SUPPORTED_TRANSCRIPT_FORMATS
-        ]
-        return formats or ["txt"]
+        return [
+            f.lower() for f in raw if f.lower() in SUPPORTED_TRANSCRIPT_FORMATS
+        ] or ["txt"]
 
     def _transcribe_chunked(
         self,
-        transcriber: Transcriber,
-        video_processor: VideoProcessor,
-        audio_path: Path,
-        language: str,
-        beam_size: int,
-        temperature: float,
-        max_chunk_duration: int,
+        transcriber,
+        vp,
+        audio_path,
+        language,
+        beam_size,
+        temperature,
+        max_chunk_duration,
     ) -> list:
         logger = get_logger("video2text")
         chunk_dir = Path(tempfile.mkdtemp(prefix="audio_chunks_", dir=self.output_dir))
         try:
             split_cmd = [
-                video_processor.ffmpeg_path,
+                vp.ffmpeg_path,
                 "-i",
                 str(audio_path),
                 "-f",
@@ -289,27 +244,102 @@ class PipelineWorker(QObject):
             subprocess.run(split_cmd, capture_output=True, text=True, check=True)
             chunk_files = sorted(chunk_dir.glob("chunk_*.wav"))
             all_segments: list = []
-            cumulative_offset = 0.0
-            for i, chunk_path in enumerate(chunk_files):
+            offset = 0.0
+            for i, cp in enumerate(chunk_files):
                 if self._cancelled:
                     break
-                chunk_segments = transcriber.transcribe(
-                    str(chunk_path),
+                cs = transcriber.transcribe(
+                    str(cp),
                     language=language,
                     beam_size=beam_size,
                     temperature=temperature,
                     vad_filter=self.settings.get_bool("transcription.vad_filter", True),
                 )
-                for seg in chunk_segments:
-                    seg.start += cumulative_offset
-                    seg.end += cumulative_offset
-                if chunk_segments:
-                    cumulative_offset += max(s.end for s in chunk_segments)
-                all_segments.extend(chunk_segments)
+                for seg in cs:
+                    seg.start += offset
+                    seg.end += offset
+                if cs:
+                    offset += max(s.end for s in cs)
+                all_segments.extend(cs)
                 logger.info("转写块 %d/%d", i + 1, len(chunk_files))
             return all_segments
         finally:
             shutil.rmtree(chunk_dir, ignore_errors=True)
+
+
+class SummarizeWorker(QObject):
+    """后台总结线程 —— 对传入文本调用 Ollama 进行摘要"""
+
+    finished = Signal(str)
+    progress = Signal(str)
+
+    def __init__(
+        self,
+        input_text: str,
+        output_dir: str,
+        output_name: str,
+        settings: Settings,
+        ui_handler: UiLogHandler,
+        custom_prompt: str = "",
+    ) -> None:
+        super().__init__()
+        self.input_text = input_text
+        self.output_dir = output_dir
+        self.output_name = output_name
+        self.settings = settings
+        self.ui_handler = ui_handler
+        self.custom_prompt = custom_prompt
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        self._cancelled = True
+
+    def run(self) -> None:
+        logger = setup_logger(
+            "video2text",
+            log_dir=self.settings.get("paths.logs_dir", "logs"),
+            level=self.settings.get("app.log_level", "INFO"),
+            log_to_console=False,
+        )
+        logger.addHandler(self.ui_handler)
+
+        model = self.settings.get(
+            "summarization.model_name", "qwen2.5:7b-instruct-q4_K_M"
+        )
+        url = self.settings.get("summarization.ollama_url", "http://127.0.0.1:11434")
+        max_len = self.settings.get_int("summarization.max_length", 500)
+        temp = self.settings.get_float("summarization.temperature", 0.7)
+
+        try:
+            summarizer = Summarizer(
+                model_name=model,
+                ollama_url=url,
+                temperature=temp,
+                max_length=max_len,
+            )
+            if not summarizer.check_connection():
+                logger.error("无法连接到 Ollama 服务 (%s)", url)
+                self.finished.emit("")
+                return
+            if not summarizer.check_model():
+                logger.error("Ollama 模型 %s 不存在", model)
+                self.finished.emit("")
+                return
+
+            self.progress.emit("正在生成摘要...")
+            summary = summarizer.summarize(
+                self.input_text,
+                max_length=max_len,
+                custom_prompt=self.custom_prompt,
+            )
+            if summary:
+                fw = FileWriter(self.output_dir)
+                fw.write_summary(summary, self.output_name)
+                logger.info("总结完成: %s", self.output_name)
+            self.finished.emit(summary)
+        except Exception:
+            logger.exception("总结失败")
+            self.finished.emit("")
 
 
 class MainWindow(QMainWindow):
@@ -321,12 +351,12 @@ class MainWindow(QMainWindow):
         self._video_files: list[str] = []
         self._completed_names: set[str] = set()
         self._worker_thread: QThread | None = None
-        self._worker: PipelineWorker | None = None
+        self._worker: QObject | None = None
+        self._combined = False
 
         self._setup_logging()
         self._init_ui()
-
-    # ── logging bridge ──────────────────────────────────────────────
+        self._load_ollama_config()
 
     def _setup_logging(self) -> None:
         self._log_signal = UiLogSignal()
@@ -339,11 +369,22 @@ class MainWindow(QMainWindow):
         cursor.movePosition(QTextCursor.End)
         self.log_text.setTextCursor(cursor)
 
-    # ── UI construction ─────────────────────────────────────────────
-
     def _init_ui(self) -> None:
         self.setWindowTitle("Video2Text - 视频转文本工具")
         self.resize(1200, 800)
+
+        icon_path = (
+            Path(__file__).resolve().parent.parent.parent
+            / "assets"
+            / "video2text_logo.ico"
+        )
+        if not icon_path.exists():
+            if getattr(sys, "frozen", False):
+                icon_path = (
+                    Path(sys.executable).parent / "assets" / "video2text_logo.ico"
+                )
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -351,7 +392,7 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(10, 10, 10, 10)
         root.setSpacing(8)
 
-        # -- input row --
+        # ── input row ──
         input_row = QHBoxLayout()
         input_row.addWidget(QLabel("输入:"))
         self.input_edit = QLineEdit()
@@ -359,10 +400,8 @@ class MainWindow(QMainWindow):
         self.input_edit.setPlaceholderText("请选择视频文件或文件夹…")
         input_row.addWidget(self.input_edit, 1)
 
-        self.input_btn = QToolButton()
-        self.input_btn.setText("浏览")
-        self.input_btn.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
-        self.input_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self.input_btn = QPushButton("浏览")
+        self.input_btn.setMinimumWidth(_BTN_MIN_WIDTH)
         input_menu = QMenu(self.input_btn)
         input_menu.addAction("选择文件", self._select_input_files)
         input_menu.addAction("选择多个文件", self._select_input_multiple_files)
@@ -372,7 +411,7 @@ class MainWindow(QMainWindow):
         input_row.addWidget(self.input_btn)
         root.addLayout(input_row)
 
-        # -- output row --
+        # ── output row ──
         output_row = QHBoxLayout()
         output_row.addWidget(QLabel("输出:"))
         self.output_edit = QLineEdit()
@@ -380,28 +419,45 @@ class MainWindow(QMainWindow):
         self.output_edit.setText(_DEFAULT_OUTPUT_DIR)
         output_row.addWidget(self.output_edit, 1)
         self.output_btn = QPushButton("浏览")
+        self.output_btn.setMinimumWidth(_BTN_MIN_WIDTH)
         self.output_btn.clicked.connect(self._select_output_dir)
         output_row.addWidget(self.output_btn)
         root.addLayout(output_row)
 
-        # -- run + progress row --
+        # ── run / progress row ──
         run_row = QHBoxLayout()
-        self.progress_label = QLabel("0/0")
+        self.progress_label = QLabel("就绪")
         self.progress_label.setMinimumWidth(60)
         run_row.addWidget(self.progress_label)
         self.progress_bar = QProgressBar()
         self.progress_bar.setValue(0)
         run_row.addWidget(self.progress_bar, 1)
-        self.run_btn = QPushButton("运行")
-        self.run_btn.setMinimumWidth(80)
-        self.run_btn.clicked.connect(self._on_run)
-        run_row.addWidget(self.run_btn)
+        self.transcribe_btn = QPushButton("仅转写")
+        self.transcribe_btn.setMinimumWidth(_BTN_MIN_WIDTH)
+        self.transcribe_btn.setToolTip("仅执行语音转写，不进行摘要总结")
+        self.transcribe_btn.clicked.connect(self._on_transcribe)
+        run_row.addWidget(self.transcribe_btn)
+        self.summarize_btn = QPushButton("仅总结")
+        self.summarize_btn.setMinimumWidth(_BTN_MIN_WIDTH)
+        self.summarize_btn.setToolTip("仅对「文本内容」标签页中的文字进行摘要总结")
+        self.summarize_btn.clicked.connect(self._on_summarize)
+        run_row.addWidget(self.summarize_btn)
+        self.combine_btn = QPushButton("转写+总结")
+        self.combine_btn.setMinimumWidth(_BTN_MIN_WIDTH)
+        self.combine_btn.setToolTip("先执行语音转写，完成后自动对转写文本进行摘要总结")
+        self.combine_btn.clicked.connect(self._on_transcribe_combine)
+        run_row.addWidget(self.combine_btn)
+        # self.cancel_btn = QPushButton("取消")
+        # self.cancel_btn.setMinimumWidth(_BTN_MIN_WIDTH)
+        # self.cancel_btn.setEnabled(False)
+        # self.cancel_btn.clicked.connect(self._on_cancel)
+        # run_row.addWidget(self.cancel_btn)
         root.addLayout(run_row)
 
-        # -- splitter: logs + results --
-        splitter = QSplitter(Qt.Orientation.Vertical)
+        # ── splitter: logs + right panel ──
+        splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        # log panel
+        # left: log panel
         log_group = QGroupBox("日志输出")
         log_layout = QVBoxLayout(log_group)
         self.log_text = QTextEdit()
@@ -410,31 +466,140 @@ class MainWindow(QMainWindow):
         log_layout.addWidget(self.log_text)
         splitter.addWidget(log_group)
 
-        # results panel
+        # right: results + ollama config
+        right_splitter = QSplitter(Qt.Orientation.Vertical)
+
         results_group = QGroupBox("结果查看")
         results_layout = QHBoxLayout(results_group)
         self.file_list = QListWidget()
-        self.file_list.setMinimumWidth(200)
+        self.file_list.setMinimumWidth(180)
         self.file_list.currentItemChanged.connect(self._on_file_selected)
         results_layout.addWidget(self.file_list, 1)
 
         self.result_tabs = QTabWidget()
         self.transcript_view = QTextEdit()
-        self.transcript_view.setReadOnly(True)
         self.transcript_view.setFont(QFont("Consolas", 9))
+        self.transcript_view.setPlaceholderText(
+            "转写完成后文本自动填充到此处，可直接编辑修改，\n"
+            "修改后点击「仅总结」将编辑后的文本发送给 Ollama 进行摘要。\n"
+            "也可直接粘贴任意文本到此处，用于单独总结。"
+        )
+        self.result_tabs.addTab(self.transcript_view, "文本内容")
         self.summary_view = QTextEdit()
         self.summary_view.setReadOnly(True)
         self.summary_view.setFont(QFont("Consolas", 9))
-        self.result_tabs.addTab(self.transcript_view, "转写文本 (.txt)")
-        self.result_tabs.addTab(self.summary_view, "摘要 (_summary.txt)")
+        self.result_tabs.addTab(self.summary_view, "摘要")
+        self.result_tabs.currentChanged.connect(self._on_tab_changed)
         results_layout.addWidget(self.result_tabs, 3)
-        splitter.addWidget(results_group)
+        right_splitter.addWidget(results_group)
+
+        # ollama config panel
+        ollama_group = QGroupBox("Ollama 配置(总结模型)")
+        ollama_layout = QFormLayout(ollama_group)
+        self.ollama_url_edit = QLineEdit()
+        self.ollama_url_edit.setPlaceholderText("http://127.0.0.1:11434")
+        ollama_layout.addRow("服务地址:", self.ollama_url_edit)
+        self.ollama_model_edit = QLineEdit()
+        self.ollama_model_edit.setPlaceholderText("qwen2.5:7b-instruct-q4_K_M")
+        ollama_layout.addRow("模型名称:", self.ollama_model_edit)
+        self.ollama_temp_spin = QDoubleSpinBox()
+        self.ollama_temp_spin.setRange(0.0, 2.0)
+        self.ollama_temp_spin.setSingleStep(0.1)
+        self.ollama_temp_spin.setDecimals(1)
+        ollama_layout.addRow("温度:", self.ollama_temp_spin)
+        self.ollama_maxlen_spin = QSpinBox()
+        self.ollama_maxlen_spin.setRange(50, 5000)
+        self.ollama_maxlen_spin.setSingleStep(50)
+        ollama_layout.addRow("最大长度:", self.ollama_maxlen_spin)
+        self.ollama_prompt_edit = QTextEdit()
+        self.ollama_prompt_edit.setMaximumHeight(100)
+        self.ollama_prompt_edit.setPlaceholderText(
+            "自定义总结提示词（可选）：\n"
+            "输入您希望模型如何总结的指令，例如：\n"
+            "「请用英文总结以下文本，列出3个要点」\n"
+            "留空则使用默认提示词。"
+        )
+        ollama_layout.addRow("提示词:", self.ollama_prompt_edit)
+        ollama_btn_row = QHBoxLayout()
+        self.ollama_test_btn = QPushButton("测试连接")
+        self.ollama_test_btn.clicked.connect(self._test_ollama)
+        ollama_btn_row.addWidget(self.ollama_test_btn)
+        self.ollama_save_btn = QPushButton("保存配置")
+        self.ollama_save_btn.clicked.connect(self._save_ollama_config)
+        ollama_btn_row.addWidget(self.ollama_save_btn)
+        self.ollama_status_label = QLabel("")
+        ollama_btn_row.addWidget(self.ollama_status_label, 1)
+        ollama_layout.addRow(ollama_btn_row)
+        right_splitter.addWidget(ollama_group)
+
+        right_splitter.setStretchFactor(0, 2)
+        right_splitter.setStretchFactor(1, 1)
+        splitter.addWidget(right_splitter)
 
         splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 2)
+        splitter.setStretchFactor(1, 3)
         root.addWidget(splitter, 1)
 
-    # ── slot: input selection ───────────────────────────────────────
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        self.status_bar.showMessage(f"配置: {self.settings.config_path}")
+
+    def _load_ollama_config(self) -> None:
+        url = self.settings.get("summarization.ollama_url", "http://127.0.0.1:11434")
+        model = self.settings.get(
+            "summarization.model_name", "qwen2.5:7b-instruct-q4_K_M"
+        )
+        temp = self.settings.get_float("summarization.temperature", 0.7)
+        max_len = self.settings.get_int("summarization.max_length", 500)
+        prompt = self.settings.get("summarization.custom_prompt", "")
+        self.ollama_url_edit.setText(url)
+        self.ollama_model_edit.setText(model)
+        self.ollama_temp_spin.setValue(temp)
+        self.ollama_maxlen_spin.setValue(max_len)
+        self.ollama_prompt_edit.setPlainText(prompt)
+
+    def _save_ollama_config(self) -> None:
+        self.settings.set("summarization.ollama_url", self.ollama_url_edit.text())
+        self.settings.set("summarization.model_name", self.ollama_model_edit.text())
+        self.settings.set(
+            "summarization.temperature", str(self.ollama_temp_spin.value())
+        )
+        self.settings.set(
+            "summarization.max_length", str(self.ollama_maxlen_spin.value())
+        )
+        self.settings.set(
+            "summarization.custom_prompt", self.ollama_prompt_edit.toPlainText()
+        )
+        try:
+            self.settings.save()
+            self.ollama_status_label.setText("配置已保存")
+            self.ollama_status_label.setStyleSheet("color: green")
+        except Exception as e:
+            self.ollama_status_label.setText(f"保存失败: {e}")
+            self.ollama_status_label.setStyleSheet("color: red")
+
+    def _test_ollama(self) -> None:
+        url = self.ollama_url_edit.text() or "http://127.0.0.1:11434"
+        model = self.ollama_model_edit.text() or "qwen2.5:7b-instruct-q4_K_M"
+        from src.summarization.ollama_client import OllamaClient
+
+        client = OllamaClient(base_url=url)
+        if client.check_connection():
+            self.ollama_status_label.setText("连接成功")
+            self.ollama_status_label.setStyleSheet("color: green")
+        else:
+            self.ollama_status_label.setText("连接失败")
+            self.ollama_status_label.setStyleSheet("color: red")
+
+    def _on_tab_changed(self, index: int) -> None:
+        if index == 0:
+            self.status_bar.showMessage(
+                "文本内容 —— 可直接编辑，编辑后点击「仅总结」将文本发送给 Ollama 进行摘要"
+            )
+        elif index == 1:
+            self.status_bar.showMessage("摘要结果 —— 由 Ollama 生成（只读）")
+
+    # ── input selection slots ──
 
     def _select_input_files(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -467,30 +632,29 @@ class MainWindow(QMainWindow):
     @staticmethod
     def _scan_video_files(folder: str) -> list[str]:
         folder_path = Path(folder)
-        video_files: list[str] = []
+        files: list[str] = []
         for ext in SUPPORTED_VIDEO_EXTENSIONS:
             for f in folder_path.rglob(f"*{ext}"):
-                video_files.append(str(f))
-        return sorted(video_files)
-
-    # ── slot: output selection ──────────────────────────────────────
+                files.append(str(f))
+        return sorted(files)
 
     def _select_output_dir(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, "选择输出目录")
         if folder:
             self.output_edit.setText(folder)
 
-    # ── slot: run / cancel ──────────────────────────────────────────
+    # ── transcribe / summarize / cancel ──
 
-    def _on_run(self) -> None:
-        if self._worker_thread is not None and self._worker_thread.isRunning():
-            if self._worker is not None:
-                self._worker.cancel()
-            self.run_btn.setEnabled(False)
-            return
-
+    def _on_transcribe_combine(self) -> None:
         if not self._video_files:
-            QMessageBox.warning(self, "提示", "请先选择输入文件或文件夹。")
+            QMessageBox.warning(self, "提示", "请先选择输入视频文件或文件夹。")
+            return
+        self._combined = True
+        self._on_transcribe()
+
+    def _on_transcribe(self) -> None:
+        if not self._video_files:
+            QMessageBox.warning(self, "提示", "请先选择输入视频文件或文件夹。")
             return
 
         output_dir = self.output_edit.text().strip() or _DEFAULT_OUTPUT_DIR
@@ -508,48 +672,142 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(0)
         self.progress_label.setText(f"0/{total}")
 
-        self.run_btn.setText("取消")
+        self._set_busy_state(True)
 
         self._worker_thread = QThread()
-        self._worker = PipelineWorker(
+        self._worker = TranscribeWorker(
             self._video_files, output_dir, self.settings, self._ui_handler
         )
         self._worker.moveToThread(self._worker_thread)
-
         self._worker.progress.connect(self._on_progress)
-        self._worker.file_completed.connect(self._on_file_completed)
-        self._worker.all_done.connect(self._on_all_done)
-        self._worker.all_done.connect(self._worker_thread.quit)
+        self._worker.finished.connect(self._on_transcribe_done)
+        self._worker.finished.connect(self._worker_thread.quit)
         self._worker_thread.started.connect(self._worker.run)
         self._worker_thread.finished.connect(self._worker.deleteLater)
         self._worker_thread.finished.connect(self._on_thread_finished)
         self._worker_thread.start()
 
-    # ── slot: progress updates ──────────────────────────────────────
+    def _on_summarize(self) -> None:
+        text = self.transcript_view.toPlainText().strip()
+        if not text:
+            QMessageBox.warning(
+                self,
+                "提示",
+                "请先在「文本内容」标签页中输入或粘贴要总结的文字，\n或先执行「仅转写」将视频转为文本后再编辑总结。",
+            )
+            return
+
+        output_dir = self.output_edit.text().strip() or _DEFAULT_OUTPUT_DIR
+        self.output_edit.setText(output_dir)
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+        if self._video_files:
+            name = Path(self._video_files[0]).stem
+        else:
+            from datetime import datetime
+
+            name = f"summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+        self.summary_view.clear()
+        self.ollama_status_label.setText("")
+
+        self.progress_bar.setMaximum(0)
+        self.progress_label.setText("总结中...")
+
+        self._set_busy_state(True)
+
+        custom_prompt = self.ollama_prompt_edit.toPlainText().strip()
+        self._worker_thread = QThread()
+        self._worker = SummarizeWorker(
+            text, output_dir, name, self.settings, self._ui_handler, custom_prompt
+        )
+        self._worker.moveToThread(self._worker_thread)
+        self._worker.progress.connect(lambda msg: self.log_text.append(msg))
+        self._worker.finished.connect(self._on_summarize_done)
+        self._worker.finished.connect(self._worker_thread.quit)
+        self._worker_thread.started.connect(self._worker.run)
+        self._worker_thread.finished.connect(self._worker.deleteLater)
+        self._worker_thread.finished.connect(self._on_thread_finished)
+        self._worker_thread.start()
+
+    # def _on_cancel(self) -> None:
+    #     if self._worker is not None and hasattr(self._worker, "cancel"):
+    #         self._worker.cancel()
+    #     self.cancel_btn.setEnabled(False)
+
+    def _set_busy_state(self, busy: bool) -> None:
+        self.transcribe_btn.setEnabled(not busy)
+        self.summarize_btn.setEnabled(not busy)
+        self.combine_btn.setEnabled(not busy)
+        # self.cancel_btn.setEnabled(busy)
+        self.input_btn.setEnabled(not busy)
+        self.output_btn.setEnabled(not busy)
+
+    # ── progress / completion ──
 
     def _on_progress(self, completed: int, total: int) -> None:
         self.progress_bar.setValue(completed)
         self.progress_label.setText(f"{completed}/{total}")
 
-    def _on_file_completed(self, video_name: str) -> None:
-        if video_name not in self._completed_names:
-            self._completed_names.add(video_name)
-            item = QListWidgetItem(video_name)
-            item.setData(Qt.ItemDataRole.UserRole, video_name)
-            self.file_list.addItem(item)
-
-    def _on_all_done(self) -> None:
-        count = len(self._completed_names)
+    def _on_transcribe_done(self, _segments, _name) -> None:
+        output_dir = self.output_edit.text().strip() or _DEFAULT_OUTPUT_DIR
         total = len(self._video_files)
-        self.progress_label.setText(f"{count}/{total} 完成")
+        completed = 0
+        for vf in self._video_files:
+            vn = Path(vf).stem
+            if (Path(output_dir) / f"{vn}.txt").exists():
+                completed += 1
+                if vn not in self._completed_names:
+                    self._completed_names.add(vn)
+                    item = QListWidgetItem(vn)
+                    item.setData(Qt.ItemDataRole.UserRole, vn)
+                    self.file_list.addItem(item)
+        self.progress_label.setText(f"{completed}/{total} 完成")
+
+        if self._video_files:
+            first_name = Path(self._video_files[0]).stem
+            transcript_path = Path(output_dir) / f"{first_name}.txt"
+            if transcript_path.exists():
+                try:
+                    self.transcript_view.setPlainText(
+                        transcript_path.read_text(encoding="utf-8")
+                    )
+                    self.status_bar.showMessage(
+                        "转写完成，文本已加载到「文本内容」标签页，可编辑后点击「仅总结」"
+                        if not self._combined
+                        else "转写完成，即将自动开始总结..."
+                    )
+                except (OSError, UnicodeDecodeError):
+                    pass
+
+    def _on_summarize_done(self, summary: str) -> None:
+        if summary:
+            self.summary_view.setPlainText(summary)
+            self.ollama_status_label.setText("总结完成")
+            self.ollama_status_label.setStyleSheet("color: green")
+            self.status_bar.showMessage("总结完成，结果在「摘要」标签页")
+        else:
+            self.ollama_status_label.setText("总结失败，查看日志")
+            self.ollama_status_label.setStyleSheet("color: red")
+        self.progress_label.setText("就绪")
+        self.progress_bar.setMaximum(1)
+        self.progress_bar.setValue(1 if summary else 0)
 
     def _on_thread_finished(self) -> None:
-        self.run_btn.setText("运行")
-        self.run_btn.setEnabled(True)
         self._worker_thread = None
         self._worker = None
+        if self._combined:
+            self._combined = False
+            if self.transcript_view.toPlainText().strip():
+                self.status_bar.showMessage("转写完成，自动开始总结...")
+                self._on_summarize()
+            else:
+                self._set_busy_state(False)
+                self.status_bar.showMessage("转写完成，但未生成文本内容，无法自动总结")
+        else:
+            self._set_busy_state(False)
 
-    # ── slot: result file viewer ────────────────────────────────────
+    # ── result file viewer ──
 
     def _on_file_selected(
         self, current: QListWidgetItem | None, _previous: QListWidgetItem | None
@@ -579,11 +837,9 @@ class MainWindow(QMainWindow):
         else:
             self.summary_view.setPlainText("(未找到摘要文件)")
 
-    # ── close event ─────────────────────────────────────────────────
-
     def closeEvent(self, event) -> None:
         if self._worker_thread is not None and self._worker_thread.isRunning():
-            if self._worker is not None:
+            if self._worker is not None and hasattr(self._worker, "cancel"):
                 self._worker.cancel()
             self._worker_thread.quit()
             self._worker_thread.wait(3000)

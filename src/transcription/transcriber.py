@@ -1,8 +1,9 @@
 """转写器"""
 
 import os
+import sys
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Callable
 from dataclasses import dataclass
 from src.utils.exceptions import TranscriptionError
 from src.utils.logger import get_logger
@@ -72,29 +73,70 @@ class Transcriber:
             resolved_path = Path(model_path).resolve()
         # 否则，检查 models 目录
         else:
-            models_dir = Path(download_root or "models")
+            # 确定基目录（支持绿色版）
+            if getattr(sys, "frozen", False):
+                base_dir = Path(sys.executable).parent
+            else:
+                base_dir = Path(__file__).resolve().parent.parent.parent
+
+            models_dir = Path(download_root) if download_root else base_dir / "models"
             resolved_path = models_dir / model_path
 
         # 验证模型路径
         if resolved_path.exists():
             logger.info(f"使用本地模型: {resolved_path}")
-            # 检查必要的模型文件
-            required_files = ["model.bin", "config.json", "vocabulary.json"]
-            missing_files = [
-                f for f in required_files if not (resolved_path / f).exists()
+            core_files = [
+                "model.bin",
+                "config.json",
+                "tokenizer.json",
+                "preprocessor_config.json",
+                "vocabulary.json",
             ]
+            missing_files = [f for f in core_files if not (resolved_path / f).exists()]
             if missing_files:
-                logger.warning(f"模型目录可能不完整，缺少文件: {missing_files}")
+                logger.warning("模型目录不完整，缺少核心文件: %s", missing_files)
             return str(resolved_path)
         else:
-            logger.info(f"使用 Hugging Face 模型: {model_path}")
-            return model_path
+            logger.info("模型目录不存在，将尝试下载: %s", resolved_path)
+            return str(resolved_path)
 
-    def load_model(self) -> None:
-        """加载模型"""
+    def load_model(self, progress_callback: Optional[Callable] = None) -> None:
+        """加载模型
+
+        Args:
+            progress_callback: 进度回调函数，接收 (downloaded_bytes, total_bytes) 参数
+        """
         if self._loaded:
             logger.info("模型已加载")
             return
+
+        # 检查模型是否存在，如果不存在则下载
+        model_path_obj = Path(self.model_path)
+        core_files = [
+            "model.bin",
+            "config.json",
+            "tokenizer.json",
+            "preprocessor_config.json",
+            "vocabulary.json",
+        ]
+        has_core_files = all((model_path_obj / f).exists() for f in core_files)
+        if not has_core_files:
+            logger.info("模型文件不完整，尝试下载: %s", self.model_path)
+            try:
+                from src.utils.model_downloader import ModelDownloader
+
+                downloader = ModelDownloader()
+                if not downloader.download_model(progress_callback):
+                    raise TranscriptionError(
+                        "模型下载失败，请检查网络连接或配置代理。\n"
+                        "可在 config.ini 的 [network] 节设置 proxy。"
+                    )
+            except ImportError:
+                logger.warning(
+                    "model_downloader模块不可用，尝试使用faster-whisper自动下载"
+                )
+        elif not model_path_obj.exists():
+            logger.info("模型目录不存在但核心文件就绪，准备加载")
 
         try:
             from faster_whisper import WhisperModel
