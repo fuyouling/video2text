@@ -136,9 +136,9 @@ class VideoProcessor:
         cmd = [self.ffmpeg_path, "-i", video_path, "-f", "null", "-"]
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', timeout=30,errors="ignore",)
 
-            stderr = result.stderr
+            stderr = result.stderr or ""
 
             duration = 0.0
             width = 0
