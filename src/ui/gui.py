@@ -342,6 +342,107 @@ class SummarizeWorker(QObject):
             self.finished.emit("")
 
 
+class BatchSummarizeWorker(QObject):
+    """批量总结线程 —— 对多个视频的转写文本分别生成摘要"""
+
+    progress = Signal(int, int)
+    finished = Signal()
+
+    def __init__(
+        self,
+        video_files: list[str],
+        output_dir: str,
+        settings: Settings,
+        ui_handler: UiLogHandler,
+        custom_prompt: str = "",
+    ) -> None:
+        super().__init__()
+        self.video_files = video_files
+        self.output_dir = output_dir
+        self.settings = settings
+        self.ui_handler = ui_handler
+        self.custom_prompt = custom_prompt
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        self._cancelled = True
+
+    def run(self) -> None:
+        logger = setup_logger(
+            "video2text",
+            log_dir=self.settings.get("paths.logs_dir", "logs"),
+            level=self.settings.get("app.log_level", "INFO"),
+            log_to_console=False,
+        )
+        logger.addHandler(self.ui_handler)
+
+        model = self.settings.get(
+            "summarization.model_name", "qwen2.5:7b-instruct-q4_K_M"
+        )
+        url = self.settings.get("summarization.ollama_url", "http://127.0.0.1:11434")
+        max_len = self.settings.get_int("summarization.max_length", 500)
+        temp = self.settings.get_float("summarization.temperature", 0.7)
+
+        try:
+            summarizer = Summarizer(
+                model_name=model,
+                ollama_url=url,
+                temperature=temp,
+                max_length=max_len,
+            )
+            if not summarizer.check_connection():
+                logger.error("无法连接到 Ollama 服务 (%s)", url)
+                self.finished.emit()
+                return
+            if not summarizer.check_model():
+                logger.error("Ollama 模型 %s 不存在", model)
+                self.finished.emit()
+                return
+        except Exception:
+            logger.exception("初始化总结器失败")
+            self.finished.emit()
+            return
+
+        total = len(self.video_files)
+        for idx, video_path in enumerate(self.video_files):
+            if self._cancelled:
+                break
+
+            video_name = Path(video_path).stem
+            transcript_path = Path(self.output_dir) / f"{video_name}.txt"
+
+            if not transcript_path.exists():
+                logger.warning("未找到转写文件: %s", video_name)
+                self.progress.emit(idx + 1, total)
+                continue
+
+            try:
+                text = transcript_path.read_text(encoding="utf-8")
+                if not text.strip():
+                    logger.warning("转写文件为空: %s", video_name)
+                    self.progress.emit(idx + 1, total)
+                    continue
+
+                logger.info("开始总结 (%d/%d): %s", idx + 1, total, video_name)
+                summary = summarizer.summarize(
+                    text,
+                    max_length=max_len,
+                    custom_prompt=self.custom_prompt,
+                )
+                if summary:
+                    fw = FileWriter(self.output_dir)
+                    fw.write_summary(summary, video_name)
+                    logger.info("总结完成: %s", video_name)
+                else:
+                    logger.warning("总结失败: %s", video_name)
+            except Exception:
+                logger.exception("总结失败: %s", video_name)
+
+            self.progress.emit(idx + 1, total)
+
+        self.finished.emit()
+
+
 class MainWindow(QMainWindow):
     """Video2Text 主窗口"""
 
@@ -688,12 +789,11 @@ class MainWindow(QMainWindow):
         self._worker_thread.start()
 
     def _on_summarize(self) -> None:
-        text = self.transcript_view.toPlainText().strip()
-        if not text:
+        if not self._video_files:
             QMessageBox.warning(
                 self,
                 "提示",
-                "请先在「文本内容」标签页中输入或粘贴要总结的文字，\n或先执行「仅转写」将视频转为文本后再编辑总结。",
+                "请先选择视频文件或文件夹，并完成转写后再进行总结。",
             )
             return
 
@@ -701,29 +801,25 @@ class MainWindow(QMainWindow):
         self.output_edit.setText(output_dir)
         Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-        if self._video_files:
-            name = Path(self._video_files[0]).stem
-        else:
-            from datetime import datetime
-
-            name = f"summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-
-        self.summary_view.clear()
-        self.ollama_status_label.setText("")
-
-        self.progress_bar.setMaximum(0)
-        self.progress_label.setText("总结中...")
+        total = len(self._video_files)
+        self.progress_bar.setMaximum(total)
+        self.progress_bar.setValue(0)
+        self.progress_label.setText(f"0/{total}")
 
         self._set_busy_state(True)
 
         custom_prompt = self.ollama_prompt_edit.toPlainText().strip()
         self._worker_thread = QThread()
-        self._worker = SummarizeWorker(
-            text, output_dir, name, self.settings, self._ui_handler, custom_prompt
+        self._worker = BatchSummarizeWorker(
+            self._video_files,
+            output_dir,
+            self.settings,
+            self._ui_handler,
+            custom_prompt,
         )
         self._worker.moveToThread(self._worker_thread)
-        self._worker.progress.connect(lambda msg: self.log_text.append(msg))
-        self._worker.finished.connect(self._on_summarize_done)
+        self._worker.progress.connect(self._on_progress)
+        self._worker.finished.connect(self._on_batch_summarize_done)
         self._worker.finished.connect(self._worker_thread.quit)
         self._worker_thread.started.connect(self._worker.run)
         self._worker_thread.finished.connect(self._worker.deleteLater)
@@ -793,12 +889,34 @@ class MainWindow(QMainWindow):
         self.progress_bar.setMaximum(1)
         self.progress_bar.setValue(1 if summary else 0)
 
+    def _on_batch_summarize_done(self) -> None:
+        output_dir = self.output_edit.text().strip() or _DEFAULT_OUTPUT_DIR
+        total = len(self._video_files)
+        completed = 0
+        for vf in self._video_files:
+            vn = Path(vf).stem
+            summary_path = Path(output_dir) / f"{vn}_summary.txt"
+            if summary_path.exists():
+                completed += 1
+        self.progress_label.setText(f"{completed}/{total} 总结完成")
+        self.ollama_status_label.setText(f"总结完成: {completed}/{total}")
+        self.ollama_status_label.setStyleSheet("color: green")
+        self.status_bar.showMessage("批量总结完成，点击列表中的视频名称可查看摘要")
+
     def _on_thread_finished(self) -> None:
         self._worker_thread = None
         self._worker = None
         if self._combined:
             self._combined = False
-            if self.transcript_view.toPlainText().strip():
+            output_dir = self.output_edit.text().strip() or _DEFAULT_OUTPUT_DIR
+            has_transcripts = False
+            for vf in self._video_files:
+                vn = Path(vf).stem
+                transcript_path = Path(output_dir) / f"{vn}.txt"
+                if transcript_path.exists():
+                    has_transcripts = True
+                    break
+            if has_transcripts:
                 self.status_bar.showMessage("转写完成，自动开始总结...")
                 self._on_summarize()
             else:
