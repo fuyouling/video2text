@@ -1,4 +1,4 @@
-# Windows 安装教程（video2text_portable_windows_20260426.zip）
+# Windows 安装教程 
 
 本文档提供在 Windows 系统上安装打包好的 `video2text` 程序的完整步骤。
 
@@ -8,7 +8,7 @@
 
 - Ollama 安装包及模型文件
 - ffmpeg 安装包
-- video2text 绿色版 exe 程序包
+- video2text 绿色版 exe 程序包 video2text_portable_windows_20260426.zip
 - large‑v3 模型文件
 
 > 请使用支持保留目录结构的解压工具（如 7‑Zip）解压压缩包，确保文件夹结构完整。

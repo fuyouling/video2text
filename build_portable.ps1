@@ -136,7 +136,7 @@ Write-Host "  Created: video2text.bat" -ForegroundColor Green
 
 # Step 6: Create ZIP package (excluding models)
 Write-Host "[6/6] Creating ZIP package (excluding models)..." -ForegroundColor Yellow
-$zipName = "video2text_portable_$(Get-Date -Format 'yyyyMMdd').zip"
+$zipName = "video2text_portable_windows_$(Get-Date -Format 'yyyyMMdd').zip"
 $zipPath = Join-Path "dist" $zipName
 
 # Stop any running video2text.exe to release file locks
