@@ -33,6 +33,10 @@ console = Console()
 
 SUPPORTED_TRANSCRIPT_FORMATS = {"txt", "srt", "vtt", "json"}
 
+if sys.platform == "win32":
+    CREATE_NO_WINDOW = subprocess.CREATE_NO_WINDOW
+else:
+    CREATE_NO_WINDOW = 0
 
 def get_settings() -> Settings:
     """获取配置"""
@@ -206,7 +210,7 @@ def transcribe(
                 ]
                 try:
                     subprocess.run(
-                        split_cmd, capture_output=True, text=True, check=True
+                        split_cmd, capture_output=True, text=True, check=True, creationflags=CREATE_NO_WINDOW,
                     )
                 except subprocess.CalledProcessError as e:
                     raise Video2TextError(
@@ -488,7 +492,7 @@ def run_pipeline(
                 ]
                 try:
                     subprocess.run(
-                        split_cmd, capture_output=True, text=True, check=True
+                        split_cmd, capture_output=True, text=True, check=True, creationflags=CREATE_NO_WINDOW,
                     )
                 except subprocess.CalledProcessError as e:
                     raise Video2TextError(

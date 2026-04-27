@@ -55,6 +55,10 @@ _DEFAULT_OUTPUT_DIR = str(_PROJECT_ROOT / "output")
 
 _BTN_MIN_WIDTH = 100
 
+if sys.platform == "win32":
+    CREATE_NO_WINDOW = subprocess.CREATE_NO_WINDOW
+else:
+    CREATE_NO_WINDOW = 0
 
 class UiLogSignal(QObject):
     message = Signal(str)
@@ -242,7 +246,7 @@ class TranscribeWorker(QObject):
                 "1",
                 str(chunk_dir / "chunk_%03d.wav"),
             ]
-            subprocess.run(split_cmd, capture_output=True, text=True, check=True)
+            subprocess.run(split_cmd, capture_output=True, text=True, check=True, creationflags=CREATE_NO_WINDOW,)
             chunk_files = sorted(chunk_dir.glob("chunk_*.wav"))
             all_segments: list = []
             offset = 0.0

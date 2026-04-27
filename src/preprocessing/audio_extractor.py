@@ -1,6 +1,7 @@
 """音频提取器"""
 
 import subprocess
+import sys
 from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass
@@ -8,6 +9,11 @@ from src.utils.exceptions import VideoFileError
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+if sys.platform == "win32":
+    CREATE_NO_WINDOW = subprocess.CREATE_NO_WINDOW
+else:
+    CREATE_NO_WINDOW = 0
 
 
 @dataclass
@@ -40,6 +46,7 @@ class AudioExtractor:
                 capture_output=True,
                 text=True,
                 timeout=5,
+                creationflags=CREATE_NO_WINDOW,
             )
             if result.returncode != 0:
                 raise VideoFileError("FFmpeg不可用")
@@ -94,7 +101,13 @@ class AudioExtractor:
         logger.debug(f"FFmpeg命令: {' '.join(cmd)}")
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=3600,
+                creationflags=CREATE_NO_WINDOW,
+            )
 
             if result.returncode != 0:
                 error_msg = result.stderr or result.stdout
@@ -126,7 +139,13 @@ class AudioExtractor:
         cmd = [self.ffmpeg_path, "-i", audio_path, "-f", "null", "-"]
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                creationflags=CREATE_NO_WINDOW,
+            )
 
             stderr = result.stderr
 
@@ -206,7 +225,13 @@ class AudioExtractor:
         logger.info(f"开始转换音频: {input_path}")
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=3600,
+                creationflags=CREATE_NO_WINDOW,
+            )
 
             if result.returncode != 0:
                 error_msg = result.stderr or result.stdout

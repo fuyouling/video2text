@@ -2,6 +2,7 @@
 
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Optional, Dict
 from dataclasses import dataclass
@@ -10,6 +11,11 @@ from src.utils.exceptions import VideoFileError
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+if sys.platform == "win32":
+    CREATE_NO_WINDOW = subprocess.CREATE_NO_WINDOW
+else:
+    CREATE_NO_WINDOW = 0
 
 
 @dataclass
@@ -71,6 +77,7 @@ class VideoProcessor:
                 capture_output=True,
                 text=True,
                 timeout=5,
+                creationflags=CREATE_NO_WINDOW,
             )
             if result.returncode != 0:
                 raise VideoFileError("FFmpeg不可用")
@@ -107,7 +114,13 @@ class VideoProcessor:
         cmd = [self.ffmpeg_path, "-v", "error", "-i", video_path, "-f", "null", "-"]
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                creationflags=CREATE_NO_WINDOW,
+            )
 
             if result.returncode != 0:
                 error_msg = result.stderr or result.stdout
@@ -136,7 +149,15 @@ class VideoProcessor:
         cmd = [self.ffmpeg_path, "-i", video_path, "-f", "null", "-"]
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', timeout=30,errors="ignore",)
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=30,
+                errors="ignore",
+                creationflags=CREATE_NO_WINDOW,
+            )
 
             stderr = result.stderr or ""
 
@@ -244,7 +265,13 @@ class VideoProcessor:
         logger.debug(f"FFmpeg命令: {' '.join(cmd)}")
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=3600,
+                creationflags=CREATE_NO_WINDOW,
+            )
 
             if result.returncode != 0:
                 error_msg = result.stderr or result.stdout
@@ -290,7 +317,13 @@ class VideoProcessor:
         ]
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                creationflags=CREATE_NO_WINDOW,
+            )
 
             if result.returncode != 0:
                 error_msg = result.stderr or result.stdout
