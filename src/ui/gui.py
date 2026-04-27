@@ -66,8 +66,9 @@ class UiLogHandler(logging.Handler):
         self._signal = signal
         self.setFormatter(
             logging.Formatter(
-                "%(asctime)s - %(levelname)s - %(message)s",
-                datefmt="%H:%M:%S",
+                # "%(asctime)s - %(levelname)s - %(message)s",
+                "%(message)s",
+                # datefmt="%H:%M:%S",
             )
         )
 
@@ -113,7 +114,7 @@ class TranscribeWorker(QObject):
             level=self.settings.get("app.log_level", "INFO"),
             log_to_console=False,
         )
-        logger.addHandler(self.ui_handler)
+        # logger.addHandler(self.ui_handler)
 
         language = self.settings.get("transcription.language", "zh")
         model_name = self.settings.get("transcription.model_path", "large-v3")
@@ -301,7 +302,7 @@ class SummarizeWorker(QObject):
             level=self.settings.get("app.log_level", "INFO"),
             log_to_console=False,
         )
-        logger.addHandler(self.ui_handler)
+        # logger.addHandler(self.ui_handler)
 
         model = self.settings.get(
             "summarization.model_name", "qwen2.5:7b-instruct-q4_K_M"
@@ -374,7 +375,7 @@ class BatchSummarizeWorker(QObject):
             level=self.settings.get("app.log_level", "INFO"),
             log_to_console=False,
         )
-        logger.addHandler(self.ui_handler)
+        # logger.addHandler(self.ui_handler)
 
         model = self.settings.get(
             "summarization.model_name", "qwen2.5:7b-instruct-q4_K_M"
@@ -463,6 +464,13 @@ class MainWindow(QMainWindow):
         self._log_signal = UiLogSignal()
         self._log_signal.message.connect(self._append_log)
         self._ui_handler = UiLogHandler(self._log_signal)
+
+        # 全局安装 GUI 日志输出
+        root_logger = logging.getLogger()
+        root_logger.setLevel(logging.INFO)        # 根据需要调整级别
+        # 避免重复添加（例如窗口重建时）
+        if self._ui_handler not in root_logger.handlers:
+            root_logger.addHandler(self._ui_handler)
 
     def _append_log(self, msg: str) -> None:
         self.log_text.append(msg)

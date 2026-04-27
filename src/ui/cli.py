@@ -615,5 +615,86 @@ def version():
     console.print(f"Video2Text v{__version__}")
 
 
+@app.command()
+def help_command():
+    """显示所有命令的详细用法"""
+    console.print(Panel.fit("[bold blue]Video2Text 命令帮助[/bold blue]"))
+    console.print("\n[bold]可用命令:[/bold]\n")
+
+    commands = [
+        {
+            "name": "transcribe",
+            "description": "转写视频为文本",
+            "usage": "video2text transcribe <视频文件路径> [选项]",
+            "options": [
+                ("--output-dir, -o", "输出目录"),
+                ("--language, -l", "语言代码 (如: zh, en, auto)"),
+                ("--model, -m", "转写模型 (如: large-v3, base)"),
+                ("--device, -d", "设备类型 (如: auto, cpu, cuda)"),
+                ("--beam-size", "beam search大小"),
+                ("--temperature", "温度参数"),
+                ("--verbose, -v", "详细输出"),
+            ],
+        },
+        {
+            "name": "summarize",
+            "description": "总结转写文本",
+            "usage": "video2text summarize <转写文本文件路径> [选项]",
+            "options": [
+                ("--output-dir, -o", "输出目录"),
+                ("--model, -m", "总结模型 (如: qwen2.5:7b-instruct-q4_K_M)"),
+                ("--max-length", "最大长度"),
+                ("--temperature", "温度参数"),
+                ("--verbose, -v", "详细输出"),
+            ],
+        },
+        {
+            "name": "run-pipeline",
+            "description": "运行完整处理管道（转写+总结）",
+            "usage": "video2text run-pipeline <视频文件路径> [选项]",
+            "options": [
+                ("--output-dir, -o", "输出目录"),
+                ("--language, -l", "语言代码"),
+                ("--transcription-model", "转写模型"),
+                ("--summarization-model", "总结模型"),
+                ("--device, -d", "设备类型"),
+                ("--beam-size", "beam search大小"),
+                ("--temperature", "转写温度参数"),
+                ("--summary-temperature", "总结温度参数"),
+                ("--max-length", "最大长度"),
+                ("--verbose, -v", "详细输出"),
+            ],
+        },
+        {
+            "name": "version",
+            "description": "显示版本信息",
+            "usage": "video2text version",
+            "options": [],
+        },
+        {
+            "name": "--help",
+            "description": "显示所有命令的详细用法",
+            "usage": "video2text help",
+            "options": [],
+        },
+    ]
+
+    for cmd in commands:
+        console.print(f"[bold cyan]{cmd['name']}[/bold cyan] - {cmd['description']}")
+        console.print(f"  用法: {cmd['usage']}")
+        if cmd["options"]:
+            console.print("  选项:")
+            for opt, desc in cmd["options"]:
+                console.print(f"    {opt:<30} {desc}")
+        console.print()
+
+    console.print("[bold]示例:[/bold]")
+    console.print("  video2text transcribe video.mp4 -o output -l zh")
+    console.print("  video2text summarize transcript.txt -o output")
+    console.print("  video2text run-pipeline video.mp4 -o output")
+    console.print("\n[bold]提示:[/bold] 1. 使用 --help 查看单个命令的详细选项")
+    console.print("      2. powershell使用全路径调用可执行文件，如: .\\video2text.exe transcribe video.mp4 -o output -l zh   ")
+
+
 if __name__ == "__main__":
     app()
