@@ -44,6 +44,7 @@ from src.summarization.summarizer import Summarizer
 from src.text_processing.segment_merger import SegmentMerger
 from src.text_processing.text_cleaner import TextCleaner
 from src.transcription.transcriber import Transcriber
+from src.ui.result_viewer import ResultViewerWindow
 from src.utils.exceptions import Video2TextError
 from src.utils.logger import get_logger, setup_logger
 
@@ -466,6 +467,7 @@ class MainWindow(QMainWindow):
         self._worker_thread: QThread | None = None
         self._worker: QObject | None = None
         self._combined = False
+        self._result_viewer: ResultViewerWindow | None = None
 
         self._setup_logging()
         self._init_ui()
@@ -520,15 +522,18 @@ class MainWindow(QMainWindow):
         self.input_edit.setPlaceholderText("请选择视频文件或文件夹…")
         input_row.addWidget(self.input_edit, 1)
 
-        self.input_btn = QPushButton("浏览")
-        self.input_btn.setMinimumWidth(_BTN_MIN_WIDTH)
-        input_menu = QMenu(self.input_btn)
-        input_menu.addAction("选择文件", self._select_input_files)
-        input_menu.addAction("选择多个文件", self._select_input_multiple_files)
-        input_menu.addAction("选择文件夹", self._select_input_folder)
-        self.input_btn.setMenu(input_menu)
-        self.input_btn.clicked.connect(self._select_input_files)
-        input_row.addWidget(self.input_btn)
+        self.input_file_btn = QPushButton("选择文件")
+        self.input_file_btn.setMinimumWidth(_BTN_MIN_WIDTH)
+        self.input_file_btn.clicked.connect(self._select_input_files)
+        input_row.addWidget(self.input_file_btn)
+        self.input_multi_btn = QPushButton("选择多个文件")
+        self.input_multi_btn.setMinimumWidth(_BTN_MIN_WIDTH)
+        self.input_multi_btn.clicked.connect(self._select_input_multiple_files)
+        input_row.addWidget(self.input_multi_btn)
+        self.input_folder_btn = QPushButton("选择文件夹")
+        self.input_folder_btn.setMinimumWidth(_BTN_MIN_WIDTH)
+        self.input_folder_btn.clicked.connect(self._select_input_folder)
+        input_row.addWidget(self.input_folder_btn)
         root.addLayout(input_row)
 
         # ── output row ──
@@ -551,12 +556,18 @@ class MainWindow(QMainWindow):
 
         # ── run / progress row ──
         run_row = QHBoxLayout()
-        self.progress_label = QLabel("就绪")
-        self.progress_label.setMinimumWidth(60)
+        self.progress_label = QLabel("就绪:")
         run_row.addWidget(self.progress_label)
         self.progress_bar = QProgressBar()
         self.progress_bar.setValue(0)
         run_row.addWidget(self.progress_bar, 1)
+        self.open_viewer_btn = QPushButton("独立查看")
+        self.open_viewer_btn.setMinimumWidth(_BTN_MIN_WIDTH)
+        self.open_viewer_btn.setToolTip(
+            "在独立窗口中查看所有结果，支持全屏、搜索、导出、书签等功能"
+        )
+        self.open_viewer_btn.clicked.connect(self._open_result_viewer)
+        run_row.addWidget(self.open_viewer_btn)
         self.transcribe_btn = QPushButton("仅转写")
         self.transcribe_btn.setMinimumWidth(_BTN_MIN_WIDTH)
         self.transcribe_btn.setToolTip("仅执行语音转写，不进行摘要总结")
@@ -595,11 +606,14 @@ class MainWindow(QMainWindow):
         right_splitter = QSplitter(Qt.Orientation.Vertical)
 
         results_group = QGroupBox("结果查看")
-        results_layout = QHBoxLayout(results_group)
+        results_layout = QVBoxLayout(results_group)
+
+        # 文件列表和内容区域
+        content_layout = QHBoxLayout()
         self.file_list = QListWidget()
         self.file_list.setMinimumWidth(180)
         self.file_list.currentItemChanged.connect(self._on_file_selected)
-        results_layout.addWidget(self.file_list, 1)
+        content_layout.addWidget(self.file_list, 1)
 
         self.result_tabs = QTabWidget()
         self.transcript_view = QTextEdit()
@@ -615,7 +629,8 @@ class MainWindow(QMainWindow):
         self.summary_view.setFont(QFont("Consolas", 9))
         self.result_tabs.addTab(self.summary_view, "摘要")
         self.result_tabs.currentChanged.connect(self._on_tab_changed)
-        results_layout.addWidget(self.result_tabs, 3)
+        content_layout.addWidget(self.result_tabs, 3)
+        results_layout.addLayout(content_layout)
         right_splitter.addWidget(results_group)
 
         # ollama config panel
@@ -959,7 +974,9 @@ class MainWindow(QMainWindow):
         self.summarize_btn.setEnabled(not busy)
         self.combine_btn.setEnabled(not busy)
         # self.cancel_btn.setEnabled(busy)
-        self.input_btn.setEnabled(not busy)
+        self.input_file_btn.setEnabled(not busy)
+        self.input_multi_btn.setEnabled(not busy)
+        self.input_folder_btn.setEnabled(not busy)
         self.output_btn.setEnabled(not busy)
 
     # ── progress / completion ──
@@ -1050,6 +1067,24 @@ class MainWindow(QMainWindow):
 
     # ── result file viewer ──
 
+    def _open_result_viewer(self):
+        """打开独立结果查看窗口"""
+        if not self._completed_names:
+            QMessageBox.warning(self, "提示", "请先完成转写或加载历史文件")
+            return
+
+        output_dir = self.output_edit.text().strip() or _DEFAULT_OUTPUT_DIR
+        video_names = list(self._completed_names)
+
+        # 如果窗口已存在，直接更新内容
+        if self._result_viewer is None or not self._result_viewer.isVisible():
+            self._result_viewer = ResultViewerWindow(self)
+
+        self._result_viewer.load_files(video_names, output_dir)
+        self._result_viewer.show()
+        self._result_viewer.raise_()
+        self._result_viewer.activateWindow()
+
     def _on_file_selected(
         self, current: QListWidgetItem | None, _previous: QListWidgetItem | None
     ) -> None:
@@ -1084,6 +1119,8 @@ class MainWindow(QMainWindow):
                 self._worker.cancel()
             self._worker_thread.quit()
             self._worker_thread.wait(3000)
+        if self._result_viewer is not None:
+            self._result_viewer.close()
         event.accept()
 
 
