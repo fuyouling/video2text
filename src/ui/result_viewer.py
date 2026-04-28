@@ -170,6 +170,10 @@ class ThemeManager:
                 color: {theme["text_color"]};
                 padding: 10px;
                 background-color: {theme["bg_color"]};
+                margin: 0;
+            }}
+            * {{
+                box-sizing: border-box;
             }}
             h1, h2, h3, h4, h5, h6 {{
                 color: {theme["text_color"]};
@@ -233,8 +237,38 @@ class ThemeManager:
             }}
             ul, ol {{
                 padding-left: 2em;
+                margin: 0.8em 0;
+            }}
+            ul {{
+                list-style-type: disc;
+            }}
+            ol {{
+                list-style-type: decimal;
             }}
             li {{
+                margin: 0.5em 0;
+                line-height: 1.8;
+                padding-left: 0.5em;
+            }}
+            ul ul, ol ol, ul ol, ol ul {{
+                margin-top: 0.4em;
+                margin-bottom: 0.4em;
+                padding-left: 2em;
+            }}
+            ul ul {{
+                list-style-type: circle;
+            }}
+            ul ul ul {{
+                list-style-type: square;
+            }}
+            ul li, ol li {{
+                margin-left: 0;
+            }}
+            p {{
+                margin: 0.6em 0;
+                line-height: 1.6;
+            }}
+            li > p {{
                 margin: 0.3em 0;
             }}
             a {{
@@ -339,7 +373,7 @@ class ResultViewerWindow(QMainWindow):
 
         # 转写文本标签页
         self.transcript_view = QTextEdit()
-        self.transcript_view.setFont(QFont("Consolas", 11))
+        self.transcript_view.setFont(QFont("Consolas", 14))
         self.transcript_view.setPlaceholderText("转写文本将显示在此处")
         self.tabs.addTab(self.transcript_view, "转写文本")
 
@@ -376,7 +410,7 @@ class ResultViewerWindow(QMainWindow):
         toolbar.addWidget(QLabel("字体:"))
         self.font_size_spin = QSpinBox()
         self.font_size_spin.setRange(8, 32)
-        self.font_size_spin.setValue(11)
+        self.font_size_spin.setValue(14)
         self.font_size_spin.setSuffix(" pt")
         self.font_size_spin.valueChanged.connect(self._update_font_size)
         toolbar.addWidget(self.font_size_spin)
@@ -555,7 +589,7 @@ class ResultViewerWindow(QMainWindow):
             self.summary_view.setPlainText(markdown_text)
             return
 
-        extensions = ["tables", "fenced_code", "nl2br"]
+        extensions = ["tables", "fenced_code", "extra", "sane_lists", "nl2br"]
         if PYGMENTS_AVAILABLE:
             extensions.append("codehilite")
 
