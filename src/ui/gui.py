@@ -628,7 +628,7 @@ class MainWindow(QMainWindow):
         self.progress_bar = QProgressBar()
         self.progress_bar.setValue(0)
         run_row.addWidget(self.progress_bar, 1)
-        self.open_viewer_btn = QPushButton("独立查看")
+        self.open_viewer_btn = QPushButton("全屏查看")
         self.open_viewer_btn.setMinimumWidth(_BTN_MIN_WIDTH)
         self.open_viewer_btn.setToolTip(
             "在独立窗口中查看所有结果，支持全屏、搜索、导出、书签等功能"

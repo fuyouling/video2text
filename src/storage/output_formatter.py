@@ -82,13 +82,12 @@ class OutputFormatter:
 
         Args:
             summary: 摘要文本
-            title: 标题
+            title: 标题（保留参数以保持兼容性，但不再使用）
 
         Returns:
-            格式化后的摘要
+            格式化后的摘要（直接返回摘要内容）
         """
-        lines = [f"# {title}", "", summary]
-        return "\n".join(lines)
+        return summary
 
     def format_srt(self, segments: List[TranscriptSegment]) -> str:
         """格式化为SRT字幕格式

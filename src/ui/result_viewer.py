@@ -274,6 +274,8 @@ class ResultViewerWindow(QMainWindow):
         self._output_dir = ""
         self._bookmarks: list[BookmarkItem] = []
         self._current_video_name: Optional[str] = None
+        self._search_matches: list[int] = []
+        self._current_match_index: int = -1
 
         self._init_ui()
         self._apply_theme()
@@ -332,8 +334,8 @@ class ResultViewerWindow(QMainWindow):
 
         # 标签页
         self.tabs = QTabWidget()
-        self.tabs.setTabsClosable(True)
-        self.tabs.tabCloseRequested.connect(self._close_tab)
+        self.tabs.setTabsClosable(False)
+        self.tabs.currentChanged.connect(self._on_tab_changed)
 
         # 转写文本标签页
         self.transcript_view = QTextEdit()
@@ -367,10 +369,6 @@ class ResultViewerWindow(QMainWindow):
         toolbar = QToolBar("主工具栏")
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
-
-        # 文件信息
-        self.file_label = QLabel("当前文件: -")
-        toolbar.addWidget(self.file_label)
 
         toolbar.addSeparator()
 
@@ -482,8 +480,9 @@ class ResultViewerWindow(QMainWindow):
         self._theme_manager.set_theme(theme)
         self._apply_theme()
 
-        # 重新渲染Markdown内容
+        # 重新渲染Markdown内容（清除搜索状态）
         if self._current_video_name:
+            self._clear_search_state()
             summary_path = (
                 Path(self._output_dir) / f"{self._current_video_name}_summary.txt"
             )
@@ -511,7 +510,12 @@ class ResultViewerWindow(QMainWindow):
         """加载指定视频的转写和摘要内容"""
         self._current_video_name = video_name
         self._output_dir = output_dir
-        self.file_label.setText(f"当前文件: {video_name}")
+
+        # 清除搜索状态（文档内容将改变，旧的位置信息失效）
+        self._search_matches = []
+        self._current_match_index = -1
+        self.search_count_label.setText("0/0")
+        self.search_edit.clear()
 
         # 加载转写文本
         transcript_path = Path(output_dir) / f"{video_name}.txt"
@@ -537,6 +541,13 @@ class ResultViewerWindow(QMainWindow):
             self.summary_view.setPlainText("(未找到摘要文件)")
 
         self.status_bar.showMessage(f"已加载: {video_name}")
+
+    def _clear_search_state(self):
+        """清除搜索状态"""
+        self._search_matches = []
+        self._current_match_index = -1
+        self.search_count_label.setText("0/0")
+        self.search_edit.clear()
 
     def _display_markdown(self, markdown_text: str):
         """渲染Markdown内容"""
@@ -576,8 +587,9 @@ class ResultViewerWindow(QMainWindow):
         font = QFont("Consolas", size)
         self.transcript_view.setFont(font)
 
-        # 重新渲染摘要（应用新字体大小）
+        # 重新渲染摘要（应用新字体大小，清除搜索状态）
         if self._current_video_name:
+            self._clear_search_state()
             summary_path = (
                 Path(self._output_dir) / f"{self._current_video_name}_summary.txt"
             )
@@ -599,61 +611,96 @@ class ResultViewerWindow(QMainWindow):
         """搜索文本变化"""
         if not text:
             self.search_count_label.setText("0/0")
+            self._search_matches = []
+            self._current_match_index = -1
             return
 
         current_view = self.tabs.currentWidget()
         if isinstance(current_view, (QTextEdit, QTextBrowser)):
             document = current_view.document()
-            cursor = document.find(text)
-            if cursor:
+            self._find_all_matches(text, document)
+            if self._search_matches:
+                self._current_match_index = 0
+                cursor = QTextCursor(document)
+                cursor.setPosition(self._search_matches[0])
+                cursor.movePosition(
+                    QTextCursor.MoveOperation.Right,
+                    QTextCursor.MoveMode.KeepAnchor,
+                    len(text),
+                )
                 current_view.setTextCursor(cursor)
-                self._update_search_count(text, document)
+                self._update_search_count_label()
+            else:
+                self.search_count_label.setText("0/0")
 
     def _search_next(self):
         """搜索下一个"""
         text = self.search_edit.text()
-        if not text:
+        if not text or not self._search_matches:
             return
+
+        if self._current_match_index < len(self._search_matches) - 1:
+            self._current_match_index += 1
+        else:
+            self._current_match_index = 0
 
         current_view = self.tabs.currentWidget()
         if isinstance(current_view, (QTextEdit, QTextBrowser)):
-            cursor = current_view.textCursor()
-            cursor = current_view.document().find(text, cursor)
-            if cursor.isNull():
-                # 从头开始搜索
-                cursor = current_view.document().find(text, 0)
-            if not cursor.isNull():
-                current_view.setTextCursor(cursor)
+            cursor = QTextCursor(current_view.document())
+            cursor.setPosition(self._search_matches[self._current_match_index])
+            # 移动到匹配结束位置并选中
+            cursor.movePosition(
+                QTextCursor.MoveOperation.Right,
+                QTextCursor.MoveMode.KeepAnchor,
+                len(text),
+            )
+            current_view.setTextCursor(cursor)
+            self._update_search_count_label()
 
     def _search_prev(self):
         """搜索上一个"""
         text = self.search_edit.text()
-        if not text:
+        if not text or not self._search_matches:
             return
+
+        if self._current_match_index > 0:
+            self._current_match_index -= 1
+        else:
+            self._current_match_index = len(self._search_matches) - 1
 
         current_view = self.tabs.currentWidget()
         if isinstance(current_view, (QTextEdit, QTextBrowser)):
-            cursor = current_view.textCursor()
-            cursor = current_view.document().find(
-                text, cursor, QTextDocument.FindFlag.FindBackward
+            cursor = QTextCursor(current_view.document())
+            cursor.setPosition(self._search_matches[self._current_match_index])
+            # 移动到匹配结束位置并选中
+            cursor.movePosition(
+                QTextCursor.MoveOperation.Right,
+                QTextCursor.MoveMode.KeepAnchor,
+                len(text),
             )
-            if cursor.isNull():
-                # 从末尾开始搜索
-                cursor = current_view.document().find(
-                    text, -1, QTextDocument.FindFlag.FindBackward
-                )
-            if not cursor.isNull():
-                current_view.setTextCursor(cursor)
+            current_view.setTextCursor(cursor)
+            self._update_search_count_label()
 
-    def _update_search_count(self, text: str, document: QTextDocument):
-        """更新搜索计数"""
-        count = 0
+    def _find_all_matches(self, text: str, document: QTextDocument):
+        """查找所有匹配项"""
+        self._search_matches = []
         cursor = QTextCursor(document)
+        cursor.movePosition(QTextCursor.MoveOperation.Start)
         while not cursor.isNull():
             cursor = document.find(text, cursor)
             if not cursor.isNull():
-                count += 1
-        self.search_count_label.setText(f"0/{count}")
+                # 存储匹配起始位置（selectionStart）
+                self._search_matches.append(cursor.selectionStart())
+                cursor.movePosition(QTextCursor.MoveOperation.NextCharacter)
+
+    def _update_search_count_label(self):
+        """更新搜索计数标签"""
+        if self._search_matches:
+            self.search_count_label.setText(
+                f"{self._current_match_index + 1}/{len(self._search_matches)}"
+            )
+        else:
+            self.search_count_label.setText("0/0")
 
     def _export_html(self):
         """导出为HTML"""
@@ -795,11 +842,9 @@ class ResultViewerWindow(QMainWindow):
             )
         settings.setValue("bookmarks", bookmark_data)
 
-    def _close_tab(self, index: int):
-        """关闭标签页"""
-        if self.tabs.count() <= 1:
-            return
-        self.tabs.removeTab(index)
+    def _on_tab_changed(self, index: int):
+        """标签页切换时清除搜索状态"""
+        self._clear_search_state()
 
     def keyPressEvent(self, event):
         """处理键盘快捷键"""
