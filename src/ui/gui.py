@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
+    QDialog,
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
@@ -456,6 +457,72 @@ class BatchSummarizeWorker(QObject):
         self.finished.emit()
 
 
+class VideoSelectionDialog(QDialog):
+    """视频文件选择对话框"""
+
+    def __init__(self, video_files: list[str], parent=None) -> None:
+        super().__init__(parent)
+        self.video_files = video_files
+        self._init_ui()
+
+    def _init_ui(self) -> None:
+        self.setWindowTitle("选择视频文件")
+        self.resize(600, 500)
+
+        layout = QVBoxLayout(self)
+
+        info_label = QLabel(
+            f"共找到 {len(self.video_files)} 个视频文件，请选择需要处理的文件："
+        )
+        layout.addWidget(info_label)
+
+        self.file_list = QListWidget()
+        self.file_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
+        for file_path in self.video_files:
+            item = QListWidgetItem(Path(file_path).name)
+            item.setData(Qt.ItemDataRole.UserRole, file_path)
+            item.setCheckState(Qt.CheckState.Checked)
+            self.file_list.addItem(item)
+        layout.addWidget(self.file_list)
+
+        button_layout = QHBoxLayout()
+        select_all_btn = QPushButton("全选")
+        select_all_btn.clicked.connect(self._select_all)
+        button_layout.addWidget(select_all_btn)
+        deselect_all_btn = QPushButton("取消全选")
+        deselect_all_btn.clicked.connect(self._deselect_all)
+        button_layout.addWidget(deselect_all_btn)
+        button_layout.addStretch()
+        layout.addLayout(button_layout)
+
+        ok_cancel_layout = QHBoxLayout()
+        ok_btn = QPushButton("确定")
+        ok_btn.clicked.connect(self.accept)
+        ok_cancel_layout.addWidget(ok_btn)
+        cancel_btn = QPushButton("取消")
+        cancel_btn.clicked.connect(self.reject)
+        ok_cancel_layout.addWidget(cancel_btn)
+        layout.addLayout(ok_cancel_layout)
+
+    def _select_all(self) -> None:
+        for i in range(self.file_list.count()):
+            item = self.file_list.item(i)
+            item.setCheckState(Qt.CheckState.Checked)
+
+    def _deselect_all(self) -> None:
+        for i in range(self.file_list.count()):
+            item = self.file_list.item(i)
+            item.setCheckState(Qt.CheckState.Unchecked)
+
+    def get_selected_files(self) -> list[str]:
+        selected: list[str] = []
+        for i in range(self.file_list.count()):
+            item = self.file_list.item(i)
+            if item.checkState() == Qt.CheckState.Checked:
+                selected.append(item.data(Qt.ItemDataRole.UserRole))
+        return selected
+
+
 class MainWindow(QMainWindow):
     """Video2Text 主窗口"""
 
@@ -830,8 +897,23 @@ class MainWindow(QMainWindow):
     def _select_input_folder(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, "选择视频文件夹")
         if folder:
-            self.input_edit.setText(folder)
-            self._video_files = self._scan_video_files(folder)
+            video_files = self._scan_video_files(folder)
+            if not video_files:
+                QMessageBox.information(
+                    self, "提示", "该文件夹及其子目录中未找到支持的视频文件"
+                )
+                return
+
+            dialog = VideoSelectionDialog(video_files, self)
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                selected_files = dialog.get_selected_files()
+                if selected_files:
+                    self.input_edit.setText(
+                        f"{folder} (已选择 {len(selected_files)} 个视频)"
+                    )
+                    self._video_files = selected_files
+                else:
+                    QMessageBox.information(self, "提示", "未选择任何视频文件")
 
     @staticmethod
     def _scan_video_files(folder: str) -> list[str]:
