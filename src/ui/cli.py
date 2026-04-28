@@ -38,6 +38,7 @@ if sys.platform == "win32":
 else:
     CREATE_NO_WINDOW = 0
 
+
 def get_settings() -> Settings:
     """获取配置"""
     return Settings()
@@ -210,7 +211,11 @@ def transcribe(
                 ]
                 try:
                     subprocess.run(
-                        split_cmd, capture_output=True, text=True, check=True, creationflags=CREATE_NO_WINDOW,
+                        split_cmd,
+                        capture_output=True,
+                        text=True,
+                        check=True,
+                        creationflags=CREATE_NO_WINDOW,
                     )
                 except subprocess.CalledProcessError as e:
                     raise Video2TextError(
@@ -492,7 +497,11 @@ def run_pipeline(
                 ]
                 try:
                     subprocess.run(
-                        split_cmd, capture_output=True, text=True, check=True, creationflags=CREATE_NO_WINDOW,
+                        split_cmd,
+                        capture_output=True,
+                        text=True,
+                        check=True,
+                        creationflags=CREATE_NO_WINDOW,
                     )
                 except subprocess.CalledProcessError as e:
                     raise Video2TextError(
@@ -614,9 +623,10 @@ def run_pipeline(
 @app.command()
 def version():
     """显示版本信息"""
-    from src import __version__
+    settings = get_settings()
+    version = settings.get("app.version", "unknown")
 
-    console.print(f"Video2Text v{__version__}")
+    console.print(f"Video2Text v{version}")
 
 
 @app.command()
@@ -697,7 +707,9 @@ def help_command():
     console.print("  video2text summarize transcript.txt -o output")
     console.print("  video2text run-pipeline video.mp4 -o output")
     console.print("\n[bold]提示:[/bold] 1. 使用 --help 查看单个命令的详细选项")
-    console.print("      2. powershell使用全路径调用可执行文件，如: .\\video2text.exe transcribe video.mp4 -o output -l zh   ")
+    console.print(
+        "      2. powershell使用全路径调用可执行文件，如: .\\video2text.exe transcribe video.mp4 -o output -l zh   "
+    )
 
 
 if __name__ == "__main__":
