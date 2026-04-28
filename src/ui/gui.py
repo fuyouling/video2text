@@ -7,7 +7,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, Signal, QObject
+from PySide6.QtCore import Qt, QThread, Signal, QObject, QTimer
 from PySide6.QtGui import QFont, QIcon, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
@@ -59,6 +59,7 @@ if sys.platform == "win32":
     CREATE_NO_WINDOW = subprocess.CREATE_NO_WINDOW
 else:
     CREATE_NO_WINDOW = 0
+
 
 class UiLogSignal(QObject):
     message = Signal(str)
@@ -246,7 +247,13 @@ class TranscribeWorker(QObject):
                 "1",
                 str(chunk_dir / "chunk_%03d.wav"),
             ]
-            subprocess.run(split_cmd, capture_output=True, text=True, check=True, creationflags=CREATE_NO_WINDOW,)
+            subprocess.run(
+                split_cmd,
+                capture_output=True,
+                text=True,
+                check=True,
+                creationflags=CREATE_NO_WINDOW,
+            )
             chunk_files = sorted(chunk_dir.glob("chunk_*.wav"))
             all_segments: list = []
             offset = 0.0
@@ -471,7 +478,7 @@ class MainWindow(QMainWindow):
 
         # 全局安装 GUI 日志输出
         root_logger = logging.getLogger()
-        root_logger.setLevel(logging.INFO)        # 根据需要调整级别
+        root_logger.setLevel(logging.INFO)  # 根据需要调整级别
         # 避免重复添加（例如窗口重建时）
         if self._ui_handler not in root_logger.handlers:
             root_logger.addHandler(self._ui_handler)
@@ -531,6 +538,11 @@ class MainWindow(QMainWindow):
         self.output_edit.setReadOnly(True)
         self.output_edit.setText(_DEFAULT_OUTPUT_DIR)
         output_row.addWidget(self.output_edit, 1)
+        self.load_history_btn = QPushButton("加载历史")
+        self.load_history_btn.setMinimumWidth(_BTN_MIN_WIDTH)
+        self.load_history_btn.setToolTip("加载输出目录中的历史转写和总结文件")
+        self.load_history_btn.clicked.connect(self._load_history_files)
+        output_row.addWidget(self.load_history_btn)
         self.output_btn = QPushButton("浏览")
         self.output_btn.setMinimumWidth(_BTN_MIN_WIDTH)
         self.output_btn.clicked.connect(self._select_output_dir)
@@ -634,6 +646,9 @@ class MainWindow(QMainWindow):
         )
         ollama_layout.addRow("提示词:", self.ollama_prompt_edit)
         ollama_btn_row = QHBoxLayout()
+        self.ollama_start_btn = QPushButton("启动服务")
+        self.ollama_start_btn.clicked.connect(self._start_ollama_service)
+        ollama_btn_row.addWidget(self.ollama_start_btn)
         self.ollama_test_btn = QPushButton("测试连接")
         self.ollama_test_btn.clicked.connect(self._test_ollama)
         ollama_btn_row.addWidget(self.ollama_test_btn)
@@ -704,6 +719,67 @@ class MainWindow(QMainWindow):
             self.ollama_status_label.setText("连接失败")
             self.ollama_status_label.setStyleSheet("color: red")
 
+    def _start_ollama_service(self) -> None:
+        import shutil
+
+        logger = get_logger("video2text")
+
+        ollama_path = shutil.which("ollama")
+        if not ollama_path:
+            self.ollama_status_label.setText("未找到ollama命令")
+            self.ollama_status_label.setStyleSheet("color: red")
+            logger.error("未找到ollama命令，请确保已安装Ollama")
+            QMessageBox.warning(
+                self,
+                "提示",
+                "未找到ollama命令，请确保已安装Ollama。\n"
+                "可以从 https://ollama.com/download 下载安装。",
+            )
+            return
+
+        try:
+            logger.info("正在启动Ollama服务...")
+            self.ollama_status_label.setText("正在启动...")
+            self.ollama_status_label.setStyleSheet("color: orange")
+
+            subprocess.Popen(
+                [ollama_path, "serve"],
+                creationflags=subprocess.CREATE_NO_WINDOW
+                if sys.platform == "win32"
+                else 0,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
+            logger.info("Ollama服务启动命令已执行")
+            self.ollama_status_label.setText("服务启动中...")
+            self.ollama_status_label.setStyleSheet("color: orange")
+
+            QTimer.singleShot(2000, self._check_ollama_after_start)
+
+        except Exception as e:
+            logger.error(f"启动Ollama服务失败: {e}")
+            self.ollama_status_label.setText(f"启动失败: {e}")
+            self.ollama_status_label.setStyleSheet("color: red")
+            QMessageBox.critical(self, "错误", f"启动Ollama服务失败: {e}")
+
+    def _check_ollama_after_start(self) -> None:
+        from src.summarization.ollama_client import OllamaClient
+
+        logger = get_logger("video2text")
+
+        url = self.ollama_url_edit.text() or "http://127.0.0.1:11434"
+        client = OllamaClient(base_url=url)
+
+        if client.check_connection():
+            self.ollama_status_label.setText("服务已启动")
+            self.ollama_status_label.setStyleSheet("color: green")
+            logger.info("Ollama服务启动成功")
+        else:
+            self.ollama_status_label.setText("服务启动中，请稍后测试")
+            self.ollama_status_label.setStyleSheet("color: orange")
+            logger.warning("Ollama服务可能需要更多时间启动")
+
     def _on_tab_changed(self, index: int) -> None:
         if index == 0:
             self.status_bar.showMessage(
@@ -755,6 +831,41 @@ class MainWindow(QMainWindow):
         folder = QFileDialog.getExistingDirectory(self, "选择输出目录")
         if folder:
             self.output_edit.setText(folder)
+
+    def _load_history_files(self) -> None:
+        output_dir = self.output_edit.text().strip() or _DEFAULT_OUTPUT_DIR
+        output_path = Path(output_dir)
+
+        if not output_path.exists():
+            QMessageBox.warning(self, "提示", f"输出目录不存在: {output_dir}")
+            return
+
+        self.file_list.clear()
+        self._completed_names.clear()
+
+        transcript_files = sorted(output_path.glob("*.txt"))
+        summary_files = sorted(output_path.glob("*_summary.txt"))
+
+        loaded_count = 0
+
+        for txt_file in transcript_files:
+            if txt_file.name.endswith("_summary.txt"):
+                continue
+
+            video_name = txt_file.stem
+            if video_name not in self._completed_names:
+                self._completed_names.add(video_name)
+                item = QListWidgetItem(video_name)
+                item.setData(Qt.ItemDataRole.UserRole, video_name)
+                self.file_list.addItem(item)
+                loaded_count += 1
+
+        if loaded_count > 0:
+            self.status_bar.showMessage(f"已加载 {loaded_count} 个历史文件")
+            self.file_list.setCurrentRow(0)
+        else:
+            self.status_bar.showMessage("未找到历史文件")
+            QMessageBox.information(self, "提示", "输出目录中未找到历史转写文件")
 
     # ── transcribe / summarize / cancel ──
 
