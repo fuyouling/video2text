@@ -57,7 +57,7 @@ jobs:
         run: |
           python -m nuitka `
             --standalone `
-            --enable-console `
+            --windows-console-mode=force `
             --windows-icon-from-ico=assets/video2text_logo.ico `
             --enable-plugin=pyside6 `
             --include-data-dir=assets=assets `
@@ -73,7 +73,6 @@ jobs:
             --include-module=requests `
             --include-module=pygments `
             --include-module=markdown `
-            --include-module=python_dotenv `
             --include-package-data=faster_whisper `
             --include-package-data=tokenizers `
             --include-package-data=huggingface_hub `
