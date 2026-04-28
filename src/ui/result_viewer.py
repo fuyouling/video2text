@@ -597,11 +597,18 @@ class ResultViewerWindow(QMainWindow):
 
         # 获取当前字体大小
         font_size = self.font_size_spin.value()
+        css = self._theme_manager.get_markdown_css(font_size)
 
-        # 添加CSS样式
+        doc = self.summary_view.document()
+        doc.setDefaultStyleSheet(css)
+
+        default_font = QFont()
+        default_font.setPointSize(font_size)
+        doc.setDefaultFont(default_font)
+
         styled_html = f"""
         <style>
-            {self._theme_manager.get_markdown_css(font_size)}
+            {css}
         </style>
         {html}
         """
@@ -632,7 +639,7 @@ class ResultViewerWindow(QMainWindow):
                     summary_text = summary_path.read_text(encoding="utf-8")
                     self._display_markdown(summary_text)
                 except Exception:
-                    pass
+                    logger.warning(f"重新渲染摘要失败: {summary_path}")
 
     def _toggle_fullscreen(self):
         """切换全屏模式"""
