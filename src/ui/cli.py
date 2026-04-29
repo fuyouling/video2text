@@ -216,6 +216,8 @@ def transcribe(
                         text=True,
                         check=True,
                         creationflags=CREATE_NO_WINDOW,
+                        encoding="utf-8",
+                        errors="ignore",
                     )
                 except subprocess.CalledProcessError as e:
                     raise Video2TextError(
@@ -502,6 +504,9 @@ def run_pipeline(
                         text=True,
                         check=True,
                         creationflags=CREATE_NO_WINDOW,
+                        encoding="utf-8",
+                        errors="ignore",
+                        
                     )
                 except subprocess.CalledProcessError as e:
                     raise Video2TextError(

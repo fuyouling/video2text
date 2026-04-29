@@ -78,6 +78,8 @@ class VideoProcessor:
                 text=True,
                 timeout=5,
                 creationflags=CREATE_NO_WINDOW,
+                encoding="utf-8",
+                errors="ignore",
             )
             if result.returncode != 0:
                 raise VideoFileError("FFmpeg不可用")
@@ -120,6 +122,8 @@ class VideoProcessor:
                 text=True,
                 timeout=30,
                 creationflags=CREATE_NO_WINDOW,
+                encoding="utf-8",
+                errors="ignore",
             )
 
             if result.returncode != 0:
@@ -271,6 +275,8 @@ class VideoProcessor:
                 text=True,
                 timeout=3600,
                 creationflags=CREATE_NO_WINDOW,
+                encoding="utf-8",
+                errors="ignore",
             )
 
             if result.returncode != 0:
@@ -323,6 +329,8 @@ class VideoProcessor:
                 text=True,
                 timeout=30,
                 creationflags=CREATE_NO_WINDOW,
+                encoding="utf-8",
+                errors="ignore",
             )
 
             if result.returncode != 0:

@@ -52,7 +52,10 @@ from src.utils.logger import get_logger, setup_logger
 SUPPORTED_VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".flv", ".wmv", ".webm"}
 SUPPORTED_TRANSCRIPT_FORMATS = {"txt", "srt", "vtt", "json"}
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+if getattr(sys, "frozen", False):
+    _PROJECT_ROOT = Path(sys.executable).parent
+else:
+    _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _DEFAULT_OUTPUT_DIR = str(_PROJECT_ROOT / "output")
 
 _BTN_MIN_WIDTH = 100
@@ -255,6 +258,8 @@ class TranscribeWorker(QObject):
                 text=True,
                 check=True,
                 creationflags=CREATE_NO_WINDOW,
+                encoding="utf-8",
+                errors="ignore",
             )
             chunk_files = sorted(chunk_dir.glob("chunk_*.wav"))
             all_segments: list = []
