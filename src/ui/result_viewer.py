@@ -532,7 +532,8 @@ class ResultViewerWindow(QMainWindow):
         self._output_dir = output_dir
         self.file_list.clear()
 
-        for video_name in video_names:
+        sorted_names = sorted(video_names, key=lambda x: x.lower())
+        for video_name in sorted_names:
             item = QListWidgetItem(video_name)
             item.setData(Qt.ItemDataRole.UserRole, video_name)
             self.file_list.addItem(item)
