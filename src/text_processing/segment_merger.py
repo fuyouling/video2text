@@ -1,9 +1,10 @@
 """段落合并器"""
 
-from typing import List
+from typing import List, Optional
 from dataclasses import dataclass
 from src.transcription.transcriber import TranscriptSegment
 from src.utils.logger import get_logger
+from src.utils.time_format import format_time_hms
 
 logger = get_logger(__name__)
 
@@ -33,6 +34,8 @@ class SegmentMerger:
 
     def merge_segments(self, segments: List[TranscriptSegment]) -> List[MergedSegment]:
         """合并段落
+
+        合并策略：相邻段落时间间隔 <= max_gap 且语言相同 → 合并
 
         Args:
             segments: 转写段列表
@@ -177,18 +180,19 @@ class SegmentMerger:
         return merged
 
     def filter_short_segments(
-        self, segments: List[MergedSegment], min_length: int = 10
+        self, segments: List[MergedSegment], min_length: Optional[int] = None
     ) -> List[MergedSegment]:
         """过滤短段落
 
         Args:
             segments: 合并后的段落列表
-            min_length: 最小长度
+            min_length: 最小长度，默认使用构造函数的 self.min_length
 
         Returns:
             过滤后的段落列表
         """
-        filtered = [seg for seg in segments if len(seg.text.strip()) >= min_length]
+        threshold = min_length if min_length is not None else self.min_length
+        filtered = [seg for seg in segments if len(seg.text.strip()) >= threshold]
 
         logger.info(f"过滤短段落，保留: {len(filtered)}/{len(segments)}")
         return filtered
@@ -209,24 +213,9 @@ class SegmentMerger:
 
         for segment in segments:
             if include_timestamps:
-                timestamp = f"[{self._format_time(segment.start)} - {self._format_time(segment.end)}] "
+                timestamp = f"[{format_time_hms(segment.start)} - {format_time_hms(segment.end)}] "
                 lines.append(f"{timestamp}{segment.text}")
             else:
                 lines.append(segment.text)
 
         return "\n\n".join(lines)
-
-    def _format_time(self, seconds: float) -> str:
-        """格式化时间
-
-        Args:
-            seconds: 秒数
-
-        Returns:
-            格式化后的时间字符串 (HH:MM:SS)
-        """
-        hours = int(seconds // 3600)
-        minutes = int((seconds % 3600) // 60)
-        secs = int(seconds % 60)
-
-        return f"{hours:02d}:{minutes:02d}:{secs:02d}"

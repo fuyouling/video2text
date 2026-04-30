@@ -6,6 +6,7 @@ from dataclasses import dataclass, asdict
 from src.transcription.transcriber import TranscriptSegment
 from src.text_processing.segment_merger import MergedSegment
 from src.utils.logger import get_logger
+from src.utils.time_format import format_time_hms, format_time_srt, format_time_vtt
 
 logger = get_logger(__name__)
 
@@ -47,7 +48,7 @@ class OutputFormatter:
 
         for segment in segments:
             if include_timestamps:
-                timestamp = f"[{self._format_time(segment.start)} - {self._format_time(segment.end)}] "
+                timestamp = f"[{format_time_hms(segment.start)} - {format_time_hms(segment.end)}] "
                 lines.append(f"{timestamp}{segment.text}")
             else:
                 lines.append(segment.text)
@@ -70,7 +71,7 @@ class OutputFormatter:
 
         for segment in segments:
             if include_timestamps:
-                timestamp = f"[{self._format_time(segment.start)} - {self._format_time(segment.end)}] "
+                timestamp = f"[{format_time_hms(segment.start)} - {format_time_hms(segment.end)}] "
                 lines.append(f"{timestamp}{segment.text}")
             else:
                 lines.append(segment.text)
@@ -101,8 +102,8 @@ class OutputFormatter:
         lines = []
 
         for i, segment in enumerate(segments, 1):
-            start_time = self._format_srt_time(segment.start)
-            end_time = self._format_srt_time(segment.end)
+            start_time = format_time_srt(segment.start)
+            end_time = format_time_srt(segment.end)
 
             lines.append(str(i))
             lines.append(f"{start_time} --> {end_time}")
@@ -123,8 +124,8 @@ class OutputFormatter:
         lines = ["WEBVTT", ""]
 
         for segment in segments:
-            start_time = self._format_vtt_time(segment.start)
-            end_time = self._format_vtt_time(segment.end)
+            start_time = format_time_vtt(segment.start)
+            end_time = format_time_vtt(segment.end)
 
             lines.append(f"{start_time} --> {end_time}")
             lines.append(segment.text)
@@ -190,50 +191,3 @@ class OutputFormatter:
         import json
 
         return json.dumps(asdict(output_data), ensure_ascii=False, indent=2)
-
-    def _format_time(self, seconds: float) -> str:
-        """格式化时间
-
-        Args:
-            seconds: 秒数
-
-        Returns:
-            格式化后的时间字符串 (HH:MM:SS)
-        """
-        hours = int(seconds // 3600)
-        minutes = int((seconds % 3600) // 60)
-        secs = int(seconds % 60)
-
-        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
-
-    def _format_srt_time(self, seconds: float) -> str:
-        """格式化SRT时间
-
-        Args:
-            seconds: 秒数
-
-        Returns:
-            格式化后的时间字符串 (HH:MM:SS,mmm)
-        """
-        hours = int(seconds // 3600)
-        minutes = int((seconds % 3600) // 60)
-        secs = int(seconds % 60)
-        millis = int((seconds % 1) * 1000)
-
-        return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
-
-    def _format_vtt_time(self, seconds: float) -> str:
-        """格式化VTT时间
-
-        Args:
-            seconds: 秒数
-
-        Returns:
-            格式化后的时间字符串 (HH:MM:SS.mmm)
-        """
-        hours = int(seconds // 3600)
-        minutes = int((seconds % 3600) // 60)
-        secs = int(seconds % 60)
-        millis = int((seconds % 1) * 1000)
-
-        return f"{hours:02d}:{minutes:02d}:{secs:02d}.{millis:03d}"

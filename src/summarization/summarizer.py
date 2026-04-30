@@ -3,7 +3,7 @@
 from typing import Optional
 from src.summarization.ollama_client import OllamaClient
 from src.utils.exceptions import SummarizationError
-from src.utils.logger import get_logger
+from src.utils.logger import get_logger, log_step
 
 logger = get_logger(__name__)
 
@@ -57,6 +57,24 @@ class Summarizer:
             logger.error(f"检查模型失败: {e}")
             return False
 
+    def build_prompt(self, text: str, custom_prompt: Optional[str] = None) -> str:
+        """构建完整的用户提示词
+
+        Args:
+            text: 输入文本
+            custom_prompt: 自定义提示词
+
+        Returns:
+            完整的用户提示词
+        """
+        if custom_prompt and custom_prompt.strip():
+            return f"{custom_prompt.strip()}\n\n{self.get_markdown_prompt()}\n\n文本内容：\n{text}"
+        else:
+            default_prompt = (
+                "你是一个专业的文本总结助手，擅长提取关键信息并生成简洁准确的总结。"
+            )
+            return f"{default_prompt}\n\n{self.get_markdown_prompt()}\n\n文本内容：\n{text}"
+
     def summarize(
         self,
         text: str,
@@ -77,26 +95,20 @@ class Summarizer:
             raise SummarizationError("输入文本为空")
 
         max_len = max_length or self.max_length
-
-        if custom_prompt and custom_prompt.strip():
-            user_prompt = f"{custom_prompt.strip()}\n\n{self.get_markdown_prompt()}\n\n文本内容：\n{text}"
-        else:
-            default_prompt = "你是一个专业的文本总结助手，擅长提取关键信息并生成简洁准确的总结。"
-            user_prompt = (
-                f"{default_prompt}\n\n{self.get_markdown_prompt()}\n\n文本内容：\n{text}"
-            )
+        user_prompt = self.build_prompt(text, custom_prompt)
 
         logger.info(f"开始总结文本，长度: {len(text)} 字符")
         logger.info(f"使用模型: {self.model_name}")
         logger.debug(f"用户提示词长度: {len(user_prompt)} 字符")
 
         try:
-            summary = self.client.generate(
-                model=self.model_name,
-                prompt=user_prompt,
-                temperature=self.temperature,
-                max_tokens=max_len * 2,
-            )
+            with log_step(f"Ollama API 调用 ({self.model_name})"):
+                summary = self.client.generate(
+                    model=self.model_name,
+                    prompt=user_prompt,
+                    temperature=self.temperature,
+                    max_tokens=max_len * 2,
+                )
 
             logger.info(f"总结完成，长度: {len(summary)} 字符")
             return summary.strip()
@@ -111,7 +123,7 @@ class Summarizer:
         Returns:
             str: Markdown提示词
         """
-        return '''
+        return """
 请将总结内容以Markdown格式输出，形式如下：
 - **要点标题**
 	- 内容
@@ -121,4 +133,4 @@ class Summarizer:
 	- 内容
 
 保持Markdown格式的正确性，确保输出可以直接渲染。
-'''
+"""

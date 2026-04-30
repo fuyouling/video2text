@@ -15,12 +15,15 @@ class TextCleaner:
 
         Args:
             config: 配置字典
+                - filler_words: 填充词列表
+                - normalize_punctuation: 是否将中文标点转换为英文标点（默认 False）
         """
         self.config = config or {}
         self.filler_words = self.config.get(
             "filler_words",
             ["嗯", "啊", "呃", "那个", "这个", "就是", "然后", "嗯嗯", "啊啊"],
         )
+        self.normalize_punctuation = self.config.get("normalize_punctuation", False)
 
     def clean(self, text: str) -> str:
         """清理文本
@@ -69,27 +72,28 @@ class TextCleaner:
         Returns:
             修复标点后的文本
         """
-        text = re.sub(
-            r"[，。！？、；：" "''（）【】《》]",
-            lambda m: {
-                "，": ",",
-                "。": ".",
-                "！": "!",
-                "？": "?",
-                "、": ",",
-                "；": ";",
-                "：": ":",
-                '"': '"',
-                "'": "'",
-                "（": "(",
-                "）": ")",
-                "【": "[",
-                "】": "]",
-                "《": "<",
-                "》": ">",
-            }.get(m.group(), m.group()),
-            text,
-        )
+        if self.normalize_punctuation:
+            text = re.sub(
+                r"[，。！？、；：" "''（）【】《》]",
+                lambda m: {
+                    "，": ",",
+                    "。": ".",
+                    "！": "!",
+                    "？": "?",
+                    "、": ",",
+                    "；": ";",
+                    "：": ":",
+                    '"': '"',
+                    "'": "'",
+                    "（": "(",
+                    "）": ")",
+                    "【": "[",
+                    "】": "]",
+                    "《": "<",
+                    "》": ">",
+                }.get(m.group(), m.group()),
+                text,
+            )
 
         text = re.sub(r"\s+([,.!?;:])", r"\1", text)
 

@@ -88,6 +88,18 @@ python -m src.main run-pipeline video/sample.mp4 --output-dir output
 python -m src.ui.gui
 ```
 
+### 便携版打包
+
+使用 PyInstaller 打包为 Windows 便携版：
+
+```bash
+# PowerShell
+.\build_portable.ps1
+
+# 或手动执行
+pyinstaller video2text_portable.spec
+```
+
 ### 命令行参数
 
 #### 转写命令 (transcribe)
@@ -112,49 +124,22 @@ python -m src.ui.gui
 
 #### 完整管道命令 (run-pipeline)
 
-包含所有转写和总结的参数。
+- `--output-dir, -o`: 输出目录（默认: output）
+- `--language, -l`: 语言代码（默认: auto）
+- `--transcription-model`: 转写模型（默认: large-v3）
+- `--summarization-model`: 总结模型（默认: qwen2.5:7b-instruct-q4_K_M）
+- `--device, -d`: 设备类型（默认: auto）
+- `--beam-size`: beam search大小（默认: 5）
+- `--temperature`: 转写温度参数（默认: 0.0）
+- `--summary-temperature`: 总结温度参数（默认: 0.7）
+- `--max-length`: 最大长度（默认: 500）
+- `--verbose, -v`: 详细输出
 
-## 配置文件
+#### 其他命令
 
-配置文件 `config.ini` 包含以下部分：
+- `version`: 显示版本信息
+- `help`: 显示所有命令的详细用法
 
-```ini
-[app]
-name = video2text
-version = 1.0.0
-log_level = INFO
-
-[transcription]
-model_path = large-v3
-device = cuda
-language = zh
-beam_size = 5
-best_of = 5
-temperature = 0.0
-
-[summarization]
-ollama_url = http://127.0.0.1:11434
-model_name = qwen2.5:7b-instruct-q4_K_M
-max_length = 500
-temperature = 0.7
-
-[preprocessing]
-ffmpeg_path = ffmpeg
-audio_sample_rate = 16000
-audio_channels = 1
-supported_video_formats = .mp4,.avi,.mov,.mkv,.flv,.wmv,.webm
-
-[output]
-output_dir = output
-transcript_format = txt,srt,vtt
-summary_format = txt
-json_output = true
-
-[paths]
-models_dir = models
-logs_dir = logs
-video_dir = video
-```
 
 ## 输出格式
 
@@ -169,7 +154,7 @@ video_dir = video
 
 ```ini
 [output]
-transcript_format = txt,srt,vtt
+transcript_format = txt,srt,json
 json_output = true
 ```
 
@@ -177,10 +162,10 @@ json_output = true
 
 - 生成 `{video_name}.txt`
 - 生成 `{video_name}.srt`
-- 生成 `{video_name}.vtt`
+- 生成 `{video_name}.json`（转写分段结果）
 - 在运行完整管道 `run-pipeline` 时，额外生成 `{video_name}_full.json`
 
-如果你希望转写结果本身也输出为 JSON，可将配置改为：
+如果你希望添加 VTT 格式输出，可将配置改为：
 
 ```ini
 [output]
@@ -190,7 +175,7 @@ json_output = true
 
 此时会额外生成：
 
-- `{video_name}.json` - 转写分段结果 JSON
+- `{video_name}.vtt` - VTT 字幕格式
 
 说明：
 
@@ -202,35 +187,69 @@ json_output = true
 
 ```
 video2text/
-├── config.ini              # 配置文件
-├── requirements.txt         # 依赖文件
-├── README.md              # 说明文档
-├── src/                   # 源代码
+├── config.ini                # 配置文件
+├── prompts.json              # 提示词模板
+├── requirements.txt          # 依赖文件
+├── README.md                 # 说明文档
+├── LICENSE                   # MIT 许可证
+├── build_portable.ps1        # 便携版打包脚本
+├── video2text_portable.spec  # PyInstaller 打包配置
+├── src/                      # 源代码
 │   ├── __init__.py
-│   ├── main.py            # 程序入口
-│   ├── config/            # 配置管理模块
-│   ├── ui/                # 用户界面模块
-│   ├── preprocessing/     # 视频预处理模块
-│   ├── transcription/     # 转写引擎模块
-│   ├── text_processing/   # 文本处理模块
-│   ├── summarization/     # 总结引擎模块
-│   ├── storage/           # 输出存储模块
-│   └── utils/             # 工具模块
-├── models/                # 模型目录
-├── logs/                  # 日志目录
-├── output/                # 输出目录
-├── video/                 # 视频目录
-└── tests/                 # 测试目录
+│   ├── main.py               # 程序入口
+│   ├── config/               # 配置管理模块
+│   │   └── settings.py
+│   ├── ui/                   # 用户界面模块
+│   │   ├── cli.py            # CLI 命令定义
+│   │   ├── gui.py            # GUI 主窗口
+│   │   ├── gui_dialogs.py    # GUI 对话框
+│   │   ├── gui_workers.py    # GUI 后台任务
+│   │   └── result_viewer.py  # 结果查看器
+│   ├── preprocessing/        # 视频预处理模块
+│   │   ├── ffmpeg.py
+│   │   └── video_processor.py
+│   ├── transcription/        # 转写引擎模块
+│   │   └── transcriber.py
+│   ├── text_processing/      # 文本处理模块
+│   │   ├── segment_merger.py
+│   │   └── text_cleaner.py
+│   ├── summarization/        # 总结引擎模块
+│   │   ├── ollama_client.py
+│   │   └── summarizer.py
+│   ├── services/             # 业务服务模块
+│   │   ├── transcription_service.py
+│   │   └── summarization_service.py
+│   ├── storage/              # 输出存储模块
+│   │   ├── file_writer.py
+│   │   └── output_formatter.py
+│   └── utils/                # 工具模块
+│       ├── exceptions.py
+│       ├── logger.py
+│       ├── model_downloader.py
+│       ├── output_validator.py
+│       ├── time_format.py
+│       └── validators.py
+├── models/                   # 模型目录
+├── logs/                     # 日志目录
+├── output/                   # 输出目录
+├── video/                    # 视频目录
+├── assets/                   # 资源文件（图标等）
+├── docs/                     # 项目文档
+├── tests/                    # 测试目录
+└── .github/workflows/        # GitHub Actions CI/CD
 ```
 
 ## 技术栈
 
-- **CLI框架**: Typer
+- **CLI框架**: Typer + Rich
+- **GUI框架**: PySide6
 - **转写引擎**: faster-whisper
 - **总结引擎**: Ollama + Qwen2.5-7B
 - **视频处理**: FFmpeg
 - **日志系统**: Python logging
 - **配置管理**: Python configparser
+- **数据校验**: Pydantic
+- **打包工具**: PyInstaller
 
 ## 常见问题
 

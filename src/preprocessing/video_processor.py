@@ -1,12 +1,12 @@
 """视频处理器"""
 
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 from typing import Optional, Dict
 from dataclasses import dataclass
 from src.config.settings import Settings
+from src.preprocessing.ffmpeg import ensure_ffmpeg
 from src.utils.exceptions import VideoFileError
 from src.utils.logger import get_logger
 
@@ -41,7 +41,7 @@ class VideoProcessor:
         Args:
             ffmpeg_path: FFmpeg可执行文件路径
         """
-        self.ffmpeg_path = ffmpeg_path
+        self.ffmpeg_path = ensure_ffmpeg(ffmpeg_path)
         self.supported_video_formats = [
             ext.lower()
             for ext in Settings().get_list(
@@ -49,43 +49,6 @@ class VideoProcessor:
                 default=[".mp4", ".avi", ".mov", ".mkv", ".flv", ".wmv", ".webm"],
             )
         ]
-        self._check_ffmpeg()
-
-    def _check_ffmpeg(self) -> None:
-        """检查FFmpeg是否可用，按 PATH / 给定路径 / 常见位置 依次查找"""
-        resolved = shutil.which(self.ffmpeg_path)
-        if not resolved:
-            resolved = shutil.which("ffmpeg")
-        if not resolved:
-            common_paths = [
-                Path.home() / "ffmpeg" / "bin" / "ffmpeg.exe",
-                Path("C:/") / "ffmpeg" / "bin" / "ffmpeg.exe",
-            ]
-            for p in common_paths:
-                if p.exists():
-                    resolved = str(p)
-                    break
-        if not resolved:
-            raise VideoFileError(
-                "FFmpeg未找到。请安装FFmpeg并添加到系统PATH环境变量，"
-                "或在config.ini的[preprocessing]节中设置ffmpeg_path为FFmpeg的完整路径。"
-            )
-        self.ffmpeg_path = resolved
-        try:
-            result = subprocess.run(
-                [self.ffmpeg_path, "-version"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-                creationflags=CREATE_NO_WINDOW,
-                encoding="utf-8",
-                errors="ignore",
-            )
-            if result.returncode != 0:
-                raise VideoFileError("FFmpeg不可用")
-            logger.info("FFmpeg检查通过: %s", self.ffmpeg_path)
-        except subprocess.TimeoutExpired:
-            raise VideoFileError("FFmpeg检查超时")
 
     def validate_video(self, video_path: str) -> bool:
         """验证视频文件
@@ -120,7 +83,7 @@ class VideoProcessor:
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=300,
                 creationflags=CREATE_NO_WINDOW,
                 encoding="utf-8",
                 errors="ignore",
@@ -235,6 +198,11 @@ class VideoProcessor:
     ) -> str:
         """提取音频
 
+        流程：
+        1. 检测视频是否包含音轨，无音轨则直接报错
+        2. 优先使用 pcm_s16le 编码提取（无损 WAV）
+        3. 若失败，自动回退为 mp3lib 编码再转 WAV
+
         Args:
             video_path: 视频文件路径
             output_path: 输出音频文件路径
@@ -245,10 +213,14 @@ class VideoProcessor:
             输出音频文件路径
 
         Raises:
-            VideoFileError: 音频提取失败
+            VideoFileError: 音频提取失败或视频无音轨
         """
         output_file = Path(output_path)
         output_file.parent.mkdir(parents=True, exist_ok=True)
+
+        video_info = self.get_video_info(video_path)
+        if not video_info.has_audio:
+            raise VideoFileError(f"视频文件没有音轨，无法提取音频: {video_path}")
 
         cmd = [
             self.ffmpeg_path,
@@ -281,18 +253,122 @@ class VideoProcessor:
 
             if result.returncode != 0:
                 error_msg = result.stderr or result.stdout
-                raise VideoFileError(f"音频提取失败: {error_msg}")
+                logger.warning(
+                    "pcm_s16le 提取失败，尝试自动转码回退: %s", error_msg[:200]
+                )
+                return self._extract_audio_fallback(
+                    video_path, str(output_file), sample_rate, channels
+                )
 
             if not output_file.exists():
-                raise VideoFileError("音频文件未生成")
+                logger.warning("音频文件未生成，尝试自动转码回退")
+                return self._extract_audio_fallback(
+                    video_path, str(output_file), sample_rate, channels
+                )
 
             logger.info(f"音频提取成功: {output_file}")
             return str(output_file)
 
         except subprocess.TimeoutExpired:
             raise VideoFileError("音频提取超时")
+        except VideoFileError:
+            raise
         except Exception as e:
-            raise VideoFileError(f"音频提取失败: {e}")
+            logger.warning("音频提取异常，尝试自动转码回退: %s", e)
+            try:
+                return self._extract_audio_fallback(
+                    video_path, str(output_file), sample_rate, channels
+                )
+            except VideoFileError:
+                raise VideoFileError(f"音频提取失败（含回退）: {e}")
+
+    def _extract_audio_fallback(
+        self,
+        video_path: str,
+        output_path: str,
+        sample_rate: int = 16000,
+        channels: int = 1,
+    ) -> str:
+        """音频提取回退方案：先用 mp3 编码提取，再转为 WAV。
+
+        用于 pcm_s16le 直接提取失败的情况（如某些编码不支持的容器格式）。
+        """
+        output_file = Path(output_path)
+        temp_mp3 = output_file.with_suffix(".mp3")
+
+        cmd = [
+            self.ffmpeg_path,
+            "-i",
+            video_path,
+            "-vn",
+            "-acodec",
+            "libmp3lame",
+            "-ar",
+            str(sample_rate),
+            "-ac",
+            str(channels),
+            "-q:a",
+            "2",
+            "-y",
+            str(temp_mp3),
+        ]
+
+        logger.info("回退方案: 使用 libmp3lame 提取音频")
+        logger.debug(f"FFmpeg命令: {' '.join(cmd)}")
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=3600,
+                creationflags=CREATE_NO_WINDOW,
+                encoding="utf-8",
+                errors="ignore",
+            )
+
+            if result.returncode != 0:
+                error_msg = result.stderr or result.stdout
+                raise VideoFileError(f"音频提取回退方案也失败: {error_msg}")
+
+            if not temp_mp3.exists():
+                raise VideoFileError("回退方案: MP3 文件未生成")
+
+            convert_cmd = [
+                self.ffmpeg_path,
+                "-i",
+                str(temp_mp3),
+                "-acodec",
+                "pcm_s16le",
+                "-ar",
+                str(sample_rate),
+                "-ac",
+                str(channels),
+                "-y",
+                str(output_file),
+            ]
+            convert_result = subprocess.run(
+                convert_cmd,
+                capture_output=True,
+                text=True,
+                timeout=600,
+                creationflags=CREATE_NO_WINDOW,
+                encoding="utf-8",
+                errors="ignore",
+            )
+
+            if convert_result.returncode != 0:
+                raise VideoFileError(f"MP3 转 WAV 失败: {convert_result.stderr}")
+
+            logger.info(f"回退方案提取成功: {output_file}")
+            return str(output_file)
+
+        except VideoFileError:
+            raise
+        except Exception as e:
+            raise VideoFileError(f"音频提取回退方案失败: {e}")
+        finally:
+            temp_mp3.unlink(missing_ok=True)
 
     def get_thumbnail(
         self, video_path: str, output_path: str, timestamp: str = "00:00:01"

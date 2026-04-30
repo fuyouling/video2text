@@ -1,98 +1,84 @@
-"""配置管理 - 支持绿色版"""
+"""配置管理 - 以 config.ini 为唯一版本源，支持绿色版
 
-import sys
-import os
+所有配置项的默认值由调用方（CLI / GUI / 服务层）在调用 get/get_int/... 时通过
+default 参数传入。本模块不内置任何默认配置值。
+"""
+
 import configparser
+import json
+import os
+import sys
+import threading
 from pathlib import Path
 from typing import Any, Optional
+
 from src.utils.exceptions import ConfigurationError
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-DEFAULT_CONFIG = {
-    "app": {"name": "video2text", "version": "1.0.0", "log_level": "INFO"},
-    "transcription": {
-        "model_path": "large-v3",
-        "device": "cuda",
-        "language": "zh",
-        "beam_size": 5,
-        "best_of": 5,
-        "temperature": 0.0,
-        "compute_type": "float16",
-        "num_workers": 1,
-        "vad_filter": True,
-    },
-    "summarization": {
-        "ollama_url": "http://127.0.0.1:11434",
-        "model_name": "qwen2.5:7b-instruct-q4_K_M",
-        "max_length": 500,
-        "temperature": 0.7,
-    },
-    "preprocessing": {
-        "ffmpeg_path": "ffmpeg",
-        "audio_sample_rate": 16000,
-        "audio_channels": 1,
-        "max_chunk_duration": 300,
-        "supported_video_formats": ".mp4,.avi,.mov,.mkv,.flv,.wmv,.webm",
-    },
-    "output": {
-        "output_dir": "output",
-        "transcript_format": "txt,srt,vtt",
-        "summary_format": "txt",
-        "json_output": True,
-    },
-    "paths": {"models_dir": "models", "logs_dir": "logs", "video_dir": "video"},
-    "network": {"proxy": ""},
-}
-
 
 class Settings:
-    """应用程序配置类 - 支持绿色版（便携版）"""
+    """应用程序配置类 - 以 config.ini 为唯一版本源，支持绿色版（便携版）
+
+    单例模式：同一进程内只加载一次配置文件，避免重复日志输出。
+    GUI 通过 set() + save() 修改配置，所有引用同一实例的地方自动生效。
+    """
+
+    _instance: Optional["Settings"] = None
+    _lock = threading.Lock()
+
+    def __new__(cls, config_path: Optional[str] = None):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
+        return cls._instance
 
     def __init__(self, config_path: Optional[str] = None):
-        """初始化配置"""
+        """初始化配置
+
+        如果 config.ini 不存在，config 对象保持空状态，
+        所有 get 调用将返回调用方提供的 default 值。
+
+        注意：单例模式下，仅首次实例化时加载配置文件。
+        后续调用 Settings() 不会重新加载，修改配置请使用 set() + save()。
+        """
+        if self._initialized:
+            return
+
         self.config = configparser.ConfigParser()
 
-        # 确定程序基目录
         if getattr(sys, "frozen", False):
-            # 打包后的exe环境
             self._base_dir = Path(sys.executable).parent
         else:
-            # 开发环境
             self._base_dir = Path(__file__).resolve().parent.parent.parent
 
-        # 确定配置文件路径
         if config_path:
             self.config_path = config_path
         else:
             self.config_path = self._get_default_config_path()
 
-        self._load_default_config()
-
         if Path(self.config_path).exists():
-            self.load()
+            self._load()
         else:
-            logger.info(f"配置文件不存在，使用默认配置: {self.config_path}")
-            # 如果是打包环境且配置文件不存在，保存默认配置
-            if getattr(sys, "frozen", False):
-                try:
-                    self.save()
-                    logger.info(f"已创建默认配置文件: {self.config_path}")
-                except Exception as e:
-                    logger.warning(f"无法创建默认配置文件: {e}")
+            logger.info(f"配置文件不存在: {self.config_path}，使用调用方默认值")
+
+        self._initialized = True
+
+    @classmethod
+    def _reset(cls) -> None:
+        """重置单例（仅供测试使用）"""
+        cls._instance = None
 
     def _get_default_config_path(self) -> str:
         """获取默认配置文件路径 - 支持绿色版"""
-        # 1. 优先使用环境变量
         env_config = os.environ.get("VIDEO2TEXT_CONFIG")
         if env_config:
             return env_config
 
-        # 2. 使用程序目录下的config.ini
         config_path = self._base_dir / "config.ini"
-
-        # 3. 如果不存在，尝试当前工作目录
         if not config_path.exists():
             cwd_config = Path.cwd() / "config.ini"
             if cwd_config.exists():
@@ -110,20 +96,21 @@ class Settings:
             return str(self._base_dir / path_str)
         return path_str
 
-    def _load_default_config(self) -> None:
-        """加载默认配置"""
-        for section, values in DEFAULT_CONFIG.items():
-            self.config[section] = {}
-            for key, value in values.items():
-                self.config[section][key] = str(value)
-
-    def load(self) -> None:
-        """加载配置文件"""
+    def _load(self) -> None:
+        """内部加载，首次初始化时调用，输出日志"""
         try:
             self.config.read(self.config_path, encoding="utf-8")
             logger.info(f"配置文件加载成功: {self.config_path}")
         except Exception as e:
             raise ConfigurationError(f"加载配置文件失败: {e}")
+
+    def reload(self) -> None:
+        """从磁盘重新加载配置文件（不输出日志，供 GUI 刷新用）"""
+        try:
+            self.config = configparser.ConfigParser()
+            self.config.read(self.config_path, encoding="utf-8")
+        except Exception as e:
+            raise ConfigurationError(f"重新加载配置文件失败: {e}")
 
     def save(self) -> None:
         """保存配置文件"""
@@ -152,7 +139,6 @@ class Settings:
             section, option = key.split(".", 1)
             value = self.config.get(section, option)
 
-            # 对特定配置项解析路径（绿色版支持）
             path_keys = [
                 "paths.models_dir",
                 "paths.logs_dir",
@@ -223,25 +209,14 @@ class Settings:
         )
 
     def get_section(self, section: str) -> dict:
-        """获取配置节
-
-        Args:
-            section: 配置节名称
-
-        Returns:
-            配置节字典
-        """
+        """获取配置节"""
         if not self.config.has_section(section):
             return {}
 
         return dict(self.config.items(section))
 
     def update_from_dict(self, config_dict: dict) -> None:
-        """从字典更新配置
-
-        Args:
-            config_dict: 配置字典
-        """
+        """从字典更新配置"""
         for section, values in config_dict.items():
             if not self.config.has_section(section):
                 self.config.add_section(section)
@@ -252,12 +227,99 @@ class Settings:
         logger.info("配置已从字典更新")
 
     def to_dict(self) -> dict:
-        """转换为字典
-
-        Returns:
-            配置字典
-        """
+        """转换为字典"""
         result = {}
         for section in self.config.sections():
             result[section] = dict(self.config.items(section))
         return result
+
+
+class PromptManager:
+    """提示词模板管理器 - 将用户自定义提示词保存为命名模板，支持持久化
+
+    数据存储在 prompts.json 文件中（与 config.ini 同目录），格式：
+    {
+        "templates": {"模板名": "提示词内容", ...},
+        "last_used": "模板名"
+    }
+
+    第一次运行时文件不存在，模板列表为空。
+    """
+
+    _instance: Optional["PromptManager"] = None
+    _lock = threading.Lock()
+
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
+        return cls._instance
+
+    def __init__(self):
+        if self._initialized:
+            return
+
+        if getattr(sys, "frozen", False):
+            base_dir = Path(sys.executable).parent
+        else:
+            base_dir = Path(__file__).resolve().parent.parent.parent
+
+        self._file_path = base_dir / "prompts.json"
+        self._templates: dict[str, str] = {}
+        self._last_used: str = ""
+        self._load()
+        self._initialized = True
+
+    def _load(self) -> None:
+        if not self._file_path.exists():
+            return
+        try:
+            data = json.loads(self._file_path.read_text(encoding="utf-8"))
+            self._templates = data.get("templates", {})
+            self._last_used = data.get("last_used", "")
+            logger.info(f"提示词模板加载成功: {self._file_path}")
+        except Exception as e:
+            logger.warning(f"提示词模板加载失败: {e}")
+
+    def save(self) -> None:
+        try:
+            data = {
+                "templates": self._templates,
+                "last_used": self._last_used,
+            }
+            self._file_path.write_text(
+                json.dumps(data, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception as e:
+            logger.error(f"提示词模板保存失败: {e}")
+
+    def get_names(self) -> list[str]:
+        return list(self._templates.keys())
+
+    def get_content(self, name: str) -> str:
+        return self._templates.get(name, "")
+
+    def set_template(self, name: str, content: str) -> None:
+        self._templates[name] = content
+        self.save()
+
+    def delete_template(self, name: str) -> None:
+        self._templates.pop(name, None)
+        if self._last_used == name:
+            self._last_used = ""
+        self.save()
+
+    def get_last_used(self) -> str:
+        return self._last_used
+
+    def set_last_used(self, name: str) -> None:
+        self._last_used = name
+        self.save()
+
+    def get_last_used_content(self) -> str:
+        if self._last_used and self._last_used in self._templates:
+            return self._templates[self._last_used]
+        return ""

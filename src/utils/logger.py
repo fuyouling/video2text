@@ -2,9 +2,13 @@
 
 import logging
 import os
+import time
+from contextlib import contextmanager
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
 from typing import Optional
+
+_CONFIGURED_LOGGERS: set[str] = set()
 
 
 def setup_logger(
@@ -15,6 +19,8 @@ def setup_logger(
     log_to_console: bool = True,
 ) -> logging.Logger:
     """设置日志记录器
+
+    注意：只会清除 *指定名称* 的 logger 的 handlers，不会影响其他 logger。
 
     Args:
         name: 日志记录器名称
@@ -29,8 +35,8 @@ def setup_logger(
     logger = logging.getLogger(name)
     logger.setLevel(getattr(logging, level.upper()))
 
-    if logger.handlers:
-        logger.handlers.clear()
+    # 只清除当前 logger 的 handlers，不影响 root 或其他 logger
+    logger.handlers.clear()
 
     formatter = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -77,6 +83,7 @@ def setup_logger(
         console_handler.setFormatter(formatter)
         logger.addHandler(console_handler)
 
+    _CONFIGURED_LOGGERS.add(name)
     return logger
 
 
@@ -90,3 +97,57 @@ def get_logger(name: str) -> logging.Logger:
         日志记录器
     """
     return logging.getLogger(name)
+
+
+@contextmanager
+def log_step(
+    step_name: str,
+    logger_name: str = "video2text",
+    level: str = "INFO",
+):
+    """步骤级日志上下文管理器，自动记录步骤开始、完成和失败。
+
+    Args:
+        step_name: 步骤名称
+        logger_name: 日志记录器名称
+        level: 日志级别
+
+    Usage:
+        with log_step("音频提取"):
+            do_something()
+    """
+    log = logging.getLogger(logger_name)
+    log_level = getattr(logging, level.upper())
+    start_ts = time.time()
+
+    log.log(log_level, "▶ 步骤开始: %s", step_name)
+    try:
+        yield
+        elapsed = time.time() - start_ts
+        log.log(log_level, "✔ 步骤完成: %s (%.2fs)", step_name, elapsed)
+    except Exception as e:
+        elapsed = time.time() - start_ts
+        log.error("✘ 步骤失败: %s (%.2fs) - %s", step_name, elapsed, e)
+        raise
+
+
+def log_error_with_context(
+    logger_name: str,
+    step_name: str,
+    error: Exception,
+    video_path: str = "",
+) -> None:
+    """记录带上下文信息的错误日志。
+
+    Args:
+        logger_name: 日志记录器名称
+        step_name: 失败步骤名称
+        error: 异常对象
+        video_path: 相关视频路径
+    """
+    log = logging.getLogger(logger_name)
+    context_parts = [f"步骤: {step_name}"]
+    if video_path:
+        context_parts.append(f"文件: {video_path}")
+    context_parts.append(f"错误: {error}")
+    log.error(" | ".join(context_parts))

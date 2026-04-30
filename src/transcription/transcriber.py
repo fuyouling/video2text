@@ -15,6 +15,22 @@ os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
 os.environ["HF_HUB_OFFLINE"] = "0"
 
 
+def _logprob_to_confidence(avg_logprob: float) -> float:
+    """将 avg_logprob（负值）转换为 0~100% 的置信度。"""
+    import math
+
+    return round(max(0.0, min(100.0, math.exp(avg_logprob) * 100)), 2)
+
+
+_CORE_FILES = [
+    "model.bin",
+    "config.json",
+    "tokenizer.json",
+    "preprocessor_config.json",
+    "vocabulary.json",
+]
+
+
 @dataclass
 class TranscriptSegment:
     """转写段数据结构"""
@@ -50,6 +66,7 @@ class Transcriber:
         self.device = device
         self.compute_type = compute_type
         self.num_workers = num_workers
+        self.download_root = download_root
         self.model = None
         self._loaded = False
 
@@ -82,17 +99,9 @@ class Transcriber:
             models_dir = Path(download_root) if download_root else base_dir / "models"
             resolved_path = models_dir / model_path
 
-        # 验证模型路径
         if resolved_path.exists():
             logger.info(f"使用本地模型: {resolved_path}")
-            core_files = [
-                "model.bin",
-                "config.json",
-                "tokenizer.json",
-                "preprocessor_config.json",
-                "vocabulary.json",
-            ]
-            missing_files = [f for f in core_files if not (resolved_path / f).exists()]
+            missing_files = [f for f in _CORE_FILES if not (resolved_path / f).exists()]
             if missing_files:
                 logger.warning("模型目录不完整，缺少核心文件: %s", missing_files)
             return str(resolved_path)
@@ -103,6 +112,12 @@ class Transcriber:
     def load_model(self, progress_callback: Optional[Callable] = None) -> None:
         """加载模型
 
+        加载策略：
+        1. 检查 _loaded 标志，已加载则直接返回（单例保护）
+        2. 优先按用户配置的 device/compute_type 加载
+        3. 若 CUDA OOM，自动降级 compute_type（float16→int8→float32）
+        4. 若仍然失败，回退到 CPU + int8
+
         Args:
             progress_callback: 进度回调函数，接收 (downloaded_bytes, total_bytes) 参数
         """
@@ -110,16 +125,8 @@ class Transcriber:
             logger.info("模型已加载")
             return
 
-        # 检查模型是否存在，如果不存在则下载
         model_path_obj = Path(self.model_path)
-        core_files = [
-            "model.bin",
-            "config.json",
-            "tokenizer.json",
-            "preprocessor_config.json",
-            "vocabulary.json",
-        ]
-        has_core_files = all((model_path_obj / f).exists() for f in core_files)
+        has_core_files = all((model_path_obj / f).exists() for f in _CORE_FILES)
         if not has_core_files:
             logger.info("模型文件不完整，尝试下载: %s", self.model_path)
             try:
@@ -135,8 +142,6 @@ class Transcriber:
                 logger.warning(
                     "model_downloader模块不可用，尝试使用faster-whisper自动下载"
                 )
-        elif not model_path_obj.exists():
-            logger.info("模型目录不存在但核心文件就绪，准备加载")
 
         try:
             from faster_whisper import WhisperModel
@@ -147,14 +152,13 @@ class Transcriber:
                 f"工作线程: {self.num_workers}"
             )
 
-            # 优化模型加载参数
             self.model = WhisperModel(
                 self.model_path,
                 device=self.device,
                 compute_type=self.compute_type,
                 num_workers=self.num_workers,
-                download_root="models",  # 指定模型下载目录
-                local_files_only=False,  # 允许在线下载（如果本地不存在）
+                download_root=self.download_root or "models",
+                local_files_only=False,
             )
 
             self._loaded = True
@@ -164,8 +168,88 @@ class Transcriber:
             raise TranscriptionError(
                 "faster_whisper未安装，请运行: pip install faster-whisper"
             )
+        except RuntimeError as e:
+            error_str = str(e).lower()
+            is_oom = (
+                "out of memory" in error_str
+                or "cuda" in error_str
+                and "memory" in error_str
+                or "cublas" in error_str
+                or "cudnn" in error_str
+            )
+            if is_oom:
+                logger.warning("GPU 显存不足 (%s)，尝试降级加载...", e)
+                self._load_model_fallback(progress_callback)
+            else:
+                raise TranscriptionError(f"模型加载失败: {e}")
         except Exception as e:
-            raise TranscriptionError(f"模型加载失败: {e}")
+            error_str = str(e).lower()
+            is_oom = "out of memory" in error_str or "oom" in error_str
+            if is_oom:
+                logger.warning("GPU 显存不足 (%s)，尝试降级加载...", e)
+                self._load_model_fallback(progress_callback)
+            else:
+                raise TranscriptionError(f"模型加载失败: {e}")
+
+    def _load_model_fallback(
+        self, progress_callback: Optional[Callable] = None
+    ) -> None:
+        """OOM 回退加载策略。
+
+        依次尝试：
+        1. 当前 device + 降低 compute_type（float16→int8→float32）
+        2. CPU + int8（最终兜底）
+        """
+        from faster_whisper import WhisperModel
+
+        fallback_compute_types = ["int8", "float32", "int8_float16"]
+
+        for ct in fallback_compute_types:
+            if ct == self.compute_type:
+                continue
+            try:
+                logger.info("尝试回退加载: device=%s, compute_type=%s", self.device, ct)
+                self.model = WhisperModel(
+                    self.model_path,
+                    device=self.device,
+                    compute_type=ct,
+                    num_workers=self.num_workers,
+                    download_root=self.download_root or "models",
+                    local_files_only=False,
+                )
+                self.compute_type = ct
+                self._loaded = True
+                logger.info("回退加载成功: device=%s, compute_type=%s", self.device, ct)
+                return
+            except Exception as inner_e:
+                logger.debug("回退 %s 失败: %s", ct, inner_e)
+                continue
+
+        if self.device != "cpu":
+            for ct in ["int8", "float32"]:
+                try:
+                    logger.info("最终回退: device=cpu, compute_type=%s", ct)
+                    self.model = WhisperModel(
+                        self.model_path,
+                        device="cpu",
+                        compute_type=ct,
+                        num_workers=self.num_workers,
+                        download_root=self.download_root or "models",
+                        local_files_only=False,
+                    )
+                    self.device = "cpu"
+                    self.compute_type = ct
+                    self._loaded = True
+                    logger.info("CPU 回退加载成功: compute_type=%s", ct)
+                    return
+                except Exception as inner_e:
+                    logger.debug("CPU 回退 %s 失败: %s", ct, inner_e)
+                    continue
+
+        raise TranscriptionError(
+            "模型加载失败：GPU 显存不足且回退到 CPU 也失败。"
+            "请关闭其他 GPU 程序，或使用更小的模型。"
+        )
 
     def transcribe(
         self,
@@ -177,6 +261,7 @@ class Transcriber:
         vad_filter: bool = True,
         word_timestamps: bool = False,
         condition_on_previous_text: bool = True,
+        progress_callback: Optional[Callable] = None,
     ) -> List[TranscriptSegment]:
         """转写音频
 
@@ -189,6 +274,7 @@ class Transcriber:
             vad_filter: 是否使用VAD过滤
             word_timestamps: 是否生成词级时间戳
             condition_on_previous_text: 是否基于前文条件
+            progress_callback: 进度回调函数，接收 (start, end, segment_count)
 
         Returns:
             转写段列表
@@ -234,75 +320,7 @@ class Transcriber:
                     start=segment.start,
                     end=segment.end,
                     text=segment.text.strip(),
-                    confidence=segment.avg_logprob,
-                    language=detected_language,
-                )
-                transcript_segments.append(transcript_segment)
-
-            logger.info(f"转写完成，共 {len(transcript_segments)} 个段落")
-            return transcript_segments
-
-        except Exception as e:
-            raise TranscriptionError(f"转写失败: {e}")
-
-    def transcribe_with_progress(
-        self,
-        audio_path: str,
-        language: str = "auto",
-        beam_size: int = 5,
-        best_of: int = 5,
-        temperature: float = 0.0,
-        vad_filter: bool = True,
-        progress_callback=None,
-    ) -> List[TranscriptSegment]:
-        """带进度回调的转写
-
-        Args:
-            audio_path: 音频文件路径
-            language: 语言代码
-            beam_size: beam search大小
-            best_of: 采样数量
-            temperature: 温度参数
-            vad_filter: 是否使用VAD过滤
-            progress_callback: 进度回调函数
-
-        Returns:
-            转写段列表
-        """
-        if not self._loaded:
-            self.load_model()
-
-        audio_file = Path(audio_path)
-        if not audio_file.exists():
-            raise TranscriptionError(f"音频文件不存在: {audio_path}")
-
-        logger.info(f"开始转写（带进度）: {audio_path}")
-
-        try:
-            segments, info = self.model.transcribe(
-                audio_path,
-                language=language if language != "auto" else None,
-                beam_size=beam_size,
-                best_of=best_of,
-                temperature=temperature,
-                vad_filter=vad_filter,
-            )
-
-            detected_language = info.language
-            language_probability = info.language_probability
-
-            logger.info(
-                f"检测到语言: {detected_language} (置信度: {language_probability:.2f})"
-            )
-
-            transcript_segments = []
-
-            for segment in segments:
-                transcript_segment = TranscriptSegment(
-                    start=segment.start,
-                    end=segment.end,
-                    text=segment.text.strip(),
-                    confidence=segment.avg_logprob,
+                    confidence=_logprob_to_confidence(segment.avg_logprob),
                     language=detected_language,
                 )
                 transcript_segments.append(transcript_segment)
@@ -319,11 +337,18 @@ class Transcriber:
             raise TranscriptionError(f"转写失败: {e}")
 
     def unload_model(self) -> None:
-        """卸载模型"""
+        """卸载模型并释放 GPU 显存。"""
         if self.model is not None:
             del self.model
             self.model = None
             self._loaded = False
+            try:
+                import torch
+
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except ImportError:
+                pass
             logger.info("模型已卸载")
 
     def get_supported_languages(self) -> Dict[str, str]:

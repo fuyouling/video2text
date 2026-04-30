@@ -1,6 +1,8 @@
 """验证器"""
 
 import os
+import re
+import shutil
 from pathlib import Path
 from typing import Optional, List
 from src.utils.exceptions import VideoFileError, ConfigurationError
@@ -155,3 +157,42 @@ def validate_float_range(
         raise ConfigurationError(f"{name}必须在{min_val}和{max_val}之间: {value}")
 
     return float(value)
+
+
+def validate_executable_path(path: str, name: str = "executable") -> str:
+    """验证可执行文件路径的安全性
+
+    检查路径中是否包含危险字符，确保指向真实的可执行文件。
+
+    Args:
+        path: 可执行文件路径
+        name: 文件名称（用于错误消息）
+
+    Returns:
+        解析后的绝对路径
+
+    Raises:
+        ConfigurationError: 路径不安全或文件不存在
+    """
+    if not path or not path.strip():
+        raise ConfigurationError(f"{name}路径不能为空")
+
+    path = path.strip()
+
+    # 检查是否包含 shell 注入风险字符
+    dangerous_chars = ["&", "|", ";", "$", "`", "\n", "\r", "(", ")"]
+    for ch in dangerous_chars:
+        if ch in path:
+            raise ConfigurationError(f"{name}路径包含不安全字符 '{ch}': {path}")
+
+    # 通过 shutil.which 解析（自动检查 PATH 和可执行权限）
+    resolved = shutil.which(path)
+    if resolved:
+        return resolved
+
+    # 如果 which 找不到，检查文件是否实际存在
+    p = Path(path)
+    if p.exists() and p.is_file():
+        return str(p.resolve())
+
+    raise ConfigurationError(f"{name}不可用: {path}")

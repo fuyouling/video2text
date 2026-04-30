@@ -228,3 +228,6 @@ models/large-v3/model.bin
 
 # vscode设置
 .vscode/
+
+# 用户提示词
+prompts.json

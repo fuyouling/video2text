@@ -4,110 +4,85 @@ import sys
 import time
 from pathlib import Path
 from typing import Optional
+
 import typer
 from rich.console import Console
 from rich.panel import Panel
-import subprocess
-import shutil
-import tempfile
 
 from src.config.settings import Settings
 from src.preprocessing.video_processor import VideoProcessor
-from src.transcription.transcriber import Transcriber
-from src.text_processing.text_cleaner import TextCleaner
-from src.text_processing.segment_merger import SegmentMerger
-from src.summarization.summarizer import Summarizer
+from src.services.transcription_service import TranscriptionService
+from src.services.summarization_service import SummarizationService
 from src.storage.file_writer import FileWriter
 from src.storage.output_formatter import OutputFormatter
-from src.utils.logger import setup_logger, get_logger
+from src.transcription.transcriber import Transcriber
 from src.utils.exceptions import (
     Video2TextError,
     VideoFileError,
-    TranscriptionError,
     SummarizationError,
 )
-from src.ui.progress import ProgressTracker, SimpleProgress
+from src.utils.logger import setup_logger, get_logger
+from src.utils.validators import validate_executable_path
 
 app = typer.Typer(help="Video2Text - 视频转文本工具")
 console = Console()
 
 SUPPORTED_TRANSCRIPT_FORMATS = {"txt", "srt", "vtt", "json"}
 
-if sys.platform == "win32":
-    CREATE_NO_WINDOW = subprocess.CREATE_NO_WINDOW
-else:
-    CREATE_NO_WINDOW = 0
-
 
 def get_settings() -> Settings:
-    """获取配置"""
     return Settings()
 
 
 def get_transcript_output_formats(settings: Settings) -> list[str]:
-    """获取转写输出格式列表"""
     formats = [
         fmt.lower() for fmt in settings.get_list("output.transcript_format", ["txt"])
     ]
     formats = [fmt for fmt in formats if fmt in SUPPORTED_TRANSCRIPT_FORMATS]
-
-    if not formats:
-        return ["txt"]
-
-    return formats
-
-
-def write_transcript_outputs(
-    file_writer: FileWriter,
-    segments: list,
-    video_name: str,
-    formats: list[str],
-) -> list[str]:
-    """按指定格式写入转写结果"""
-    output_paths = []
-
-    for output_format in formats:
-        output_paths.append(
-            file_writer.write_transcript(segments, video_name, format=output_format)
-        )
-
-    return output_paths
+    return formats if formats else ["txt"]
 
 
 def get_model_path(settings: Settings, model_name: Optional[str] = None) -> str:
-    """获取完整的模型路径
-
-    Args:
-        settings: 配置对象
-        model_name: 模型名称（可选）
-
-    Returns:
-        完整的模型路径
-    """
     if model_name is None:
         model_name = settings.get("transcription.model_path", "large-v3")
 
     models_dir = settings.get("paths.models_dir", "models")
 
-    # 如果是绝对路径，直接使用
     if Path(model_name).is_absolute():
         return model_name
 
-    # 如果是相对路径且已存在，直接使用
     if Path(model_name).exists():
         return str(Path(model_name).resolve())
 
-    # 否则，拼接models_dir
     model_path = Path(models_dir) / model_name
-
-    # 检查模型是否存在
     if model_path.exists():
         return str(model_path)
 
-    # 如果本地不存在，返回模型名称（让faster_whisper去下载）
     logger = get_logger(__name__)
     logger.warning(f"本地模型不存在: {model_path}，将尝试从Hugging Face下载")
     return model_name
+
+
+def _init_common(settings: Settings, output_dir: str, verbose: bool = False):
+    """CLI 公共初始化：日志、FFmpeg路径、VideoProcessor、FileWriter"""
+    log_level = "DEBUG" if verbose else settings.get("app.log_level", "INFO")
+    setup_logger(
+        "video2text",
+        log_dir=settings.get("paths.logs_dir", "logs"),
+        level=log_level,
+    )
+
+    ffmpeg_path = settings.get("preprocessing.ffmpeg_path", "ffmpeg")
+    try:
+        ffmpeg_path = validate_executable_path(ffmpeg_path, "FFmpeg")
+    except Exception as e:
+        raise VideoFileError(str(e))
+
+    video_processor = VideoProcessor(ffmpeg_path=ffmpeg_path)
+    file_writer = FileWriter(output_dir)
+    output_formats = get_transcript_output_formats(settings)
+
+    return video_processor, file_writer, output_formats
 
 
 @app.command()
@@ -129,7 +104,6 @@ def transcribe(
     try:
         settings = get_settings()
 
-        # 从配置文件获取默认值
         output_dir = output_dir or settings.get("output.output_dir", "output")
         language = language or settings.get("transcription.language", "auto")
         model = model or settings.get("transcription.model_path", "large-v3")
@@ -141,140 +115,52 @@ def transcribe(
             else settings.get_float("transcription.temperature", 0.0)
         )
 
-        # 获取完整模型路径
         model_path = get_model_path(settings, model)
 
-        # 设置日志
-        log_level = "DEBUG" if verbose else settings.get("app.log_level", "INFO")
-        setup_logger(
-            "video2text",
-            log_dir=settings.get("paths.logs_dir", "logs"),
-            level=log_level,
+        video_processor, file_writer, output_formats = _init_common(
+            settings, output_dir, verbose
         )
 
-        console.print(Panel.fit(f"[bold blue]Video2Text 转写模式[/bold blue]"))
+        console.print(Panel.fit("[bold blue]Video2Text 转写模式[/bold blue]"))
         console.print(f"输入文件: {input_path}")
         console.print(f"输出目录: {output_dir}")
         console.print(f"模型: {model_path}")
         console.print(f"设备: {device}")
 
-        progress = ProgressTracker(5, "转写进度")
-
-        video_processor = VideoProcessor(
-            ffmpeg_path=settings.get("preprocessing.ffmpeg_path", "ffmpeg")
-        )
-        progress.update(1, "验证视频文件")
-        video_processor.validate_video(input_path)
-
-        video_info = video_processor.get_video_info(input_path)
-        console.print(f"视频时长: {video_info.duration:.2f}秒")
-
-        progress.update(1, "提取音频")
-        audio_path = Path(output_dir) / "temp_audio.wav"
-        video_processor.extract_audio(
-            input_path,
-            str(audio_path),
-            sample_rate=settings.get_int("preprocessing.audio_sample_rate", 16000),
-            channels=settings.get_int("preprocessing.audio_channels", 1),
-        )
-
-        progress.update(1, "加载转写模型")
         transcriber = Transcriber(
             model_path=model_path,
             device=device,
             compute_type=settings.get("transcription.compute_type", "float16"),
             num_workers=settings.get_int("transcription.num_workers", 1),
         )
-        transcriber.load_model()
 
-        progress.update(1, "执行转写")
-        # 最大音频块时长（秒），可在配置中自定义
-        max_chunk_duration = settings.get_int("preprocessing.max_chunk_duration", 300)
-        if video_info.duration > max_chunk_duration:
-            # 使用临时目录存放切片文件
-            chunk_dir_path = tempfile.mkdtemp(prefix="audio_chunks_", dir=output_dir)
-            chunk_dir = Path(chunk_dir_path)
-            try:
-                split_cmd = [
-                    video_processor.ffmpeg_path,
-                    "-i",
-                    str(audio_path),
-                    "-f",
-                    "segment",
-                    "-segment_time",
-                    str(max_chunk_duration),
-                    "-acodec",
-                    "pcm_s16le",
-                    "-reset_timestamps",
-                    "1",
-                    str(chunk_dir / "chunk_%03d.wav"),
-                ]
-                try:
-                    subprocess.run(
-                        split_cmd,
-                        capture_output=True,
-                        text=True,
-                        check=True,
-                        creationflags=CREATE_NO_WINDOW,
-                        encoding="utf-8",
-                        errors="ignore",
-                    )
-                except subprocess.CalledProcessError as e:
-                    raise Video2TextError(
-                        f"音频切片失败: {e.stderr.strip() or e.stdout.strip()}"
-                    )
-                chunk_files = sorted(chunk_dir.glob("chunk_*.wav"))
-                # 初始化切片转写进度条
-                chunk_progress = ProgressTracker(len(chunk_files), "切片转写进度")
-                all_segments: list = []
-                cumulative_offset = 0.0
-                for idx, chunk_path in enumerate(chunk_files):
-                    chunk_segments = transcriber.transcribe(
-                        str(chunk_path),
-                        language=language,
-                        beam_size=beam_size,
-                        temperature=temperature,
-                        vad_filter=settings.get_bool("transcription.vad_filter", True),
-                    )
-                    # 更新切片转写进度
-                    chunk_progress.update(1, f"转写块 {idx + 1}/{len(chunk_files)}")
-                    # 调整时间戳
-                    for seg in chunk_segments:
-                        seg.start += cumulative_offset
-                        seg.end += cumulative_offset
-                    # 更新累积偏移量，以实际块时长为准
-                    if chunk_segments:
-                        cumulative_offset += max(s.end for s in chunk_segments)
-                    all_segments.extend(chunk_segments)
-                chunk_progress.complete("切片转写完成")
-                segments = all_segments
-            finally:
-                # 确保临时文件被删除
-                shutil.rmtree(chunk_dir, ignore_errors=True)
+        service = TranscriptionService(
+            transcriber=transcriber,
+            video_processor=video_processor,
+            file_writer=file_writer,
+            language=language,
+            beam_size=beam_size,
+            temperature=temperature,
+            vad_filter=settings.get_bool("transcription.vad_filter", True),
+            max_chunk_duration=settings.get_int(
+                "preprocessing.max_chunk_duration", 300
+            ),
+            output_formats=output_formats,
+            on_progress=lambda msg: console.print(f"  {msg}"),
+        )
+
+        service.transcriber.load_model()
+        results = service.run([input_path], output_dir)
+
+        if results:
+            console.print(Panel.fit("[bold green]转写成功！[/bold green]"))
+            console.print(f"输出目录: {output_dir}")
+            for r in results:
+                for fmt in output_formats:
+                    console.print(f"  - {r.video_name}.{fmt}")
         else:
-            segments = transcriber.transcribe(
-                str(audio_path),
-                language=language,
-                beam_size=beam_size,
-                temperature=temperature,
-                vad_filter=settings.get_bool("transcription.vad_filter", True),
-            )
-
-        progress.update(1, "保存结果")
-        file_writer = FileWriter(output_dir)
-        video_name = Path(input_path).stem
-        output_formats = get_transcript_output_formats(settings)
-
-        write_transcript_outputs(file_writer, segments, video_name, output_formats)
-
-        progress.complete(f"转写完成，共 {len(segments)} 个段落")
-
-        console.print(Panel.fit(f"[bold green]转写成功！[/bold green]"))
-        console.print(f"输出目录: {output_dir}")
-        for output_format in output_formats:
-            console.print(f"  - {video_name}.{output_format}")
-
-        audio_path.unlink(missing_ok=True)
+            console.print("[bold red]转写失败[/bold red]")
+            sys.exit(2)
 
     except Video2TextError as e:
         console.print(f"[bold red]错误: {e}[/bold red]")
@@ -299,19 +185,8 @@ def summarize(
     try:
         settings = get_settings()
 
-        # 从配置文件获取默认值
         output_dir = output_dir or settings.get("output.output_dir", "output")
-        model = model or settings.get(
-            "summarization.model_name", "qwen2.5:7b-instruct-q4_K_M"
-        )
-        max_length = max_length or settings.get_int("summarization.max_length", 500)
-        temperature = (
-            temperature
-            if temperature is not None
-            else settings.get_float("summarization.temperature", 0.7)
-        )
 
-        # 设置日志
         log_level = "DEBUG" if verbose else settings.get("app.log_level", "INFO")
         setup_logger(
             "video2text",
@@ -319,52 +194,38 @@ def summarize(
             level=log_level,
         )
 
-        console.print(Panel.fit(f"[bold blue]Video2Text 总结模式[/bold blue]"))
+        console.print(Panel.fit("[bold blue]Video2Text 总结模式[/bold blue]"))
         console.print(f"输入文件: {input_path}")
         console.print(f"输出目录: {output_dir}")
 
-        progress = ProgressTracker(3, "总结进度")
-
-        progress.update(1, "读取转写文本")
         text_path = Path(input_path)
         if not text_path.exists():
             raise VideoFileError(f"文件不存在: {input_path}")
 
-        with open(text_path, "r", encoding="utf-8") as f:
-            text = f.read()
-
+        text = text_path.read_text(encoding="utf-8")
         console.print(f"文本长度: {len(text)} 字符")
 
-        progress.update(1, "生成摘要")
-        summarizer = Summarizer(
-            model_name=model,
-            ollama_url=settings.get(
-                "summarization.ollama_url", "http://127.0.0.1:11434"
-            ),
-            temperature=temperature,
-            max_length=max_length,
-        )
-
-        if not summarizer.check_connection():
-            raise SummarizationError("无法连接到Ollama服务")
-
-        if not summarizer.check_model():
-            console.print(f"[yellow]警告: 模型 {model} 不存在[/yellow]")
-            console.print(
-                "[yellow]请运行: ollama pull qwen2.5:7b-instruct-q4_K_M[/yellow]"
-            )
-            raise SummarizationError(f"模型 {model} 不存在")
-
-        summary = summarizer.summarize(text, max_length=max_length)
-
-        progress.update(1, "保存结果")
         file_writer = FileWriter(output_dir)
         video_name = text_path.stem
-        file_writer.write_summary(summary, video_name)
 
-        progress.complete("总结完成")
+        service = SummarizationService(
+            settings=settings,
+            file_writer=file_writer,
+            model_name=model,
+            temperature=temperature,
+            max_length=max_length,
+            on_progress=lambda msg: console.print(f"  {msg}"),
+        )
 
-        console.print(Panel.fit(f"[bold green]总结成功！[/bold green]"))
+        if not service.check_connection():
+            raise SummarizationError("无法连接到Ollama服务")
+
+        if not service.check_model():
+            raise SummarizationError(f"模型 {service.model_name} 不存在")
+
+        service.summarize(text, video_name=video_name)
+
+        console.print(Panel.fit("[bold green]总结成功！[/bold green]"))
         console.print(f"输出文件: {output_dir}/{video_name}_summary.txt")
 
     except Video2TextError as e:
@@ -405,7 +266,6 @@ def run_pipeline(
     try:
         settings = get_settings()
 
-        # 从配置文件获取默认值
         output_dir = output_dir or settings.get("output.output_dir", "output")
         language = language or settings.get("transcription.language", "auto")
         transcription_model = transcription_model or settings.get(
@@ -428,194 +288,109 @@ def run_pipeline(
         )
         max_length = max_length or settings.get_int("summarization.max_length", 500)
 
-        # 获取完整模型路径
         model_path = get_model_path(settings, transcription_model)
 
-        # 设置日志
-        log_level = "DEBUG" if verbose else settings.get("app.log_level", "INFO")
-        setup_logger(
-            "video2text",
-            log_dir=settings.get("paths.logs_dir", "logs"),
-            level=log_level,
+        video_processor, file_writer, output_formats = _init_common(
+            settings, output_dir, verbose
         )
 
-        console.print(Panel.fit(f"[bold blue]Video2Text 完整管道模式[/bold blue]"))
+        console.print(Panel.fit("[bold blue]Video2Text 完整管道模式[/bold blue]"))
         console.print(f"输入文件: {input_path}")
         console.print(f"输出目录: {output_dir}")
         console.print(f"转写模型: {model_path}")
         console.print(f"总结模型: {summarization_model}")
 
         start_time = time.time()
-        progress = ProgressTracker(7, "处理进度")
 
-        video_processor = VideoProcessor(
-            ffmpeg_path=settings.get("preprocessing.ffmpeg_path", "ffmpeg")
-        )
-        progress.update(1, "验证视频文件")
-        video_processor.validate_video(input_path)
-
-        video_info = video_processor.get_video_info(input_path)
-        console.print(f"视频时长: {video_info.duration:.2f}秒")
-
-        progress.update(1, "提取音频")
-        audio_path = Path(output_dir) / "temp_audio.wav"
-        video_processor.extract_audio(
-            input_path,
-            str(audio_path),
-            sample_rate=settings.get_int("preprocessing.audio_sample_rate", 16000),
-            channels=settings.get_int("preprocessing.audio_channels", 1),
-        )
-
-        progress.update(1, "加载转写模型")
         transcriber = Transcriber(
             model_path=model_path,
             device=device,
             compute_type=settings.get("transcription.compute_type", "float16"),
             num_workers=settings.get_int("transcription.num_workers", 1),
         )
-        transcriber.load_model()
 
-        progress.update(1, "执行转写")
-        # 最大音频块时长（秒），可在配置中自定义
-        max_chunk_duration = settings.get_int("preprocessing.max_chunk_duration", 300)
-        if video_info.duration > max_chunk_duration:
-            # 使用临时目录存放切片文件
-            chunk_dir_path = tempfile.mkdtemp(prefix="audio_chunks_", dir=output_dir)
-            chunk_dir = Path(chunk_dir_path)
-            try:
-                split_cmd = [
-                    video_processor.ffmpeg_path,
-                    "-i",
-                    str(audio_path),
-                    "-f",
-                    "segment",
-                    "-segment_time",
-                    str(max_chunk_duration),
-                    "-acodec",
-                    "pcm_s16le",
-                    "-reset_timestamps",
-                    "1",
-                    str(chunk_dir / "chunk_%03d.wav"),
-                ]
-                try:
-                    subprocess.run(
-                        split_cmd,
-                        capture_output=True,
-                        text=True,
-                        check=True,
-                        creationflags=CREATE_NO_WINDOW,
-                        encoding="utf-8",
-                        errors="ignore",
-                        
-                    )
-                except subprocess.CalledProcessError as e:
-                    raise Video2TextError(
-                        f"音频切片失败: {e.stderr.strip() or e.stdout.strip()}"
-                    )
-                chunk_files = sorted(chunk_dir.glob("chunk_*.wav"))
-                # 初始化切片转写进度条
-                chunk_progress = ProgressTracker(len(chunk_files), "切片转写进度")
-                all_segments: list = []
-                cumulative_offset = 0.0
-                for idx, chunk_path in enumerate(chunk_files):
-                    chunk_segments = transcriber.transcribe(
-                        str(chunk_path),
-                        language=language,
-                        beam_size=beam_size,
-                        temperature=temperature,
-                        vad_filter=settings.get_bool("transcription.vad_filter", True),
-                    )
-                    # 更新切片转写进度
-                    chunk_progress.update(1, f"转写块 {idx + 1}/{len(chunk_files)}")
-                    # 调整时间戳
-                    for seg in chunk_segments:
-                        seg.start += cumulative_offset
-                        seg.end += cumulative_offset
-                    # 更新累积偏移量，以实际块时长为准
-                    if chunk_segments:
-                        cumulative_offset += max(s.end for s in chunk_segments)
-                    all_segments.extend(chunk_segments)
-                chunk_progress.complete("切片转写完成")
-                segments = all_segments
-            finally:
-                # 确保临时文件被删除
-                shutil.rmtree(chunk_dir, ignore_errors=True)
-        else:
-            segments = transcriber.transcribe(
-                str(audio_path),
-                language=language,
-                beam_size=beam_size,
-                temperature=temperature,
-                vad_filter=settings.get_bool("transcription.vad_filter", True),
-            )
+        # 转写阶段
+        tx_service = TranscriptionService(
+            transcriber=transcriber,
+            video_processor=video_processor,
+            file_writer=file_writer,
+            language=language,
+            beam_size=beam_size,
+            temperature=temperature,
+            vad_filter=settings.get_bool("transcription.vad_filter", True),
+            max_chunk_duration=settings.get_int(
+                "preprocessing.max_chunk_duration", 300
+            ),
+            output_formats=output_formats,
+            on_progress=lambda msg: console.print(f"  {msg}"),
+        )
 
-        progress.update(1, "处理文本")
-        text_cleaner = TextCleaner()
+        tx_service.transcriber.load_model()
+        tx_results = tx_service.run([input_path], output_dir)
+
+        if not tx_results:
+            console.print("[bold red]转写失败，无法继续[/bold red]")
+            sys.exit(2)
+
+        # 总结阶段
+        from src.text_processing.segment_merger import SegmentMerger
+
         segment_merger = SegmentMerger(
             max_gap=settings.get_float("text_processing.max_gap", 2.0),
             min_length=settings.get_int("text_processing.min_length", 50),
         )
-        merged_segments = segment_merger.merge_segments(segments)
-        processed_text = segment_merger.format_segments_as_text(
-            merged_segments, include_timestamps=False
-        )
 
-        progress.update(1, "生成摘要")
-        summarizer = Summarizer(
+        sum_service = SummarizationService(
+            settings=settings,
+            file_writer=file_writer,
             model_name=summarization_model,
-            ollama_url=settings.get(
-                "summarization.ollama_url", "http://127.0.0.1:11434"
-            ),
             temperature=summary_temperature,
             max_length=max_length,
+            on_progress=lambda msg: console.print(f"  {msg}"),
         )
 
-        if not summarizer.check_connection():
+        summary = "总结不可用"
+        if not sum_service.check_connection():
             console.print("[yellow]警告: 无法连接到Ollama服务，跳过总结[/yellow]")
-            summary = "总结不可用"
-        elif not summarizer.check_model():
+        elif not sum_service.check_model():
             console.print(
                 f"[yellow]警告: 模型 {summarization_model} 不存在，跳过总结[/yellow]"
             )
-            console.print(
-                "[yellow]请运行: ollama pull qwen2.5:7b-instruct-q4_K_M[/yellow]"
-            )
-            summary = "总结不可用"
         else:
-            summary = summarizer.summarize(processed_text, max_length=max_length)
+            for tx_result in tx_results:
+                merged = segment_merger.merge_segments(tx_result.segments)
+                processed_text = segment_merger.format_segments_as_text(
+                    merged, include_timestamps=False
+                )
+                summary = sum_service.summarize(
+                    processed_text, video_name=tx_result.video_name
+                )
 
-        progress.update(1, "保存结果")
-        file_writer = FileWriter(output_dir)
-        formatter = OutputFormatter()
-        video_name = Path(input_path).stem
-        output_formats = get_transcript_output_formats(settings)
+        # 保存完整数据
+        for tx_result in tx_results:
+            video_name = tx_result.video_name
+            if settings.get_bool("output.json_output", False):
+                formatter = OutputFormatter()
+                video_info = video_processor.get_video_info(input_path)
+                output_data = formatter.create_output_data(
+                    video_name=video_name,
+                    video_path=input_path,
+                    duration=video_info.duration,
+                    transcript_segments=tx_result.segments,
+                    processed_text=processed_text,
+                    summary=summary,
+                    processing_time=time.time() - start_time,
+                )
+                file_writer.write_output_data(output_data, video_name)
 
-        write_transcript_outputs(file_writer, segments, video_name, output_formats)
-        file_writer.write_summary(summary, video_name)
-
-        output_data = formatter.create_output_data(
-            video_name=video_name,
-            video_path=input_path,
-            duration=video_info.duration,
-            transcript_segments=segments,
-            processed_text=processed_text,
-            summary=summary,
-            processing_time=time.time() - start_time,
-        )
-        if settings.get_bool("output.json_output", False):
-            file_writer.write_output_data(output_data, video_name)
-
-        progress.complete(f"处理完成，共 {len(segments)} 个段落")
-
-        console.print(Panel.fit(f"[bold green]处理成功！[/bold green]"))
+        console.print(Panel.fit("[bold green]处理成功！[/bold green]"))
         console.print(f"输出目录: {output_dir}")
-        for output_format in output_formats:
-            console.print(f"  - {video_name}.{output_format} (转写结果)")
-        console.print(f"  - {video_name}_summary.txt (摘要)")
-        if settings.get_bool("output.json_output", False):
-            console.print(f"  - {video_name}_full.json (完整数据)")
-
-        audio_path.unlink(missing_ok=True)
+        for tx_result in tx_results:
+            for fmt in output_formats:
+                console.print(f"  - {tx_result.video_name}.{fmt} (转写结果)")
+            console.print(f"  - {tx_result.video_name}_summary.txt (摘要)")
+            if settings.get_bool("output.json_output", False):
+                console.print(f"  - {tx_result.video_name}_full.json (完整数据)")
 
     except Video2TextError as e:
         console.print(f"[bold red]错误: {e}[/bold red]")
@@ -629,9 +404,8 @@ def run_pipeline(
 def version():
     """显示版本信息"""
     settings = get_settings()
-    version = settings.get("app.version", "unknown")
-
-    console.print(f"Video2Text v{version}")
+    ver = settings.get("app.version", "unknown")
+    console.print(f"Video2Text v{ver}")
 
 
 @app.command()
