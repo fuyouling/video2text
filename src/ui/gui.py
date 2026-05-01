@@ -2,6 +2,7 @@
 
 import logging
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -91,6 +92,7 @@ class MainWindow(QMainWindow):
         self._tx_fail = 0
         self._sum_success = 0
         self._sum_fail = 0
+        self._fail_records: list[tuple[str, str, str]] = []
 
         self._setup_logging()
         self._init_ui()
@@ -695,6 +697,7 @@ class MainWindow(QMainWindow):
         self._tx_fail = 0
         self._sum_success = 0
         self._sum_fail = 0
+        self._fail_records = []
 
         total = len(self._video_files)
         self.progress_bar.setMaximum(total)
@@ -747,6 +750,7 @@ class MainWindow(QMainWindow):
     def _on_transcribe_error(self, video_name: str, error_msg: str) -> None:
         """单个视频转写失败"""
         self._tx_fail += 1
+        self._fail_records.append((video_name, "转写", error_msg))
         self.ollama_status_label.setText(f"转写失败: {video_name} — {error_msg}")
         self.ollama_status_label.setStyleSheet("color: red")
 
@@ -768,6 +772,7 @@ class MainWindow(QMainWindow):
         self._tx_fail = 0
         self._sum_success = 0
         self._sum_fail = 0
+        self._fail_records = []
 
         total = len(self._video_files)
         self.progress_bar.setMaximum(total)
@@ -809,6 +814,7 @@ class MainWindow(QMainWindow):
     def _on_summarize_error(self, video_name: str, error_msg: str) -> None:
         """单个视频总结失败"""
         self._sum_fail += 1
+        self._fail_records.append((video_name, "总结", error_msg))
         self.ollama_status_label.setText(f"总结失败: {video_name} — {error_msg}")
         self.ollama_status_label.setStyleSheet("color: red")
 
@@ -832,6 +838,7 @@ class MainWindow(QMainWindow):
         self._tx_fail = 0
         self._sum_success = 0
         self._sum_fail = 0
+        self._fail_records = []
 
         total = len(self._video_files)
         self.progress_bar.setMaximum(total)
@@ -897,7 +904,31 @@ class MainWindow(QMainWindow):
                 "color: orange" if has_fail else "color: green"
             )
 
+        self._save_fail_records()
         self.status_bar.showMessage("处理完成")
+
+    def _save_fail_records(self) -> None:
+        if not self._fail_records:
+            return
+        logs_dir = self.settings.get("paths.logs_dir", "logs")
+        log_path = Path(logs_dir)
+        log_path.mkdir(parents=True, exist_ok=True)
+        fail_path = log_path / "fail_log.txt"
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        mode_map = {
+            "transcribe": "仅转写",
+            "summarize": "仅总结",
+            "pipeline": "转写+总结",
+        }
+        mode_label = mode_map.get(self._current_mode, self._current_mode)
+        try:
+            with open(fail_path, "a", encoding="utf-8") as f:
+                f.write(f"[{timestamp}] 模式: {mode_label}\n")
+                for video_name, stage, error_msg in self._fail_records:
+                    f.write(f"  {stage}失败 | {video_name} | {error_msg}\n")
+                f.write("\n")
+        except OSError:
+            pass
 
     # ── result file viewer ──
 

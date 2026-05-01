@@ -267,4 +267,4 @@ video2text/
 
 ## 许可证
 
-MIT License
+GNU GENERAL PUBLIC LICENSE

@@ -146,7 +146,7 @@ class Transcriber:
         try:
             from faster_whisper import WhisperModel
 
-            logger.info(f"开始加载模型: {self.model_path}")
+            logger.info(f"开始加载模型")
             logger.info(
                 f"设备: {self.device}, 计算类型: {self.compute_type}, "
                 f"工作线程: {self.num_workers}"
