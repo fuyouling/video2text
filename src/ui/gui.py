@@ -86,6 +86,11 @@ class MainWindow(QMainWindow):
         self._worker = None
         self._combined = False
         self._result_viewer: Optional[ResultViewerWindow] = None
+        self._current_mode = ""
+        self._tx_success = 0
+        self._tx_fail = 0
+        self._sum_success = 0
+        self._sum_fail = 0
 
         self._setup_logging()
         self._init_ui()
@@ -143,14 +148,17 @@ class MainWindow(QMainWindow):
         self.input_file_btn.setMinimumWidth(_BTN_MIN_WIDTH)
         self.input_file_btn.clicked.connect(self._select_input_files)
         input_row.addWidget(self.input_file_btn)
-        self.input_multi_btn = QPushButton("选择多个文件")
-        self.input_multi_btn.setMinimumWidth(_BTN_MIN_WIDTH)
-        self.input_multi_btn.clicked.connect(self._select_input_multiple_files)
-        input_row.addWidget(self.input_multi_btn)
         self.input_folder_btn = QPushButton("选择文件夹")
         self.input_folder_btn.setMinimumWidth(_BTN_MIN_WIDTH)
         self.input_folder_btn.clicked.connect(self._select_input_folder)
         input_row.addWidget(self.input_folder_btn)
+        self.open_viewer_btn = QPushButton("全屏查看")
+        self.open_viewer_btn.setMinimumWidth(_BTN_MIN_WIDTH)
+        self.open_viewer_btn.setToolTip(
+            "在独立窗口中查看所有结果，支持全屏、搜索、导出、书签等功能"
+        )
+        self.open_viewer_btn.clicked.connect(self._open_result_viewer)
+        input_row.addWidget(self.open_viewer_btn)
         root.addLayout(input_row)
 
         # ── output row ──
@@ -160,15 +168,21 @@ class MainWindow(QMainWindow):
         self.output_edit.setReadOnly(True)
         self.output_edit.setText(_DEFAULT_OUTPUT_DIR)
         output_row.addWidget(self.output_edit, 1)
+        self.output_btn = QPushButton("浏览")
+        self.output_btn.setMinimumWidth(_BTN_MIN_WIDTH)
+        self.output_btn.clicked.connect(self._select_output_dir)
+        output_row.addWidget(self.output_btn)
         self.load_history_btn = QPushButton("加载历史")
         self.load_history_btn.setMinimumWidth(_BTN_MIN_WIDTH)
         self.load_history_btn.setToolTip("加载输出目录中的历史转写和总结文件")
         self.load_history_btn.clicked.connect(self._load_history_files)
         output_row.addWidget(self.load_history_btn)
-        self.output_btn = QPushButton("浏览")
-        self.output_btn.setMinimumWidth(_BTN_MIN_WIDTH)
-        self.output_btn.clicked.connect(self._select_output_dir)
-        output_row.addWidget(self.output_btn)
+        self.pause_btn = QPushButton("暂停")
+        self.pause_btn.setMinimumWidth(_BTN_MIN_WIDTH)
+        self.pause_btn.setToolTip("暂停当前转写任务，再次点击可继续")
+        self.pause_btn.setEnabled(False)
+        self.pause_btn.clicked.connect(self._on_pause_resume)
+        output_row.addWidget(self.pause_btn)
         root.addLayout(output_row)
 
         # ── run / progress row ──
@@ -178,13 +192,6 @@ class MainWindow(QMainWindow):
         self.progress_bar = QProgressBar()
         self.progress_bar.setValue(0)
         run_row.addWidget(self.progress_bar, 1)
-        self.open_viewer_btn = QPushButton("全屏查看")
-        self.open_viewer_btn.setMinimumWidth(_BTN_MIN_WIDTH)
-        self.open_viewer_btn.setToolTip(
-            "在独立窗口中查看所有结果，支持全屏、搜索、导出、书签等功能"
-        )
-        self.open_viewer_btn.clicked.connect(self._open_result_viewer)
-        run_row.addWidget(self.open_viewer_btn)
         self.transcribe_btn = QPushButton("仅转写")
         self.transcribe_btn.setMinimumWidth(_BTN_MIN_WIDTH)
         self.transcribe_btn.setToolTip("仅执行语音转写，不进行摘要总结")
@@ -200,12 +207,6 @@ class MainWindow(QMainWindow):
         self.combine_btn.setToolTip("先执行语音转写，完成后自动对转写文本进行摘要总结")
         self.combine_btn.clicked.connect(self._on_pipeline)
         run_row.addWidget(self.combine_btn)
-        self.pause_btn = QPushButton("暂停")
-        self.pause_btn.setMinimumWidth(_BTN_MIN_WIDTH)
-        self.pause_btn.setToolTip("暂停当前转写任务，再次点击可继续")
-        self.pause_btn.setEnabled(False)
-        self.pause_btn.clicked.connect(self._on_pause_resume)
-        run_row.addWidget(self.pause_btn)
         root.addLayout(run_row)
 
         # ── splitter: logs + right panel ──
@@ -548,17 +549,6 @@ class MainWindow(QMainWindow):
     # ── input selection slots ──
 
     def _select_input_files(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            "选择视频文件",
-            "",
-            "视频文件 (*.mp4 *.avi *.mov *.mkv *.flv *.wmv *.webm *.ts *.mts *.m4v *.3gp *.mpeg *.mpg *.vob *.ogv *.rm *.rmvb);;所有文件 (*.*)",
-        )
-        if path:
-            self.input_edit.setText(path)
-            self._video_files = [path]
-
-    def _select_input_multiple_files(self) -> None:
         paths, _ = QFileDialog.getOpenFileNames(
             self,
             "选择视频文件",
@@ -566,7 +556,10 @@ class MainWindow(QMainWindow):
             "视频文件 (*.mp4 *.avi *.mov *.mkv *.flv *.wmv *.webm *.ts *.mts *.m4v *.3gp *.mpeg *.mpg *.vob *.ogv *.rm *.rmvb);;所有文件 (*.*)",
         )
         if paths:
-            self.input_edit.setText(f"已选择 {len(paths)} 个文件")
+            if len(paths) == 1:
+                self.input_edit.setText(paths[0])
+            else:
+                self.input_edit.setText(f"已选择 {len(paths)} 个文件")
             self._video_files = list(paths)
 
     def _select_input_folder(self) -> None:
@@ -661,7 +654,6 @@ class MainWindow(QMainWindow):
         self.summarize_btn.setEnabled(not busy)
         self.combine_btn.setEnabled(not busy)
         self.input_file_btn.setEnabled(not busy)
-        self.input_multi_btn.setEnabled(not busy)
         self.input_folder_btn.setEnabled(not busy)
         self.output_btn.setEnabled(not busy)
         self.pause_btn.setEnabled(busy)
@@ -698,6 +690,12 @@ class MainWindow(QMainWindow):
         self._completed_names.clear()
         self.log_text.clear()
 
+        self._current_mode = "transcribe"
+        self._tx_success = 0
+        self._tx_fail = 0
+        self._sum_success = 0
+        self._sum_fail = 0
+
         total = len(self._video_files)
         self.progress_bar.setMaximum(total)
         self.progress_bar.setValue(0)
@@ -708,8 +706,8 @@ class MainWindow(QMainWindow):
         thread = QThread()
         worker = TranscribeWorker(self._video_files, output_dir, self.settings)
 
-        # 每完成一个视频立即显示结果
         worker.video_done.connect(self._on_single_video_transcribed)
+        worker.video_error.connect(self._on_transcribe_error)
         worker.progress.connect(self._on_progress)
 
         self._start_worker(thread, worker)
@@ -718,16 +716,20 @@ class MainWindow(QMainWindow):
         self, video_name: str, segments_count: int, output_paths: list
     ) -> None:
         """单个视频转写完成 —— 立即更新 GUI"""
+        self._tx_success += 1
         if video_name not in self._completed_names:
             self._completed_names.add(video_name)
             item = QListWidgetItem(video_name)
             item.setData(Qt.ItemDataRole.UserRole, video_name)
             self.file_list.addItem(item)
 
-        # 自动选中最新完成的视频并显示内容
         self.file_list.setCurrentItem(self.file_list.item(self.file_list.count() - 1))
         self._load_transcript_content(video_name)
 
+        self.ollama_status_label.setText(
+            f"转写完成: {video_name} ({segments_count} 段)"
+        )
+        self.ollama_status_label.setStyleSheet("color: green")
         self.status_bar.showMessage(f"转写完成: {video_name} ({segments_count} 段)")
 
     def _load_transcript_content(self, video_name: str) -> None:
@@ -742,6 +744,12 @@ class MainWindow(QMainWindow):
             except (OSError, UnicodeDecodeError):
                 pass
 
+    def _on_transcribe_error(self, video_name: str, error_msg: str) -> None:
+        """单个视频转写失败"""
+        self._tx_fail += 1
+        self.ollama_status_label.setText(f"转写失败: {video_name} — {error_msg}")
+        self.ollama_status_label.setStyleSheet("color: red")
+
     # ── 仅总结 ──
 
     def _on_summarize(self) -> None:
@@ -754,6 +762,12 @@ class MainWindow(QMainWindow):
             return
 
         output_dir = self._get_output_dir()
+
+        self._current_mode = "summarize"
+        self._tx_success = 0
+        self._tx_fail = 0
+        self._sum_success = 0
+        self._sum_fail = 0
 
         total = len(self._video_files)
         self.progress_bar.setMaximum(total)
@@ -773,10 +787,9 @@ class MainWindow(QMainWindow):
             stream=True,
         )
 
-        # 流式 token → 实时追加到摘要区
         worker.stream_token.connect(self._on_stream_token)
-        # 单个视频总结完成
         worker.video_done.connect(self._on_single_video_summarized)
+        worker.video_error.connect(self._on_summarize_error)
         worker.progress.connect(self._on_progress)
 
         self._start_worker(thread, worker)
@@ -788,9 +801,16 @@ class MainWindow(QMainWindow):
 
     def _on_single_video_summarized(self, video_name: str, summary: str) -> None:
         """单个视频总结完成"""
+        self._sum_success += 1
         self.summary_view.setPlainText(summary)
         self.ollama_status_label.setText(f"总结完成: {video_name}")
         self.ollama_status_label.setStyleSheet("color: green")
+
+    def _on_summarize_error(self, video_name: str, error_msg: str) -> None:
+        """单个视频总结失败"""
+        self._sum_fail += 1
+        self.ollama_status_label.setText(f"总结失败: {video_name} — {error_msg}")
+        self.ollama_status_label.setStyleSheet("color: red")
 
     # ── 转写+总结管道 ──
 
@@ -806,6 +826,12 @@ class MainWindow(QMainWindow):
         self.summary_view.clear()
         self._completed_names.clear()
         self.log_text.clear()
+
+        self._current_mode = "pipeline"
+        self._tx_success = 0
+        self._tx_fail = 0
+        self._sum_success = 0
+        self._sum_fail = 0
 
         total = len(self._video_files)
         self.progress_bar.setMaximum(total)
@@ -825,12 +851,11 @@ class MainWindow(QMainWindow):
             stream=True,
         )
 
-        # 转写完成 → 立即显示转写结果
         worker.transcribe_done.connect(self._on_single_video_transcribed)
-        # 流式 token
+        worker.transcribe_error.connect(self._on_transcribe_error)
         worker.stream_token.connect(self._on_stream_token)
-        # 总结完成
         worker.summarize_done.connect(self._on_single_video_summarized)
+        worker.summarize_error.connect(self._on_summarize_error)
         worker.progress.connect(self._on_progress)
 
         self._start_worker(thread, worker)
@@ -846,8 +871,32 @@ class MainWindow(QMainWindow):
         self._worker = None
         self._set_busy_state(False)
 
-        completed = len(self._completed_names)
-        self.progress_label.setText(f"{completed} 个视频处理完成")
+        self.progress_bar.setValue(self.progress_bar.maximum())
+
+        if self._current_mode == "transcribe":
+            self.ollama_status_label.setText(
+                f"转写完成 — 成功: {self._tx_success}, 失败: {self._tx_fail}"
+            )
+            self.ollama_status_label.setStyleSheet(
+                "color: green" if self._tx_fail == 0 else "color: orange"
+            )
+        elif self._current_mode == "summarize":
+            self.ollama_status_label.setText(
+                f"总结完成 — 成功: {self._sum_success}, 失败: {self._sum_fail}"
+            )
+            self.ollama_status_label.setStyleSheet(
+                "color: green" if self._sum_fail == 0 else "color: orange"
+            )
+        elif self._current_mode == "pipeline":
+            self.ollama_status_label.setText(
+                f"转写: 成功 {self._tx_success} / 失败 {self._tx_fail} | "
+                f"总结: 成功 {self._sum_success} / 失败 {self._sum_fail}"
+            )
+            has_fail = self._tx_fail > 0 or self._sum_fail > 0
+            self.ollama_status_label.setStyleSheet(
+                "color: orange" if has_fail else "color: green"
+            )
+
         self.status_bar.showMessage("处理完成")
 
     # ── result file viewer ──

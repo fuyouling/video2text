@@ -1,25 +1,28 @@
-"""独立结果查看窗口 —— 支持全屏、Markdown、多标签、搜索、导出、书签、主题切换"""
+"""独立结果查看窗口 —— 支持全屏、Markdown、多标签、搜索、书签、主题切换"""
 
 import logging
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt, QSettings, Signal
-from PySide6.QtGui import QAction, QFont, QKeySequence, QTextCursor, QTextDocument
-from PySide6.QtPrintSupport import QPrinter, QPrintDialog
+from PySide6.QtCore import Qt, QSettings
+from PySide6.QtGui import (
+    QAction,
+    QColor,
+    QFont,
+    QKeySequence,
+    QTextCursor,
+    QTextDocument,
+)
 from PySide6.QtWidgets import (
     QComboBox,
     QDockWidget,
-    QFileDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
-    QMenu,
     QMessageBox,
-    QProgressBar,
     QPushButton,
     QSpinBox,
     QSplitter,
@@ -152,6 +155,14 @@ class ThemeManager:
             QDockWidget {{
                 background-color: {theme["secondary_bg"]};
                 color: {theme["text_color"]};
+                titlebar-close-icon: none;
+            }}
+            QDockWidget::title {{
+                background: {theme["secondary_bg"]};
+                color: {theme["text_color"]};
+                padding: 6px 8px;
+                border-bottom: 1px solid {theme["border_color"]};
+                font-weight: 600;
             }}
             QStatusBar {{
                 background-color: {theme["secondary_bg"]};
@@ -278,10 +289,16 @@ class ThemeManager:
             a:hover {{
                 text-decoration: underline;
             }}
-            .highlight {{
-                background-color: {theme["accent_color"]};
-                color: white;
-                padding: 1px 2px;
+            .codehilite {{
+                background: {theme["code_bg"]};
+                padding: 12px;
+                border-radius: 5px;
+                overflow-x: auto;
+                border: 1px solid {theme["border_color"]};
+            }}
+            .codehilite code {{
+                background: none;
+                padding: 0;
             }}
         """
 
@@ -297,7 +314,7 @@ class BookmarkItem:
 
 
 class ResultViewerWindow(QMainWindow):
-    """独立的结果查看窗口，支持全屏显示、多标签、搜索、导出、书签、主题切换"""
+    """独立的结果查看窗口，支持全屏显示、多标签、搜索、书签、主题切换"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -307,6 +324,7 @@ class ResultViewerWindow(QMainWindow):
         self._theme_manager = ThemeManager()
         self._output_dir = ""
         self._bookmarks: list[BookmarkItem] = []
+        self._all_video_names: list[str] = []
         self._current_video_name: Optional[str] = None
         self._search_matches: list[int] = []
         self._current_match_index: int = -1
@@ -314,6 +332,11 @@ class ResultViewerWindow(QMainWindow):
         self._init_ui()
         self._apply_theme()
         self._load_bookmarks()
+
+        self.tabs.currentChanged.connect(self._on_tab_changed)
+        self._restore_window_state()
+
+    # ─── UI 初始化 ─────────────────────────────────────────────
 
     def _init_ui(self):
         """初始化UI布局"""
@@ -326,7 +349,7 @@ class ResultViewerWindow(QMainWindow):
         self._create_toolbar()
 
         # 主分割器
-        main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._main_splitter = QSplitter(Qt.Orientation.Horizontal)
 
         # 左侧：文件列表
         left_panel = QWidget()
@@ -334,11 +357,18 @@ class ResultViewerWindow(QMainWindow):
         left_layout.setContentsMargins(5, 5, 5, 5)
 
         left_layout.addWidget(QLabel("文件列表:"))
+
+        # 文件过滤输入框
+        self._file_filter = QLineEdit()
+        self._file_filter.setPlaceholderText("过滤文件名...")
+        self._file_filter.textChanged.connect(self._filter_file_list)
+        left_layout.addWidget(self._file_filter)
+
         self.file_list = QListWidget()
         self.file_list.currentItemChanged.connect(self._on_file_selected)
         left_layout.addWidget(self.file_list)
 
-        main_splitter.addWidget(left_panel)
+        self._main_splitter.addWidget(left_panel)
 
         # 右侧：内容查看
         right_panel = QWidget()
@@ -349,7 +379,7 @@ class ResultViewerWindow(QMainWindow):
         search_layout = QHBoxLayout()
         search_layout.addWidget(QLabel("搜索:"))
         self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("输入关键词搜索...")
+        self.search_edit.setPlaceholderText("输入关键词搜索... (Ctrl+F)")
         self.search_edit.textChanged.connect(self._on_search_text_changed)
         search_layout.addWidget(self.search_edit, 1)
 
@@ -369,7 +399,6 @@ class ResultViewerWindow(QMainWindow):
         # 标签页
         self.tabs = QTabWidget()
         self.tabs.setTabsClosable(False)
-        self.tabs.currentChanged.connect(self._on_tab_changed)
 
         # 转写文本标签页
         self.transcript_view = QTextEdit()
@@ -385,11 +414,11 @@ class ResultViewerWindow(QMainWindow):
 
         right_layout.addWidget(self.tabs)
 
-        main_splitter.addWidget(right_panel)
+        self._main_splitter.addWidget(right_panel)
 
-        main_splitter.setStretchFactor(0, 1)
-        main_splitter.setStretchFactor(1, 4)
-        layout.addWidget(main_splitter)
+        self._main_splitter.setStretchFactor(0, 1)
+        self._main_splitter.setStretchFactor(1, 4)
+        layout.addWidget(self._main_splitter)
 
         # 状态栏
         self.status_bar = QStatusBar()
@@ -401,6 +430,7 @@ class ResultViewerWindow(QMainWindow):
     def _create_toolbar(self):
         """创建工具栏"""
         toolbar = QToolBar("主工具栏")
+        toolbar.setObjectName("MainToolBar")
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
 
@@ -432,25 +462,6 @@ class ResultViewerWindow(QMainWindow):
         fullscreen_action.triggered.connect(self._toggle_fullscreen)
         toolbar.addAction(fullscreen_action)
 
-        # 导出按钮（带下拉菜单）
-        export_action = QAction("导出", self)
-        export_menu = QMenu(self)
-
-        export_html_action = QAction("导出为HTML", self)
-        export_html_action.triggered.connect(self._export_html)
-        export_menu.addAction(export_html_action)
-
-        export_pdf_action = QAction("导出为PDF", self)
-        export_pdf_action.triggered.connect(self._export_pdf)
-        export_menu.addAction(export_pdf_action)
-
-        export_txt_action = QAction("导出为TXT", self)
-        export_txt_action.triggered.connect(self._export_txt)
-        export_menu.addAction(export_txt_action)
-
-        export_action.setMenu(export_menu)
-        toolbar.addAction(export_action)
-
         toolbar.addSeparator()
 
         # 书签按钮
@@ -475,24 +486,52 @@ class ResultViewerWindow(QMainWindow):
     def _create_bookmark_dock(self):
         """创建书签停靠窗口"""
         self.bookmark_dock = QDockWidget("书签", self)
+        self.bookmark_dock.setObjectName("BookmarkDock")
+        self.bookmark_dock.setMinimumWidth(220)
         self.bookmark_dock.setAllowedAreas(
             Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea
         )
 
         bookmark_widget = QWidget()
         bookmark_layout = QVBoxLayout(bookmark_widget)
+        bookmark_layout.setContentsMargins(6, 6, 6, 6)
+        bookmark_layout.setSpacing(4)
 
+        # 顶部：计数标签
+        self._bookmark_count_label = QLabel("共 0 个书签")
+        self._bookmark_count_label.setStyleSheet("color: #888; font-size: 11px;")
+        bookmark_layout.addWidget(self._bookmark_count_label)
+
+        # 过滤输入框
+        self._bookmark_filter = QLineEdit()
+        self._bookmark_filter.setPlaceholderText("过滤书签...")
+        self._bookmark_filter.textChanged.connect(self._filter_bookmarks)
+        bookmark_layout.addWidget(self._bookmark_filter)
+
+        # 书签列表
         self.bookmark_list = QListWidget()
+        self.bookmark_list.setSpacing(2)
         self.bookmark_list.itemDoubleClicked.connect(self._on_bookmark_double_clicked)
         bookmark_layout.addWidget(self.bookmark_list)
 
+        # 空状态提示
+        self._bookmark_empty_label = QLabel("暂无书签\n双击可跳转到书签位置")
+        self._bookmark_empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._bookmark_empty_label.setStyleSheet("color: #aaa; font-size: 12px;")
+        self._bookmark_empty_label.setVisible(True)
+        bookmark_layout.addWidget(self._bookmark_empty_label)
+
+        # 按钮栏
         bookmark_btn_layout = QHBoxLayout()
+        bookmark_btn_layout.setSpacing(4)
 
         delete_bookmark_btn = QPushButton("删除")
+        delete_bookmark_btn.setToolTip("删除选中书签")
         delete_bookmark_btn.clicked.connect(self._delete_bookmark)
         bookmark_btn_layout.addWidget(delete_bookmark_btn)
 
         clear_bookmarks_btn = QPushButton("清空")
+        clear_bookmarks_btn.setToolTip("清空所有书签")
         clear_bookmarks_btn.clicked.connect(self._clear_bookmarks)
         bookmark_btn_layout.addWidget(clear_bookmarks_btn)
 
@@ -501,6 +540,8 @@ class ResultViewerWindow(QMainWindow):
         self.bookmark_dock.setWidget(bookmark_widget)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.bookmark_dock)
         self.bookmark_dock.hide()
+
+    # ─── 主题 ──────────────────────────────────────────────────
 
     def _apply_theme(self):
         """应用主题"""
@@ -527,18 +568,51 @@ class ResultViewerWindow(QMainWindow):
                 except Exception:
                     pass
 
+    # ─── 文件加载与过滤 ────────────────────────────────────────
+
     def load_files(self, video_names: list[str], output_dir: str):
         """加载多个视频文件"""
         self._output_dir = output_dir
-        self.file_list.clear()
+        self._all_video_names = sorted(video_names, key=lambda x: x.lower())
+        self._file_filter.clear()
+        self._populate_file_list(self._all_video_names)
 
-        sorted_names = sorted(video_names, key=lambda x: x.lower())
-        for video_name in sorted_names:
+    def _populate_file_list(self, names: list[str]):
+        """填充文件列表（blockSignals 防止逐项触发选择事件）"""
+        self.file_list.blockSignals(True)
+        self.file_list.clear()
+        for video_name in names:
             item = QListWidgetItem(video_name)
             item.setData(Qt.ItemDataRole.UserRole, video_name)
             self.file_list.addItem(item)
+        self.file_list.blockSignals(False)
+        if names:
+            self.file_list.setCurrentRow(0)
 
-        if video_names:
+    def _filter_file_list(self, text: str):
+        """根据输入文本过滤文件列表，保持当前选中项"""
+        if not text:
+            filtered = self._all_video_names
+        else:
+            text_lower = text.lower()
+            filtered = [n for n in self._all_video_names if text_lower in n.lower()]
+
+        current_name = self._current_video_name
+
+        self.file_list.blockSignals(True)
+        self.file_list.clear()
+        restore_item = None
+        for video_name in filtered:
+            item = QListWidgetItem(video_name)
+            item.setData(Qt.ItemDataRole.UserRole, video_name)
+            self.file_list.addItem(item)
+            if video_name == current_name:
+                restore_item = item
+        self.file_list.blockSignals(False)
+
+        if restore_item is not None:
+            self.file_list.setCurrentItem(restore_item)
+        elif filtered:
             self.file_list.setCurrentRow(0)
 
     def load_content(self, video_name: str, output_dir: str):
@@ -551,6 +625,8 @@ class ResultViewerWindow(QMainWindow):
         self._current_match_index = -1
         self.search_count_label.setText("0/0")
         self.search_edit.clear()
+        self.transcript_view.setExtraSelections([])
+        self.summary_view.setExtraSelections([])
 
         # 加载转写文本
         transcript_path = Path(output_dir) / f"{video_name}.txt"
@@ -577,12 +653,16 @@ class ResultViewerWindow(QMainWindow):
 
         self.status_bar.showMessage(f"已加载: {video_name}")
 
-    def _clear_search_state(self):
-        """清除搜索状态"""
-        self._search_matches = []
-        self._current_match_index = -1
-        self.search_count_label.setText("0/0")
-        self.search_edit.clear()
+    def _on_file_selected(self, current: QListWidgetItem, previous: QListWidgetItem):
+        """文件选择事件"""
+        if current is None:
+            return
+        video_name = current.data(Qt.ItemDataRole.UserRole)
+        if video_name == self._current_video_name:
+            return
+        self.load_content(video_name, self._output_dir)
+
+    # ─── Markdown 渲染 ─────────────────────────────────────────
 
     def _display_markdown(self, markdown_text: str):
         """渲染Markdown内容"""
@@ -590,13 +670,12 @@ class ResultViewerWindow(QMainWindow):
             self.summary_view.setPlainText(markdown_text)
             return
 
-        extensions = ["tables", "fenced_code", "extra", "sane_lists", "nl2br"]
+        extensions = ["tables", "fenced_code", "extra", "sane_lists"]
         if PYGMENTS_AVAILABLE:
             extensions.append("codehilite")
 
         html = markdown.markdown(markdown_text, extensions=extensions)
 
-        # 获取当前字体大小
         font_size = self.font_size_spin.value()
         css = self._theme_manager.get_markdown_css(font_size)
 
@@ -615,17 +694,10 @@ class ResultViewerWindow(QMainWindow):
         """
         self.summary_view.setHtml(styled_html)
 
-    def _on_file_selected(self, current: QListWidgetItem, previous: QListWidgetItem):
-        """文件选择事件"""
-        if current is None:
-            return
-
-        video_name = current.data(Qt.ItemDataRole.UserRole)
-        self.load_content(video_name, self._output_dir)
+    # ─── 字体 ─────────────────────────────────────────────────
 
     def _update_font_size(self, size: int):
         """更新字体大小"""
-        # 更新转写文本字体
         font = QFont("Consolas", size)
         self.transcript_view.setFont(font)
 
@@ -642,6 +714,8 @@ class ResultViewerWindow(QMainWindow):
                 except Exception:
                     logger.warning(f"重新渲染摘要失败: {summary_path}")
 
+    # ─── 全屏 ─────────────────────────────────────────────────
+
     def _toggle_fullscreen(self):
         """切换全屏模式"""
         if self.isFullScreen():
@@ -649,12 +723,25 @@ class ResultViewerWindow(QMainWindow):
         else:
             self.showFullScreen()
 
+    # ─── 搜索（含全部高亮）─────────────────────────────────────
+
+    def _clear_search_state(self):
+        """清除搜索状态和高亮"""
+        self._search_matches = []
+        self._current_match_index = -1
+        self.search_count_label.setText("0/0")
+        self.search_edit.clear()
+        self.transcript_view.setExtraSelections([])
+        self.summary_view.setExtraSelections([])
+
     def _on_search_text_changed(self, text: str):
         """搜索文本变化"""
         if not text:
             self.search_count_label.setText("0/0")
             self._search_matches = []
             self._current_match_index = -1
+            self.transcript_view.setExtraSelections([])
+            self.summary_view.setExtraSelections([])
             return
 
         current_view = self.tabs.currentWidget()
@@ -663,17 +750,10 @@ class ResultViewerWindow(QMainWindow):
             self._find_all_matches(text, document)
             if self._search_matches:
                 self._current_match_index = 0
-                cursor = QTextCursor(document)
-                cursor.setPosition(self._search_matches[0])
-                cursor.movePosition(
-                    QTextCursor.MoveOperation.Right,
-                    QTextCursor.MoveMode.KeepAnchor,
-                    len(text),
-                )
-                current_view.setTextCursor(cursor)
-                self._update_search_count_label()
+                self._navigate_to_match(current_view, text)
             else:
                 self.search_count_label.setText("0/0")
+            self._apply_search_highlights(current_view, text)
 
     def _search_next(self):
         """搜索下一个"""
@@ -688,16 +768,8 @@ class ResultViewerWindow(QMainWindow):
 
         current_view = self.tabs.currentWidget()
         if isinstance(current_view, (QTextEdit, QTextBrowser)):
-            cursor = QTextCursor(current_view.document())
-            cursor.setPosition(self._search_matches[self._current_match_index])
-            # 移动到匹配结束位置并选中
-            cursor.movePosition(
-                QTextCursor.MoveOperation.Right,
-                QTextCursor.MoveMode.KeepAnchor,
-                len(text),
-            )
-            current_view.setTextCursor(cursor)
-            self._update_search_count_label()
+            self._navigate_to_match(current_view, text)
+            self._apply_search_highlights(current_view, text)
 
     def _search_prev(self):
         """搜索上一个"""
@@ -712,16 +784,50 @@ class ResultViewerWindow(QMainWindow):
 
         current_view = self.tabs.currentWidget()
         if isinstance(current_view, (QTextEdit, QTextBrowser)):
-            cursor = QTextCursor(current_view.document())
-            cursor.setPosition(self._search_matches[self._current_match_index])
-            # 移动到匹配结束位置并选中
+            self._navigate_to_match(current_view, text)
+            self._apply_search_highlights(current_view, text)
+
+    def _navigate_to_match(self, view, text: str):
+        """导航到当前匹配项并选中"""
+        cursor = QTextCursor(view.document())
+        cursor.setPosition(self._search_matches[self._current_match_index])
+        cursor.movePosition(
+            QTextCursor.MoveOperation.Right,
+            QTextCursor.MoveMode.KeepAnchor,
+            len(text),
+        )
+        view.setTextCursor(cursor)
+        self._update_search_count_label()
+
+    def _apply_search_highlights(self, view, text: str):
+        """高亮所有匹配项（当前项橙色，其他项黄色）"""
+        extra_selections = []
+        if self._theme_manager.current_theme == "dark":
+            current_color = QColor("#b86e00")
+            other_color = QColor("#3d3d00")
+            current_fg = QColor("#ffffff")
+        else:
+            current_color = QColor("#ff9632")
+            other_color = QColor("#fff3a8")
+            current_fg = QColor("#ffffff")
+
+        for i, match_pos in enumerate(self._search_matches):
+            selection = QTextEdit.ExtraSelection()
+            if i == self._current_match_index:
+                selection.format.setBackground(current_color)
+                selection.format.setForeground(current_fg)
+            else:
+                selection.format.setBackground(other_color)
+            cursor = QTextCursor(view.document())
+            cursor.setPosition(match_pos)
             cursor.movePosition(
                 QTextCursor.MoveOperation.Right,
                 QTextCursor.MoveMode.KeepAnchor,
                 len(text),
             )
-            current_view.setTextCursor(cursor)
-            self._update_search_count_label()
+            selection.cursor = cursor
+            extra_selections.append(selection)
+        view.setExtraSelections(extra_selections)
 
     def _find_all_matches(self, text: str, document: QTextDocument):
         """查找所有匹配项"""
@@ -731,7 +837,6 @@ class ResultViewerWindow(QMainWindow):
         while not cursor.isNull():
             cursor = document.find(text, cursor)
             if not cursor.isNull():
-                # 存储匹配起始位置（selectionStart）
                 self._search_matches.append(cursor.selectionStart())
                 cursor.movePosition(QTextCursor.MoveOperation.NextCharacter)
 
@@ -744,17 +849,7 @@ class ResultViewerWindow(QMainWindow):
         else:
             self.search_count_label.setText("0/0")
 
-    def _export_html(self):
-        """导出为HTML"""
-        QMessageBox.information(self, "提示", "该功能暂未实现")
-
-    def _export_pdf(self):
-        """导出为PDF"""
-        QMessageBox.information(self, "提示", "该功能暂未实现")
-
-    def _export_txt(self):
-        """导出为TXT"""
-        QMessageBox.information(self, "提示", "该功能暂未实现")
+    # ─── 书签 ─────────────────────────────────────────────────
 
     def _add_bookmark(self):
         """添加书签"""
@@ -768,13 +863,20 @@ class ResultViewerWindow(QMainWindow):
 
         cursor = current_view.textCursor()
         position = cursor.position()
-        text = current_view.toPlainText()
+        full_text = current_view.toPlainText()
+
+        # 截取光标位置附近的文本作为预览（前30字符 + 后70字符）
+        start = max(0, position - 30)
+        end = min(len(full_text), position + 70)
+        context_text = full_text[start:end]
 
         content_type = (
             "transcript" if current_view == self.transcript_view else "summary"
         )
 
-        bookmark = BookmarkItem(self._current_video_name, content_type, position, text)
+        bookmark = BookmarkItem(
+            self._current_video_name, content_type, position, context_text
+        )
         self._bookmarks.append(bookmark)
 
         self._refresh_bookmark_list()
@@ -811,12 +913,25 @@ class ResultViewerWindow(QMainWindow):
     def _refresh_bookmark_list(self):
         """刷新书签列表"""
         self.bookmark_list.clear()
+        self._bookmark_count_label.setText(f"共 {len(self._bookmarks)} 个书签")
+        self._bookmark_empty_label.setVisible(len(self._bookmarks) == 0)
+        self.bookmark_list.setVisible(len(self._bookmarks) > 0)
+
+        type_labels = {"transcript": "转写", "summary": "摘要"}
         for i, bookmark in enumerate(self._bookmarks):
-            item = QListWidgetItem(
-                f"{i + 1}. {bookmark.video_name} - {bookmark.content_type}"
-            )
+            type_label = type_labels.get(bookmark.content_type, bookmark.content_type)
+            display_text = f"[{type_label}] {bookmark.video_name}"
+            if bookmark.text.strip():
+                display_text += f"\n  {bookmark.text.strip()[:60]}"
+
+            item = QListWidgetItem(display_text)
             item.setData(Qt.ItemDataRole.UserRole, i)
-            item.setToolTip(bookmark.text)
+            item.setToolTip(
+                f"文件: {bookmark.video_name}\n"
+                f"类型: {type_label}\n"
+                f"位置: {bookmark.position}\n"
+                f"---\n{bookmark.text}"
+            )
             self.bookmark_list.addItem(item)
 
     def _on_bookmark_double_clicked(self, item: QListWidgetItem):
@@ -853,6 +968,21 @@ class ResultViewerWindow(QMainWindow):
         else:
             self.bookmark_dock.show()
 
+    def _filter_bookmarks(self, text: str):
+        """根据输入过滤书签列表"""
+        type_labels = {"transcript": "转写", "summary": "摘要"}
+        for i in range(self.bookmark_list.count()):
+            item = self.bookmark_list.item(i)
+            index = item.data(Qt.ItemDataRole.UserRole)
+            if 0 <= index < len(self._bookmarks):
+                bookmark = self._bookmarks[index]
+                searchable = (
+                    f"{bookmark.video_name} "
+                    f"{type_labels.get(bookmark.content_type, '')} "
+                    f"{bookmark.text}"
+                ).lower()
+                item.setHidden(bool(text) and text.lower() not in searchable)
+
     def _load_bookmarks(self):
         """加载书签"""
         settings = QSettings("Video2Text", "ResultViewer")
@@ -884,13 +1014,73 @@ class ResultViewerWindow(QMainWindow):
             )
         settings.setValue("bookmarks", bookmark_data)
 
+    # ─── 标签页切换 ────────────────────────────────────────────
+
     def _on_tab_changed(self, index: int):
         """标签页切换时清除搜索状态"""
         self._clear_search_state()
 
+    # ─── 窗口状态持久化 ───────────────────────────────────────
+
+    def _restore_window_state(self):
+        """恢复窗口大小、位置、工具栏和分割器状态"""
+        settings = QSettings("Video2Text", "ResultViewer")
+        geometry = settings.value("geometry")
+        if geometry is not None:
+            self.restoreGeometry(geometry)
+        state = settings.value("windowState")
+        if state is not None:
+            self.restoreState(state)
+        splitter_state = settings.value("splitterState")
+        if splitter_state is not None:
+            self._main_splitter.restoreState(splitter_state)
+
+    def closeEvent(self, event):
+        """关闭时保存窗口状态"""
+        settings = QSettings("Video2Text", "ResultViewer")
+        settings.setValue("geometry", self.saveGeometry())
+        settings.setValue("windowState", self.saveState())
+        settings.setValue("splitterState", self._main_splitter.saveState())
+        super().closeEvent(event)
+
+    # ─── 键盘快捷键 ───────────────────────────────────────────
+
     def keyPressEvent(self, event):
         """处理键盘快捷键"""
-        if event.key() == Qt.Key.Key_Escape:
+        key = event.key()
+        mods = event.modifiers()
+
+        if key == Qt.Key.Key_Escape:
             if self.isFullScreen():
                 self.showNormal()
+
+        elif key == Qt.Key.Key_F and mods == Qt.KeyboardModifier.ControlModifier:
+            self.search_edit.setFocus()
+            self.search_edit.selectAll()
+
+        elif key == Qt.Key.Key_F3:
+            if mods == Qt.KeyboardModifier.ShiftModifier:
+                self._search_prev()
+            else:
+                self._search_next()
+
+        elif key == Qt.Key.Key_G:
+            if mods == Qt.KeyboardModifier.ControlModifier:
+                self._search_next()
+            elif mods == (
+                Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier
+            ):
+                self._search_prev()
+
+        elif key in (Qt.Key.Key_Plus, Qt.Key.Key_Equal) and (
+            mods == Qt.KeyboardModifier.ControlModifier
+        ):
+            self.font_size_spin.setValue(self.font_size_spin.value() + 1)
+
+        elif key == Qt.Key.Key_Minus and (mods == Qt.KeyboardModifier.ControlModifier):
+            self.font_size_spin.setValue(self.font_size_spin.value() - 1)
+
+        elif key == Qt.Key.Key_0 and (mods == Qt.KeyboardModifier.ControlModifier):
+            self.font_size_spin.setValue(14)
+
         super().keyPressEvent(event)

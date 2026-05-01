@@ -59,6 +59,7 @@ class TranscriptionService:
         output_formats: Optional[List[str]] = None,
         # 回调
         on_video_done: Optional[Callable[[TranscribeResult], None]] = None,
+        on_video_error: Optional[Callable[[str, str], None]] = None,
         on_progress: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
     ):
@@ -74,6 +75,7 @@ class TranscriptionService:
         self.output_formats = output_formats or ["txt"]
 
         self.on_video_done = on_video_done
+        self.on_video_error = on_video_error
         self.on_progress = on_progress
         self.cancel_check = cancel_check
 
@@ -152,9 +154,13 @@ class TranscriptionService:
             except Video2TextError as e:
                 logger.error("转写失败 %s: %s", video_path, e)
                 self._log(f"[{idx + 1}/{total}] 转写失败: {video_name} - {e}")
-            except Exception:
+                if self.on_video_error:
+                    self.on_video_error(video_name, str(e))
+            except Exception as e:
                 logger.exception("未知错误 %s", video_path)
                 self._log(f"[{idx + 1}/{total}] 未知错误: {video_name}")
+                if self.on_video_error:
+                    self.on_video_error(video_name, str(e))
 
         return results
 

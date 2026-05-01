@@ -90,6 +90,8 @@ class TranscribeWorker(QObject):
 
     # (video_name, segments_count, output_paths)
     video_done = Signal(str, int, list)
+    # (video_name, error_message)
+    video_error = Signal(str, str)
     progress = Signal(int, int)
     finished = Signal()
 
@@ -167,6 +169,12 @@ class TranscribeWorker(QObject):
                 )
                 self.progress.emit(done_count, total)
 
+            def on_video_error(video_name: str, error_msg: str):
+                nonlocal done_count
+                done_count += 1
+                self.video_error.emit(video_name, error_msg)
+                self.progress.emit(done_count, total)
+
             service = TranscriptionService(
                 transcriber=transcriber,
                 video_processor=video_processor,
@@ -178,6 +186,7 @@ class TranscribeWorker(QObject):
                 max_chunk_duration=max_chunk_duration,
                 output_formats=output_formats,
                 on_video_done=on_video_done,
+                on_video_error=on_video_error,
                 cancel_check=lambda: self._cancelled,
             )
             self._service = service
@@ -200,6 +209,8 @@ class SummarizeWorker(QObject):
     stream_token = Signal(str)
     # 总结完成 (video_name, summary)
     video_done = Signal(str, str)
+    # 总结失败 (video_name, error_message)
+    video_error = Signal(str, str)
     progress = Signal(int, int)
     finished = Signal()
 
@@ -240,17 +251,26 @@ class SummarizeWorker(QObject):
             cancel_check=lambda: self._cancelled,
         )
 
+        total = len(self.video_files)
+
         if not service.check_connection():
             logger.error("无法连接到 Ollama 服务")
+            for idx, vp in enumerate(self.video_files):
+                self.video_error.emit(Path(vp).stem, "无法连接到 Ollama 服务")
+            self.progress.emit(total, total)
             self.finished.emit()
             return
 
         if not service.check_model():
             logger.error("Ollama 模型 %s 不存在", service.model_name)
+            for idx, vp in enumerate(self.video_files):
+                self.video_error.emit(
+                    Path(vp).stem, f"Ollama 模型 {service.model_name} 不存在"
+                )
+            self.progress.emit(total, total)
             self.finished.emit()
             return
 
-        total = len(self.video_files)
         for idx, video_path in enumerate(self.video_files):
             if self._cancelled:
                 break
@@ -260,6 +280,7 @@ class SummarizeWorker(QObject):
 
             if not transcript_path.exists():
                 logger.warning("未找到转写文件: %s", video_name)
+                self.video_error.emit(video_name, "未找到转写文件")
                 self.progress.emit(idx + 1, total)
                 continue
 
@@ -267,6 +288,7 @@ class SummarizeWorker(QObject):
                 text = transcript_path.read_text(encoding="utf-8")
                 if not text.strip():
                     logger.warning("转写文件为空: %s", video_name)
+                    self.video_error.emit(video_name, "转写文件为空")
                     self.progress.emit(idx + 1, total)
                     continue
 
@@ -276,8 +298,11 @@ class SummarizeWorker(QObject):
                 )
                 if summary:
                     self.video_done.emit(video_name, summary)
-            except Exception:
+                else:
+                    self.video_error.emit(video_name, "总结结果为空")
+            except Exception as e:
                 logger.exception("总结失败: %s", video_name)
+                self.video_error.emit(video_name, str(e))
 
             self.progress.emit(idx + 1, total)
 
@@ -289,8 +314,12 @@ class PipelineWorker(QObject):
 
     # 转写完成 (video_name, segments_count, output_paths)
     transcribe_done = Signal(str, int, list)
+    # 转写失败 (video_name, error_message)
+    transcribe_error = Signal(str, str)
     # 总结完成 (video_name, summary)
     summarize_done = Signal(str, str)
+    # 总结失败 (video_name, error_message)
+    summarize_error = Signal(str, str)
     # 流式 token
     stream_token = Signal(str)
     progress = Signal(int, int)
@@ -379,11 +408,21 @@ class PipelineWorker(QObject):
                 logger.warning("总结服务不可用，将只执行转写")
 
             total = len(self.video_files)
+            done_count = 0
 
             def on_tx_done(result: TranscribeResult):
+                nonlocal done_count
+                done_count += 1
                 self.transcribe_done.emit(
                     result.video_name, len(result.segments), result.output_paths
                 )
+                self.progress.emit(done_count, total)
+
+            def on_tx_error(video_name: str, error_msg: str):
+                nonlocal done_count
+                done_count += 1
+                self.transcribe_error.emit(video_name, error_msg)
+                self.progress.emit(done_count, total)
 
             tx_service = TranscriptionService(
                 transcriber=transcriber,
@@ -396,13 +435,14 @@ class PipelineWorker(QObject):
                 max_chunk_duration=max_chunk_duration,
                 output_formats=output_formats,
                 on_video_done=on_tx_done,
+                on_video_error=on_tx_error,
                 cancel_check=lambda: self._cancelled,
             )
             self._tx_service = tx_service
 
             results = tx_service.run(self.video_files, self.output_dir)
 
-            for idx, result in enumerate(results):
+            for result in results:
                 if self._cancelled:
                     break
 
@@ -419,10 +459,11 @@ class PipelineWorker(QObject):
                         )
                         if summary:
                             self.summarize_done.emit(result.video_name, summary)
-                    except Exception:
+                        else:
+                            self.summarize_error.emit(result.video_name, "总结结果为空")
+                    except Exception as e:
                         logger.exception("总结失败: %s", result.video_name)
-
-                self.progress.emit(idx + 1, total)
+                        self.summarize_error.emit(result.video_name, str(e))
 
         except Exception:
             logger.exception("管道线程异常")

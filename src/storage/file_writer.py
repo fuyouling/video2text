@@ -7,6 +7,7 @@ from typing import List, Optional
 from src.transcription.transcriber import TranscriptSegment
 from src.text_processing.segment_merger import MergedSegment
 from src.storage.output_formatter import OutputFormatter, OutputData
+from src.utils.exceptions import TranscriptionError
 from src.utils.logger import get_logger
 from src.utils.output_validator import (
     validate_output_file,
@@ -63,6 +64,16 @@ class FileWriter:
             )
         else:
             raise ValueError(f"不支持的格式: {format}")
+
+        if not segments:
+            raise TranscriptionError(
+                f"转写结果为空（未检测到语音内容），无法写入 {format.upper()} 文件: {filename}"
+            )
+
+        if not content or not content.strip():
+            raise TranscriptionError(
+                f"格式化后的内容为空，无法写入 {format.upper()} 文件: {filename}"
+            )
 
         try:
             with open(output_path, "w", encoding="utf-8") as f:
