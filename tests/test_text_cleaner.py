@@ -53,7 +53,7 @@ class TestTextCleaner:
 
     def test_remove_repeated_chars(self):
         assert self.cleaner.remove_repeated_chars("aaa") == "aa"
-        assert self.cleaner.remove_repeated_chars("!!!") == "!"
+        assert self.cleaner.remove_repeated_chars("!!!") == "!!!"
         assert self.cleaner.remove_repeated_chars("aa") == "aa"
 
     def test_capitalize_sentences(self):

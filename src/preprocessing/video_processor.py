@@ -1,12 +1,13 @@
 """视频处理器"""
 
+import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Optional
 from dataclasses import dataclass
 from src.config.settings import Settings
-from src.preprocessing.ffmpeg import ensure_ffmpeg
+from src.preprocessing.ffmpeg import ensure_ffmpeg, ensure_ffprobe
 from src.utils.exceptions import VideoFileError
 from src.utils.logger import get_logger
 
@@ -42,6 +43,7 @@ class VideoProcessor:
             ffmpeg_path: FFmpeg可执行文件路径
         """
         self.ffmpeg_path = ensure_ffmpeg(ffmpeg_path)
+        self.ffprobe_path = ensure_ffprobe(ffmpeg_path)
         self.supported_video_formats = [
             ext.lower()
             for ext in Settings().get_list(
@@ -76,14 +78,23 @@ class VideoProcessor:
                 f"支持的格式: {', '.join(self.supported_video_formats)}"
             )
 
-        cmd = [self.ffmpeg_path, "-v", "error", "-i", video_path, "-f", "null", "-"]
+        cmd = [
+            self.ffprobe_path,
+            "-v",
+            "error",
+            "-show_entries",
+            "format=format_name",
+            "-of",
+            "csv=p=0",
+            video_path,
+        ]
 
         try:
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=300,
+                timeout=60,
                 creationflags=CREATE_NO_WINDOW,
                 encoding="utf-8",
                 errors="ignore",
@@ -98,6 +109,8 @@ class VideoProcessor:
 
         except subprocess.TimeoutExpired:
             raise VideoFileError("视频验证超时")
+        except VideoFileError:
+            raise
         except Exception as e:
             raise VideoFileError(f"视频验证失败: {e}")
 
@@ -113,67 +126,69 @@ class VideoProcessor:
         Raises:
             VideoFileError: 获取视频信息失败
         """
-        cmd = [self.ffmpeg_path, "-i", video_path, "-f", "null", "-"]
+        cmd = [
+            self.ffprobe_path,
+            "-v",
+            "quiet",
+            "-print_format",
+            "json",
+            "-show_format",
+            "-show_streams",
+            video_path,
+        ]
 
         try:
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
-                encoding="utf-8",
                 timeout=30,
-                errors="ignore",
                 creationflags=CREATE_NO_WINDOW,
+                encoding="utf-8",
+                errors="ignore",
             )
 
-            stderr = result.stderr or ""
+            if result.returncode != 0:
+                raise VideoFileError(
+                    f"获取视频信息失败: {result.stderr or result.stdout}"
+                )
 
-            duration = 0.0
-            width = 0
-            height = 0
+            data = json.loads(result.stdout)
+
+            video_stream = None
+            audio_stream = None
+            for stream in data.get("streams", []):
+                codec_type = stream.get("codec_type", "")
+                if codec_type == "video" and video_stream is None:
+                    video_stream = stream
+                elif codec_type == "audio" and audio_stream is None:
+                    audio_stream = stream
+
+            duration = float(data.get("format", {}).get("duration") or 0)
+
+            width = int(video_stream.get("width", 0)) if video_stream else 0
+            height = int(video_stream.get("height", 0)) if video_stream else 0
+            codec = video_stream.get("codec_name", "") if video_stream else ""
+
             fps = 0.0
-            codec = ""
-            audio_codec = ""
-            audio_sample_rate = 0
-            has_audio = False
+            if video_stream:
+                r_frame_rate = video_stream.get("r_frame_rate", "0/1")
+                try:
+                    if "/" in r_frame_rate:
+                        num, den = r_frame_rate.split("/")
+                        if int(den) != 0:
+                            fps = int(num) / int(den)
+                    else:
+                        fps = float(r_frame_rate)
+                except (ValueError, ZeroDivisionError):
+                    logger.warning("无法解析帧率: %s，使用默认值 0", r_frame_rate)
+                    fps = 0.0
 
-            for line in stderr.split("\n"):
-                if "Duration:" in line:
-                    time_str = line.split("Duration:")[1].split(",")[0].strip()
-                    h, m, s = time_str.split(":")
-                    duration = float(h) * 3600 + float(m) * 60 + float(s)
-                if "Video:" in line:
-                    for part in line.split(","):
-                        if "x" in part and "fps" not in part:
-                            try:
-                                resolution = part.strip().split()[0]
-                                width, height = map(int, resolution.split("x"))
-                            except (ValueError, IndexError):
-                                pass
-                        if "fps" in part:
-                            try:
-                                fps_str = part.strip().split()[0]
-                                fps = float(fps_str)
-                            except (ValueError, IndexError):
-                                pass
-                        if "Video:" in part:
-                            try:
-                                codec = part.split("Video:")[1].strip().split()[0]
-                            except (ValueError, IndexError):
-                                pass
-                if "Audio:" in line:
-                    has_audio = True
-                    for part in line.split(","):
-                        if "Hz" in part:
-                            try:
-                                audio_sample_rate = int(part.strip().split()[0])
-                            except (ValueError, IndexError):
-                                pass
-                        if "Audio:" in part:
-                            try:
-                                audio_codec = part.split("Audio:")[1].strip().split()[0]
-                            except (ValueError, IndexError):
-                                pass
+            has_audio = audio_stream is not None
+            audio_codec = audio_stream.get("codec_name", "") if audio_stream else ""
+            audio_sample_rate = (
+                int(audio_stream.get("sample_rate", 0)) if audio_stream else 0
+            )
 
             return VideoInfo(
                 duration=duration,
@@ -186,6 +201,10 @@ class VideoProcessor:
                 has_audio=has_audio,
             )
 
+        except json.JSONDecodeError as e:
+            raise VideoFileError(f"解析视频信息失败: {e}")
+        except VideoFileError:
+            raise
         except Exception as e:
             raise VideoFileError(f"获取视频信息失败: {e}")
 
@@ -195,6 +214,7 @@ class VideoProcessor:
         output_path: str,
         sample_rate: int = 16000,
         channels: int = 1,
+        video_info: Optional[VideoInfo] = None,
     ) -> str:
         """提取音频
 
@@ -208,6 +228,7 @@ class VideoProcessor:
             output_path: 输出音频文件路径
             sample_rate: 采样率
             channels: 声道数
+            video_info: 可选的已缓存 VideoInfo，避免重复调用 ffprobe
 
         Returns:
             输出音频文件路径
@@ -218,7 +239,8 @@ class VideoProcessor:
         output_file = Path(output_path)
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
-        video_info = self.get_video_info(video_path)
+        if video_info is None:
+            video_info = self.get_video_info(video_path)
         if not video_info.has_audio:
             raise VideoFileError(f"视频文件没有音轨，无法提取音频: {video_path}")
 
@@ -279,8 +301,8 @@ class VideoProcessor:
                 return self._extract_audio_fallback(
                     video_path, str(output_file), sample_rate, channels
                 )
-            except VideoFileError:
-                raise VideoFileError(f"音频提取失败（含回退）: {e}")
+            except VideoFileError as fallback_err:
+                raise VideoFileError(f"音频提取失败（含回退）: {e}") from fallback_err
 
     def _extract_audio_fallback(
         self,
@@ -386,6 +408,22 @@ class VideoProcessor:
         output_file = Path(output_path)
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
+        try:
+            parts = timestamp.split(":")
+            ts_seconds = float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+        except (ValueError, IndexError):
+            raise VideoFileError(f"无效的时间戳格式: {timestamp}，应为 HH:MM:SS")
+
+        video_info = self.get_video_info(video_path)
+        if video_info.duration > 0 and ts_seconds > video_info.duration:
+            logger.warning(
+                "时间戳 %s (%.1fs) 超过视频时长 %.1fs，使用第一帧",
+                timestamp,
+                ts_seconds,
+                video_info.duration,
+            )
+            timestamp = "00:00:00"
+
         cmd = [
             self.ffmpeg_path,
             "-i",
@@ -416,5 +454,7 @@ class VideoProcessor:
             logger.info(f"缩略图生成成功: {output_file}")
             return str(output_file)
 
+        except VideoFileError:
+            raise
         except Exception as e:
             raise VideoFileError(f"缩略图生成失败: {e}")

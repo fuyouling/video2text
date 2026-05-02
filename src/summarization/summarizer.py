@@ -17,6 +17,7 @@ class Summarizer:
         ollama_url: str = "http://127.0.0.1:11434",
         temperature: float = 0.7,
         max_length: int = 5000,
+        client: Optional[OllamaClient] = None,
     ):
         """初始化总结器
 
@@ -25,12 +26,13 @@ class Summarizer:
             ollama_url: Ollama服务地址
             temperature: 温度参数
             max_length: 最大长度
+            client: 可选的已有 OllamaClient 实例，不传则自动创建
         """
         self.model_name = model_name
         self.ollama_url = ollama_url
         self.temperature = temperature
         self.max_length = max_length
-        self.client = OllamaClient(ollama_url)
+        self.client = client if client is not None else OllamaClient(ollama_url)
 
     def check_connection(self) -> bool:
         """检查Ollama连接
@@ -57,23 +59,30 @@ class Summarizer:
             logger.error(f"检查模型失败: {e}")
             return False
 
-    def build_prompt(self, text: str, custom_prompt: Optional[str] = None) -> str:
+    def build_prompt(
+        self,
+        text: str,
+        custom_prompt: Optional[str] = None,
+        include_markdown_prompt: bool = True,
+    ) -> str:
         """构建完整的用户提示词
 
         Args:
             text: 输入文本
             custom_prompt: 自定义提示词
+            include_markdown_prompt: 是否追加 Markdown 格式指令（默认 True）
 
         Returns:
             完整的用户提示词
         """
+        md_part = f"\n\n{self.get_markdown_prompt()}" if include_markdown_prompt else ""
         if custom_prompt and custom_prompt.strip():
-            return f"{custom_prompt.strip()}\n\n{self.get_markdown_prompt()}\n\n文本内容：\n{text}"
+            return f"{custom_prompt.strip()}{md_part}\n\n文本内容：\n{text}"
         else:
             default_prompt = (
                 "你是一个专业的文本总结助手，擅长提取关键信息并生成简洁准确的总结。"
             )
-            return f"{default_prompt}\n\n{self.get_markdown_prompt()}\n\n文本内容：\n{text}"
+            return f"{default_prompt}{md_part}\n\n文本内容：\n{text}"
 
     def summarize(
         self,
@@ -94,7 +103,7 @@ class Summarizer:
         if not text or not text.strip():
             raise SummarizationError("输入文本为空")
 
-        max_len = max_length or self.max_length
+        max_len = max_length if max_length is not None else self.max_length
         user_prompt = self.build_prompt(text, custom_prompt)
 
         logger.info(f"开始总结文本，长度: {len(text)} 字符")
@@ -107,7 +116,7 @@ class Summarizer:
                     model=self.model_name,
                     prompt=user_prompt,
                     temperature=self.temperature,
-                    max_tokens=max_len * 2,
+                    max_tokens=max_len,
                 )
 
             logger.info(f"总结完成，长度: {len(summary)} 字符")

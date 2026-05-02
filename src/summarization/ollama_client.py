@@ -2,9 +2,10 @@
 
 import requests
 import json as _json
+import time
 from typing import Callable, Dict, List, Optional, Any
-from src.utils.exceptions import ExternalServiceError, SummarizationError
-from src.utils.logger import get_logger, log_step
+from src.utils.exceptions import SummarizationError
+from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -12,14 +13,56 @@ logger = get_logger(__name__)
 class OllamaClient:
     """Ollama客户端"""
 
-    def __init__(self, base_url: str = "http://127.0.0.1:11434"):
+    def __init__(self, base_url: str = "http://127.0.0.1:11434", timeout: int = 300):
         """初始化Ollama客户端
 
         Args:
             base_url: Ollama服务地址
+            timeout: 请求超时时间（秒）
         """
         self.base_url = base_url.rstrip("/")
-        self.timeout = 300
+        self.timeout = timeout
+        self.max_retries = 3
+        self._session = requests.Session()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+    def close(self) -> None:
+        """关闭底层 HTTP Session，释放连接池。"""
+        self._session.close()
+
+    def _post_with_retry(
+        self, url: str, json: dict, timeout: int, stream: bool = False
+    ) -> requests.Response:
+        """带重试的 POST 请求（仅对非流式请求重试）。"""
+        last_exc = None
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                response = self._session.post(
+                    url, json=json, timeout=timeout, stream=stream
+                )
+                return response
+            except (
+                requests.exceptions.ConnectionError,
+                requests.exceptions.Timeout,
+            ) as e:
+                last_exc = e
+                if stream or attempt == self.max_retries:
+                    raise
+                wait = 2**attempt
+                logger.warning(
+                    "Ollama 请求失败 (尝试 %d/%d): %s，%d 秒后重试...",
+                    attempt,
+                    self.max_retries,
+                    e,
+                    wait,
+                )
+                time.sleep(wait)
+        raise last_exc
 
     def check_connection(self) -> bool:
         """检查Ollama连接
@@ -28,7 +71,7 @@ class OllamaClient:
             是否连接成功
         """
         try:
-            response = requests.get(f"{self.base_url}/api/tags", timeout=10)
+            response = self._session.get(f"{self.base_url}/api/tags", timeout=10)
             success = response.status_code == 200
             logger.info(f"Ollama连接检查: {'成功' if success else '失败'}")
             return success
@@ -43,7 +86,7 @@ class OllamaClient:
             模型名称列表
         """
         try:
-            response = requests.get(f"{self.base_url}/api/tags", timeout=10)
+            response = self._session.get(f"{self.base_url}/api/tags", timeout=10)
             response.raise_for_status()
 
             data = response.json()
@@ -87,7 +130,7 @@ class OllamaClient:
         if temperature is not None:
             payload["options"] = {"temperature": temperature}
 
-        if max_tokens:
+        if max_tokens is not None:
             if "options" not in payload:
                 payload["options"] = {}
             payload["options"]["num_predict"] = max_tokens
@@ -95,38 +138,48 @@ class OllamaClient:
         logger.debug(f"Ollama请求参数: {payload}")
 
         try:
-            response = requests.post(
-                f"{self.base_url}/api/generate", json=payload, timeout=self.timeout
+            response = self._post_with_retry(
+                f"{self.base_url}/api/generate",
+                json=payload,
+                timeout=self.timeout,
+                stream=stream,
             )
 
-            logger.debug(f"Ollama响应状态: {response.status_code}")
+            with response:
+                logger.debug(f"Ollama响应状态: {response.status_code}")
 
-            if response.status_code != 200:
-                error_msg = f"Ollama API错误: {response.status_code}"
-                try:
-                    error_detail = response.json()
-                    error_msg += f", 详情: {error_detail}"
-                except Exception:
-                    error_msg += f", 响应: {response.text[:200]}"
-                logger.error(error_msg)
-                raise SummarizationError(error_msg)
+                if response.status_code != 200:
+                    error_msg = f"Ollama API错误: {response.status_code}"
+                    try:
+                        error_detail = response.json()
+                        error_msg += f", 详情: {error_detail}"
+                    except Exception:
+                        error_msg += f", 响应: {response.text[:200]}"
+                    logger.error(error_msg)
+                    raise SummarizationError(error_msg)
 
-            if stream:
-                result = ""
-                for line in response.iter_lines():
-                    if line:
-                        data = _json.loads(line)
-                        if "response" in data:
-                            token = data["response"]
-                            result += token
-                            if on_token:
-                                on_token(token)
-                        if data.get("done", False):
-                            break
-                return result
-            else:
-                data = response.json()
-                return data.get("response", "")
+                if stream:
+                    result = ""
+                    for line in response.iter_lines():
+                        if line:
+                            try:
+                                data = _json.loads(line)
+                            except _json.JSONDecodeError:
+                                logger.warning(
+                                    "Ollama 流式响应 JSON 解析失败: %s", line[:200]
+                                )
+                                continue
+                            if "response" in data:
+                                token = data["response"]
+                                result += token
+                                if on_token:
+                                    on_token(token)
+                            if data.get("done", False):
+                                break
+                    return result
+                else:
+                    data = response.json()
+                    return data.get("response", "")
 
         except requests.exceptions.Timeout:
             raise SummarizationError("Ollama请求超时")
@@ -162,7 +215,7 @@ class OllamaClient:
         if temperature is not None:
             payload["options"] = {"temperature": temperature}
 
-        if max_tokens:
+        if max_tokens is not None:
             if "options" not in payload:
                 payload["options"] = {}
             payload["options"]["num_predict"] = max_tokens
@@ -170,35 +223,45 @@ class OllamaClient:
         logger.debug(f"Ollama Chat请求参数: {payload}")
 
         try:
-            response = requests.post(
-                f"{self.base_url}/api/chat", json=payload, timeout=self.timeout
+            response = self._post_with_retry(
+                f"{self.base_url}/api/chat",
+                json=payload,
+                timeout=self.timeout,
+                stream=stream,
             )
 
-            logger.debug(f"Ollama Chat响应状态: {response.status_code}")
+            with response:
+                logger.debug(f"Ollama Chat响应状态: {response.status_code}")
 
-            if response.status_code != 200:
-                error_msg = f"Ollama Chat API错误: {response.status_code}"
-                try:
-                    error_detail = response.json()
-                    error_msg += f", 详情: {error_detail}"
-                except Exception:
-                    error_msg += f", 响应: {response.text[:200]}"
-                logger.error(error_msg)
-                raise SummarizationError(error_msg)
+                if response.status_code != 200:
+                    error_msg = f"Ollama Chat API错误: {response.status_code}"
+                    try:
+                        error_detail = response.json()
+                        error_msg += f", 详情: {error_detail}"
+                    except Exception:
+                        error_msg += f", 响应: {response.text[:200]}"
+                    logger.error(error_msg)
+                    raise SummarizationError(error_msg)
 
-            if stream:
-                result = ""
-                for line in response.iter_lines():
-                    if line:
-                        data = _json.loads(line)
-                        if "message" in data and "content" in data["message"]:
-                            result += data["message"]["content"]
-                        if data.get("done", False):
-                            break
-                return result
-            else:
-                data = response.json()
-                return data.get("message", {}).get("content", "")
+                if stream:
+                    result = ""
+                    for line in response.iter_lines():
+                        if line:
+                            try:
+                                data = _json.loads(line)
+                            except _json.JSONDecodeError:
+                                logger.warning(
+                                    "Ollama Chat 流式响应 JSON 解析失败: %s", line[:200]
+                                )
+                                continue
+                            if "message" in data and "content" in data["message"]:
+                                result += data["message"]["content"]
+                            if data.get("done", False):
+                                break
+                    return result
+                else:
+                    data = response.json()
+                    return data.get("message", {}).get("content", "")
 
         except requests.exceptions.Timeout:
             raise SummarizationError("Ollama请求超时")
@@ -218,7 +281,7 @@ class OllamaClient:
         """
         try:
             payload = {"name": model, "stream": False}
-            response = requests.post(
+            response = self._session.post(
                 f"{self.base_url}/api/pull", json=payload, timeout=600
             )
             response.raise_for_status()
@@ -239,7 +302,7 @@ class OllamaClient:
             模型信息
         """
         try:
-            response = requests.post(
+            response = self._session.post(
                 f"{self.base_url}/api/show", json={"name": model}, timeout=30
             )
             response.raise_for_status()

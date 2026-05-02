@@ -1,7 +1,7 @@
 """文本清理器"""
 
 import re
-from typing import List, Optional
+from typing import Optional
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -19,10 +19,23 @@ class TextCleaner:
                 - normalize_punctuation: 是否将中文标点转换为英文标点（默认 False）
         """
         self.config = config or {}
-        self.filler_words = self.config.get(
-            "filler_words",
-            ["嗯", "啊", "呃", "那个", "这个", "就是", "然后", "嗯嗯", "啊啊"],
+        self.filler_words = sorted(
+            self.config.get(
+                "filler_words",
+                ["嗯", "啊", "呃", "那个", "这个", "就是", "然后", "嗯嗯", "啊啊"],
+            ),
+            key=len,
+            reverse=True,
         )
+        self._filler_patterns = []
+        for filler in self.filler_words:
+            escaped = re.escape(filler)
+            if re.search(r"[a-zA-Z]", filler):
+                self._filler_patterns.append(
+                    (re.compile(r"\b" + escaped + r"\b", re.IGNORECASE), "")
+                )
+            else:
+                self._filler_patterns.append((re.compile(escaped), ""))
         self.normalize_punctuation = self.config.get("normalize_punctuation", False)
 
     def clean(self, text: str) -> str:
@@ -57,9 +70,8 @@ class TextCleaner:
         Returns:
             移除填充词后的文本
         """
-        for filler in self.filler_words:
-            pattern = r"\b" + re.escape(filler) + r"\b"
-            text = re.sub(pattern, "", text, flags=re.IGNORECASE)
+        for pattern, replacement in self._filler_patterns:
+            text = pattern.sub(replacement, text)
 
         return text
 
@@ -74,7 +86,7 @@ class TextCleaner:
         """
         if self.normalize_punctuation:
             text = re.sub(
-                r"[，。！？、；：" "''（）【】《》]",
+                "[，。！？、；：\u201c\u201d''（）【】《》]",
                 lambda m: {
                     "，": ",",
                     "。": ".",
@@ -83,8 +95,10 @@ class TextCleaner:
                     "、": ",",
                     "；": ";",
                     "：": ":",
-                    '"': '"',
+                    "\u201c": '"',
+                    "\u201d": '"',
                     "'": "'",
+                    "\u2018": "'",
                     "（": "(",
                     "）": ")",
                     "【": "[",
@@ -95,13 +109,20 @@ class TextCleaner:
                 text,
             )
 
-        text = re.sub(r"\s+([,.!?;:])", r"\1", text)
+        text = re.sub(r"[ \t]+([,.!?;:])", r"\1", text)
 
-        text = re.sub(r"([,.!?;:])\s+", r"\1 ", text)
+        text = re.sub(r"([,.!?;:])[ \t]+", r"\1 ", text)
 
-        text = re.sub(r"([,.!?;:])\1+", r"\1", text)
+        text = re.sub(r"\.{4,}", "...", text)
+        text = re.sub(r"([!?])\1+", r"\1", text)
 
-        text = re.sub(r"\s+", " ", text)
+        text = re.sub(r"[ \t]+([，。！？、；：])", r"\1", text)
+
+        text = re.sub(r"([，。！？、；：])[ \t]+", r"\1", text)
+
+        text = re.sub(r"([，。！？、；：])\1+", r"\1", text)
+
+        text = re.sub(r"[ \t]+", " ", text)
 
         return text
 
@@ -116,7 +137,7 @@ class TextCleaner:
         """
         text = re.sub(r"\r\n", "\n", text)
         text = re.sub(r"\r", "\n", text)
-        text = re.sub(r"\n\s*\n", "\n\n", text)
+        text = re.sub(r"\n(\s*\n)+", "\n\n", text)
         text = re.sub(r"[ \t]+", " ", text)
 
         return text
@@ -130,7 +151,8 @@ class TextCleaner:
         Returns:
             规范化引号后的文本
         """
-        text = re.sub(r'[""\'`]', '"', text)
+        text = re.sub(r'["""]', '"', text)
+        text = re.sub(r"[''']", "'", text)
         return text
 
     def remove_repeated_chars(self, text: str) -> str:
@@ -143,23 +165,27 @@ class TextCleaner:
             移除重复字符后的文本
         """
         text = re.sub(r"([a-zA-Z])\1{2,}", r"\1\1", text)
-        text = re.sub(r"([.,!?;:])\1{2,}", r"\1", text)
+        text = re.sub(r"([\u4e00-\u9fff])\1{4,}", r"\1\1\1", text)
 
         return text
 
-    def capitalize_sentences(self, text: str) -> str:
-        """句子首字母大写
+    def capitalize_sentences(self, text: str, language: str = "en") -> str:
+        """句子首字母大写（仅适用于英文）
 
         Args:
             text: 原始文本
+            language: 语言代码，中文(zh)跳过处理
 
         Returns:
             首字母大写后的文本
         """
-        sentences = re.split(r"([.!?]+)\s*", text)
+        if language.startswith("zh"):
+            return text
+
+        sentences = re.split(r"([.!?]+\s*)", text)
 
         for i in range(0, len(sentences), 2):
-            if sentences[i]:
+            if sentences[i] and len(sentences[i]) > 0:
                 sentences[i] = sentences[i][0].upper() + sentences[i][1:]
 
         return "".join(sentences)
@@ -190,5 +216,8 @@ class TextCleaner:
         """
         if len(text) <= max_length:
             return text
+
+        if max_length <= len(ellipsis):
+            return ellipsis[:max_length]
 
         return text[: max_length - len(ellipsis)] + ellipsis

@@ -10,8 +10,9 @@
 import shutil
 import subprocess
 import sys
+import threading
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict
 
 from src.utils.exceptions import VideoFileError
 from src.utils.logger import get_logger
@@ -24,6 +25,8 @@ else:
     _CREATE_NO_WINDOW = 0
 
 _cache: Dict[str, str] = {}
+_ffprobe_cache: Dict[str, str] = {}
+_lock = threading.Lock()
 
 
 def ensure_ffmpeg(ffmpeg_path: str = "ffmpeg") -> str:
@@ -41,8 +44,9 @@ def ensure_ffmpeg(ffmpeg_path: str = "ffmpeg") -> str:
     Raises:
         VideoFileError: FFmpeg 未找到或不可用
     """
-    if ffmpeg_path in _cache:
-        return _cache[ffmpeg_path]
+    with _lock:
+        if ffmpeg_path in _cache:
+            return _cache[ffmpeg_path]
 
     resolved = shutil.which(ffmpeg_path)
     if not resolved:
@@ -62,10 +66,10 @@ def ensure_ffmpeg(ffmpeg_path: str = "ffmpeg") -> str:
             "或在config.ini的[preprocessing]节中设置ffmpeg_path为FFmpeg的完整路径。"
         )
 
-    # 如果解析后的路径已在缓存中（不同输入指向同一文件），直接复用
-    if resolved in _cache:
-        _cache[ffmpeg_path] = _cache[resolved]
-        return _cache[ffmpeg_path]
+    with _lock:
+        if resolved in _cache:
+            _cache[ffmpeg_path] = _cache[resolved]
+            return _cache[ffmpeg_path]
 
     try:
         result = subprocess.run(
@@ -83,6 +87,71 @@ def ensure_ffmpeg(ffmpeg_path: str = "ffmpeg") -> str:
     except subprocess.TimeoutExpired:
         raise VideoFileError("FFmpeg检查超时")
 
-    _cache[ffmpeg_path] = resolved
-    _cache[resolved] = resolved
+    with _lock:
+        _cache[ffmpeg_path] = resolved
+        _cache[resolved] = resolved
+    return resolved
+
+
+def ensure_ffprobe(ffmpeg_path: str = "ffmpeg") -> str:
+    """确保 ffprobe 可用，返回解析后的绝对路径。
+
+    从 ffmpeg 路径推导 ffprobe 路径（同一目录），或在 PATH 中查找。
+    相同的 ffmpeg_path 参数仅执行一次实际的版本检查，后续调用直接返回缓存路径。
+
+    Args:
+        ffmpeg_path: FFmpeg 可执行文件路径或名称（用于推导 ffprobe 位置）
+
+    Returns:
+        解析后的 ffprobe 绝对路径
+
+    Raises:
+        VideoFileError: ffprobe 未找到或不可用
+    """
+    with _lock:
+        if ffmpeg_path in _ffprobe_cache:
+            return _ffprobe_cache[ffmpeg_path]
+
+    resolved_ffmpeg = ensure_ffmpeg(ffmpeg_path)
+
+    ffmpeg_p = Path(resolved_ffmpeg)
+    ffprobe_name = "ffprobe.exe" if sys.platform == "win32" else "ffprobe"
+    ffprobe_candidate = ffmpeg_p.parent / ffprobe_name
+
+    resolved = None
+    if ffprobe_candidate.exists():
+        resolved = str(ffprobe_candidate)
+    else:
+        resolved = shutil.which("ffprobe")
+
+    if not resolved:
+        raise VideoFileError(
+            "ffprobe 未找到。ffprobe 通常与 ffmpeg 位于同一目录。"
+            "请确保 ffprobe 与 ffmpeg 在同一目录下。"
+        )
+
+    with _lock:
+        if resolved in _ffprobe_cache:
+            _ffprobe_cache[ffmpeg_path] = _ffprobe_cache[resolved]
+            return _ffprobe_cache[ffmpeg_path]
+
+    try:
+        result = subprocess.run(
+            [resolved, "-version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            creationflags=_CREATE_NO_WINDOW,
+            encoding="utf-8",
+            errors="ignore",
+        )
+        if result.returncode != 0:
+            raise VideoFileError("ffprobe 不可用")
+        logger.info("ffprobe 检查通过: %s", resolved)
+    except subprocess.TimeoutExpired:
+        raise VideoFileError("ffprobe 检查超时")
+
+    with _lock:
+        _ffprobe_cache[ffmpeg_path] = resolved
+        _ffprobe_cache[resolved] = resolved
     return resolved

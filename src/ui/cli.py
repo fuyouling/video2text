@@ -15,6 +15,8 @@ from src.services.transcription_service import TranscriptionService
 from src.services.summarization_service import SummarizationService
 from src.storage.file_writer import FileWriter
 from src.storage.output_formatter import OutputFormatter
+from src.text_processing.segment_merger import SegmentMerger
+from src.text_processing.text_cleaner import TextCleaner
 from src.transcription.transcriber import Transcriber
 from src.utils.exceptions import (
     Video2TextError,
@@ -63,7 +65,9 @@ def get_model_path(settings: Settings, model_name: Optional[str] = None) -> str:
     return model_name
 
 
-def _init_common(settings: Settings, output_dir: str, verbose: bool = False):
+def _init_common(
+    settings: Settings, output_dir: str, verbose: bool = False
+) -> tuple[VideoProcessor, FileWriter, list[str]]:
     """CLI 公共初始化：日志、FFmpeg路径、VideoProcessor、FileWriter"""
     log_level = "DEBUG" if verbose else settings.get("app.log_level", "INFO")
     setup_logger(
@@ -76,7 +80,7 @@ def _init_common(settings: Settings, output_dir: str, verbose: bool = False):
     try:
         ffmpeg_path = validate_executable_path(ffmpeg_path, "FFmpeg")
     except Exception as e:
-        raise VideoFileError(str(e))
+        raise VideoFileError(str(e)) from e
 
     video_processor = VideoProcessor(ffmpeg_path=ffmpeg_path)
     file_writer = FileWriter(output_dir)
@@ -108,7 +112,11 @@ def transcribe(
         language = language or settings.get("transcription.language", "auto")
         model = model or settings.get("transcription.model_path", "large-v3")
         device = device or settings.get("transcription.device", "auto")
-        beam_size = beam_size or settings.get_int("transcription.beam_size", 5)
+        beam_size = (
+            beam_size
+            if beam_size is not None
+            else settings.get_int("transcription.beam_size", 5)
+        )
         temperature = (
             temperature
             if temperature is not None
@@ -150,7 +158,10 @@ def transcribe(
         )
 
         service.transcriber.load_model()
-        results = service.run([input_path], output_dir)
+        try:
+            results = service.run([input_path], output_dir)
+        finally:
+            service.transcriber.unload_model()
 
         if results:
             console.print(Panel.fit("[bold green]转写成功！[/bold green]"))
@@ -202,7 +213,7 @@ def summarize(
         if not text_path.exists():
             raise VideoFileError(f"文件不存在: {input_path}")
 
-        text = text_path.read_text(encoding="utf-8")
+        text = text_path.read_text(encoding="utf-8-sig")
         console.print(f"文本长度: {len(text)} 字符")
 
         file_writer = FileWriter(output_dir)
@@ -217,20 +228,23 @@ def summarize(
             on_progress=lambda msg: console.print(f"  {msg}"),
         )
 
-        if not service.check_connection():
-            raise SummarizationError("无法连接到Ollama服务")
+        try:
+            if not service.check_connection():
+                raise SummarizationError("无法连接到Ollama服务")
 
-        if not service.check_model():
-            raise SummarizationError(f"模型 {service.model_name} 不存在")
+            if not service.check_model():
+                raise SummarizationError(f"模型 {service.model_name} 不存在")
 
-        service.summarize(text, video_name=video_name)
+            service.summarize(text, video_name=video_name)
 
-        console.print(Panel.fit("[bold green]总结成功！[/bold green]"))
-        console.print(f"输出文件: {output_dir}/{video_name}_summary.txt")
+            console.print(Panel.fit("[bold green]总结成功！[/bold green]"))
+            console.print(f"输出文件: {output_dir}/{video_name}_summary.txt")
+        finally:
+            service.close()
 
     except Video2TextError as e:
         console.print(f"[bold red]错误: {e}[/bold red]")
-        sys.exit(4)
+        sys.exit(2)
     except Exception as e:
         console.print(f"[bold red]未知错误: {e}[/bold red]")
         sys.exit(1)
@@ -275,7 +289,11 @@ def run_pipeline(
             "summarization.model_name", "qwen2.5:7b-instruct-q4_K_M"
         )
         device = device or settings.get("transcription.device", "auto")
-        beam_size = beam_size or settings.get_int("transcription.beam_size", 5)
+        beam_size = (
+            beam_size
+            if beam_size is not None
+            else settings.get_int("transcription.beam_size", 5)
+        )
         temperature = (
             temperature
             if temperature is not None
@@ -286,7 +304,11 @@ def run_pipeline(
             if summary_temperature is not None
             else settings.get_float("summarization.temperature", 0.7)
         )
-        max_length = max_length or settings.get_int("summarization.max_length", 500)
+        max_length = (
+            max_length
+            if max_length is not None
+            else settings.get_int("summarization.max_length", 5000)
+        )
 
         model_path = get_model_path(settings, transcription_model)
 
@@ -301,6 +323,7 @@ def run_pipeline(
         console.print(f"总结模型: {summarization_model}")
 
         start_time = time.time()
+        sum_service = None
 
         transcriber = Transcriber(
             model_path=model_path,
@@ -326,71 +349,95 @@ def run_pipeline(
         )
 
         tx_service.transcriber.load_model()
-        tx_results = tx_service.run([input_path], output_dir)
+        try:
+            tx_results = tx_service.run([input_path], output_dir)
 
-        if not tx_results:
-            console.print("[bold red]转写失败，无法继续[/bold red]")
-            sys.exit(2)
+            if not tx_results:
+                console.print("[bold red]转写失败，无法继续[/bold red]")
+                sys.exit(2)
 
-        # 总结阶段
-        from src.text_processing.segment_merger import SegmentMerger
-
-        segment_merger = SegmentMerger(
-            max_gap=settings.get_float("text_processing.max_gap", 2.0),
-            min_length=settings.get_int("text_processing.min_length", 50),
-        )
-
-        sum_service = SummarizationService(
-            settings=settings,
-            file_writer=file_writer,
-            model_name=summarization_model,
-            temperature=summary_temperature,
-            max_length=max_length,
-            on_progress=lambda msg: console.print(f"  {msg}"),
-        )
-
-        summary = "总结不可用"
-        if not sum_service.check_connection():
-            console.print("[yellow]警告: 无法连接到Ollama服务，跳过总结[/yellow]")
-        elif not sum_service.check_model():
-            console.print(
-                f"[yellow]警告: 模型 {summarization_model} 不存在，跳过总结[/yellow]"
+            # 总结阶段
+            segment_merger = SegmentMerger(
+                max_gap=settings.get_float("text_processing.max_gap", 2.0),
+                min_length=settings.get_int("text_processing.min_length", 50),
             )
-        else:
+            text_cleaner = TextCleaner()
+
+            sum_service = SummarizationService(
+                settings=settings,
+                file_writer=file_writer,
+                model_name=summarization_model,
+                temperature=summary_temperature,
+                max_length=max_length,
+                on_progress=lambda msg: console.print(f"  {msg}"),
+            )
+
+            summary_map: dict[str, tuple[str, str]] = {}
             for tx_result in tx_results:
                 merged = segment_merger.merge_segments(tx_result.segments)
                 processed_text = segment_merger.format_segments_as_text(
                     merged, include_timestamps=False
                 )
-                summary = sum_service.summarize(
-                    processed_text, video_name=tx_result.video_name
-                )
+                processed_text = text_cleaner.clean(processed_text)
+                summary_map[tx_result.video_name] = (processed_text, "总结不可用")
 
-        # 保存完整数据
-        for tx_result in tx_results:
-            video_name = tx_result.video_name
-            if settings.get_bool("output.json_output", False):
-                formatter = OutputFormatter()
+            sum_available = sum_service.check_connection()
+            if not sum_available:
+                console.print("[yellow]警告: 无法连接到Ollama服务，跳过总结[/yellow]")
+            elif not sum_service.check_model():
+                console.print(
+                    f"[yellow]警告: 模型 {summarization_model} 不存在，跳过总结[/yellow]"
+                )
+                sum_available = False
+            else:
+                for tx_result in tx_results:
+                    processed_text = summary_map[tx_result.video_name][0]
+                    try:
+                        summary = sum_service.summarize(
+                            processed_text, video_name=tx_result.video_name
+                        )
+                        summary_map[tx_result.video_name] = (
+                            processed_text,
+                            summary or "总结不可用",
+                        )
+                    except Exception as e:
+                        console.print(
+                            f"[yellow]警告: {tx_result.video_name} 总结失败: {e}[/yellow]"
+                        )
+
+            # 保存完整数据
+            json_output = settings.get_bool("output.json_output", False)
+            if json_output:
                 video_info = video_processor.get_video_info(input_path)
-                output_data = formatter.create_output_data(
-                    video_name=video_name,
-                    video_path=input_path,
-                    duration=video_info.duration,
-                    transcript_segments=tx_result.segments,
-                    processed_text=processed_text,
-                    summary=summary,
-                    processing_time=time.time() - start_time,
-                )
-                file_writer.write_output_data(output_data, video_name)
+                formatter = OutputFormatter()
+                for tx_result in tx_results:
+                    video_name = tx_result.video_name
+                    processed_text, summary = summary_map.get(
+                        video_name, ("", "总结不可用")
+                    )
+                    output_data = formatter.create_output_data(
+                        video_name=video_name,
+                        video_path=input_path,
+                        duration=video_info.duration,
+                        transcript_segments=tx_result.segments,
+                        processed_text=processed_text,
+                        summary=summary,
+                        processing_time=time.time() - start_time,
+                    )
+                    file_writer.write_output_data(output_data, video_name)
 
-        console.print(Panel.fit("[bold green]处理成功！[/bold green]"))
-        console.print(f"输出目录: {output_dir}")
-        for tx_result in tx_results:
-            for fmt in output_formats:
-                console.print(f"  - {tx_result.video_name}.{fmt} (转写结果)")
-            console.print(f"  - {tx_result.video_name}_summary.txt (摘要)")
-            if settings.get_bool("output.json_output", False):
-                console.print(f"  - {tx_result.video_name}_full.json (完整数据)")
+            console.print(Panel.fit("[bold green]处理成功！[/bold green]"))
+            console.print(f"输出目录: {output_dir}")
+            for tx_result in tx_results:
+                for fmt in output_formats:
+                    console.print(f"  - {tx_result.video_name}.{fmt} (转写结果)")
+                console.print(f"  - {tx_result.video_name}_summary.txt (摘要)")
+                if settings.get_bool("output.json_output", False):
+                    console.print(f"  - {tx_result.video_name}_full.json (完整数据)")
+        finally:
+            tx_service.transcriber.unload_model()
+            if sum_service is not None:
+                sum_service.close()
 
     except Video2TextError as e:
         console.print(f"[bold red]错误: {e}[/bold red]")

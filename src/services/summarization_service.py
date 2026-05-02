@@ -7,7 +7,7 @@ from src.storage.file_writer import FileWriter
 from src.summarization.ollama_client import OllamaClient
 from src.summarization.summarizer import Summarizer
 from src.utils.exceptions import SummarizationError
-from src.utils.logger import get_logger, log_step, log_error_with_context
+from src.utils.logger import get_logger, log_step
 
 logger = get_logger(__name__)
 
@@ -49,8 +49,10 @@ class SummarizationService:
             if temperature is not None
             else settings.get_float("summarization.temperature", 0.7)
         )
-        self.max_length = max_length or settings.get_int(
-            "summarization.max_length", 500
+        self.max_length = (
+            max_length
+            if max_length is not None
+            else settings.get_int("summarization.max_length", 5000)
         )
         self.custom_prompt = custom_prompt
 
@@ -58,17 +60,27 @@ class SummarizationService:
         self.on_progress = on_progress
         self.cancel_check = cancel_check
 
-        self._client = OllamaClient(self.ollama_url)
-        self._summarizer = Summarizer(
-            model_name=self.model_name,
-            ollama_url=self.ollama_url,
-            temperature=self.temperature,
-            max_length=self.max_length,
-        )
+        ollama_timeout = settings.get_int("summarization.timeout", 300)
+        self._client = OllamaClient(self.ollama_url, timeout=ollama_timeout)
+        try:
+            self._summarizer = Summarizer(
+                model_name=self.model_name,
+                ollama_url=self.ollama_url,
+                temperature=self.temperature,
+                max_length=self.max_length,
+                client=self._client,
+            )
+        except Exception:
+            self._client.close()
+            raise
 
     # ------------------------------------------------------------------
     # 公开 API
     # ------------------------------------------------------------------
+
+    def close(self) -> None:
+        """关闭底层 HTTP 连接。"""
+        self._client.close()
 
     def check_connection(self) -> bool:
         """检查 Ollama 连接。"""
@@ -129,6 +141,9 @@ class SummarizationService:
                     custom_prompt=self.custom_prompt or None,
                 )
 
+        if not summary or not summary.strip():
+            raise SummarizationError("模型返回空总结")
+
         if video_name:
             with log_step(f"保存摘要 ({video_name})"):
                 self.file_writer.write_summary(summary, video_name)
@@ -165,7 +180,7 @@ class SummarizationService:
             try:
                 summary = self.summarize(text, video_name=video_name, stream=stream)
                 results.append(summary)
-            except SummarizationError as e:
+            except Exception as e:
                 logger.error("总结失败 %s: %s", video_name, e)
                 self._log(f"[{idx + 1}/{total}] 总结失败: {video_name} - {e}")
                 results.append("")
@@ -195,7 +210,7 @@ class SummarizationService:
                 model=self.model_name,
                 prompt=prompt,
                 temperature=self.temperature,
-                max_tokens=self.max_length * 2,
+                max_tokens=self.max_length,
                 stream=True,
                 on_token=on_token,
             )

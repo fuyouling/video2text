@@ -1,13 +1,15 @@
 """文件写入器"""
 
 import json
+import os
+import tempfile
 from dataclasses import asdict
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 from src.transcription.transcriber import TranscriptSegment
 from src.text_processing.segment_merger import MergedSegment
 from src.storage.output_formatter import OutputFormatter, OutputData
-from src.utils.exceptions import TranscriptionError
+from src.utils.exceptions import TranscriptionError, OutputError
 from src.utils.logger import get_logger
 from src.utils.output_validator import (
     validate_output_file,
@@ -29,6 +31,26 @@ class FileWriter:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.formatter = OutputFormatter()
+
+    @staticmethod
+    def _atomic_write(file_path: Path, content: str, encoding: str = "utf-8") -> None:
+        """原子写入文本文件，防止崩溃或磁盘满导致部分写入。"""
+        fd, tmp_path = tempfile.mkstemp(dir=file_path.parent, suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding=encoding) as f:
+                f.write(content)
+            try:
+                os.replace(tmp_path, str(file_path))
+            except OSError:
+                import shutil
+
+                shutil.move(tmp_path, str(file_path))
+        except BaseException:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
     def write_transcript(
         self,
@@ -52,6 +74,11 @@ class FileWriter:
         """
         output_path = self.output_dir / f"{filename}.{format}"
 
+        if not segments:
+            raise TranscriptionError(
+                f"转写结果为空（未检测到语音内容），无法写入 {format.upper()} 文件: {filename}"
+            )
+
         if format == "txt":
             content = self.formatter.format_transcript(segments, include_timestamps)
         elif format == "srt":
@@ -65,19 +92,13 @@ class FileWriter:
         else:
             raise ValueError(f"不支持的格式: {format}")
 
-        if not segments:
-            raise TranscriptionError(
-                f"转写结果为空（未检测到语音内容），无法写入 {format.upper()} 文件: {filename}"
-            )
-
         if not content or not content.strip():
             raise TranscriptionError(
                 f"格式化后的内容为空，无法写入 {format.upper()} 文件: {filename}"
             )
 
         try:
-            with open(output_path, "w", encoding="utf-8") as f:
-                f.write(content)
+            self._atomic_write(output_path, content)
 
             if validate:
                 validate_output_file(str(output_path))
@@ -107,12 +128,14 @@ class FileWriter:
         Returns:
             输出文件路径
         """
+        if not segments:
+            raise OutputError(f"合并段落为空，无法写入文件: {filename}")
+
         output_path = self.output_dir / f"{filename}.txt"
         content = self.formatter.format_merged_transcript(segments, include_timestamps)
 
         try:
-            with open(output_path, "w", encoding="utf-8") as f:
-                f.write(content)
+            self._atomic_write(output_path, content)
 
             if validate:
                 validate_output_file(str(output_path))
@@ -123,26 +146,22 @@ class FileWriter:
             logger.error(f"写入合并转写文本失败: {e}")
             raise
 
-    def write_summary(
-        self, summary: str, filename: str, title: str = "摘要", validate: bool = True
-    ) -> str:
+    def write_summary(self, summary: str, filename: str, validate: bool = True) -> str:
         """写入摘要
 
         Args:
             summary: 摘要文本
             filename: 文件名
-            title: 标题
             validate: 是否校验输出文件
 
         Returns:
             输出文件路径
         """
         output_path = self.output_dir / f"{filename}_summary.txt"
-        content = self.formatter.format_summary(summary, title)
+        content = self.formatter.format_summary(summary)
 
         try:
-            with open(output_path, "w", encoding="utf-8") as f:
-                f.write(content)
+            self._atomic_write(output_path, content)
 
             if validate:
                 validate_output_file(str(output_path))
@@ -167,8 +186,8 @@ class FileWriter:
         output_path = self.output_dir / f"{filename}.json"
 
         try:
-            with open(output_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
+            content = json.dumps(data, ensure_ascii=False, indent=2)
+            self._atomic_write(output_path, content)
 
             if validate:
                 validate_output_file(str(output_path))
@@ -197,8 +216,7 @@ class FileWriter:
         content = self.formatter.to_json(output_data)
 
         try:
-            with open(output_path, "w", encoding="utf-8") as f:
-                f.write(content)
+            self._atomic_write(output_path, content)
 
             if validate:
                 validate_output_file(str(output_path))
@@ -224,8 +242,7 @@ class FileWriter:
         output_path = self.output_dir / f"{filename}.txt"
 
         try:
-            with open(output_path, "w", encoding="utf-8") as f:
-                f.write(text)
+            self._atomic_write(output_path, text)
 
             if validate:
                 validate_output_file(str(output_path))
@@ -249,12 +266,14 @@ class FileWriter:
         Returns:
             输出文件路径
         """
+        if not keywords:
+            raise OutputError(f"关键词列表为空，无法写入文件: {filename}")
+
         output_path = self.output_dir / f"{filename}_keywords.txt"
         content = "\n".join(keywords)
 
         try:
-            with open(output_path, "w", encoding="utf-8") as f:
-                f.write(content)
+            self._atomic_write(output_path, content)
 
             if validate:
                 validate_output_file(str(output_path))

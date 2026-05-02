@@ -1,13 +1,14 @@
 """Video2Text GUI —— 基于 PySide6 的视频转文本图形界面"""
 
 import logging
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import Qt, QThread, QTimer
-from PySide6.QtGui import QFont, QIcon, QTextCursor
+from PySide6.QtGui import QFont, QIcon, QTextCursor, QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -36,6 +37,8 @@ from PySide6.QtWidgets import (
 from src.config.settings import PromptManager, Settings
 from src.ui.gui_dialogs import VideoSelectionDialog
 from src.ui.gui_workers import (
+    OllamaCheckWorker,
+    OllamaListModelWorker,
     PipelineWorker,
     SummarizeWorker,
     TranscribeWorker,
@@ -43,7 +46,8 @@ from src.ui.gui_workers import (
     UiLogSignal,
 )
 from src.ui.result_viewer import ResultViewerWindow
-from src.utils.logger import get_logger, setup_logger
+from src.transcription.transcriber import _model_cache as _transcriber_cache
+from src.utils.logger import get_logger
 
 SUPPORTED_VIDEO_EXTENSIONS = {
     ".mp4",
@@ -73,6 +77,12 @@ _DEFAULT_OUTPUT_DIR = str(_PROJECT_ROOT / "output")
 
 _BTN_MIN_WIDTH = 100
 
+_VIDEO_FILTER_STR = (
+    "视频文件 ("
+    + " ".join(f"*{ext}" for ext in sorted(SUPPORTED_VIDEO_EXTENSIONS))
+    + ");;所有文件 (*.*)"
+)
+
 
 class MainWindow(QMainWindow):
     """Video2Text 主窗口"""
@@ -93,6 +103,8 @@ class MainWindow(QMainWindow):
         self._sum_success = 0
         self._sum_fail = 0
         self._fail_records: list[tuple[str, str, str]] = []
+        self._ollama_process: Optional[subprocess.Popen] = None
+        self._current_video_name: Optional[str] = None
 
         self._setup_logging()
         self._init_ui()
@@ -104,13 +116,26 @@ class MainWindow(QMainWindow):
         self._log_signal.message.connect(self._append_log)
         self._ui_handler = UiLogHandler(self._log_signal)
 
-        root_logger = logging.getLogger()
-        root_logger.setLevel(logging.INFO)
-        if self._ui_handler not in root_logger.handlers:
-            root_logger.addHandler(self._ui_handler)
+        for name in ("video2text", "src"):
+            lg = logging.getLogger(name)
+            lg.setLevel(logging.INFO)
+            if self._ui_handler not in lg.handlers:
+                lg.addHandler(self._ui_handler)
+
+    _MAX_LOG_BLOCKS = 5000
 
     def _append_log(self, msg: str) -> None:
         self.log_text.append(msg)
+        doc = self.log_text.document()
+        if doc.blockCount() > self._MAX_LOG_BLOCKS:
+            cursor = QTextCursor(doc)
+            cursor.movePosition(QTextCursor.Start)
+            cursor.movePosition(
+                QTextCursor.Down,
+                QTextCursor.KeepAnchor,
+                doc.blockCount() - self._MAX_LOG_BLOCKS,
+            )
+            cursor.removeSelectedText()
         cursor = self.log_text.textCursor()
         cursor.movePosition(QTextCursor.End)
         self.log_text.setTextCursor(cursor)
@@ -341,7 +366,7 @@ class MainWindow(QMainWindow):
             "summarization.model_name", "qwen2.5:7b-instruct-q4_K_M"
         )
         temp = self.settings.get_float("summarization.temperature", 0.7)
-        max_len = self.settings.get_int("summarization.max_length", 500)
+        max_len = self.settings.get_int("summarization.max_length", 5000)
         prompt = self.settings.get("summarization.custom_prompt", "")
         self.ollama_url_edit.setText(url)
         self.ollama_model_combo.setCurrentText(model)
@@ -365,11 +390,9 @@ class MainWindow(QMainWindow):
         )
         try:
             self.settings.save()
-            self.ollama_status_label.setText("配置已保存")
-            self.ollama_status_label.setStyleSheet("color: green")
+            self._set_ollama_status("配置已保存", "green")
         except Exception as e:
-            self.ollama_status_label.setText(f"保存失败: {e}")
-            self.ollama_status_label.setStyleSheet("color: red")
+            self._set_ollama_status(f"保存失败: {e}", "red")
 
     # ── 提示词模板管理 ──
 
@@ -422,8 +445,7 @@ class MainWindow(QMainWindow):
         self.prompt_template_combo.setCurrentText(name)
         self.prompt_template_combo.blockSignals(False)
 
-        self.ollama_status_label.setText(f"提示词「{name}」已保存")
-        self.ollama_status_label.setStyleSheet("color: green")
+        self._set_ollama_status(f"提示词「{name}」已保存", "green")
 
     def _delete_prompt_template(self) -> None:
         name = self.prompt_template_combo.currentText()
@@ -449,53 +471,123 @@ class MainWindow(QMainWindow):
         self.prompt_template_combo.blockSignals(False)
 
         self.ollama_prompt_edit.clear()
-        self.ollama_status_label.setText(f"提示词「{name}」已删除")
-        self.ollama_status_label.setStyleSheet("color: green")
+        self._set_ollama_status(f"提示词「{name}」已删除", "green")
 
     def _test_ollama(self) -> None:
-        from src.summarization.ollama_client import OllamaClient
-
         url = self.ollama_url_edit.text() or "http://127.0.0.1:11434"
-        client = OllamaClient(base_url=url)
-        if client.check_connection():
-            self.ollama_status_label.setText("连接成功")
-            self.ollama_status_label.setStyleSheet("color: green")
-        else:
-            self.ollama_status_label.setText("连接失败")
-            self.ollama_status_label.setStyleSheet("color: red")
+        self._set_ollama_status("测试中...", "orange")
+        self._wait_async_thread("_ollama_check_thread")
+        self._ollama_check_url = url
+        self._ollama_check_mode = "test"
+        thread = QThread()
+        worker = OllamaCheckWorker(url)
+        worker.moveToThread(thread)
+
+        def _cleanup():
+            self._ollama_check_thread = None
+            self._ollama_check_worker = None
+
+        worker.result.connect(self._on_check_result)
+        thread.finished.connect(_cleanup)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(worker.deleteLater)
+        thread.started.connect(worker.run)
+        worker.finished.connect(thread.quit)
+        thread.start()
+        self._ollama_check_thread = thread
+        self._ollama_check_worker = worker
+
+    def _on_check_result(self, ok: bool) -> None:
+        mode = getattr(self, "_ollama_check_mode", "test")
+        url = getattr(self, "_ollama_check_url", "")
+        if mode == "test":
+            if ok:
+                self._set_ollama_status("连接成功", "green")
+                self.status_bar.showMessage("Ollama 连接测试成功", 5000)
+                get_logger("video2text").info("Ollama 连接测试成功: %s", url)
+            else:
+                self._set_ollama_status("连接失败", "red")
+                self.status_bar.showMessage("Ollama 连接测试失败", 5000)
+                get_logger("video2text").warning("Ollama 连接测试失败: %s", url)
+        elif mode == "start":
+            if ok:
+                self._set_ollama_status("Ollama 服务已启动", "green")
+                self.status_bar.showMessage("Ollama 服务启动成功", 5000)
+                get_logger("video2text").info("Ollama 服务启动成功")
+            else:
+                self._set_ollama_status("服务启动中，请稍后测试", "orange")
+                self.status_bar.showMessage("Ollama 服务启动中，请稍后重试", 5000)
+                get_logger("video2text").warning("Ollama 服务启动中，请稍后测试连接")
 
     def _refresh_model_list(self) -> None:
-        """从 Ollama 获取可用模型列表并填充下拉框"""
-        from src.summarization.ollama_client import OllamaClient
-
+        """从 Ollama 获取可用模型列表并填充下拉框（异步）"""
         url = self.ollama_url_edit.text() or "http://127.0.0.1:11434"
-        client = OllamaClient(base_url=url)
-        models = client.list_models()
+        self._set_ollama_status("刷新中...", "orange")
+        self.refresh_models_btn.setEnabled(False)
+        self._wait_async_thread("_ollama_list_thread")
+        thread = QThread()
+        worker = OllamaListModelWorker(url)
+        worker.moveToThread(thread)
 
+        def _cleanup():
+            self._ollama_list_thread = None
+            self._ollama_list_worker = None
+            self.refresh_models_btn.setEnabled(True)
+
+        worker.result.connect(self._on_model_list_received)
+        thread.finished.connect(_cleanup)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(worker.deleteLater)
+        thread.started.connect(worker.run)
+        worker.finished.connect(thread.quit)
+        thread.start()
+        self._ollama_list_thread = thread
+        self._ollama_list_worker = worker
+
+    def _on_model_list_received(self, models: list) -> None:
         current_text = self.ollama_model_combo.currentText()
         self.ollama_model_combo.clear()
         if models:
             self.ollama_model_combo.addItems(models)
-            # 恢复之前的选择
             idx = self.ollama_model_combo.findText(current_text)
             if idx >= 0:
                 self.ollama_model_combo.setCurrentIndex(idx)
-            self.ollama_status_label.setText(f"找到 {len(models)} 个模型")
-            self.ollama_status_label.setStyleSheet("color: green")
+            elif current_text.strip():
+                self.ollama_model_combo.insertItem(0, current_text)
+                self.ollama_model_combo.setCurrentIndex(0)
+            self._set_ollama_status(f"找到 {len(models)} 个模型", "green")
+            self.status_bar.showMessage(
+                f"模型列表刷新成功，共 {len(models)} 个可用模型", 5000
+            )
+            get_logger("video2text").info(
+                "模型列表刷新成功，共 %d 个模型: %s", len(models), models
+            )
         else:
-            self.ollama_status_label.setText("未找到模型或连接失败")
-            self.ollama_status_label.setStyleSheet("color: red")
+            self._set_ollama_status("未找到模型或连接失败", "red")
+            self.status_bar.showMessage("获取模型列表失败，请检查 Ollama 服务", 5000)
+            get_logger("video2text").warning("获取模型列表失败")
 
     def _start_ollama_service(self) -> None:
         import shutil
-        import subprocess
+
+        import requests
 
         logger = get_logger("video2text")
+        url = self.ollama_url_edit.text() or "http://127.0.0.1:11434"
+
+        try:
+            resp = requests.get(f"{url}/api/tags", timeout=2)
+            if resp.status_code == 200:
+                self._set_ollama_status("Ollama 服务已在运行中", "green")
+                self.status_bar.showMessage("Ollama 服务已在运行中", 5000)
+                return
+        except Exception:
+            pass
 
         ollama_path = shutil.which("ollama")
         if not ollama_path:
-            self.ollama_status_label.setText("未找到ollama命令")
-            self.ollama_status_label.setStyleSheet("color: red")
+            self._set_ollama_status("未找到ollama命令", "red")
+            self.status_bar.showMessage("未找到 ollama 命令", 5000)
             QMessageBox.warning(
                 self,
                 "提示",
@@ -506,10 +598,10 @@ class MainWindow(QMainWindow):
 
         try:
             logger.info("正在启动Ollama服务...")
-            self.ollama_status_label.setText("正在启动...")
-            self.ollama_status_label.setStyleSheet("color: orange")
+            self._set_ollama_status("正在启动...", "orange")
+            self.status_bar.showMessage("正在启动 Ollama 服务...")
 
-            subprocess.Popen(
+            self._ollama_process = subprocess.Popen(
                 [ollama_path, "serve"],
                 creationflags=subprocess.CREATE_NO_WINDOW
                 if sys.platform == "win32"
@@ -523,22 +615,30 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
             logger.error(f"启动Ollama服务失败: {e}")
-            self.ollama_status_label.setText(f"启动失败: {e}")
-            self.ollama_status_label.setStyleSheet("color: red")
+            self._set_ollama_status(f"启动失败: {e}", "red")
+            self.status_bar.showMessage(f"Ollama 服务启动失败: {e}", 5000)
 
     def _check_ollama_after_start(self) -> None:
-        from src.summarization.ollama_client import OllamaClient
-
         url = self.ollama_url_edit.text() or "http://127.0.0.1:11434"
-        client = OllamaClient(base_url=url)
+        self._ollama_check_url = url
+        self._ollama_check_mode = "start"
+        thread = QThread()
+        worker = OllamaCheckWorker(url)
+        worker.moveToThread(thread)
 
-        if client.check_connection():
-            self.ollama_status_label.setText("服务已启动")
-            self.ollama_status_label.setStyleSheet("color: green")
-            self._refresh_model_list()
-        else:
-            self.ollama_status_label.setText("服务启动中，请稍后测试")
-            self.ollama_status_label.setStyleSheet("color: orange")
+        def _cleanup():
+            self._ollama_check_thread = None
+            self._ollama_check_worker = None
+
+        worker.result.connect(self._on_check_result)
+        thread.finished.connect(_cleanup)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(worker.deleteLater)
+        thread.started.connect(worker.run)
+        worker.finished.connect(thread.quit)
+        thread.start()
+        self._ollama_check_thread = thread
+        self._ollama_check_worker = worker
 
     def _on_tab_changed(self, index: int) -> None:
         if index == 0:
@@ -555,7 +655,7 @@ class MainWindow(QMainWindow):
             self,
             "选择视频文件",
             "",
-            "视频文件 (*.mp4 *.avi *.mov *.mkv *.flv *.wmv *.webm *.ts *.mts *.m4v *.3gp *.mpeg *.mpg *.vob *.ogv *.rm *.rmvb);;所有文件 (*.*)",
+            _VIDEO_FILTER_STR,
         )
         if paths:
             if len(paths) == 1:
@@ -589,9 +689,12 @@ class MainWindow(QMainWindow):
     def _scan_video_files(folder: str) -> list[str]:
         folder_path = Path(folder)
         files: list[str] = []
+        seen: set[str] = set()
         for ext in SUPPORTED_VIDEO_EXTENSIONS:
             for f in folder_path.rglob(f"*{ext}"):
-                files.append(str(f))
+                if f.is_file() and str(f) not in seen:
+                    seen.add(str(f))
+                    files.append(str(f))
         return sorted(files)
 
     def _select_output_dir(self) -> None:
@@ -610,11 +713,18 @@ class MainWindow(QMainWindow):
         self.file_list.clear()
         self._completed_names.clear()
 
-        transcript_files = sorted(output_path.glob("*.txt"))
+        transcript_files: list[Path] = []
+        for ext in ("txt", "srt", "vtt", "json"):
+            transcript_files.extend(output_path.glob(f"*.{ext}"))
+        transcript_files.sort(key=lambda p: p.name.lower())
 
         loaded_count = 0
         for txt_file in transcript_files:
             if txt_file.name.endswith("_summary.txt"):
+                continue
+            if txt_file.name.endswith("_keywords.txt"):
+                continue
+            if txt_file.name.endswith("_full.json"):
                 continue
 
             video_name = txt_file.stem
@@ -647,8 +757,8 @@ class MainWindow(QMainWindow):
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
         worker.finished.connect(thread.quit)
-        thread.finished.connect(worker.deleteLater)
         thread.finished.connect(self._on_thread_finished)
+        thread.finished.connect(worker.deleteLater)
         thread.start()
 
     def _set_busy_state(self, busy: bool) -> None:
@@ -658,9 +768,42 @@ class MainWindow(QMainWindow):
         self.input_file_btn.setEnabled(not busy)
         self.input_folder_btn.setEnabled(not busy)
         self.output_btn.setEnabled(not busy)
-        self.pause_btn.setEnabled(busy)
+        can_pause = busy and self._current_mode in ("transcribe", "pipeline")
+        self.pause_btn.setEnabled(can_pause)
         if not busy:
             self.pause_btn.setText("暂停")
+
+    def _wait_async_thread(self, attr_name: str, timeout_ms: int = 3000) -> None:
+        """等待指定属性存储的旧 QThread 结束，防止引用泄漏。"""
+        old_thread = getattr(self, attr_name, None)
+        if old_thread is None:
+            return
+        try:
+            if old_thread.isRunning():
+                old_thread.quit()
+                old_thread.wait(timeout_ms)
+        except RuntimeError:
+            setattr(self, attr_name, None)
+
+    def _reset_counters(self) -> None:
+        self._tx_success = 0
+        self._tx_fail = 0
+        self._sum_success = 0
+        self._sum_fail = 0
+        self._fail_records = []
+
+    def _set_ollama_status(self, text: str, color: str) -> None:
+        self.ollama_status_label.setText(text)
+        self.ollama_status_label.setStyleSheet(f"color: {color}")
+
+    def _on_worker_error(self, msg: str) -> None:
+        mode_map = {
+            "transcribe": "转写",
+            "summarize": "总结",
+            "pipeline": "管道",
+        }
+        label = mode_map.get(self._current_mode, "任务")
+        self._set_ollama_status(f"{label}异常: {msg}", "red")
 
     def _on_pause_resume(self) -> None:
         if self._worker is None:
@@ -693,11 +836,7 @@ class MainWindow(QMainWindow):
         self.log_text.clear()
 
         self._current_mode = "transcribe"
-        self._tx_success = 0
-        self._tx_fail = 0
-        self._sum_success = 0
-        self._sum_fail = 0
-        self._fail_records = []
+        self._reset_counters()
 
         total = len(self._video_files)
         self.progress_bar.setMaximum(total)
@@ -712,6 +851,7 @@ class MainWindow(QMainWindow):
         worker.video_done.connect(self._on_single_video_transcribed)
         worker.video_error.connect(self._on_transcribe_error)
         worker.progress.connect(self._on_progress)
+        worker.error.connect(self._on_worker_error)
 
         self._start_worker(thread, worker)
 
@@ -720,6 +860,7 @@ class MainWindow(QMainWindow):
     ) -> None:
         """单个视频转写完成 —— 立即更新 GUI"""
         self._tx_success += 1
+        self._current_video_name = video_name
         if video_name not in self._completed_names:
             self._completed_names.add(video_name)
             item = QListWidgetItem(video_name)
@@ -729,50 +870,69 @@ class MainWindow(QMainWindow):
         self.file_list.setCurrentItem(self.file_list.item(self.file_list.count() - 1))
         self._load_transcript_content(video_name)
 
-        self.ollama_status_label.setText(
-            f"转写完成: {video_name} ({segments_count} 段)"
+        self._set_ollama_status(
+            f"转写完成: {video_name} ({segments_count} 段)", "green"
         )
-        self.ollama_status_label.setStyleSheet("color: green")
         self.status_bar.showMessage(f"转写完成: {video_name} ({segments_count} 段)")
 
     def _load_transcript_content(self, video_name: str) -> None:
         """加载指定视频的转写文本到编辑区"""
         output_dir = self.output_edit.text().strip() or _DEFAULT_OUTPUT_DIR
-        transcript_path = Path(output_dir) / f"{video_name}.txt"
-        if transcript_path.exists():
-            try:
-                self.transcript_view.setPlainText(
-                    transcript_path.read_text(encoding="utf-8")
-                )
-            except (OSError, UnicodeDecodeError):
-                pass
+        transcript_path = None
+        for ext in ("txt", "srt", "vtt", "json"):
+            candidate = Path(output_dir) / f"{video_name}.{ext}"
+            if candidate.exists():
+                transcript_path = candidate
+                break
+        if transcript_path is None:
+            return
+        try:
+            self.transcript_view.setPlainText(
+                transcript_path.read_text(encoding="utf-8-sig")
+            )
+        except (OSError, UnicodeDecodeError) as exc:
+            get_logger("video2text").warning(
+                "读取转写文件失败: %s (%s)", transcript_path, exc
+            )
 
     def _on_transcribe_error(self, video_name: str, error_msg: str) -> None:
         """单个视频转写失败"""
         self._tx_fail += 1
         self._fail_records.append((video_name, "转写", error_msg))
-        self.ollama_status_label.setText(f"转写失败: {video_name} — {error_msg}")
-        self.ollama_status_label.setStyleSheet("color: red")
+        self._set_ollama_status(f"转写失败: {video_name} — {error_msg}", "red")
 
     # ── 仅总结 ──
 
     def _on_summarize(self) -> None:
+        output_dir = self._get_output_dir()
+
+        standalone_text = self.transcript_view.toPlainText().strip()
+
+        if not self._video_files and standalone_text:
+            self._summarize_standalone(standalone_text, output_dir)
+            return
+
         if not self._video_files:
             QMessageBox.warning(
                 self,
                 "提示",
-                "请先选择视频文件或文件夹，并完成转写后再进行总结。",
+                "请先选择视频文件或文件夹，并完成转写后再进行总结。\n"
+                "或在「文本内容」标签页中粘贴文本后点击「仅总结」。",
             )
             return
 
-        output_dir = self._get_output_dir()
+        if self._current_video_name:
+            if standalone_text:
+                transcript_path = Path(output_dir) / f"{self._current_video_name}.txt"
+                try:
+                    transcript_path.write_text(standalone_text, encoding="utf-8")
+                except OSError as exc:
+                    get_logger("video2text").warning(
+                        "保存编辑文本失败: %s (%s)", transcript_path, exc
+                    )
 
         self._current_mode = "summarize"
-        self._tx_success = 0
-        self._tx_fail = 0
-        self._sum_success = 0
-        self._sum_fail = 0
-        self._fail_records = []
+        self._reset_counters()
 
         total = len(self._video_files)
         self.progress_bar.setMaximum(total)
@@ -793,9 +953,44 @@ class MainWindow(QMainWindow):
         )
 
         worker.stream_token.connect(self._on_stream_token)
+        worker.summarize_started.connect(self._on_summarize_started)
         worker.video_done.connect(self._on_single_video_summarized)
         worker.video_error.connect(self._on_summarize_error)
         worker.progress.connect(self._on_progress)
+        worker.error.connect(self._on_worker_error)
+
+        self._start_worker(thread, worker)
+
+    def _summarize_standalone(self, text: str, output_dir: str) -> None:
+        """独立文本总结（不依赖视频文件列表）"""
+        self._current_mode = "summarize"
+        self._reset_counters()
+
+        self.progress_bar.setMaximum(1)
+        self.progress_bar.setValue(0)
+        self.progress_label.setText("0/1")
+
+        self._set_busy_state(True)
+        self.summary_view.clear()
+
+        custom_prompt = self.ollama_prompt_edit.toPlainText().strip()
+
+        thread = QThread()
+        worker = SummarizeWorker(
+            [],
+            output_dir,
+            self.settings,
+            custom_prompt,
+            stream=True,
+        )
+
+        worker.set_standalone_text(text)
+        worker.stream_token.connect(self._on_stream_token)
+        worker.summarize_started.connect(self._on_summarize_started)
+        worker.video_done.connect(self._on_single_video_summarized)
+        worker.video_error.connect(self._on_summarize_error)
+        worker.progress.connect(self._on_progress)
+        worker.error.connect(self._on_worker_error)
 
         self._start_worker(thread, worker)
 
@@ -804,19 +999,21 @@ class MainWindow(QMainWindow):
         self.summary_view.moveCursor(QTextCursor.End)
         self.summary_view.insertPlainText(token)
 
+    def _on_summarize_started(self, video_name: str) -> None:
+        """开始总结新视频时清空摘要区"""
+        self.summary_view.clear()
+
     def _on_single_video_summarized(self, video_name: str, summary: str) -> None:
         """单个视频总结完成"""
         self._sum_success += 1
         self.summary_view.setPlainText(summary)
-        self.ollama_status_label.setText(f"总结完成: {video_name}")
-        self.ollama_status_label.setStyleSheet("color: green")
+        self._set_ollama_status(f"总结完成: {video_name}", "green")
 
     def _on_summarize_error(self, video_name: str, error_msg: str) -> None:
         """单个视频总结失败"""
         self._sum_fail += 1
         self._fail_records.append((video_name, "总结", error_msg))
-        self.ollama_status_label.setText(f"总结失败: {video_name} — {error_msg}")
-        self.ollama_status_label.setStyleSheet("color: red")
+        self._set_ollama_status(f"总结失败: {video_name} — {error_msg}", "red")
 
     # ── 转写+总结管道 ──
 
@@ -834,16 +1031,12 @@ class MainWindow(QMainWindow):
         self.log_text.clear()
 
         self._current_mode = "pipeline"
-        self._tx_success = 0
-        self._tx_fail = 0
-        self._sum_success = 0
-        self._sum_fail = 0
-        self._fail_records = []
+        self._reset_counters()
 
         total = len(self._video_files)
-        self.progress_bar.setMaximum(total)
+        self.progress_bar.setMaximum(total * 2)
         self.progress_bar.setValue(0)
-        self.progress_label.setText(f"0/{total}")
+        self.progress_label.setText(f"0/{total * 2}")
 
         self._set_busy_state(True)
 
@@ -860,10 +1053,12 @@ class MainWindow(QMainWindow):
 
         worker.transcribe_done.connect(self._on_single_video_transcribed)
         worker.transcribe_error.connect(self._on_transcribe_error)
+        worker.summarize_started.connect(self._on_summarize_started)
         worker.stream_token.connect(self._on_stream_token)
         worker.summarize_done.connect(self._on_single_video_summarized)
         worker.summarize_error.connect(self._on_summarize_error)
         worker.progress.connect(self._on_progress)
+        worker.error.connect(self._on_worker_error)
 
         self._start_worker(thread, worker)
 
@@ -874,34 +1069,28 @@ class MainWindow(QMainWindow):
         self.progress_label.setText(f"{completed}/{total}")
 
     def _on_thread_finished(self) -> None:
-        self._worker_thread = None
-        self._worker = None
         self._set_busy_state(False)
+        self._worker = None
+        self._worker_thread = None
 
         self.progress_bar.setValue(self.progress_bar.maximum())
 
         if self._current_mode == "transcribe":
-            self.ollama_status_label.setText(
-                f"转写完成 — 成功: {self._tx_success}, 失败: {self._tx_fail}"
-            )
-            self.ollama_status_label.setStyleSheet(
-                "color: green" if self._tx_fail == 0 else "color: orange"
+            self._set_ollama_status(
+                f"转写完成 — 成功: {self._tx_success}, 失败: {self._tx_fail}",
+                "green" if self._tx_fail == 0 else "orange",
             )
         elif self._current_mode == "summarize":
-            self.ollama_status_label.setText(
-                f"总结完成 — 成功: {self._sum_success}, 失败: {self._sum_fail}"
-            )
-            self.ollama_status_label.setStyleSheet(
-                "color: green" if self._sum_fail == 0 else "color: orange"
+            self._set_ollama_status(
+                f"总结完成 — 成功: {self._sum_success}, 失败: {self._sum_fail}",
+                "green" if self._sum_fail == 0 else "orange",
             )
         elif self._current_mode == "pipeline":
-            self.ollama_status_label.setText(
-                f"转写: 成功 {self._tx_success} / 失败 {self._tx_fail} | "
-                f"总结: 成功 {self._sum_success} / 失败 {self._sum_fail}"
-            )
             has_fail = self._tx_fail > 0 or self._sum_fail > 0
-            self.ollama_status_label.setStyleSheet(
-                "color: orange" if has_fail else "color: green"
+            self._set_ollama_status(
+                f"转写: 成功 {self._tx_success} / 失败 {self._tx_fail} | "
+                f"总结: 成功 {self._sum_success} / 失败 {self._sum_fail}",
+                "orange" if has_fail else "green",
             )
 
         self._save_fail_records()
@@ -927,12 +1116,12 @@ class MainWindow(QMainWindow):
                 for video_name, stage, error_msg in self._fail_records:
                     f.write(f"  {stage}失败 | {video_name} | {error_msg}\n")
                 f.write("\n")
-        except OSError:
-            pass
+        except OSError as exc:
+            get_logger("video2text").warning("写入失败日志失败: %s", exc)
 
     # ── result file viewer ──
 
-    def _open_result_viewer(self):
+    def _open_result_viewer(self) -> None:
         if not self._completed_names:
             QMessageBox.warning(self, "提示", "请先完成转写或加载历史文件")
             return
@@ -954,13 +1143,23 @@ class MainWindow(QMainWindow):
         if current is None:
             return
         video_name = current.data(Qt.ItemDataRole.UserRole)
+        self._current_video_name = video_name
         output_dir = self.output_edit.text().strip() or _DEFAULT_OUTPUT_DIR
 
-        transcript_path = Path(output_dir) / f"{video_name}.txt"
-        if transcript_path.exists():
+        QTimer.singleShot(0, lambda: self._load_file_content(video_name, output_dir))
+
+    def _load_file_content(self, video_name: str, output_dir: str) -> None:
+        """在事件循环空闲时加载文件内容，避免阻塞 GUI 线程。"""
+        transcript_path = None
+        for ext in ("txt", "srt", "vtt", "json"):
+            candidate = Path(output_dir) / f"{video_name}.{ext}"
+            if candidate.exists():
+                transcript_path = candidate
+                break
+        if transcript_path is not None:
             try:
                 self.transcript_view.setPlainText(
-                    transcript_path.read_text(encoding="utf-8")
+                    transcript_path.read_text(encoding="utf-8-sig")
                 )
             except (OSError, UnicodeDecodeError) as exc:
                 self.transcript_view.setPlainText(f"读取失败: {exc}")
@@ -976,12 +1175,61 @@ class MainWindow(QMainWindow):
         else:
             self.summary_view.setPlainText("(未找到摘要文件)")
 
-    def closeEvent(self, event) -> None:
+    def closeEvent(self, event: QCloseEvent) -> None:
         if self._worker_thread is not None and self._worker_thread.isRunning():
             if self._worker is not None and hasattr(self._worker, "cancel"):
                 self._worker.cancel()
+            if self._worker is not None and hasattr(self._worker, "_pause_event"):
+                self._worker._pause_event.set()
+            if self._worker is not None and hasattr(self._worker, "_service"):
+                service = self._worker._service
+                if service is not None and hasattr(service, "_pause_event"):
+                    service._pause_event.set()
             self._worker_thread.quit()
-            self._worker_thread.wait(3000)
+            if not self._worker_thread.wait(3000):
+                self._worker_thread.terminate()
+                self._worker_thread.wait(1000)
+
+        for attr in ("_ollama_check_thread", "_ollama_list_thread"):
+            thread = getattr(self, attr, None)
+            if thread is not None:
+                try:
+                    if thread.isRunning():
+                        thread.quit()
+                        thread.wait(2000)
+                except RuntimeError:
+                    pass
+        for attr in ("_ollama_check_worker", "_ollama_list_worker"):
+            worker = getattr(self, attr, None)
+            if worker is not None:
+                try:
+                    worker.deleteLater()
+                except Exception:
+                    pass
+
+        for name in ("video2text", "src"):
+            lg = logging.getLogger(name)
+            if self._ui_handler in lg.handlers:
+                lg.removeHandler(self._ui_handler)
+
+        if self._ollama_process is not None:
+            try:
+                self._ollama_process.terminate()
+                self._ollama_process.wait(timeout=3)
+            except (OSError, subprocess.TimeoutExpired):
+                try:
+                    self._ollama_process.kill()
+                except OSError:
+                    pass
+            self._ollama_process = None
+
+        for cached_transcriber in list(_transcriber_cache.values()):
+            try:
+                cached_transcriber.unload_model()
+            except Exception:
+                pass
+        _transcriber_cache.clear()
+
         if self._result_viewer is not None:
             self._result_viewer.close()
         event.accept()

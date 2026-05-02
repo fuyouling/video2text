@@ -1,7 +1,5 @@
 """验证器"""
 
-import os
-import re
 import shutil
 from pathlib import Path
 from typing import Optional, List
@@ -84,7 +82,9 @@ def validate_language(language: str, supported_languages: List[str]) -> str:
     if language == "auto":
         return language
 
-    if language not in supported_languages:
+    language = language.lower()
+    supported_lower = {lang.lower() for lang in supported_languages}
+    if language not in supported_lower:
         raise ConfigurationError(
             f"不支持的语言: {language}. 支持的语言: {', '.join(supported_languages)}"
         )
@@ -104,7 +104,7 @@ def validate_device(device: str) -> str:
     Raises:
         ConfigurationError: 设备类型不支持
     """
-    valid_devices = ["auto", "cpu", "cuda"]
+    valid_devices = ["auto", "cpu", "cuda", "mps"]
 
     if device not in valid_devices:
         raise ConfigurationError(
@@ -127,7 +127,7 @@ def validate_positive_int(value: int, name: str) -> int:
     Raises:
         ConfigurationError: 值不是正整数
     """
-    if not isinstance(value, int) or value <= 0:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ConfigurationError(f"{name}必须是正整数: {value}")
 
     return value
@@ -179,8 +179,24 @@ def validate_executable_path(path: str, name: str = "executable") -> str:
 
     path = path.strip()
 
-    # 检查是否包含 shell 注入风险字符
-    dangerous_chars = ["&", "|", ";", "$", "`", "\n", "\r", "(", ")"]
+    # 检查是否包含 shell 注入风险字符（Unix + Windows）
+    # 注意：不包含 () 以兼容 Windows 常见路径如 "Program Files (x86)"
+    dangerous_chars = [
+        "&",
+        "|",
+        ";",
+        "$",
+        "`",
+        "\n",
+        "\r",
+        ">",
+        "<",
+        "!",
+        "#",
+        "~",
+        "{",
+        "}",
+    ]
     for ch in dangerous_chars:
         if ch in path:
             raise ConfigurationError(f"{name}路径包含不安全字符 '{ch}': {path}")

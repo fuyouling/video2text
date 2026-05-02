@@ -31,12 +31,6 @@ class ConfigurationError(Video2TextError):
     pass
 
 
-class ExternalServiceError(Video2TextError):
-    """外部服务错误"""
-
-    pass
-
-
 class OutputError(Video2TextError):
     """输出文件错误"""
 

@@ -8,6 +8,7 @@ import configparser
 import json
 import os
 import sys
+import tempfile
 import threading
 from pathlib import Path
 from typing import Any, Optional
@@ -16,6 +17,13 @@ from src.utils.exceptions import ConfigurationError
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _get_base_dir() -> Path:
+    """获取程序基础目录 - 支持 frozen（打包）和开发环境"""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent
+    return Path(__file__).resolve().parent.parent.parent
 
 
 class Settings:
@@ -28,12 +36,20 @@ class Settings:
     _instance: Optional["Settings"] = None
     _lock = threading.Lock()
 
+    PATH_KEYS: frozenset[str] = frozenset(
+        [
+            "paths.models_dir",
+            "paths.logs_dir",
+            "paths.video_dir",
+            "output.output_dir",
+        ]
+    )
+
     def __new__(cls, config_path: Optional[str] = None):
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-                    cls._instance._initialized = False
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
+                cls._instance._initialized = False
         return cls._instance
 
     def __init__(self, config_path: Optional[str] = None):
@@ -46,14 +62,16 @@ class Settings:
         后续调用 Settings() 不会重新加载，修改配置请使用 set() + save()。
         """
         if self._initialized:
+            if config_path and config_path != self.config_path:
+                logger.warning(
+                    "Settings 单例已初始化，忽略新的 config_path: %s (当前: %s)",
+                    config_path,
+                    self.config_path,
+                )
             return
 
-        self.config = configparser.ConfigParser()
-
-        if getattr(sys, "frozen", False):
-            self._base_dir = Path(sys.executable).parent
-        else:
-            self._base_dir = Path(__file__).resolve().parent.parent.parent
+        self.config = configparser.ConfigParser(interpolation=None)
+        self._base_dir = _get_base_dir()
 
         if config_path:
             self.config_path = config_path
@@ -87,14 +105,14 @@ class Settings:
         return str(config_path)
 
     def _resolve_path(self, path_str: str) -> str:
-        """解析路径，如果是相对路径则基于程序目录"""
+        """解析路径，如果是相对路径则基于程序目录，并规范化"""
         if not path_str or path_str.strip() == "":
             return path_str
 
         p = Path(path_str)
         if not p.is_absolute():
-            return str(self._base_dir / path_str)
-        return path_str
+            p = self._base_dir / path_str
+        return str(p.resolve())
 
     def _load(self) -> None:
         """内部加载，首次初始化时调用，输出日志"""
@@ -107,21 +125,35 @@ class Settings:
     def reload(self) -> None:
         """从磁盘重新加载配置文件（不输出日志，供 GUI 刷新用）"""
         try:
-            self.config = configparser.ConfigParser()
-            self.config.read(self.config_path, encoding="utf-8")
+            new_config = configparser.ConfigParser(interpolation=None)
+            new_config.read(self.config_path, encoding="utf-8")
+            with self._lock:
+                self.config = new_config
         except Exception as e:
             raise ConfigurationError(f"重新加载配置文件失败: {e}")
 
     def save(self) -> None:
-        """保存配置文件"""
+        """保存配置文件（原子写入，防止崩溃损坏）"""
         try:
             config_path = Path(self.config_path)
             config_path.parent.mkdir(parents=True, exist_ok=True)
 
-            with open(config_path, "w", encoding="utf-8") as f:
-                self.config.write(f)
+            with self._lock:
+                fd, tmp_path = tempfile.mkstemp(dir=config_path.parent, suffix=".tmp")
+                try:
+                    with os.fdopen(fd, "w", encoding="utf-8") as f:
+                        self.config.write(f)
+                    os.replace(tmp_path, config_path)
+                except BaseException:
+                    try:
+                        os.unlink(tmp_path)
+                    except OSError:
+                        pass
+                    raise
 
             logger.info(f"配置文件保存成功: {self.config_path}")
+        except ConfigurationError:
+            raise
         except Exception as e:
             raise ConfigurationError(f"保存配置文件失败: {e}")
 
@@ -139,14 +171,7 @@ class Settings:
             section, option = key.split(".", 1)
             value = self.config.get(section, option)
 
-            path_keys = [
-                "paths.models_dir",
-                "paths.logs_dir",
-                "paths.video_dir",
-                "output.output_dir",
-            ]
-
-            if key in path_keys:
+            if key in self.PATH_KEYS:
                 return self._resolve_path(value)
 
             return value
@@ -163,12 +188,13 @@ class Settings:
         try:
             section, option = key.split(".", 1)
 
-            if not self.config.has_section(section):
-                self.config.add_section(section)
+            with self._lock:
+                if not self.config.has_section(section):
+                    self.config.add_section(section)
 
-            self.config.set(section, option, str(value))
+                self.config.set(section, option, str(value))
             logger.debug(f"配置项已更新: {key} = {value}")
-        except ValueError as e:
+        except ValueError:
             raise ConfigurationError(f"无效的配置键格式: {key}")
 
     def get_int(self, key: str, default: int = 0) -> int:
@@ -208,29 +234,40 @@ class Settings:
             default.copy() if default is not None else []
         )
 
+    def _resolve_section_paths(self, section: str, items: dict) -> dict:
+        """对 section 中的 PATH_KEYS 条目自动解析路径"""
+        prefix = f"{section}."
+        for k, v in items.items():
+            if f"{prefix}{k}" in self.PATH_KEYS:
+                items[k] = self._resolve_path(v)
+        return items
+
     def get_section(self, section: str) -> dict:
-        """获取配置节"""
+        """获取配置节，PATH_KEYS 中的路径会自动解析"""
         if not self.config.has_section(section):
             return {}
 
-        return dict(self.config.items(section))
+        return self._resolve_section_paths(section, dict(self.config.items(section)))
 
     def update_from_dict(self, config_dict: dict) -> None:
         """从字典更新配置"""
-        for section, values in config_dict.items():
-            if not self.config.has_section(section):
-                self.config.add_section(section)
+        with self._lock:
+            for section, values in config_dict.items():
+                if not self.config.has_section(section):
+                    self.config.add_section(section)
 
-            for key, value in values.items():
-                self.config.set(section, key, str(value))
+                for key, value in values.items():
+                    self.config.set(section, key, str(value))
 
         logger.info("配置已从字典更新")
 
     def to_dict(self) -> dict:
-        """转换为字典"""
+        """转换为字典，PATH_KEYS 中的路径会自动解析"""
         result = {}
         for section in self.config.sections():
-            result[section] = dict(self.config.items(section))
+            result[section] = self._resolve_section_paths(
+                section, dict(self.config.items(section))
+            )
         return result
 
 
@@ -250,22 +287,17 @@ class PromptManager:
     _lock = threading.Lock()
 
     def __new__(cls):
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-                    cls._instance._initialized = False
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
+                cls._instance._initialized = False
         return cls._instance
 
     def __init__(self):
         if self._initialized:
             return
 
-        if getattr(sys, "frozen", False):
-            base_dir = Path(sys.executable).parent
-        else:
-            base_dir = Path(__file__).resolve().parent.parent.parent
-
+        base_dir = Path(Settings().config_path).parent
         self._file_path = base_dir / "prompts.json"
         self._templates: dict[str, str] = {}
         self._last_used: str = ""
@@ -289,12 +321,23 @@ class PromptManager:
                 "templates": self._templates,
                 "last_used": self._last_used,
             }
-            self._file_path.write_text(
-                json.dumps(data, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
+            self._file_path.parent.mkdir(parents=True, exist_ok=True)
+            fd, tmp_path = tempfile.mkstemp(dir=self._file_path.parent, suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                os.replace(tmp_path, self._file_path)
+            except BaseException:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
+        except ConfigurationError:
+            raise
         except Exception as e:
             logger.error(f"提示词模板保存失败: {e}")
+            raise ConfigurationError(f"提示词模板保存失败: {e}")
 
     def get_names(self) -> list[str]:
         return list(self._templates.keys())

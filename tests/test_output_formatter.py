@@ -47,7 +47,7 @@ class TestOutputFormatter:
         assert "你好" in result
 
     def test_format_summary(self):
-        result = self.formatter.format_summary("这是摘要", "测试标题")
+        result = self.formatter.format_summary("这是摘要")
         assert result == "这是摘要"
 
     def test_format_time(self):

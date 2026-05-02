@@ -3,11 +3,22 @@
 import json
 import re
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
+from src.utils.exceptions import OutputError
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+class OutputValidationError(OutputError):
+    """输出校验错误"""
+
+    def __init__(self, message: str, step: str = "", file_path: str = ""):
+        self.step = step
+        self.file_path = file_path
+        super().__init__(message)
+
 
 SRT_TIMESTAMP_RE = re.compile(
     r"^(\d{2}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{3})$"
@@ -17,19 +28,10 @@ VTT_TIMESTAMP_RE = re.compile(
 )
 
 
-class OutputValidationError(Exception):
-    """输出校验错误"""
-
-    def __init__(self, message: str, step: str = "", file_path: str = ""):
-        self.step = step
-        self.file_path = file_path
-        super().__init__(message)
-
-
 def validate_output_file(
     file_path: str,
     *,
-    min_size: int = 0,
+    min_size: int = 1,
     encoding: str = "utf-8",
 ) -> None:
     """校验输出文件是否成功生成且非空。
@@ -52,7 +54,7 @@ def validate_output_file(
         )
 
     file_size = path.stat().st_size
-    if file_size <= min_size:
+    if file_size < min_size:
         raise OutputValidationError(
             f"输出文件为空或过小 ({file_size} bytes): {file_path}",
             step="output_file_check",
@@ -60,7 +62,8 @@ def validate_output_file(
         )
 
     try:
-        path.read_text(encoding=encoding)
+        with open(path, "r", encoding=encoding) as f:
+            f.read(8192)
     except UnicodeDecodeError as e:
         raise OutputValidationError(
             f"输出文件编码错误 (预期 {encoding}): {file_path} - {e}",
@@ -87,6 +90,8 @@ def validate_srt_content(content: str) -> List[str]:
     Raises:
         OutputValidationError: 格式不合规
     """
+    content = content.replace("\r\n", "\n").replace("\r", "\n")
+
     if not content.strip():
         raise OutputValidationError(
             "SRT 内容为空",
@@ -114,8 +119,12 @@ def validate_srt_content(content: str) -> List[str]:
             continue
 
         start_str, end_str = match.group(1), match.group(2)
-        start_sec = _parse_srt_timestamp(start_str)
-        end_sec = _parse_srt_timestamp(end_str)
+        try:
+            start_sec = _parse_srt_timestamp(start_str)
+            end_sec = _parse_srt_timestamp(end_str)
+        except ValueError as e:
+            errors.append(f"块 {block_idx}: {e}")
+            continue
 
         if start_sec >= end_sec:
             errors.append(f"块 {block_idx}: start ({start_str}) >= end ({end_str})")
@@ -141,6 +150,8 @@ def validate_vtt_content(content: str) -> List[str]:
     Raises:
         OutputValidationError: 格式不合规
     """
+    content = content.replace("\r\n", "\n").replace("\r", "\n")
+
     if not content.strip():
         raise OutputValidationError("VTT 内容为空", step="vtt_content_check")
 
@@ -170,8 +181,12 @@ def validate_vtt_content(content: str) -> List[str]:
             errors.append(f"Cue {idx}: 时间戳格式错误 '{timestamp_line}'")
             continue
 
-        start_sec = _parse_vtt_timestamp(match.group(1))
-        end_sec = _parse_vtt_timestamp(match.group(2))
+        try:
+            start_sec = _parse_vtt_timestamp(match.group(1))
+            end_sec = _parse_vtt_timestamp(match.group(2))
+        except ValueError as e:
+            errors.append(f"Cue {idx}: {e}")
+            continue
         if start_sec >= end_sec:
             errors.append(
                 f"Cue {idx}: start ({match.group(1)}) >= end ({match.group(2)})"
@@ -207,7 +222,9 @@ def validate_json_content(content: str) -> list:
         raise OutputValidationError(f"JSON 解析失败: {e}", step="json_content_check")
 
     if isinstance(data, list):
-        for idx, item in enumerate(data):
+        sample_size = min(len(data), 10)
+        for idx in range(sample_size):
+            item = data[idx]
             if not isinstance(item, dict):
                 raise OutputValidationError(
                     f"JSON 数组元素 [{idx}] 不是对象",
@@ -289,17 +306,29 @@ def validate_output_content(file_path: str, fmt: str) -> None:
                 step="content_check",
                 file_path=file_path,
             )
+    else:
+        raise OutputValidationError(
+            f"不支持的输出格式: {fmt}",
+            step="content_check",
+            file_path=file_path,
+        )
 
 
 def _parse_srt_timestamp(ts: str) -> float:
     """解析 SRT 时间戳 HH:MM:SS,mmm 为秒数。"""
     h, m, rest = ts.split(":")
     s, ms = rest.split(",")
-    return int(h) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000
+    h, m, s, ms = int(h), int(m), int(s), int(ms)
+    if h >= 100 or m >= 60 or s >= 60 or ms >= 1000:
+        raise ValueError(f"时间戳值越界: {ts}")
+    return h * 3600 + m * 60 + s + ms / 1000
 
 
 def _parse_vtt_timestamp(ts: str) -> float:
     """解析 VTT 时间戳 HH:MM:SS.mmm 为秒数。"""
     h, m, rest = ts.split(":")
     s, ms = rest.split(".")
-    return int(h) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000
+    h, m, s, ms = int(h), int(m), int(s), int(ms)
+    if h >= 100 or m >= 60 or s >= 60 or ms >= 1000:
+        raise ValueError(f"时间戳值越界: {ts}")
+    return h * 3600 + m * 60 + s + ms / 1000

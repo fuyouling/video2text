@@ -1,5 +1,6 @@
 """输出格式化器"""
 
+import json
 from typing import List, Dict, Any
 from datetime import datetime
 from dataclasses import dataclass, asdict
@@ -28,12 +29,9 @@ class OutputData:
 class OutputFormatter:
     """输出格式化器"""
 
-    def __init__(self):
-        """初始化输出格式化器"""
-        pass
-
+    @staticmethod
     def format_transcript(
-        self, segments: List[TranscriptSegment], include_timestamps: bool = True
+        segments: List[TranscriptSegment], include_timestamps: bool = True
     ) -> str:
         """格式化转写文本
 
@@ -55,8 +53,9 @@ class OutputFormatter:
 
         return "\n".join(lines)
 
+    @staticmethod
     def format_merged_transcript(
-        self, segments: List[MergedSegment], include_timestamps: bool = True
+        segments: List[MergedSegment], include_timestamps: bool = True
     ) -> str:
         """格式化合并后的转写文本
 
@@ -78,19 +77,20 @@ class OutputFormatter:
 
         return "\n\n".join(lines)
 
-    def format_summary(self, summary: str, title: str = "摘要") -> str:
+    @staticmethod
+    def format_summary(summary: str) -> str:
         """格式化摘要
 
         Args:
             summary: 摘要文本
-            title: 标题（保留参数以保持兼容性，但不再使用）
 
         Returns:
-            格式化后的摘要（直接返回摘要内容）
+            格式化后的摘要
         """
         return summary
 
-    def format_srt(self, segments: List[TranscriptSegment]) -> str:
+    @staticmethod
+    def format_srt(segments: List[TranscriptSegment]) -> str:
         """格式化为SRT字幕格式
 
         Args:
@@ -112,7 +112,8 @@ class OutputFormatter:
 
         return "\n".join(lines)
 
-    def format_vtt(self, segments: List[TranscriptSegment]) -> str:
+    @staticmethod
+    def format_vtt(segments: List[TranscriptSegment]) -> str:
         """格式化为VTT字幕格式
 
         Args:
@@ -133,8 +134,8 @@ class OutputFormatter:
 
         return "\n".join(lines)
 
+    @staticmethod
     def create_output_data(
-        self,
         video_name: str,
         video_path: str,
         duration: float,
@@ -179,7 +180,8 @@ class OutputFormatter:
             processing_time=processing_time,
         )
 
-    def to_json(self, output_data: OutputData) -> str:
+    @staticmethod
+    def to_json(output_data: OutputData) -> str:
         """转换为JSON格式
 
         Args:
@@ -188,6 +190,4 @@ class OutputFormatter:
         Returns:
             JSON字符串
         """
-        import json
-
         return json.dumps(asdict(output_data), ensure_ascii=False, indent=2)

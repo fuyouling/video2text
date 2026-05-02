@@ -1,14 +1,17 @@
 """独立结果查看窗口 —— 支持全屏、Markdown、多标签、搜索、书签、主题切换"""
 
 import logging
+import re
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
-from PySide6.QtCore import Qt, QSettings
+from PySide6.QtCore import Qt, QSettings, QTimer
 from PySide6.QtGui import (
     QAction,
+    QCloseEvent,
     QColor,
     QFont,
+    QKeyEvent,
     QKeySequence,
     QTextCursor,
     QTextDocument,
@@ -31,6 +34,8 @@ from PySide6.QtWidgets import (
     QTextBrowser,
     QTextEdit,
     QToolBar,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -43,11 +48,9 @@ except ImportError:
     MARKDOWN_AVAILABLE = False
 
 try:
-    from pygments import highlight
-    from pygments.formatters import HtmlFormatter
-    from pygments.lexers import get_lexer_by_name, guess_lexer
+    import importlib.util
 
-    PYGMENTS_AVAILABLE = True
+    PYGMENTS_AVAILABLE = importlib.util.find_spec("pygments") is not None
 except ImportError:
     PYGMENTS_AVAILABLE = False
 
@@ -97,7 +100,7 @@ class ThemeManager:
 
     def get_style(self) -> str:
         """获取当前主题的CSS样式"""
-        theme = self.THEMES[self._current_theme]
+        theme = self.THEMES.get(self._current_theme, self.THEMES["light"])
         return f"""
             QMainWindow {{
                 background-color: {theme["bg_color"]};
@@ -168,11 +171,27 @@ class ThemeManager:
                 background-color: {theme["secondary_bg"]};
                 color: {theme["text_color"]};
             }}
+            QTreeWidget {{
+                background-color: {theme["secondary_bg"]};
+                color: {theme["text_color"]};
+                border: 1px solid {theme["border_color"]};
+            }}
+            QTreeWidget::item {{
+                padding: 4px;
+            }}
+            QTreeWidget::item:selected {{
+                background-color: {theme["accent_color"]};
+                color: white;
+            }}
+            QTreeWidget::item:!selectable {{
+                color: {theme["text_color"]};
+                font-weight: 600;
+            }}
         """
 
     def get_markdown_css(self, font_size: int) -> str:
         """获取Markdown渲染的CSS样式"""
-        theme = self.THEMES[self._current_theme]
+        theme = self.THEMES.get(self._current_theme, self.THEMES["light"])
         return f"""
             body {{
                 font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
@@ -323,11 +342,21 @@ class ResultViewerWindow(QMainWindow):
 
         self._theme_manager = ThemeManager()
         self._output_dir = ""
+        self._root_output_dir = ""
+        self._flat_video_names: list[str] = []
         self._bookmarks: list[BookmarkItem] = []
         self._all_video_names: list[str] = []
         self._current_video_name: Optional[str] = None
-        self._search_matches: list[int] = []
+        self._search_matches: list[tuple[int, int]] = []
         self._current_match_index: int = -1
+        self._folder_mode: bool = False
+        self._tree_name_map: dict[str, QTreeWidgetItem] = {}
+        self._cached_md_text: str = ""
+        self._cached_html: str = ""
+        self._search_timer = QTimer()
+        self._search_timer.setSingleShot(True)
+        self._search_timer.setInterval(300)
+        self._search_timer.timeout.connect(self._do_search)
 
         self._init_ui()
         self._apply_theme()
@@ -338,7 +367,7 @@ class ResultViewerWindow(QMainWindow):
 
     # ─── UI 初始化 ─────────────────────────────────────────────
 
-    def _init_ui(self):
+    def _init_ui(self) -> None:
         """初始化UI布局"""
         central = QWidget()
         self.setCentralWidget(central)
@@ -367,6 +396,14 @@ class ResultViewerWindow(QMainWindow):
         self.file_list = QListWidget()
         self.file_list.currentItemChanged.connect(self._on_file_selected)
         left_layout.addWidget(self.file_list)
+
+        # 文件夹模式树形视图
+        self._folder_tree = QTreeWidget()
+        self._folder_tree.setHeaderHidden(True)
+        self._folder_tree.setAnimated(True)
+        self._folder_tree.currentItemChanged.connect(self._on_folder_item_changed)
+        self._folder_tree.setVisible(False)
+        left_layout.addWidget(self._folder_tree)
 
         self._main_splitter.addWidget(left_panel)
 
@@ -477,6 +514,16 @@ class ResultViewerWindow(QMainWindow):
 
         toolbar.addSeparator()
 
+        # 文件夹模式按钮
+        self._folder_mode_action = QAction("文件夹模式", self)
+        self._folder_mode_action.setShortcut(QKeySequence("Ctrl+D"))
+        self._folder_mode_action.setCheckable(True)
+        self._folder_mode_action.setChecked(False)
+        self._folder_mode_action.triggered.connect(self._toggle_folder_mode)
+        toolbar.addAction(self._folder_mode_action)
+
+        toolbar.addSeparator()
+
         # 关闭按钮
         close_action = QAction("关闭", self)
         close_action.setShortcut(QKeySequence("Ctrl+W"))
@@ -566,16 +613,24 @@ class ResultViewerWindow(QMainWindow):
                     summary_text = summary_path.read_text(encoding="utf-8")
                     self._display_markdown(summary_text)
                 except Exception:
-                    pass
+                    logger.warning("重新渲染摘要失败（主题切换）: %s", summary_path)
 
     # ─── 文件加载与过滤 ────────────────────────────────────────
 
     def load_files(self, video_names: list[str], output_dir: str):
         """加载多个视频文件"""
         self._output_dir = output_dir
-        self._all_video_names = sorted(video_names, key=lambda x: x.lower())
+        self._root_output_dir = output_dir
+        self._flat_video_names = sorted(video_names, key=lambda x: x.lower())
+        self._all_video_names = list(self._flat_video_names)
         self._file_filter.clear()
         self._populate_file_list(self._all_video_names)
+
+        if self._folder_mode:
+            self._scan_and_build_tree()
+            self._folder_tree.setFocus()
+        else:
+            self.file_list.setFocus()
 
     def _populate_file_list(self, names: list[str]):
         """填充文件列表（blockSignals 防止逐项触发选择事件）"""
@@ -615,6 +670,173 @@ class ResultViewerWindow(QMainWindow):
         elif filtered:
             self.file_list.setCurrentRow(0)
 
+    def _toggle_folder_mode(self, checked: bool):
+        """切换文件夹模式"""
+        self._folder_mode = checked
+        self.file_list.setVisible(not checked)
+        self._file_filter.setVisible(not checked)
+        self._folder_tree.setVisible(checked)
+
+        if checked and self._output_dir:
+            self._scan_and_build_tree()
+            self._folder_tree.setFocus()
+        elif not checked:
+            self._output_dir = self._root_output_dir
+            self._all_video_names = list(self._flat_video_names)
+            self._populate_file_list(self._all_video_names)
+            if self._current_video_name:
+                for i in range(self.file_list.count()):
+                    item = self.file_list.item(i)
+                    if item.data(Qt.ItemDataRole.UserRole) == self._current_video_name:
+                        self.file_list.setCurrentItem(item)
+                        break
+            self.file_list.setFocus()
+
+    def _scan_and_build_tree(self):
+        """扫描输出目录下所有转写和摘要文件，构建按子目录分层的树形列表"""
+        output_path = Path(self._output_dir)
+        if not output_path.exists():
+            return
+
+        self._folder_tree.blockSignals(True)
+        self._folder_tree.clear()
+        self._tree_name_map.clear()
+
+        root = QTreeWidgetItem([output_path.name])
+        root.setFlags(root.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+        f = root.font(0)
+        f.setBold(True)
+        root.setFont(0, f)
+        self._folder_tree.addTopLevelItem(root)
+
+        dir_nodes: dict[str, QTreeWidgetItem] = {"": root}
+        video_names: set[str] = set()
+
+        try:
+            txt_files = sorted(output_path.rglob("*.txt"))
+        except OSError as exc:
+            logger.warning("扫描目录失败: %s", exc)
+            self._folder_tree.blockSignals(False)
+            return
+
+        for txt_file in txt_files:
+            if txt_file.name.endswith("_summary.txt"):
+                continue
+            if txt_file.name.endswith("_keywords.txt"):
+                continue
+            if txt_file.name.endswith("_full.json"):
+                continue
+            video_name = txt_file.stem
+            if not video_name:
+                continue
+            video_names.add(video_name)
+
+            rel = txt_file.parent.relative_to(output_path)
+            parts = list(rel.parts)
+
+            parent = root
+            for depth, part in enumerate(parts):
+                dir_key = "/".join(parts[: depth + 1])
+                if dir_key not in dir_nodes:
+                    node = QTreeWidgetItem()
+                    node.setText(0, part)
+                    node.setFlags(node.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+                    nf = node.font(0)
+                    nf.setBold(True)
+                    node.setFont(0, nf)
+                    parent.addChild(node)
+                    dir_nodes[dir_key] = node
+                parent = dir_nodes[dir_key]
+
+            child = QTreeWidgetItem()
+            child.setText(0, video_name)
+            child.setData(0, Qt.ItemDataRole.UserRole, video_name)
+            child.setData(0, Qt.ItemDataRole.UserRole + 1, str(txt_file.parent))
+            parent.addChild(child)
+            tree_key = str(txt_file.parent / video_name)
+            self._tree_name_map[tree_key] = child
+
+        self._sort_folders_first(root)
+        self._update_folder_counts(root)
+
+        root.setExpanded(True)
+
+        self._folder_tree.blockSignals(False)
+
+        if video_names:
+            self._all_video_names = sorted(video_names, key=lambda x: x.lower())
+            target: Optional[QTreeWidgetItem] = None
+            for i in range(root.childCount()):
+                child = root.child(i)
+                if child.flags() & Qt.ItemFlag.ItemIsSelectable:
+                    target = child
+                    break
+            if target is None:
+                for i in range(root.childCount()):
+                    child = root.child(i)
+                    if child.childCount() > 0:
+                        target = child.child(0)
+                        while target and target.childCount() > 0:
+                            target = target.child(0)
+                        break
+            if target:
+                self._folder_tree.setCurrentItem(target)
+
+    def _sort_folders_first(self, item: QTreeWidgetItem):
+        """递归排序：每层文件夹排在文件前面，子文件夹默认闭合"""
+        folders: list[QTreeWidgetItem] = []
+        files: list[QTreeWidgetItem] = []
+        for i in range(item.childCount()):
+            child = item.child(i)
+            if child.flags() & Qt.ItemFlag.ItemIsSelectable:
+                files.append(child)
+            else:
+                folders.append(child)
+                child.setExpanded(False)
+                self._sort_folders_first(child)
+
+        for child in folders + files:
+            item.removeChild(child)
+        for child in folders:
+            item.addChild(child)
+        for child in files:
+            item.addChild(child)
+
+    def _update_folder_counts(self, item: QTreeWidgetItem):
+        """递归更新文件夹节点名称，后缀显示直接子视频数量"""
+        video_count = sum(
+            1
+            for i in range(item.childCount())
+            if item.child(i).flags() & Qt.ItemFlag.ItemIsSelectable
+        )
+        base_name = item.data(0, Qt.ItemDataRole.UserRole + 2) or item.text(0)
+        item.setData(0, Qt.ItemDataRole.UserRole + 2, base_name)
+        item.setText(0, f"{base_name} ({video_count})")
+        for i in range(item.childCount()):
+            child = item.child(i)
+            if not (child.flags() & Qt.ItemFlag.ItemIsSelectable):
+                self._update_folder_counts(child)
+
+    def _on_folder_item_changed(
+        self, current: QTreeWidgetItem, _previous: QTreeWidgetItem
+    ):
+        """文件夹模式：键盘上下移动或点击切换文件时加载内容"""
+        if current is None:
+            return
+        video_name = current.data(0, Qt.ItemDataRole.UserRole)
+        if video_name is None:
+            return
+        output_dir = current.data(0, Qt.ItemDataRole.UserRole + 1)
+        if output_dir is None:
+            output_dir = self._output_dir
+        self.load_content(video_name, output_dir)
+
+    def _find_tree_item_by_name(self, video_name: str) -> Optional[QTreeWidgetItem]:
+        for key, item in self._tree_name_map.items():
+            if Path(key).name == video_name or key == video_name:
+                return item
+        return None
+
     def load_content(self, video_name: str, output_dir: str):
         """加载指定视频的转写和摘要内容"""
         self._current_video_name = video_name
@@ -629,11 +851,16 @@ class ResultViewerWindow(QMainWindow):
         self.summary_view.setExtraSelections([])
 
         # 加载转写文本
-        transcript_path = Path(output_dir) / f"{video_name}.txt"
-        if transcript_path.exists():
+        transcript_path = None
+        for ext in ("txt", "srt", "vtt", "json"):
+            candidate = Path(output_dir) / f"{video_name}.{ext}"
+            if candidate.exists():
+                transcript_path = candidate
+                break
+        if transcript_path is not None:
             try:
                 self.transcript_view.setPlainText(
-                    transcript_path.read_text(encoding="utf-8")
+                    transcript_path.read_text(encoding="utf-8-sig")
                 )
             except Exception as exc:
                 self.transcript_view.setPlainText(f"读取失败: {exc}")
@@ -653,7 +880,9 @@ class ResultViewerWindow(QMainWindow):
 
         self.status_bar.showMessage(f"已加载: {video_name}")
 
-    def _on_file_selected(self, current: QListWidgetItem, previous: QListWidgetItem):
+    def _on_file_selected(
+        self, current: Optional[QListWidgetItem], previous: Optional[QListWidgetItem]
+    ) -> None:
         """文件选择事件"""
         if current is None:
             return
@@ -665,32 +894,49 @@ class ResultViewerWindow(QMainWindow):
     # ─── Markdown 渲染 ─────────────────────────────────────────
 
     def _display_markdown(self, markdown_text: str):
-        """渲染Markdown内容"""
+        """渲染Markdown内容（带缓存，仅在文本变化时重新解析）"""
         if not MARKDOWN_AVAILABLE:
             self.summary_view.setPlainText(markdown_text)
             return
 
-        extensions = ["tables", "fenced_code", "extra", "sane_lists"]
-        if PYGMENTS_AVAILABLE:
-            extensions.append("codehilite")
+        if markdown_text != self._cached_md_text:
+            safe_text = re.sub(
+                r"<\s*(script|style|iframe|object|embed|form|input|textarea|button)[^>]*>.*?<\s*/\s*\1\s*>",
+                "",
+                markdown_text,
+                flags=re.DOTALL | re.IGNORECASE,
+            )
+            safe_text = re.sub(
+                r"<\s*/?\s*(script|style|iframe|object|embed|form|input|textarea|button)[^>]*>",
+                "",
+                safe_text,
+                flags=re.IGNORECASE,
+            )
 
-        html = markdown.markdown(markdown_text, extensions=extensions)
+            try:
+                extensions = ["tables", "fenced_code", "extra", "sane_lists"]
+                if PYGMENTS_AVAILABLE:
+                    extensions.append("codehilite")
+
+                self._cached_html = markdown.markdown(safe_text, extensions=extensions)
+                self._cached_md_text = markdown_text
+            except Exception as exc:
+                logger.warning(f"Markdown 渲染失败: {exc}")
+                self.summary_view.setPlainText(markdown_text)
+                return
 
         font_size = self.font_size_spin.value()
         css = self._theme_manager.get_markdown_css(font_size)
 
-        doc = self.summary_view.document()
-        doc.setDefaultStyleSheet(css)
-
         default_font = QFont()
         default_font.setPointSize(font_size)
-        doc.setDefaultFont(default_font)
+        self.summary_view.document().setDefaultFont(default_font)
 
         styled_html = f"""
         <style>
             {css}
         </style>
-        {html}
+        {self._cached_html}
         """
         self.summary_view.setHtml(styled_html)
 
@@ -735,13 +981,22 @@ class ResultViewerWindow(QMainWindow):
         self.summary_view.setExtraSelections([])
 
     def _on_search_text_changed(self, text: str):
-        """搜索文本变化"""
+        """搜索文本变化（带防抖）"""
         if not text:
             self.search_count_label.setText("0/0")
             self._search_matches = []
             self._current_match_index = -1
             self.transcript_view.setExtraSelections([])
             self.summary_view.setExtraSelections([])
+            self._search_timer.stop()
+            return
+
+        self._search_timer.start()
+
+    def _do_search(self):
+        """实际执行搜索（由防抖定时器触发）"""
+        text = self.search_edit.text()
+        if not text:
             return
 
         current_view = self.tabs.currentWidget()
@@ -787,19 +1042,20 @@ class ResultViewerWindow(QMainWindow):
             self._navigate_to_match(current_view, text)
             self._apply_search_highlights(current_view, text)
 
-    def _navigate_to_match(self, view, text: str):
+    def _navigate_to_match(
+        self, view: Union[QTextEdit, QTextBrowser], text: str
+    ) -> None:
         """导航到当前匹配项并选中"""
+        start, end = self._search_matches[self._current_match_index]
         cursor = QTextCursor(view.document())
-        cursor.setPosition(self._search_matches[self._current_match_index])
-        cursor.movePosition(
-            QTextCursor.MoveOperation.Right,
-            QTextCursor.MoveMode.KeepAnchor,
-            len(text),
-        )
+        cursor.setPosition(start)
+        cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
         view.setTextCursor(cursor)
         self._update_search_count_label()
 
-    def _apply_search_highlights(self, view, text: str):
+    def _apply_search_highlights(
+        self, view: Union[QTextEdit, QTextBrowser], text: str
+    ) -> None:
         """高亮所有匹配项（当前项橙色，其他项黄色）"""
         extra_selections = []
         if self._theme_manager.current_theme == "dark":
@@ -811,7 +1067,7 @@ class ResultViewerWindow(QMainWindow):
             other_color = QColor("#fff3a8")
             current_fg = QColor("#ffffff")
 
-        for i, match_pos in enumerate(self._search_matches):
+        for i, (start, end) in enumerate(self._search_matches):
             selection = QTextEdit.ExtraSelection()
             if i == self._current_match_index:
                 selection.format.setBackground(current_color)
@@ -819,25 +1075,23 @@ class ResultViewerWindow(QMainWindow):
             else:
                 selection.format.setBackground(other_color)
             cursor = QTextCursor(view.document())
-            cursor.setPosition(match_pos)
-            cursor.movePosition(
-                QTextCursor.MoveOperation.Right,
-                QTextCursor.MoveMode.KeepAnchor,
-                len(text),
-            )
+            cursor.setPosition(start)
+            cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
             selection.cursor = cursor
             extra_selections.append(selection)
         view.setExtraSelections(extra_selections)
 
     def _find_all_matches(self, text: str, document: QTextDocument):
-        """查找所有匹配项"""
+        """查找所有匹配项，存储 (start, end) 元组"""
         self._search_matches = []
         cursor = QTextCursor(document)
         cursor.movePosition(QTextCursor.MoveOperation.Start)
         while not cursor.isNull():
             cursor = document.find(text, cursor)
             if not cursor.isNull():
-                self._search_matches.append(cursor.selectionStart())
+                self._search_matches.append(
+                    (cursor.selectionStart(), cursor.selectionEnd())
+                )
                 cursor.movePosition(QTextCursor.MoveOperation.NextCharacter)
 
     def _update_search_count_label(self):
@@ -937,29 +1191,41 @@ class ResultViewerWindow(QMainWindow):
     def _on_bookmark_double_clicked(self, item: QListWidgetItem):
         """书签双击事件"""
         index = item.data(Qt.ItemDataRole.UserRole)
-        if 0 <= index < len(self._bookmarks):
-            bookmark = self._bookmarks[index]
+        if not (0 <= index < len(self._bookmarks)):
+            return
+        bookmark = self._bookmarks[index]
 
-            # 切换到对应的文件
+        found = False
+        if self._folder_mode:
+            target = self._find_tree_item_by_name(bookmark.video_name)
+            if target:
+                self._folder_tree.setCurrentItem(target)
+                found = True
+        else:
             for i in range(self.file_list.count()):
                 list_item = self.file_list.item(i)
                 if list_item.data(Qt.ItemDataRole.UserRole) == bookmark.video_name:
                     self.file_list.setCurrentItem(list_item)
+                    found = True
                     break
 
-            # 切换到对应的标签页
-            if bookmark.content_type == "transcript":
-                self.tabs.setCurrentWidget(self.transcript_view)
-            else:
-                self.tabs.setCurrentWidget(self.summary_view)
+        if not found:
+            self.status_bar.showMessage(f"未找到文件: {bookmark.video_name}")
+            return
 
-            # 跳转到书签位置
-            current_view = self.tabs.currentWidget()
-            if isinstance(current_view, (QTextEdit, QTextBrowser)):
-                cursor = QTextCursor(current_view.document())
-                cursor.setPosition(bookmark.position)
-                current_view.setTextCursor(cursor)
-                current_view.setFocus()
+        # 切换到对应的标签页
+        if bookmark.content_type == "transcript":
+            self.tabs.setCurrentWidget(self.transcript_view)
+        else:
+            self.tabs.setCurrentWidget(self.summary_view)
+
+        # 跳转到书签位置
+        current_view = self.tabs.currentWidget()
+        if isinstance(current_view, (QTextEdit, QTextBrowser)):
+            cursor = QTextCursor(current_view.document())
+            cursor.setPosition(bookmark.position)
+            current_view.setTextCursor(cursor)
+            current_view.setFocus()
 
     def _toggle_bookmark_dock(self):
         """切换书签面板显示"""
@@ -1035,7 +1301,7 @@ class ResultViewerWindow(QMainWindow):
         if splitter_state is not None:
             self._main_splitter.restoreState(splitter_state)
 
-    def closeEvent(self, event):
+    def closeEvent(self, event: QCloseEvent) -> None:
         """关闭时保存窗口状态"""
         settings = QSettings("Video2Text", "ResultViewer")
         settings.setValue("geometry", self.saveGeometry())
@@ -1045,7 +1311,7 @@ class ResultViewerWindow(QMainWindow):
 
     # ─── 键盘快捷键 ───────────────────────────────────────────
 
-    def keyPressEvent(self, event):
+    def keyPressEvent(self, event: QKeyEvent) -> None:
         """处理键盘快捷键"""
         key = event.key()
         mods = event.modifiers()

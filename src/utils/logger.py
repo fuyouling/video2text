@@ -1,14 +1,14 @@
 """日志工具"""
 
 import logging
-import os
+import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
-from typing import Optional
 
 _CONFIGURED_LOGGERS: set[str] = set()
+_CONFIGURE_LOCK = threading.Lock()
 
 
 def setup_logger(
@@ -21,6 +21,7 @@ def setup_logger(
     """设置日志记录器
 
     注意：只会清除 *指定名称* 的 logger 的 handlers，不会影响其他 logger。
+    同名 logger 只会配置一次，后续调用直接返回已配置的实例。
 
     Args:
         name: 日志记录器名称
@@ -31,59 +32,77 @@ def setup_logger(
 
     Returns:
         配置好的日志记录器
+
+    Raises:
+        ValueError: level 不是有效的日志级别名称
     """
+    level_upper = level.upper()
+    level_int = logging.getLevelName(level_upper)
+    if not isinstance(level_int, int):
+        raise ValueError(f"无效的日志级别: {level}")
+
     logger = logging.getLogger(name)
-    logger.setLevel(getattr(logging, level.upper()))
 
-    # 只清除当前 logger 的 handlers，不影响 root 或其他 logger
-    logger.handlers.clear()
+    with _CONFIGURE_LOCK:
+        if name in _CONFIGURED_LOGGERS:
+            logger.setLevel(level_int)
+            return logger
 
-    formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
+        logger.setLevel(level_int)
+        preserved = [
+            h for h in logger.handlers if not isinstance(h, logging.StreamHandler)
+        ]
+        logger.handlers.clear()
 
-    if log_to_file:
-        log_path = Path(log_dir)
-        log_path.mkdir(parents=True, exist_ok=True)
-
-        app_handler = RotatingFileHandler(
-            log_path / "app.log",
-            maxBytes=5 * 1024 * 1024,
-            backupCount=7,
-            encoding="utf-8",
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
         )
-        app_handler.setLevel(logging.INFO)
-        app_handler.setFormatter(formatter)
-        logger.addHandler(app_handler)
 
-        debug_handler = RotatingFileHandler(
-            log_path / "debug.log",
-            maxBytes=10 * 1024 * 1024,
-            backupCount=3,
-            encoding="utf-8",
-        )
-        debug_handler.setLevel(logging.DEBUG)
-        debug_handler.setFormatter(formatter)
-        logger.addHandler(debug_handler)
+        if log_to_file:
+            log_path = Path(log_dir)
+            log_path.mkdir(parents=True, exist_ok=True)
 
-        error_handler = RotatingFileHandler(
-            log_path / "error.log",
-            maxBytes=10 * 1024 * 1024,
-            backupCount=30,
-            encoding="utf-8",
-        )
-        error_handler.setLevel(logging.ERROR)
-        error_handler.setFormatter(formatter)
-        logger.addHandler(error_handler)
+            app_handler = RotatingFileHandler(
+                log_path / "app.log",
+                maxBytes=5 * 1024 * 1024,
+                backupCount=7,
+                encoding="utf-8",
+            )
+            app_handler.setLevel(logging.INFO)
+            app_handler.setFormatter(formatter)
+            logger.addHandler(app_handler)
 
-    if log_to_console:
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(getattr(logging, level.upper()))
-        console_handler.setFormatter(formatter)
-        logger.addHandler(console_handler)
+            debug_handler = RotatingFileHandler(
+                log_path / "debug.log",
+                maxBytes=10 * 1024 * 1024,
+                backupCount=3,
+                encoding="utf-8",
+            )
+            debug_handler.setLevel(logging.DEBUG)
+            debug_handler.setFormatter(formatter)
+            logger.addHandler(debug_handler)
 
-    _CONFIGURED_LOGGERS.add(name)
+            error_handler = RotatingFileHandler(
+                log_path / "error.log",
+                maxBytes=10 * 1024 * 1024,
+                backupCount=30,
+                encoding="utf-8",
+            )
+            error_handler.setLevel(logging.ERROR)
+            error_handler.setFormatter(formatter)
+            logger.addHandler(error_handler)
+
+        if log_to_console:
+            console_handler = logging.StreamHandler()
+            console_handler.setLevel(level_int)
+            console_handler.setFormatter(formatter)
+            logger.addHandler(console_handler)
+
+        for h in preserved:
+            logger.addHandler(h)
+
+        _CONFIGURED_LOGGERS.add(name)
     return logger
 
 
@@ -116,15 +135,19 @@ def log_step(
         with log_step("音频提取"):
             do_something()
     """
+    level_upper = level.upper()
+    level_int = logging.getLevelName(level_upper)
+    if not isinstance(level_int, int):
+        raise ValueError(f"无效的日志级别: {level}")
+
     log = logging.getLogger(logger_name)
-    log_level = getattr(logging, level.upper())
     start_ts = time.time()
 
-    log.log(log_level, "▶ 步骤开始: %s", step_name)
+    log.log(level_int, "▶ 步骤开始: %s", step_name)
     try:
         yield
         elapsed = time.time() - start_ts
-        log.log(log_level, "✔ 步骤完成: %s (%.2fs)", step_name, elapsed)
+        log.log(level_int, "✔ 步骤完成: %s (%.2fs)", step_name, elapsed)
     except Exception as e:
         elapsed = time.time() - start_ts
         log.error("✘ 步骤失败: %s (%.2fs) - %s", step_name, elapsed, e)

@@ -34,7 +34,7 @@ class VideoSelectionDialog(QDialog):
         layout.addWidget(info_label)
 
         self.file_list = QListWidget()
-        self.file_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
+        self.file_list.setSelectionMode(QListWidget.SelectionMode.NoSelection)
         for file_path in self.video_files:
             item = QListWidgetItem(Path(file_path).name)
             item.setData(Qt.ItemDataRole.UserRole, file_path)
@@ -54,6 +54,7 @@ class VideoSelectionDialog(QDialog):
 
         ok_cancel_layout = QHBoxLayout()
         ok_btn = QPushButton("确定")
+        ok_btn.setDefault(True)
         ok_btn.clicked.connect(self.accept)
         ok_cancel_layout.addWidget(ok_btn)
         cancel_btn = QPushButton("取消")

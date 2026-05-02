@@ -1,6 +1,6 @@
 """段落合并器"""
 
-from typing import List, Optional
+from typing import Callable, List, Optional
 from dataclasses import dataclass
 from src.transcription.transcriber import TranscriptSegment
 from src.utils.logger import get_logger
@@ -19,6 +19,9 @@ class MergedSegment:
     language: str
 
 
+ShouldMergeFn = Callable[[MergedSegment, TranscriptSegment], bool]
+
+
 class SegmentMerger:
     """段落合并器"""
 
@@ -32,6 +35,56 @@ class SegmentMerger:
         self.max_gap = max_gap
         self.min_length = min_length
 
+    @staticmethod
+    def _merge(
+        segments: List[TranscriptSegment],
+        should_merge: ShouldMergeFn,
+        label: str,
+    ) -> List[MergedSegment]:
+        """通用合并逻辑。
+
+        Args:
+            segments: 转写段列表
+            should_merge: 判断当前段是否应与前一段合并的回调
+            label: 日志标签
+
+        Returns:
+            合并后的段落列表
+        """
+        if not segments:
+            return []
+
+        logger.info("开始%s，原始段落数: %d", label, len(segments))
+
+        merged: List[MergedSegment] = []
+        current: Optional[MergedSegment] = None
+
+        for segment in segments:
+            if current is None:
+                current = MergedSegment(
+                    start=segment.start,
+                    end=segment.end,
+                    text=segment.text,
+                    language=segment.language,
+                )
+            elif should_merge(current, segment):
+                current.end = segment.end
+                current.text += " " + segment.text
+            else:
+                merged.append(current)
+                current = MergedSegment(
+                    start=segment.start,
+                    end=segment.end,
+                    text=segment.text,
+                    language=segment.language,
+                )
+
+        if current:
+            merged.append(current)
+
+        logger.info("%s完成，合并后段落数: %d", label, len(merged))
+        return merged
+
     def merge_segments(self, segments: List[TranscriptSegment]) -> List[MergedSegment]:
         """合并段落
 
@@ -43,42 +96,12 @@ class SegmentMerger:
         Returns:
             合并后的段落列表
         """
-        if not segments:
-            return []
 
-        logger.info(f"开始合并段落，原始段落数: {len(segments)}")
+        def _should_merge(cur: MergedSegment, seg: TranscriptSegment) -> bool:
+            gap = seg.start - cur.end
+            return gap <= self.max_gap and seg.language == cur.language
 
-        merged = []
-        current_segment = None
-
-        for segment in segments:
-            if current_segment is None:
-                current_segment = MergedSegment(
-                    start=segment.start,
-                    end=segment.end,
-                    text=segment.text,
-                    language=segment.language,
-                )
-            else:
-                gap = segment.start - current_segment.end
-
-                if gap <= self.max_gap and segment.language == current_segment.language:
-                    current_segment.end = segment.end
-                    current_segment.text += " " + segment.text
-                else:
-                    merged.append(current_segment)
-                    current_segment = MergedSegment(
-                        start=segment.start,
-                        end=segment.end,
-                        text=segment.text,
-                        language=segment.language,
-                    )
-
-        if current_segment:
-            merged.append(current_segment)
-
-        logger.info(f"段落合并完成，合并后段落数: {len(merged)}")
-        return merged
+        return self._merge(segments, _should_merge, "合并段落")
 
     def merge_by_length(
         self, segments: List[TranscriptSegment], target_length: int = 200
@@ -92,43 +115,13 @@ class SegmentMerger:
         Returns:
             合并后的段落列表
         """
-        if not segments:
-            return []
 
-        logger.info(f"开始按长度合并段落，目标长度: {target_length}")
+        def _should_merge(cur: MergedSegment, seg: TranscriptSegment) -> bool:
+            return len(cur.text) < target_length and seg.language == cur.language
 
-        merged = []
-        current_segment = None
-
-        for segment in segments:
-            if current_segment is None:
-                current_segment = MergedSegment(
-                    start=segment.start,
-                    end=segment.end,
-                    text=segment.text,
-                    language=segment.language,
-                )
-            else:
-                if (
-                    len(current_segment.text) < target_length
-                    and segment.language == current_segment.language
-                ):
-                    current_segment.end = segment.end
-                    current_segment.text += " " + segment.text
-                else:
-                    merged.append(current_segment)
-                    current_segment = MergedSegment(
-                        start=segment.start,
-                        end=segment.end,
-                        text=segment.text,
-                        language=segment.language,
-                    )
-
-        if current_segment:
-            merged.append(current_segment)
-
-        logger.info(f"按长度合并完成，合并后段落数: {len(merged)}")
-        return merged
+        return self._merge(
+            segments, _should_merge, f"按长度合并段落(目标{target_length})"
+        )
 
     def merge_by_time(
         self, segments: List[TranscriptSegment], interval: float = 30.0
@@ -142,42 +135,11 @@ class SegmentMerger:
         Returns:
             合并后的段落列表
         """
-        if not segments:
-            return []
 
-        logger.info(f"开始按时间合并段落，时间间隔: {interval}秒")
+        def _should_merge(cur: MergedSegment, seg: TranscriptSegment) -> bool:
+            return seg.start - cur.start < interval and seg.language == cur.language
 
-        merged = []
-        current_segment = None
-        current_interval_start = segments[0].start
-
-        for segment in segments:
-            if current_segment is None:
-                current_segment = MergedSegment(
-                    start=segment.start,
-                    end=segment.end,
-                    text=segment.text,
-                    language=segment.language,
-                )
-            else:
-                if segment.start - current_interval_start < interval:
-                    current_segment.end = segment.end
-                    current_segment.text += " " + segment.text
-                else:
-                    merged.append(current_segment)
-                    current_interval_start = segment.start
-                    current_segment = MergedSegment(
-                        start=segment.start,
-                        end=segment.end,
-                        text=segment.text,
-                        language=segment.language,
-                    )
-
-        if current_segment:
-            merged.append(current_segment)
-
-        logger.info(f"按时间合并完成，合并后段落数: {len(merged)}")
-        return merged
+        return self._merge(segments, _should_merge, f"按时间合并段落({interval}s)")
 
     def filter_short_segments(
         self, segments: List[MergedSegment], min_length: Optional[int] = None
