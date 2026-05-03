@@ -11,7 +11,6 @@ from PySide6.QtGui import QFont, QIcon, QTextCursor, QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
-    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QGroupBox,
@@ -25,7 +24,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
-    QSpinBox,
     QSplitter,
     QStatusBar,
     QTabWidget,
@@ -38,14 +36,10 @@ from src.config.settings import (
     PromptManager,
     Settings,
     APP_VERSION,
-    DEFAULT_OLLAMA_URL,
-    DEFAULT_OLLAMA_MODEL,
 )
 from src.summarization.ollama_client import OllamaClient
 from src.ui.gui_dialogs import ConfigEditorDialog, VideoSelectionDialog
 from src.ui.gui_workers import (
-    OllamaCheckWorker,
-    OllamaListModelWorker,
     PipelineWorker,
     SummarizeWorker,
     TranscribeWorker,
@@ -114,7 +108,7 @@ class MainWindow(QMainWindow):
 
         self._setup_logging()
         self._init_ui()
-        self._load_ollama_config()
+        self._load_prompt_config()
         self._load_prompt_templates()
 
     def _setup_logging(self) -> None:
@@ -288,52 +282,6 @@ class MainWindow(QMainWindow):
         results_layout.addLayout(content_layout)
         right_splitter.addWidget(results_group)
 
-        # ollama config panel
-        ollama_group = QGroupBox("Ollama 配置(总结模型)")
-        ollama_layout = QFormLayout(ollama_group)
-        self.ollama_url_edit = QLineEdit()
-        self.ollama_url_edit.setPlaceholderText(DEFAULT_OLLAMA_URL)
-        ollama_layout.addRow("服务地址:", self.ollama_url_edit)
-
-        # 模型选择（下拉框 + 手动输入）
-        model_row = QHBoxLayout()
-        self.ollama_model_combo = QComboBox()
-        self.ollama_model_combo.setEditable(True)
-        self.ollama_model_combo.setMinimumWidth(250)
-        self.ollama_model_combo.setPlaceholderText(DEFAULT_OLLAMA_MODEL)
-        model_row.addWidget(self.ollama_model_combo, 1)
-        self.refresh_models_btn = QPushButton("刷新模型列表")
-        self.refresh_models_btn.clicked.connect(self._refresh_model_list)
-        model_row.addWidget(self.refresh_models_btn)
-        ollama_layout.addRow("模型名称:", model_row)
-
-        self.ollama_temp_spin = QDoubleSpinBox()
-        self.ollama_temp_spin.setRange(0.0, 2.0)
-        self.ollama_temp_spin.setSingleStep(0.1)
-        self.ollama_temp_spin.setDecimals(1)
-        ollama_layout.addRow("温度:", self.ollama_temp_spin)
-        self.ollama_maxlen_spin = QSpinBox()
-        self.ollama_maxlen_spin.setRange(50, 10000)
-        self.ollama_maxlen_spin.setSingleStep(50)
-        ollama_layout.addRow("最大长度:", self.ollama_maxlen_spin)
-        ollama_btn_row = QHBoxLayout()
-        self.ollama_start_btn = QPushButton("启动服务")
-        self.ollama_start_btn.clicked.connect(self._start_ollama_service)
-        ollama_btn_row.addWidget(self.ollama_start_btn)
-        self.ollama_stop_btn = QPushButton("关闭服务")
-        self.ollama_stop_btn.clicked.connect(self._stop_ollama_service)
-        ollama_btn_row.addWidget(self.ollama_stop_btn)
-        self.ollama_test_btn = QPushButton("测试连接")
-        self.ollama_test_btn.clicked.connect(self._test_ollama)
-        ollama_btn_row.addWidget(self.ollama_test_btn)
-        self.ollama_save_btn = QPushButton("保存配置")
-        self.ollama_save_btn.clicked.connect(self._save_ollama_config)
-        ollama_btn_row.addWidget(self.ollama_save_btn)
-        self.ollama_status_label = QLabel("")
-        ollama_btn_row.addWidget(self.ollama_status_label, 1)
-        ollama_layout.addRow(ollama_btn_row)
-        right_splitter.addWidget(ollama_group)
-
         # ── 提示词配置面板 ──
         prompt_group = QGroupBox("提示词配置")
         prompt_layout = QVBoxLayout(prompt_group)
@@ -368,7 +316,6 @@ class MainWindow(QMainWindow):
 
         right_splitter.setStretchFactor(0, 3)
         right_splitter.setStretchFactor(1, 1)
-        right_splitter.setStretchFactor(2, 1)
         splitter.addWidget(right_splitter)
 
         splitter.setStretchFactor(0, 1)
@@ -405,42 +352,12 @@ class MainWindow(QMainWindow):
     def _show_config_editor(self) -> None:
         dialog = ConfigEditorDialog(self)
         if dialog.exec() == dialog.DialogCode.Accepted:
-            self._load_ollama_config()
+            self._load_prompt_config()
             self.status_bar.showMessage("配置已保存", 5000)
 
-    # ── Ollama 配置 ──
-
-    def _load_ollama_config(self) -> None:
-        url = self.settings.get("summarization.ollama_url", DEFAULT_OLLAMA_URL)
-        model = self.settings.get("summarization.model_name", DEFAULT_OLLAMA_MODEL)
-        temp = self.settings.get_float("summarization.temperature", 0.7)
-        max_len = self.settings.get_int("summarization.max_length", 5000)
+    def _load_prompt_config(self) -> None:
         prompt = self.settings.get("summarization.custom_prompt", "")
-        self.ollama_url_edit.setText(url)
-        self.ollama_model_combo.setCurrentText(model)
-        self.ollama_temp_spin.setValue(temp)
-        self.ollama_maxlen_spin.setValue(max_len)
         self.ollama_prompt_edit.setPlainText(prompt)
-
-    def _save_ollama_config(self) -> None:
-        self.settings.set("summarization.ollama_url", self.ollama_url_edit.text())
-        self.settings.set(
-            "summarization.model_name", self.ollama_model_combo.currentText()
-        )
-        self.settings.set(
-            "summarization.temperature", str(self.ollama_temp_spin.value())
-        )
-        self.settings.set(
-            "summarization.max_length", str(self.ollama_maxlen_spin.value())
-        )
-        self.settings.set(
-            "summarization.custom_prompt", self.ollama_prompt_edit.toPlainText()
-        )
-        try:
-            self.settings.save()
-            self._set_ollama_status("配置已保存", "green")
-        except Exception as e:
-            self._set_ollama_status(f"保存失败: {e}", "red")
 
     # ── 提示词模板管理 ──
 
@@ -531,154 +448,6 @@ class MainWindow(QMainWindow):
 
         self.ollama_prompt_edit.clear()
         self.status_bar.showMessage(f"提示词「{name}」已删除", 5000)
-
-    def _test_ollama(self) -> None:
-        url = self.ollama_url_edit.text() or DEFAULT_OLLAMA_URL
-        self._set_ollama_status("测试中...", "orange")
-        self._wait_async_thread("_ollama_check_thread")
-        self._ollama_check_url = url
-        self._ollama_check_mode = "test"
-        thread = QThread()
-        worker = OllamaCheckWorker(url)
-        worker.moveToThread(thread)
-
-        def _cleanup():
-            self._ollama_check_thread = None
-            self._ollama_check_worker = None
-
-        worker.result.connect(self._on_check_result)
-        thread.finished.connect(_cleanup)
-        thread.finished.connect(thread.deleteLater)
-        thread.finished.connect(worker.deleteLater)
-        thread.started.connect(worker.run)
-        worker.finished.connect(thread.quit)
-        thread.start()
-        self._ollama_check_thread = thread
-        self._ollama_check_worker = worker
-
-    def _on_check_result(self, ok: bool) -> None:
-        mode = getattr(self, "_ollama_check_mode", "test")
-        url = getattr(self, "_ollama_check_url", "")
-        if mode == "test":
-            if ok:
-                self._set_ollama_status("连接成功", "green")
-                get_logger("video2text").info("Ollama 连接测试成功: %s", url)
-            else:
-                self._set_ollama_status("连接失败", "red")
-                get_logger("video2text").warning("Ollama 连接测试失败: %s", url)
-        elif mode == "start":
-            if ok:
-                self._set_ollama_status("Ollama 服务已启动", "green")
-                get_logger("video2text").info("Ollama 服务启动成功")
-            else:
-                self._set_ollama_status("服务启动中，请稍后测试", "orange")
-                get_logger("video2text").warning("Ollama 服务启动中，请稍后测试连接")
-
-    def _refresh_model_list(self) -> None:
-        """从 Ollama 获取可用模型列表并填充下拉框（异步）"""
-        url = self.ollama_url_edit.text() or DEFAULT_OLLAMA_URL
-        self._set_ollama_status("刷新中...", "orange")
-        self.refresh_models_btn.setEnabled(False)
-        self._wait_async_thread("_ollama_list_thread")
-        thread = QThread()
-        worker = OllamaListModelWorker(url)
-        worker.moveToThread(thread)
-
-        def _cleanup():
-            self._ollama_list_thread = None
-            self._ollama_list_worker = None
-            self.refresh_models_btn.setEnabled(True)
-
-        worker.result.connect(self._on_model_list_received)
-        thread.finished.connect(_cleanup)
-        thread.finished.connect(thread.deleteLater)
-        thread.finished.connect(worker.deleteLater)
-        thread.started.connect(worker.run)
-        worker.finished.connect(thread.quit)
-        thread.start()
-        self._ollama_list_thread = thread
-        self._ollama_list_worker = worker
-
-    def _on_model_list_received(self, models: list) -> None:
-        current_text = self.ollama_model_combo.currentText()
-        self.ollama_model_combo.clear()
-        if models:
-            self.ollama_model_combo.addItems(models)
-            idx = self.ollama_model_combo.findText(current_text)
-            if idx >= 0:
-                self.ollama_model_combo.setCurrentIndex(idx)
-            elif current_text.strip():
-                self.ollama_model_combo.insertItem(0, current_text)
-                self.ollama_model_combo.setCurrentIndex(0)
-            self._set_ollama_status(f"找到 {len(models)} 个模型", "green")
-            get_logger("video2text").info(
-                "模型列表刷新成功，共 %d 个模型: %s", len(models), models
-            )
-        else:
-            self._set_ollama_status("未找到模型或连接失败", "red")
-            get_logger("video2text").warning("获取模型列表失败")
-
-    def _start_ollama_service(self) -> None:
-        logger = get_logger("video2text")
-        url = self.ollama_url_edit.text() or DEFAULT_OLLAMA_URL
-
-        if OllamaClient.is_service_running(url):
-            self._set_ollama_status("Ollama 服务已在运行中", "green")
-            return
-
-        try:
-            logger.info("正在启动Ollama服务...")
-            self._set_ollama_status("正在启动...", "orange")
-
-            if not OllamaClient.start_service(url):
-                self._set_ollama_status("未找到ollama命令", "red")
-                QMessageBox.warning(
-                    self,
-                    "提示",
-                    "未找到ollama命令，请确保已安装Ollama。\n"
-                    "可以从 https://ollama.com/download 下载安装。",
-                )
-                return
-
-            logger.info("Ollama服务启动命令已执行")
-            QTimer.singleShot(2000, self._check_ollama_after_start)
-
-        except Exception as e:
-            logger.error(f"启动Ollama服务失败: {e}")
-            self._set_ollama_status(f"启动失败: {e}", "red")
-
-    def _stop_ollama_service(self) -> None:
-        url = self.ollama_url_edit.text() or DEFAULT_OLLAMA_URL
-        if OllamaClient._service_process is None:
-            self._set_ollama_status("Ollama 非本程序启动，无法关闭", "orange")
-            return
-        OllamaClient.stop_service()
-        if OllamaClient.is_service_running(url):
-            self._set_ollama_status("关闭失败，服务仍在运行", "red")
-        else:
-            self._set_ollama_status("Ollama 服务已关闭", "green")
-
-    def _check_ollama_after_start(self) -> None:
-        url = self.ollama_url_edit.text() or DEFAULT_OLLAMA_URL
-        self._ollama_check_url = url
-        self._ollama_check_mode = "start"
-        thread = QThread()
-        worker = OllamaCheckWorker(url)
-        worker.moveToThread(thread)
-
-        def _cleanup():
-            self._ollama_check_thread = None
-            self._ollama_check_worker = None
-
-        worker.result.connect(self._on_check_result)
-        thread.finished.connect(_cleanup)
-        thread.finished.connect(thread.deleteLater)
-        thread.finished.connect(worker.deleteLater)
-        thread.started.connect(worker.run)
-        worker.finished.connect(thread.quit)
-        thread.start()
-        self._ollama_check_thread = thread
-        self._ollama_check_worker = worker
 
     def _on_tab_changed(self, index: int) -> None:
         if index == 0:
@@ -817,28 +586,12 @@ class MainWindow(QMainWindow):
         if not busy:
             self.pause_btn.setText("暂停")
 
-    def _wait_async_thread(self, attr_name: str, timeout_ms: int = 3000) -> None:
-        """等待指定属性存储的旧 QThread 结束，防止引用泄漏。"""
-        old_thread = getattr(self, attr_name, None)
-        if old_thread is None:
-            return
-        try:
-            if old_thread.isRunning():
-                old_thread.quit()
-                old_thread.wait(timeout_ms)
-        except RuntimeError:
-            setattr(self, attr_name, None)
-
     def _reset_counters(self) -> None:
         self._tx_success = 0
         self._tx_fail = 0
         self._sum_success = 0
         self._sum_fail = 0
         self._fail_records = []
-
-    def _set_ollama_status(self, text: str, color: str) -> None:
-        self.ollama_status_label.setText(text)
-        self.ollama_status_label.setStyleSheet(f"color: {color}")
 
     def _on_worker_error(self, msg: str) -> None:
         mode_map = {
@@ -1318,23 +1071,6 @@ class MainWindow(QMainWindow):
             if not self._worker_thread.wait(3000):
                 self._worker_thread.terminate()
                 self._worker_thread.wait(1000)
-
-        for attr in ("_ollama_check_thread", "_ollama_list_thread"):
-            thread = getattr(self, attr, None)
-            if thread is not None:
-                try:
-                    if thread.isRunning():
-                        thread.quit()
-                        thread.wait(2000)
-                except RuntimeError:
-                    pass
-        for attr in ("_ollama_check_worker", "_ollama_list_worker"):
-            worker = getattr(self, attr, None)
-            if worker is not None:
-                try:
-                    worker.deleteLater()
-                except Exception:
-                    pass
 
         for name in ("video2text", "src"):
             lg = logging.getLogger(name)

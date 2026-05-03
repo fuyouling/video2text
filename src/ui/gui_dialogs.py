@@ -3,9 +3,10 @@
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QThread, QTimer
 from PySide6.QtWidgets import (
     QAbstractButton,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -15,13 +16,21 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
-from src.config.settings import Settings
+from src.config.settings import Settings, DEFAULT_OLLAMA_URL
+from src.summarization.ollama_client import OllamaClient
+from src.ui.gui_workers import (
+    OllamaCheckWorker,
+    OllamaListModelWorker,
+    OllamaStartServiceWorker,
+)
+from src.utils.logger import get_logger
 
 
 class VideoSelectionDialog(QDialog):
@@ -119,7 +128,6 @@ _KEY_LABELS: dict[str, str] = {
     "summarization.max_length": "最大长度",
     "summarization.temperature": "温度",
     "summarization.timeout": "超时时间",
-    "summarization.custom_prompt": "自定义提示词",
     "preprocessing.ffmpeg_path": "FFmpeg路径",
     "preprocessing.audio_sample_rate": "音频采样率",
     "preprocessing.audio_channels": "音频声道数",
@@ -142,7 +150,7 @@ class ConfigEditorDialog(QDialog):
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.settings = Settings()
-        self._edits: dict[str, dict[str, QLineEdit]] = {}
+        self._edits: dict[str, dict[str, QWidget]] = {}
         self._init_ui()
 
     def _init_ui(self) -> None:
@@ -174,26 +182,37 @@ class ConfigEditorDialog(QDialog):
         form = QFormLayout(tab)
         form.setContentsMargins(8, 8, 8, 8)
 
-        section_edits: dict[str, QLineEdit] = {}
+        section_edits: dict[str, QWidget] = {}
         items = self.settings.config.items(section)
 
+        _SKIP_KEYS = {"summarization.custom_prompt"}
+
         for key, value in items:
-            edit = QLineEdit(value)
             full_key = f"{section}.{key}"
-            label = _KEY_LABELS.get(full_key, key)
-            if full_key in Settings.PATH_KEYS:
-                row = QHBoxLayout()
-                row.addWidget(edit, 1)
-                browse_btn = QPushButton("浏览")
-                browse_btn.setProperty("_path_edit", edit)
-                browse_btn.clicked.connect(self._browse_dir)
-                row.addWidget(browse_btn)
-                form.addRow(f"{label}:", row)
+            if full_key in _SKIP_KEYS:
+                continue
+            if full_key == "summarization.model_name":
+                widget = self._create_model_combo(value, form)
             else:
-                form.addRow(f"{label}:", edit)
-            section_edits[key] = edit
+                widget = QLineEdit(value)
+                label = _KEY_LABELS.get(full_key, key)
+                if full_key in Settings.PATH_KEYS:
+                    row = QHBoxLayout()
+                    row.addWidget(widget, 1)
+                    browse_btn = QPushButton("浏览")
+                    browse_btn.setProperty("_path_edit", widget)
+                    browse_btn.clicked.connect(self._browse_dir)
+                    row.addWidget(browse_btn)
+                    form.addRow(f"{label}:", row)
+                else:
+                    form.addRow(f"{label}:", widget)
+            section_edits[key] = widget
 
         self._edits[section] = section_edits
+
+        if section == "summarization":
+            self._add_ollama_service_buttons(form)
+
         tab_label = _SECTION_LABELS.get(section, section)
         self.tab_widget.addTab(tab, tab_label)
 
@@ -209,6 +228,207 @@ class ConfigEditorDialog(QDialog):
         if folder:
             edit.setText(folder)
 
+    def _create_model_combo(self, current_value: str, form: QFormLayout) -> QComboBox:
+        combo = QComboBox()
+        combo.setEditable(True)
+        combo.setMinimumWidth(250)
+        combo.setCurrentText(current_value)
+        row = QHBoxLayout()
+        row.addWidget(combo, 1)
+        refresh_btn = QPushButton("刷新模型列表")
+        refresh_btn.clicked.connect(self._refresh_model_list)
+        row.addWidget(refresh_btn)
+        label = _KEY_LABELS.get("summarization.model_name", "model_name")
+        form.addRow(f"{label}:", row)
+        self._model_combo = combo
+        self._refresh_models_btn = refresh_btn
+        return combo
+
+    def _refresh_model_list(self) -> None:
+        url = self._get_ollama_url()
+        self._set_ollama_status("刷新中...", "orange")
+        self._refresh_models_btn.setEnabled(False)
+        self._wait_async_thread("_ollama_list_thread")
+        thread = QThread()
+        worker = OllamaListModelWorker(url)
+        worker.moveToThread(thread)
+
+        def _cleanup():
+            self._ollama_list_thread = None
+            self._ollama_list_worker = None
+            self._refresh_models_btn.setEnabled(True)
+
+        worker.result.connect(self._on_model_list_received)
+        thread.finished.connect(_cleanup)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(worker.deleteLater)
+        thread.started.connect(worker.run)
+        worker.finished.connect(thread.quit)
+        thread.start()
+        self._ollama_list_thread = thread
+        self._ollama_list_worker = worker
+
+    def _on_model_list_received(self, models: list) -> None:
+        current_text = self._model_combo.currentText()
+        self._model_combo.clear()
+        if models:
+            self._model_combo.addItems(models)
+            idx = self._model_combo.findText(current_text)
+            if idx >= 0:
+                self._model_combo.setCurrentIndex(idx)
+            elif current_text.strip():
+                self._model_combo.insertItem(0, current_text)
+                self._model_combo.setCurrentIndex(0)
+            self._set_ollama_status(f"找到 {len(models)} 个模型", "green")
+        else:
+            self._set_ollama_status("未找到模型或连接失败", "red")
+
+    def _add_ollama_service_buttons(self, form: QFormLayout) -> None:
+        btn_row = QHBoxLayout()
+        self._ollama_start_btn = QPushButton("启动服务")
+        self._ollama_start_btn.clicked.connect(self._start_ollama_service)
+        btn_row.addWidget(self._ollama_start_btn)
+        self._ollama_stop_btn = QPushButton("关闭服务")
+        self._ollama_stop_btn.clicked.connect(self._stop_ollama_service)
+        btn_row.addWidget(self._ollama_stop_btn)
+        self._ollama_test_btn = QPushButton("测试连接")
+        self._ollama_test_btn.clicked.connect(self._test_ollama)
+        btn_row.addWidget(self._ollama_test_btn)
+        self._ollama_status_label = QLabel("")
+        btn_row.addWidget(self._ollama_status_label, 1)
+        form.addRow(btn_row)
+
+        self._ollama_check_thread: Optional[QThread] = None
+        self._ollama_check_worker: Optional[OllamaCheckWorker] = None
+        self._ollama_list_thread: Optional[QThread] = None
+        self._ollama_list_worker: Optional[OllamaListModelWorker] = None
+
+    def _get_ollama_url(self) -> str:
+        edits = self._edits.get("summarization", {})
+        url_edit = edits.get("ollama_url")
+        if url_edit is not None:
+            return url_edit.text().strip() or DEFAULT_OLLAMA_URL
+        return DEFAULT_OLLAMA_URL
+
+    def _set_ollama_status(self, text: str, color: str) -> None:
+        self._ollama_status_label.setText(text)
+        self._ollama_status_label.setStyleSheet(f"color: {color}")
+
+    def _cleanup_check_thread(self) -> None:
+        self._ollama_check_thread = None
+        self._ollama_check_worker = None
+
+    def _test_ollama(self) -> None:
+        url = self._get_ollama_url()
+        self._set_ollama_status("测试中...", "orange")
+        self._wait_async_thread("_ollama_check_thread")
+        thread = QThread()
+        worker = OllamaCheckWorker(url)
+        worker.moveToThread(thread)
+        worker.result.connect(self._on_check_result)
+        thread.finished.connect(self._cleanup_check_thread)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(worker.deleteLater)
+        thread.started.connect(worker.run)
+        worker.finished.connect(thread.quit)
+        thread.start()
+        self._ollama_check_thread = thread
+        self._ollama_check_worker = worker
+
+    def _on_check_result(self, ok: bool) -> None:
+        url = self._get_ollama_url()
+        if ok:
+            self._set_ollama_status("连接成功", "green")
+            get_logger("video2text").info("Ollama 连接测试成功: %s", url)
+        else:
+            self._set_ollama_status("连接失败", "red")
+            get_logger("video2text").warning("Ollama 连接测试失败: %s", url)
+
+    def _start_ollama_service(self) -> None:
+        url = self._get_ollama_url()
+        self._set_ollama_status("正在启动...", "orange")
+        self._ollama_start_btn.setEnabled(False)
+        self._wait_async_thread("_ollama_start_thread")
+        thread = QThread()
+        worker = OllamaStartServiceWorker(url)
+        worker.moveToThread(thread)
+
+        def _cleanup():
+            self._ollama_start_thread = None
+            self._ollama_start_worker = None
+            self._ollama_start_btn.setEnabled(True)
+
+        worker.result.connect(self._on_start_result)
+        thread.finished.connect(_cleanup)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(worker.deleteLater)
+        thread.started.connect(worker.run)
+        worker.finished.connect(thread.quit)
+        thread.start()
+        self._ollama_start_thread = thread
+        self._ollama_start_worker = worker
+
+    def _on_start_result(self, ok: bool, status: str) -> None:
+        logger = get_logger("video2text")
+        if ok:
+            if status == "already_running":
+                self._set_ollama_status("Ollama 服务已在运行中", "green")
+            else:
+                self._set_ollama_status("Ollama 服务已启动", "green")
+                logger.info("Ollama 服务启动成功")
+        elif status == "not_found":
+            self._set_ollama_status("未找到ollama命令", "red")
+            QMessageBox.warning(
+                self,
+                "提示",
+                "未找到ollama命令，请确保已安装Ollama。\n"
+                "可以从 https://ollama.com/download 下载安装。",
+            )
+        elif status == "timeout":
+            self._set_ollama_status("启动超时，请稍后测试连接", "orange")
+            logger.warning("Ollama 服务启动超时")
+        else:
+            self._set_ollama_status("启动失败", "red")
+            logger.error("Ollama 服务启动失败")
+
+    def _stop_ollama_service(self) -> None:
+        url = self._get_ollama_url()
+        if OllamaClient._service_process is None:
+            self._set_ollama_status("Ollama 非本程序启动，无法关闭", "orange")
+            return
+        OllamaClient.stop_service()
+        if OllamaClient.is_service_running(url):
+            self._set_ollama_status("关闭失败，服务仍在运行", "red")
+        else:
+            self._set_ollama_status("Ollama 服务已关闭", "green")
+
+    def _wait_async_thread(self, attr_name: str, timeout_ms: int = 3000) -> None:
+        old_thread = getattr(self, attr_name, None)
+        if old_thread is None:
+            return
+        try:
+            if old_thread.isRunning():
+                old_thread.quit()
+                old_thread.wait(timeout_ms)
+        except RuntimeError:
+            setattr(self, attr_name, None)
+
+    def closeEvent(self, event) -> None:
+        for attr in (
+            "_ollama_check_thread",
+            "_ollama_list_thread",
+            "_ollama_start_thread",
+        ):
+            thread = getattr(self, attr, None)
+            if thread is not None:
+                try:
+                    if thread.isRunning():
+                        thread.quit()
+                        thread.wait(2000)
+                except RuntimeError:
+                    pass
+        super().closeEvent(event)
+
     def _on_button_clicked(self, button: QAbstractButton) -> None:
         role = self._btn_box.buttonRole(button)
         if role == QDialogButtonBox.ButtonRole.AcceptRole:
@@ -218,15 +438,28 @@ class ConfigEditorDialog(QDialog):
         else:
             self.reject()
 
+    @staticmethod
+    def _widget_text(widget: QWidget) -> str:
+        if isinstance(widget, QComboBox):
+            return widget.currentText()
+        return widget.text()  # type: ignore[union-attr]
+
+    @staticmethod
+    def _set_widget_text(widget: QWidget, value: str) -> None:
+        if isinstance(widget, QComboBox):
+            widget.setCurrentText(value)
+        else:
+            widget.setText(value)  # type: ignore[union-attr]
+
     def _save(self) -> None:
         for section, edits in self._edits.items():
-            for key, edit in edits.items():
-                self.settings.set(f"{section}.{key}", edit.text())
+            for key, widget in edits.items():
+                self.settings.set(f"{section}.{key}", self._widget_text(widget))
         self.settings.save()
         self.accept()
 
     def _reset(self) -> None:
         for section, edits in self._edits.items():
             items = self.settings.config.items(section)
-            for key, edit in edits.items():
-                edit.setText(dict(items).get(key, ""))
+            for key, widget in edits.items():
+                self._set_widget_text(widget, dict(items).get(key, ""))

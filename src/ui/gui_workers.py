@@ -3,6 +3,7 @@
 import logging
 import sys
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -615,6 +616,46 @@ class OllamaCheckWorker(QObject):
                 client.close()
         except Exception:
             self.result.emit(False)
+        finally:
+            self.finished.emit()
+
+
+class OllamaStartServiceWorker(QObject):
+    """异步启动 Ollama 服务并等待就绪"""
+
+    result = Signal(bool, str)
+    finished = Signal()
+
+    def __init__(
+        self, url: str, max_wait: float = 10, poll_interval: float = 0.5
+    ) -> None:
+        super().__init__()
+        self.url = url
+        self.max_wait = max_wait
+        self.poll_interval = poll_interval
+
+    def run(self) -> None:
+        try:
+            if OllamaClient.is_service_running(self.url):
+                self.result.emit(True, "already_running")
+                return
+
+            started = OllamaClient.start_service(self.url)
+            if not started:
+                self.result.emit(False, "not_found")
+                return
+
+            elapsed = 0.0
+            while elapsed < self.max_wait:
+                time.sleep(self.poll_interval)
+                elapsed += self.poll_interval
+                if OllamaClient.is_service_running(self.url):
+                    self.result.emit(True, "started")
+                    return
+
+            self.result.emit(False, "timeout")
+        except Exception:
+            self.result.emit(False, "error")
         finally:
             self.finished.emit()
 
