@@ -328,3 +328,6 @@ video2text/
 ## 许可证
 
 GNU GENERAL PUBLIC LICENSE
+
+## 讨论小组
+QQ群: 296875960
