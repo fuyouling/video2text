@@ -14,50 +14,22 @@ class Summarizer:
     def __init__(
         self,
         model_name: str,
-        ollama_url: str = "http://127.0.0.1:11434",
+        client: OllamaClient,
         temperature: float = 0.7,
         max_length: int = 5000,
-        client: Optional[OllamaClient] = None,
     ):
         """初始化总结器
 
         Args:
             model_name: 模型名称
-            ollama_url: Ollama服务地址
+            client: OllamaClient 实例
             temperature: 温度参数
             max_length: 最大长度
-            client: 可选的已有 OllamaClient 实例，不传则自动创建
         """
         self.model_name = model_name
-        self.ollama_url = ollama_url
+        self.client = client
         self.temperature = temperature
         self.max_length = max_length
-        self.client = client if client is not None else OllamaClient(ollama_url)
-
-    def check_connection(self) -> bool:
-        """检查Ollama连接
-
-        Returns:
-            是否连接成功
-        """
-        return self.client.check_connection()
-
-    def check_model(self) -> bool:
-        """检查模型是否存在
-
-        Returns:
-            模型是否存在
-        """
-        try:
-            models = self.client.list_models()
-            exists = self.model_name in models
-            logger.info(f"模型 {self.model_name} {'存在' if exists else '不存在'}")
-            if not exists:
-                logger.warning(f"可用模型: {models}")
-            return exists
-        except Exception as e:
-            logger.error(f"检查模型失败: {e}")
-            return False
 
     def build_prompt(
         self,

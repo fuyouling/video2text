@@ -1,5 +1,22 @@
 # Video2Text Portable Build Script (PowerShell)
 # Requires: Python 3.8+, PyInstaller, requests
+##################################################
+# 默认行为：打包 + 创建 ZIP（和之前一样）
+# .\build_portable.ps1
+#
+# 强制完全清理（删除 build/ 和缓存），然后打包 + 创建 ZIP
+# .\build_portable.ps1 -Clean -NoZip
+#
+# 强制完全清理（删除 build/ 和缓存），然后打包 + 创建 ZIP
+# .\build_portable.ps1 -Clean
+# 
+# 增量构建（默认），仅当 spec 文件更改时才重新构建，保留 build/ 缓存以加速后续构建
+# .\build_portable.ps1 -NoZip
+#
+###################################################
+param([switch]$Clean, [switch]$NoZip)
+
+$buildStart = Get-Date
 
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "Video2Text Green Version Build Tool" -ForegroundColor Cyan
@@ -18,10 +35,21 @@ try {
     exit 1
 }
 
-# Step 2: Clean old builds (optional, use cache to speed up)
+# Step 2: Clean old builds (preserve build/ cache by default, use -Clean to force full clean)
 Write-Host "[2/6] Cleaning old builds..." -ForegroundColor Yellow
-if (Test-Path "build") { Remove-Item -Recurse -Force "build" }
-if (Test-Path "dist") { Remove-Item -Recurse -Force "dist" }
+if ($Clean) {
+    Write-Host "  Full clean mode (-Clean specified)" -ForegroundColor Yellow
+    if (Test-Path "build") { Remove-Item -Recurse -Force "build" }
+    if (Test-Path "dist") { Remove-Item -Recurse -Force "dist" }
+    if (Test-Path ".build_cache") { Remove-Item -Force ".build_cache" }
+    if (Test-Path "_spec_cache.json") { Remove-Item -Force "_spec_cache.json" }
+} else {
+    # Only clean dist output, preserve build/ for PyInstaller incremental cache
+    if (Test-Path "dist\video2text_portable") {
+        Remove-Item -Recurse -Force "dist\video2text_portable"
+    }
+    Write-Host "  Preserved build/ cache (use -Clean for full clean)" -ForegroundColor Green
+}
 
 # Step 3: Install dependencies
 Write-Host "[3/6] Checking dependencies..." -ForegroundColor Yellow
@@ -41,8 +69,10 @@ Write-Host "[4/6] Building executable..." -ForegroundColor Yellow
 
 # Check if rebuild needed (spec file changed or no previous build)
 $needsRebuild = $false
-$cacheFile = "build\.build_cache"
-if (Test-Path "video2text_portable.spec") {
+$cacheFile = ".build_cache"
+if ($Clean) {
+    $needsRebuild = $true
+} elseif (Test-Path "video2text_portable.spec") {
     $currentHash = (Get-FileHash "video2text_portable.spec").Hash
     if (Test-Path $cacheFile) {
         $cachedHash = Get-Content $cacheFile -Raw
@@ -135,39 +165,47 @@ $batContent | Out-File -FilePath "$portableDir\video2text.bat" -Encoding ascii
 Write-Host "  Created: video2text.bat" -ForegroundColor Green
 
 # Step 6: Create ZIP package (excluding models)
-Write-Host "[6/6] Creating ZIP package (excluding models)..." -ForegroundColor Yellow
-$zipName = "video2text_portable_windows_$(Get-Date -Format 'yyyyMMdd').zip"
-$zipPath = Join-Path "dist" $zipName
+if ($NoZip) {
+    Write-Host "[6/6] Skipping ZIP package (-NoZip specified)" -ForegroundColor Yellow
+    $zipPath = $null
+} else {
+    Write-Host "[6/6] Creating ZIP package (excluding models)..." -ForegroundColor Yellow
+    $zipName = "video2text_portable_windows_$(Get-Date -Format 'yyyyMMdd').zip"
+    $zipPath = Join-Path "dist" $zipName
 
-# Stop any running video2text.exe to release file locks
-Get-Process "video2text" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 2
+    # Stop any running video2text.exe to release file locks
+    Get-Process "video2text" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
 
-# Create temp dir without models
-$tempDir = "dist\video2text_portable_temp"
-if (Test-Path $tempDir) { Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue }
-Copy-Item -Recurse -Force "$portableDir" $tempDir
+    # Create temp dir without models
+    $tempDir = "dist\video2text_portable_temp"
+    if (Test-Path $tempDir) { Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue }
+    Copy-Item -Recurse -Force "$portableDir" $tempDir
 
-# Create ZIP with retry logic
-$retryCount = 3
-for ($i = 1; $i -le $retryCount; $i++) {
-    try {
-        Compress-Archive -Path "$tempDir\*" -DestinationPath $zipPath -Force -ErrorAction Stop
-        Write-Host "  Created: $zipPath (models excluded)" -ForegroundColor Green
-        break
-    } catch {
-        if ($i -eq $retryCount) {
-            Write-Host "  Warning: ZIP creation failed after $retryCount attempts" -ForegroundColor Yellow
-            Write-Host "  You can manually zip: $tempDir" -ForegroundColor Yellow
-        } else {
-            Write-Host "  Retry $i/$retryCount..." -ForegroundColor Yellow
-            Start-Sleep -Seconds 2
+    # Create ZIP with retry logic
+    $retryCount = 3
+    for ($i = 1; $i -le $retryCount; $i++) {
+        try {
+            Compress-Archive -Path "$tempDir\*" -DestinationPath $zipPath -Force -ErrorAction Stop
+            Write-Host "  Created: $zipPath (models excluded)" -ForegroundColor Green
+            break
+        } catch {
+            if ($i -eq $retryCount) {
+                Write-Host "  Warning: ZIP creation failed after $retryCount attempts" -ForegroundColor Yellow
+                Write-Host "  You can manually zip: $tempDir" -ForegroundColor Yellow
+            } else {
+                Write-Host "  Retry $i/$retryCount..." -ForegroundColor Yellow
+                Start-Sleep -Seconds 2
+            }
         }
     }
+
+    # Cleanup temp dir
+    if (Test-Path $tempDir) { Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue }
 }
 
-# Cleanup temp dir
-if (Test-Path $tempDir) { Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue }
+$buildEnd = Get-Date
+$elapsed = $buildEnd - $buildStart
 
 # Summary
 Write-Host ""
@@ -175,9 +213,13 @@ Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "Build Complete!" -ForegroundColor Green
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host ""
+Write-Host "Time elapsed: $($elapsed.Minutes)m $($elapsed.Seconds)s" -ForegroundColor White
+Write-Host ""
 Write-Host "Output files:" -ForegroundColor Yellow
 Write-Host "  - Directory: $portableDir" -ForegroundColor White
-Write-Host "  - ZIP package: $zipPath" -ForegroundColor White
+if ($zipPath) {
+    Write-Host "  - ZIP package: $zipPath" -ForegroundColor White
+}
 Write-Host ""
 Write-Host "Green version features:" -ForegroundColor Yellow
 Write-Host "  [√] No installation required, extract and use" -ForegroundColor Green
@@ -185,6 +227,12 @@ Write-Host "  [√] Can directly edit config.ini" -ForegroundColor Green
 Write-Host "  [√] No registry writes, pure green software" -ForegroundColor Green
 Write-Host "  [√] Auto-downloads model on first run (excluded from ZIP)" -ForegroundColor Green
 Write-Host "  [√] Uses cache to speed up rebuilds" -ForegroundColor Green
+Write-Host ""
+Write-Host "Tips:" -ForegroundColor Yellow
+Write-Host "  - Use -Clean flag for full rebuild: .\build_portable.ps1 -Clean" -ForegroundColor White
+Write-Host "  - Use -NoZip to skip ZIP packaging: .\build_portable.ps1 -NoZip" -ForegroundColor White
+Write-Host "  - Combine flags: .\build_portable.ps1 -Clean -NoZip" -ForegroundColor White
+Write-Host "  - Incremental build (default) skips unchanged steps" -ForegroundColor White
 Write-Host ""
 
 Read-Host "Press Enter to exit"

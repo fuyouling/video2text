@@ -32,6 +32,10 @@ MANIFEST
 *.manifest
 #*.spec
 
+# Build caches
+.build_cache
+_spec_cache.json
+
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt

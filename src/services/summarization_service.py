@@ -2,7 +2,12 @@
 
 from typing import Callable, List, Optional
 
-from src.config.settings import Settings
+from src.config.settings import (
+    Settings,
+    DEFAULT_OLLAMA_URL,
+    DEFAULT_OLLAMA_TIMEOUT,
+    DEFAULT_OLLAMA_MODEL,
+)
 from src.storage.file_writer import FileWriter
 from src.summarization.ollama_client import OllamaClient
 from src.summarization.summarizer import Summarizer
@@ -18,7 +23,9 @@ class SummarizationService:
     主要职责：
     1. 统一 CLI / GUI 的总结逻辑
     2. 支持流式输出（streaming）—— GUI 实时显示生成过程
-    3. 支持多模型切换 —— 从 Ollama 获取可用模型列表
+
+    注意：Ollama 连接管理、模型检查等操作应通过 OllamaClient 完成，
+    本类不负责 Ollama 服务的状态管理。
     """
 
     def __init__(
@@ -26,6 +33,7 @@ class SummarizationService:
         settings: Settings,
         file_writer: FileWriter,
         *,
+        client: Optional[OllamaClient] = None,
         model_name: Optional[str] = None,
         ollama_url: Optional[str] = None,
         temperature: Optional[float] = None,
@@ -39,10 +47,10 @@ class SummarizationService:
         self.settings = settings
         self.file_writer = file_writer
         self.model_name = model_name or settings.get(
-            "summarization.model_name", "qwen2.5:7b-instruct-q4_K_M"
+            "summarization.model_name", DEFAULT_OLLAMA_MODEL
         )
         self.ollama_url = ollama_url or settings.get(
-            "summarization.ollama_url", "http://127.0.0.1:11434"
+            "summarization.ollama_url", DEFAULT_OLLAMA_URL
         )
         self.temperature = (
             temperature
@@ -60,18 +68,26 @@ class SummarizationService:
         self.on_progress = on_progress
         self.cancel_check = cancel_check
 
-        ollama_timeout = settings.get_int("summarization.timeout", 300)
-        self._client = OllamaClient(self.ollama_url, timeout=ollama_timeout)
+        if client is not None:
+            self._client = client
+            self._owns_client = False
+        else:
+            ollama_timeout = settings.get_int(
+                "summarization.timeout", DEFAULT_OLLAMA_TIMEOUT
+            )
+            self._client = OllamaClient(self.ollama_url, timeout=ollama_timeout)
+            self._owns_client = True
+
         try:
             self._summarizer = Summarizer(
                 model_name=self.model_name,
-                ollama_url=self.ollama_url,
+                client=self._client,
                 temperature=self.temperature,
                 max_length=self.max_length,
-                client=self._client,
             )
         except Exception:
-            self._client.close()
+            if self._owns_client:
+                self._client.close()
             raise
 
     # ------------------------------------------------------------------
@@ -79,35 +95,9 @@ class SummarizationService:
     # ------------------------------------------------------------------
 
     def close(self) -> None:
-        """关闭底层 HTTP 连接。"""
-        self._client.close()
-
-    def check_connection(self) -> bool:
-        """检查 Ollama 连接。"""
-        with log_step("Ollama 连接检查"):
-            ok = self._client.check_connection()
-            if not ok:
-                logger.warning("Ollama 连接失败: %s", self.ollama_url)
-            return ok
-
-    def check_model(self) -> bool:
-        """检查模型是否存在。"""
-        with log_step(f"模型检查 ({self.model_name})"):
-            try:
-                models = self._client.list_models()
-                exists = self.model_name in models
-                if not exists:
-                    logger.warning(
-                        "模型 %s 不存在，可用模型: %s", self.model_name, models
-                    )
-                return exists
-            except Exception as e:
-                logger.error("检查模型失败: %s", e)
-                return False
-
-    def list_models(self) -> List[str]:
-        """获取 Ollama 可用模型列表。"""
-        return self._client.list_models()
+        """关闭底层 HTTP 连接（仅关闭由本类创建的客户端）。"""
+        if self._owns_client:
+            self._client.close()
 
     def summarize(
         self,

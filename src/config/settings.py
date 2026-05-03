@@ -18,6 +18,10 @@ from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
+DEFAULT_OLLAMA_TIMEOUT = 300
+DEFAULT_OLLAMA_MODEL = "qwen2.5:7b-instruct-q4_K_M"
+
 
 def _get_base_dir() -> Path:
     """获取程序基础目录 - 支持 frozen（打包）和开发环境"""

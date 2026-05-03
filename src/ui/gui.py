@@ -1,7 +1,6 @@
 """Video2Text GUI —— 基于 PySide6 的视频转文本图形界面"""
 
 import logging
-import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -34,7 +33,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.config.settings import PromptManager, Settings
+from src.config.settings import (
+    PromptManager,
+    Settings,
+    DEFAULT_OLLAMA_URL,
+    DEFAULT_OLLAMA_MODEL,
+)
+from src.summarization.ollama_client import OllamaClient
 from src.ui.gui_dialogs import VideoSelectionDialog
 from src.ui.gui_workers import (
     OllamaCheckWorker,
@@ -103,7 +108,6 @@ class MainWindow(QMainWindow):
         self._sum_success = 0
         self._sum_fail = 0
         self._fail_records: list[tuple[str, str, str]] = []
-        self._ollama_process: Optional[subprocess.Popen] = None
         self._current_video_name: Optional[str] = None
 
         self._setup_logging()
@@ -282,7 +286,7 @@ class MainWindow(QMainWindow):
         ollama_group = QGroupBox("Ollama 配置(总结模型)")
         ollama_layout = QFormLayout(ollama_group)
         self.ollama_url_edit = QLineEdit()
-        self.ollama_url_edit.setPlaceholderText("http://127.0.0.1:11434")
+        self.ollama_url_edit.setPlaceholderText(DEFAULT_OLLAMA_URL)
         ollama_layout.addRow("服务地址:", self.ollama_url_edit)
 
         # 模型选择（下拉框 + 手动输入）
@@ -290,7 +294,7 @@ class MainWindow(QMainWindow):
         self.ollama_model_combo = QComboBox()
         self.ollama_model_combo.setEditable(True)
         self.ollama_model_combo.setMinimumWidth(250)
-        self.ollama_model_combo.setPlaceholderText("qwen2.5:7b-instruct-q4_K_M")
+        self.ollama_model_combo.setPlaceholderText(DEFAULT_OLLAMA_MODEL)
         model_row.addWidget(self.ollama_model_combo, 1)
         self.refresh_models_btn = QPushButton("刷新模型列表")
         self.refresh_models_btn.clicked.connect(self._refresh_model_list)
@@ -335,6 +339,9 @@ class MainWindow(QMainWindow):
         self.ollama_start_btn = QPushButton("启动服务")
         self.ollama_start_btn.clicked.connect(self._start_ollama_service)
         ollama_btn_row.addWidget(self.ollama_start_btn)
+        self.ollama_stop_btn = QPushButton("关闭服务")
+        self.ollama_stop_btn.clicked.connect(self._stop_ollama_service)
+        ollama_btn_row.addWidget(self.ollama_stop_btn)
         self.ollama_test_btn = QPushButton("测试连接")
         self.ollama_test_btn.clicked.connect(self._test_ollama)
         ollama_btn_row.addWidget(self.ollama_test_btn)
@@ -361,10 +368,8 @@ class MainWindow(QMainWindow):
     # ── Ollama 配置 ──
 
     def _load_ollama_config(self) -> None:
-        url = self.settings.get("summarization.ollama_url", "http://127.0.0.1:11434")
-        model = self.settings.get(
-            "summarization.model_name", "qwen2.5:7b-instruct-q4_K_M"
-        )
+        url = self.settings.get("summarization.ollama_url", DEFAULT_OLLAMA_URL)
+        model = self.settings.get("summarization.model_name", DEFAULT_OLLAMA_MODEL)
         temp = self.settings.get_float("summarization.temperature", 0.7)
         max_len = self.settings.get_int("summarization.max_length", 5000)
         prompt = self.settings.get("summarization.custom_prompt", "")
@@ -474,7 +479,7 @@ class MainWindow(QMainWindow):
         self._set_ollama_status(f"提示词「{name}」已删除", "green")
 
     def _test_ollama(self) -> None:
-        url = self.ollama_url_edit.text() or "http://127.0.0.1:11434"
+        url = self.ollama_url_edit.text() or DEFAULT_OLLAMA_URL
         self._set_ollama_status("测试中...", "orange")
         self._wait_async_thread("_ollama_check_thread")
         self._ollama_check_url = url
@@ -503,25 +508,21 @@ class MainWindow(QMainWindow):
         if mode == "test":
             if ok:
                 self._set_ollama_status("连接成功", "green")
-                self.status_bar.showMessage("Ollama 连接测试成功", 5000)
                 get_logger("video2text").info("Ollama 连接测试成功: %s", url)
             else:
                 self._set_ollama_status("连接失败", "red")
-                self.status_bar.showMessage("Ollama 连接测试失败", 5000)
                 get_logger("video2text").warning("Ollama 连接测试失败: %s", url)
         elif mode == "start":
             if ok:
                 self._set_ollama_status("Ollama 服务已启动", "green")
-                self.status_bar.showMessage("Ollama 服务启动成功", 5000)
                 get_logger("video2text").info("Ollama 服务启动成功")
             else:
                 self._set_ollama_status("服务启动中，请稍后测试", "orange")
-                self.status_bar.showMessage("Ollama 服务启动中，请稍后重试", 5000)
                 get_logger("video2text").warning("Ollama 服务启动中，请稍后测试连接")
 
     def _refresh_model_list(self) -> None:
         """从 Ollama 获取可用模型列表并填充下拉框（异步）"""
-        url = self.ollama_url_edit.text() or "http://127.0.0.1:11434"
+        url = self.ollama_url_edit.text() or DEFAULT_OLLAMA_URL
         self._set_ollama_status("刷新中...", "orange")
         self.refresh_models_btn.setEnabled(False)
         self._wait_async_thread("_ollama_list_thread")
@@ -556,59 +557,34 @@ class MainWindow(QMainWindow):
                 self.ollama_model_combo.insertItem(0, current_text)
                 self.ollama_model_combo.setCurrentIndex(0)
             self._set_ollama_status(f"找到 {len(models)} 个模型", "green")
-            self.status_bar.showMessage(
-                f"模型列表刷新成功，共 {len(models)} 个可用模型", 5000
-            )
             get_logger("video2text").info(
                 "模型列表刷新成功，共 %d 个模型: %s", len(models), models
             )
         else:
             self._set_ollama_status("未找到模型或连接失败", "red")
-            self.status_bar.showMessage("获取模型列表失败，请检查 Ollama 服务", 5000)
             get_logger("video2text").warning("获取模型列表失败")
 
     def _start_ollama_service(self) -> None:
-        import shutil
-
-        import requests
-
         logger = get_logger("video2text")
-        url = self.ollama_url_edit.text() or "http://127.0.0.1:11434"
+        url = self.ollama_url_edit.text() or DEFAULT_OLLAMA_URL
 
-        try:
-            resp = requests.get(f"{url}/api/tags", timeout=2)
-            if resp.status_code == 200:
-                self._set_ollama_status("Ollama 服务已在运行中", "green")
-                self.status_bar.showMessage("Ollama 服务已在运行中", 5000)
-                return
-        except Exception:
-            pass
-
-        ollama_path = shutil.which("ollama")
-        if not ollama_path:
-            self._set_ollama_status("未找到ollama命令", "red")
-            self.status_bar.showMessage("未找到 ollama 命令", 5000)
-            QMessageBox.warning(
-                self,
-                "提示",
-                "未找到ollama命令，请确保已安装Ollama。\n"
-                "可以从 https://ollama.com/download 下载安装。",
-            )
+        if OllamaClient.is_service_running(url):
+            self._set_ollama_status("Ollama 服务已在运行中", "green")
             return
 
         try:
             logger.info("正在启动Ollama服务...")
             self._set_ollama_status("正在启动...", "orange")
-            self.status_bar.showMessage("正在启动 Ollama 服务...")
 
-            self._ollama_process = subprocess.Popen(
-                [ollama_path, "serve"],
-                creationflags=subprocess.CREATE_NO_WINDOW
-                if sys.platform == "win32"
-                else 0,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            if not OllamaClient.start_service(url):
+                self._set_ollama_status("未找到ollama命令", "red")
+                QMessageBox.warning(
+                    self,
+                    "提示",
+                    "未找到ollama命令，请确保已安装Ollama。\n"
+                    "可以从 https://ollama.com/download 下载安装。",
+                )
+                return
 
             logger.info("Ollama服务启动命令已执行")
             QTimer.singleShot(2000, self._check_ollama_after_start)
@@ -616,10 +592,20 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"启动Ollama服务失败: {e}")
             self._set_ollama_status(f"启动失败: {e}", "red")
-            self.status_bar.showMessage(f"Ollama 服务启动失败: {e}", 5000)
+
+    def _stop_ollama_service(self) -> None:
+        url = self.ollama_url_edit.text() or DEFAULT_OLLAMA_URL
+        if OllamaClient._service_process is None:
+            self._set_ollama_status("Ollama 非本程序启动，无法关闭", "orange")
+            return
+        OllamaClient.stop_service()
+        if OllamaClient.is_service_running(url):
+            self._set_ollama_status("关闭失败，服务仍在运行", "red")
+        else:
+            self._set_ollama_status("Ollama 服务已关闭", "green")
 
     def _check_ollama_after_start(self) -> None:
-        url = self.ollama_url_edit.text() or "http://127.0.0.1:11434"
+        url = self.ollama_url_edit.text() or DEFAULT_OLLAMA_URL
         self._ollama_check_url = url
         self._ollama_check_mode = "start"
         thread = QThread()
@@ -663,6 +649,8 @@ class MainWindow(QMainWindow):
             else:
                 self.input_edit.setText(f"已选择 {len(paths)} 个文件")
             self._video_files = list(paths)
+            last_dir = Path(paths[0]).parent.name
+            self.output_edit.setText(str(_PROJECT_ROOT / "output" / last_dir))
 
     def _select_input_folder(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, "选择视频文件夹")
@@ -682,6 +670,8 @@ class MainWindow(QMainWindow):
                         f"{folder} (已选择 {len(selected_files)} 个视频)"
                     )
                     self._video_files = selected_files
+                    last_dir = Path(folder).name
+                    self.output_edit.setText(str(_PROJECT_ROOT / "output" / last_dir))
                 else:
                     QMessageBox.information(self, "提示", "未选择任何视频文件")
 
@@ -803,7 +793,7 @@ class MainWindow(QMainWindow):
             "pipeline": "管道",
         }
         label = mode_map.get(self._current_mode, "任务")
-        self._set_ollama_status(f"{label}异常: {msg}", "red")
+        self.status_bar.showMessage(f"{label}异常: {msg}", 5000)
 
     def _on_pause_resume(self) -> None:
         if self._worker is None:
@@ -870,10 +860,9 @@ class MainWindow(QMainWindow):
         self.file_list.setCurrentItem(self.file_list.item(self.file_list.count() - 1))
         self._load_transcript_content(video_name)
 
-        self._set_ollama_status(
-            f"转写完成: {video_name} ({segments_count} 段)", "green"
+        self.status_bar.showMessage(
+            f"转写完成: {video_name} ({segments_count} 段)", 5000
         )
-        self.status_bar.showMessage(f"转写完成: {video_name} ({segments_count} 段)")
 
     def _load_transcript_content(self, video_name: str) -> None:
         """加载指定视频的转写文本到编辑区"""
@@ -899,7 +888,7 @@ class MainWindow(QMainWindow):
         """单个视频转写失败"""
         self._tx_fail += 1
         self._fail_records.append((video_name, "转写", error_msg))
-        self._set_ollama_status(f"转写失败: {video_name} — {error_msg}", "red")
+        self.status_bar.showMessage(f"转写失败: {video_name} — {error_msg}", 5000)
 
     # ── 仅总结 ──
 
@@ -1007,13 +996,13 @@ class MainWindow(QMainWindow):
         """单个视频总结完成"""
         self._sum_success += 1
         self.summary_view.setPlainText(summary)
-        self._set_ollama_status(f"总结完成: {video_name}", "green")
+        self.status_bar.showMessage(f"总结完成: {video_name}", 5000)
 
     def _on_summarize_error(self, video_name: str, error_msg: str) -> None:
         """单个视频总结失败"""
         self._sum_fail += 1
         self._fail_records.append((video_name, "总结", error_msg))
-        self._set_ollama_status(f"总结失败: {video_name} — {error_msg}", "red")
+        self.status_bar.showMessage(f"总结失败: {video_name} — {error_msg}", 5000)
 
     # ── 转写+总结管道 ──
 
@@ -1076,25 +1065,19 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(self.progress_bar.maximum())
 
         if self._current_mode == "transcribe":
-            self._set_ollama_status(
-                f"转写完成 — 成功: {self._tx_success}, 失败: {self._tx_fail}",
-                "green" if self._tx_fail == 0 else "orange",
-            )
+            msg = f"转写完成 — 成功: {self._tx_success}, 失败: {self._tx_fail}"
         elif self._current_mode == "summarize":
-            self._set_ollama_status(
-                f"总结完成 — 成功: {self._sum_success}, 失败: {self._sum_fail}",
-                "green" if self._sum_fail == 0 else "orange",
-            )
+            msg = f"总结完成 — 成功: {self._sum_success}, 失败: {self._sum_fail}"
         elif self._current_mode == "pipeline":
-            has_fail = self._tx_fail > 0 or self._sum_fail > 0
-            self._set_ollama_status(
+            msg = (
                 f"转写: 成功 {self._tx_success} / 失败 {self._tx_fail} | "
-                f"总结: 成功 {self._sum_success} / 失败 {self._sum_fail}",
-                "orange" if has_fail else "green",
+                f"总结: 成功 {self._sum_success} / 失败 {self._sum_fail}"
             )
+        else:
+            msg = "处理完成"
 
+        self.status_bar.showMessage(msg)
         self._save_fail_records()
-        self.status_bar.showMessage("处理完成")
 
     def _save_fail_records(self) -> None:
         if not self._fail_records:
@@ -1212,16 +1195,7 @@ class MainWindow(QMainWindow):
             if self._ui_handler in lg.handlers:
                 lg.removeHandler(self._ui_handler)
 
-        if self._ollama_process is not None:
-            try:
-                self._ollama_process.terminate()
-                self._ollama_process.wait(timeout=3)
-            except (OSError, subprocess.TimeoutExpired):
-                try:
-                    self._ollama_process.kill()
-                except OSError:
-                    pass
-            self._ollama_process = None
+        OllamaClient.stop_service()
 
         for cached_transcriber in list(_transcriber_cache.values()):
             try:

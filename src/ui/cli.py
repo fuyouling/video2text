@@ -9,12 +9,18 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 
-from src.config.settings import Settings
+from src.config.settings import (
+    Settings,
+    DEFAULT_OLLAMA_URL,
+    DEFAULT_OLLAMA_TIMEOUT,
+    DEFAULT_OLLAMA_MODEL,
+)
 from src.preprocessing.video_processor import VideoProcessor
 from src.services.transcription_service import TranscriptionService
 from src.services.summarization_service import SummarizationService
 from src.storage.file_writer import FileWriter
 from src.storage.output_formatter import OutputFormatter
+from src.summarization.ollama_client import OllamaClient
 from src.text_processing.segment_merger import SegmentMerger
 from src.text_processing.text_cleaner import TextCleaner
 from src.transcription.transcriber import Transcriber
@@ -219,28 +225,41 @@ def summarize(
         file_writer = FileWriter(output_dir)
         video_name = text_path.stem
 
-        service = SummarizationService(
-            settings=settings,
-            file_writer=file_writer,
-            model_name=model,
-            temperature=temperature,
-            max_length=max_length,
-            on_progress=lambda msg: console.print(f"  {msg}"),
+        ollama_url = settings.get("summarization.ollama_url", DEFAULT_OLLAMA_URL)
+        ollama_timeout = settings.get_int(
+            "summarization.timeout", DEFAULT_OLLAMA_TIMEOUT
         )
+        model_name = model or settings.get(
+            "summarization.model_name", DEFAULT_OLLAMA_MODEL
+        )
+        ollama_client = OllamaClient(ollama_url, timeout=ollama_timeout)
+        service = None
 
         try:
-            if not service.check_connection():
+            if not ollama_client.check_connection():
                 raise SummarizationError("无法连接到Ollama服务")
 
-            if not service.check_model():
-                raise SummarizationError(f"模型 {service.model_name} 不存在")
+            if not ollama_client.check_model(model_name):
+                raise SummarizationError(f"模型 {model_name} 不存在")
+
+            service = SummarizationService(
+                settings=settings,
+                file_writer=file_writer,
+                client=ollama_client,
+                model_name=model_name,
+                temperature=temperature,
+                max_length=max_length,
+                on_progress=lambda msg: console.print(f"  {msg}"),
+            )
 
             service.summarize(text, video_name=video_name)
 
             console.print(Panel.fit("[bold green]总结成功！[/bold green]"))
             console.print(f"输出文件: {output_dir}/{video_name}_summary.txt")
         finally:
-            service.close()
+            if service is not None:
+                service.close()
+            ollama_client.close()
 
     except Video2TextError as e:
         console.print(f"[bold red]错误: {e}[/bold red]")
@@ -286,7 +305,7 @@ def run_pipeline(
             "transcription.model_path", "large-v3"
         )
         summarization_model = summarization_model or settings.get(
-            "summarization.model_name", "qwen2.5:7b-instruct-q4_K_M"
+            "summarization.model_name", DEFAULT_OLLAMA_MODEL
         )
         device = device or settings.get("transcription.device", "auto")
         beam_size = (
@@ -324,6 +343,7 @@ def run_pipeline(
 
         start_time = time.time()
         sum_service = None
+        ollama_client = None
 
         transcriber = Transcriber(
             model_path=model_path,
@@ -363,14 +383,11 @@ def run_pipeline(
             )
             text_cleaner = TextCleaner()
 
-            sum_service = SummarizationService(
-                settings=settings,
-                file_writer=file_writer,
-                model_name=summarization_model,
-                temperature=summary_temperature,
-                max_length=max_length,
-                on_progress=lambda msg: console.print(f"  {msg}"),
+            ollama_url = settings.get("summarization.ollama_url", DEFAULT_OLLAMA_URL)
+            ollama_timeout = settings.get_int(
+                "summarization.timeout", DEFAULT_OLLAMA_TIMEOUT
             )
+            ollama_client = OllamaClient(ollama_url, timeout=ollama_timeout)
 
             summary_map: dict[str, tuple[str, str]] = {}
             for tx_result in tx_results:
@@ -381,15 +398,24 @@ def run_pipeline(
                 processed_text = text_cleaner.clean(processed_text)
                 summary_map[tx_result.video_name] = (processed_text, "总结不可用")
 
-            sum_available = sum_service.check_connection()
+            sum_available = ollama_client.check_connection()
             if not sum_available:
                 console.print("[yellow]警告: 无法连接到Ollama服务，跳过总结[/yellow]")
-            elif not sum_service.check_model():
+            elif not ollama_client.check_model(summarization_model):
                 console.print(
                     f"[yellow]警告: 模型 {summarization_model} 不存在，跳过总结[/yellow]"
                 )
                 sum_available = False
             else:
+                sum_service = SummarizationService(
+                    settings=settings,
+                    file_writer=file_writer,
+                    client=ollama_client,
+                    model_name=summarization_model,
+                    temperature=summary_temperature,
+                    max_length=max_length,
+                    on_progress=lambda msg: console.print(f"  {msg}"),
+                )
                 for tx_result in tx_results:
                     processed_text = summary_map[tx_result.video_name][0]
                     try:
@@ -438,6 +464,8 @@ def run_pipeline(
             tx_service.transcriber.unload_model()
             if sum_service is not None:
                 sum_service.close()
+            if ollama_client is not None:
+                ollama_client.close()
 
     except Video2TextError as e:
         console.print(f"[bold red]错误: {e}[/bold red]")
@@ -482,7 +510,7 @@ def help_command():
             "usage": "video2text summarize <转写文本文件路径> [选项]",
             "options": [
                 ("--output-dir, -o", "输出目录"),
-                ("--model, -m", "总结模型 (如: qwen2.5:7b-instruct-q4_K_M)"),
+                ("--model, -m", f"总结模型 (如: {DEFAULT_OLLAMA_MODEL})"),
                 ("--max-length", "最大长度"),
                 ("--temperature", "温度参数"),
                 ("--verbose, -v", "详细输出"),

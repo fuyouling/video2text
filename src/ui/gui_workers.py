@@ -9,11 +9,17 @@ from typing import Optional
 
 from PySide6.QtCore import QObject, Signal
 
-from src.config.settings import Settings
+from src.config.settings import (
+    Settings,
+    DEFAULT_OLLAMA_URL,
+    DEFAULT_OLLAMA_TIMEOUT,
+    DEFAULT_OLLAMA_MODEL,
+)
 from src.preprocessing.video_processor import VideoProcessor
 from src.services.transcription_service import TranscriptionService, TranscribeResult
 from src.services.summarization_service import SummarizationService
 from src.storage.file_writer import FileWriter
+from src.summarization.ollama_client import OllamaClient
 from src.text_processing.segment_merger import SegmentMerger
 from src.text_processing.text_cleaner import TextCleaner
 from src.transcription.transcriber import get_cached_transcriber
@@ -262,9 +268,52 @@ class SummarizeWorker(QObject):
         try:
             file_writer = FileWriter(self.output_dir)
 
+            ollama_url = self.settings.get(
+                "summarization.ollama_url", DEFAULT_OLLAMA_URL
+            )
+            ollama_timeout = self.settings.get_int(
+                "summarization.timeout", DEFAULT_OLLAMA_TIMEOUT
+            )
+            model_name = self.settings.get(
+                "summarization.model_name", DEFAULT_OLLAMA_MODEL
+            )
+            ollama_client = OllamaClient(ollama_url, timeout=ollama_timeout)
+            self._ollama_client = ollama_client
+
+            try:
+                OllamaClient.ensure_service(ollama_url)
+            except RuntimeError as e:
+                msg = str(e)
+                logger.error(msg)
+                self.error.emit(msg)
+                if self._standalone_text:
+                    self.video_error.emit("(粘贴文本)", msg)
+                    self.progress.emit(1, 1)
+                else:
+                    for vp in self.video_files:
+                        self.video_error.emit(Path(vp).stem, msg)
+                    self.progress.emit(len(self.video_files), len(self.video_files))
+                ollama_client.close()
+                return
+
+            if not ollama_client.check_model(model_name):
+                logger.error("Ollama 模型 %s 不存在", model_name)
+                self.error.emit(f"Ollama 模型 {model_name} 不存在")
+                if self._standalone_text:
+                    self.progress.emit(1, 1)
+                else:
+                    for vp in self.video_files:
+                        self.video_error.emit(
+                            Path(vp).stem, f"Ollama 模型 {model_name} 不存在"
+                        )
+                    self.progress.emit(len(self.video_files), len(self.video_files))
+                ollama_client.close()
+                return
+
             service = SummarizationService(
                 settings=self.settings,
                 file_writer=file_writer,
+                client=ollama_client,
                 custom_prompt=self.custom_prompt,
                 on_stream_token=lambda token: self.stream_token.emit(token),
                 cancel_check=lambda: self._cancelled,
@@ -272,18 +321,6 @@ class SummarizeWorker(QObject):
             self._sum_service = service
 
             if self._standalone_text and not self.video_files:
-                if not service.check_connection():
-                    logger.error("无法连接到 Ollama 服务")
-                    self.error.emit("无法连接到 Ollama 服务")
-                    self.progress.emit(1, 1)
-                    return
-
-                if not service.check_model():
-                    logger.error("Ollama 模型 %s 不存在", service.model_name)
-                    self.error.emit(f"Ollama 模型 {service.model_name} 不存在")
-                    self.progress.emit(1, 1)
-                    return
-
                 try:
                     self.summarize_started.emit("(粘贴文本)")
                     summary = service.summarize(
@@ -303,24 +340,6 @@ class SummarizeWorker(QObject):
                 return
 
             total = len(self.video_files)
-
-            if not service.check_connection():
-                logger.error("无法连接到 Ollama 服务")
-                self.error.emit("无法连接到 Ollama 服务")
-                for vp in self.video_files:
-                    self.video_error.emit(Path(vp).stem, "无法连接到 Ollama 服务")
-                self.progress.emit(total, total)
-                return
-
-            if not service.check_model():
-                logger.error("Ollama 模型 %s 不存在", service.model_name)
-                self.error.emit(f"Ollama 模型 {service.model_name} 不存在")
-                for vp in self.video_files:
-                    self.video_error.emit(
-                        Path(vp).stem, f"Ollama 模型 {service.model_name} 不存在"
-                    )
-                self.progress.emit(total, total)
-                return
 
             for idx, video_path in enumerate(self.video_files):
                 if self._cancelled:
@@ -369,6 +388,8 @@ class SummarizeWorker(QObject):
         finally:
             if hasattr(self, "_sum_service") and self._sum_service is not None:
                 self._sum_service.close()
+            if hasattr(self, "_ollama_client") and self._ollama_client is not None:
+                self._ollama_client.close()
             self.finished.emit()
 
 
@@ -440,6 +461,7 @@ class PipelineWorker(QObject):
 
         transcriber = None
         sum_service = None
+        ollama_client = None
         try:
             cfg = _load_tx_config(self.settings)
 
@@ -461,16 +483,37 @@ class PipelineWorker(QObject):
             )
             text_cleaner = TextCleaner()
 
+            ollama_url = self.settings.get(
+                "summarization.ollama_url", DEFAULT_OLLAMA_URL
+            )
+            ollama_timeout = self.settings.get_int(
+                "summarization.timeout", DEFAULT_OLLAMA_TIMEOUT
+            )
+            model_name = self.settings.get(
+                "summarization.model_name", DEFAULT_OLLAMA_MODEL
+            )
+            ollama_client = OllamaClient(ollama_url, timeout=ollama_timeout)
+
+            try:
+                OllamaClient.ensure_service(ollama_url)
+            except RuntimeError as e:
+                logger.warning("%s，将只执行转写", e)
+
+            sum_available = (
+                ollama_client.check_connection()
+                and ollama_client.check_model(model_name)
+            )
+            if not sum_available:
+                logger.warning("总结服务不可用，将只执行转写")
+
             sum_service = SummarizationService(
                 settings=self.settings,
                 file_writer=file_writer,
+                client=ollama_client,
                 custom_prompt=self.custom_prompt,
                 on_stream_token=lambda token: self.stream_token.emit(token),
                 cancel_check=lambda: self._cancelled,
             )
-            sum_available = sum_service.check_connection() and sum_service.check_model()
-            if not sum_available:
-                logger.warning("总结服务不可用，将只执行转写")
 
             total = len(self.video_files)
             done_count = 0
@@ -548,6 +591,8 @@ class PipelineWorker(QObject):
             self._tx_service = None
             if sum_service is not None:
                 sum_service.close()
+            if ollama_client is not None:
+                ollama_client.close()
             self.finished.emit()
 
 
@@ -563,8 +608,6 @@ class OllamaCheckWorker(QObject):
 
     def run(self) -> None:
         try:
-            from src.summarization.ollama_client import OllamaClient
-
             client = OllamaClient(base_url=self.url)
             try:
                 self.result.emit(client.check_connection())
@@ -588,8 +631,6 @@ class OllamaListModelWorker(QObject):
 
     def run(self) -> None:
         try:
-            from src.summarization.ollama_client import OllamaClient
-
             client = OllamaClient(base_url=self.url)
             try:
                 models = client.list_models()
