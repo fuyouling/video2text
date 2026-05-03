@@ -11,6 +11,7 @@ from rich.panel import Panel
 
 from src.config.settings import (
     Settings,
+    APP_VERSION,
     DEFAULT_OLLAMA_URL,
     DEFAULT_OLLAMA_TIMEOUT,
     DEFAULT_OLLAMA_MODEL,
@@ -478,9 +479,7 @@ def run_pipeline(
 @app.command()
 def version():
     """显示版本信息"""
-    settings = get_settings()
-    ver = settings.get("app.version", "unknown")
-    console.print(f"Video2Text v{ver}")
+    console.print(f"Video2Text v{APP_VERSION}")
 
 
 @app.command()

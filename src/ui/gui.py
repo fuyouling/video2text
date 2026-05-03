@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QProgressBar,
     QPushButton,
@@ -36,11 +37,12 @@ from PySide6.QtWidgets import (
 from src.config.settings import (
     PromptManager,
     Settings,
+    APP_VERSION,
     DEFAULT_OLLAMA_URL,
     DEFAULT_OLLAMA_MODEL,
 )
 from src.summarization.ollama_client import OllamaClient
-from src.ui.gui_dialogs import VideoSelectionDialog
+from src.ui.gui_dialogs import ConfigEditorDialog, VideoSelectionDialog
 from src.ui.gui_workers import (
     OllamaCheckWorker,
     OllamaListModelWorker,
@@ -161,6 +163,8 @@ class MainWindow(QMainWindow):
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
 
+        self._create_menu_bar()
+
         central = QWidget()
         self.setCentralWidget(central)
         root = QVBoxLayout(central)
@@ -262,6 +266,8 @@ class MainWindow(QMainWindow):
         self.file_list = QListWidget()
         self.file_list.setMinimumWidth(180)
         self.file_list.currentItemChanged.connect(self._on_file_selected)
+        self.file_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.file_list.customContextMenuRequested.connect(self._show_file_context_menu)
         content_layout.addWidget(self.file_list, 1)
 
         self.result_tabs = QTabWidget()
@@ -307,34 +313,9 @@ class MainWindow(QMainWindow):
         self.ollama_temp_spin.setDecimals(1)
         ollama_layout.addRow("温度:", self.ollama_temp_spin)
         self.ollama_maxlen_spin = QSpinBox()
-        self.ollama_maxlen_spin.setRange(50, 5000)
+        self.ollama_maxlen_spin.setRange(50, 10000)
         self.ollama_maxlen_spin.setSingleStep(50)
         ollama_layout.addRow("最大长度:", self.ollama_maxlen_spin)
-        self.ollama_prompt_edit = QTextEdit()
-        self.ollama_prompt_edit.setMaximumHeight(100)
-        self.ollama_prompt_edit.setPlaceholderText(
-            "自定义总结提示词（可选）：\n"
-            "输入您希望模型如何总结的指令，例如：\n"
-            "「请用英文总结以下文本，列出3个要点」\n"
-            "留空则使用默认提示词。"
-        )
-        ollama_layout.addRow("提示词:", self.ollama_prompt_edit)
-
-        prompt_btn_row = QHBoxLayout()
-        self.prompt_template_combo = QComboBox()
-        self.prompt_template_combo.setMinimumWidth(150)
-        self.prompt_template_combo.setPlaceholderText("选择已保存的提示词…")
-        self.prompt_template_combo.currentTextChanged.connect(
-            self._on_prompt_template_selected
-        )
-        prompt_btn_row.addWidget(self.prompt_template_combo, 1)
-        self.prompt_save_btn = QPushButton("保存提示词")
-        self.prompt_save_btn.clicked.connect(self._save_prompt_template)
-        prompt_btn_row.addWidget(self.prompt_save_btn)
-        self.prompt_delete_btn = QPushButton("删除提示词")
-        self.prompt_delete_btn.clicked.connect(self._delete_prompt_template)
-        prompt_btn_row.addWidget(self.prompt_delete_btn)
-        ollama_layout.addRow("提示词模板:", prompt_btn_row)
         ollama_btn_row = QHBoxLayout()
         self.ollama_start_btn = QPushButton("启动服务")
         self.ollama_start_btn.clicked.connect(self._start_ollama_service)
@@ -353,8 +334,41 @@ class MainWindow(QMainWindow):
         ollama_layout.addRow(ollama_btn_row)
         right_splitter.addWidget(ollama_group)
 
-        right_splitter.setStretchFactor(0, 2)
+        # ── 提示词配置面板 ──
+        prompt_group = QGroupBox("提示词配置")
+        prompt_layout = QVBoxLayout(prompt_group)
+
+        self.ollama_prompt_edit = QTextEdit()
+        self.ollama_prompt_edit.setMaximumHeight(100)
+        self.ollama_prompt_edit.setPlaceholderText(
+            "自定义总结提示词（可选）：\n"
+            "输入您希望模型如何总结的指令，例如：\n"
+            "「请用英文总结以下文本，列出3个要点」\n"
+            "留空则使用默认提示词。"
+        )
+        prompt_layout.addWidget(self.ollama_prompt_edit)
+
+        prompt_btn_row = QHBoxLayout()
+        self.prompt_template_combo = QComboBox()
+        self.prompt_template_combo.setMinimumWidth(150)
+        self.prompt_template_combo.setPlaceholderText("选择已保存的提示词…")
+        self.prompt_template_combo.currentTextChanged.connect(
+            self._on_prompt_template_selected
+        )
+        prompt_btn_row.addWidget(self.prompt_template_combo, 1)
+        self.prompt_save_btn = QPushButton("保存提示词")
+        self.prompt_save_btn.clicked.connect(self._save_prompt_template)
+        prompt_btn_row.addWidget(self.prompt_save_btn)
+        self.prompt_delete_btn = QPushButton("删除提示词")
+        self.prompt_delete_btn.clicked.connect(self._delete_prompt_template)
+        prompt_btn_row.addWidget(self.prompt_delete_btn)
+        prompt_layout.addLayout(prompt_btn_row)
+
+        right_splitter.addWidget(prompt_group)
+
+        right_splitter.setStretchFactor(0, 3)
         right_splitter.setStretchFactor(1, 1)
+        right_splitter.setStretchFactor(2, 1)
         splitter.addWidget(right_splitter)
 
         splitter.setStretchFactor(0, 1)
@@ -364,6 +378,35 @@ class MainWindow(QMainWindow):
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage(f"配置: {self.settings.config_path}")
+
+    def _create_menu_bar(self) -> None:
+        menu_bar = self.menuBar()
+
+        settings_menu = menu_bar.addMenu("设置")
+        edit_config_action = settings_menu.addAction("编辑配置")
+        edit_config_action.triggered.connect(self._show_config_editor)
+
+        help_menu = menu_bar.addMenu("帮助")
+        about_action = help_menu.addAction("关于")
+        about_action.triggered.connect(self._show_about)
+
+    def _show_about(self) -> None:
+        QMessageBox.about(
+            self,
+            "关于 Video2Text",
+            f"<h3>Video2Text</h3>"
+            f"<p>版本: {APP_VERSION}</p>"
+            f"<p>视频转文本工具 —— 基于 faster-whisper + Ollama 的视频转写与摘要总结工具</p>"
+            f"<p>技术栈: faster-whisper · Ollama · PySide6</p>"
+            f"<p>许可证: GNU GPL v3</p>"
+            f"<p>讨论群: QQ群 296875960</p>",
+        )
+
+    def _show_config_editor(self) -> None:
+        dialog = ConfigEditorDialog(self)
+        if dialog.exec() == dialog.DialogCode.Accepted:
+            self._load_ollama_config()
+            self.status_bar.showMessage("配置已保存", 5000)
 
     # ── Ollama 配置 ──
 
@@ -401,10 +444,12 @@ class MainWindow(QMainWindow):
 
     # ── 提示词模板管理 ──
 
+    _PLACEHOLDER_PROMPT = "新建"
+
     def _load_prompt_templates(self) -> None:
         self.prompt_template_combo.blockSignals(True)
         self.prompt_template_combo.clear()
-        self.prompt_template_combo.addItem("")
+        self.prompt_template_combo.addItem(self._PLACEHOLDER_PROMPT)
         for name in self.prompt_manager.get_names():
             self.prompt_template_combo.addItem(name)
         last_used = self.prompt_manager.get_last_used()
@@ -418,7 +463,7 @@ class MainWindow(QMainWindow):
         self.prompt_template_combo.blockSignals(False)
 
     def _on_prompt_template_selected(self, name: str) -> None:
-        if not name:
+        if not name or name == self._PLACEHOLDER_PROMPT:
             return
         content = self.prompt_manager.get_content(name)
         if content is not None:
@@ -434,6 +479,8 @@ class MainWindow(QMainWindow):
             return
 
         current_name = self.prompt_template_combo.currentText()
+        if current_name == self._PLACEHOLDER_PROMPT:
+            current_name = ""
         name, ok = QInputDialog.getText(
             self, "保存提示词模板", "模板名称:", text=current_name
         )
@@ -441,6 +488,13 @@ class MainWindow(QMainWindow):
             return
 
         name = name.strip()
+        if name == self._PLACEHOLDER_PROMPT:
+            QMessageBox.warning(
+                self,
+                "提示",
+                f"「{self._PLACEHOLDER_PROMPT}」是保留名称，请使用其他名称。",
+            )
+            return
         self.prompt_manager.set_template(name, content)
         self.prompt_manager.set_last_used(name)
 
@@ -450,11 +504,11 @@ class MainWindow(QMainWindow):
         self.prompt_template_combo.setCurrentText(name)
         self.prompt_template_combo.blockSignals(False)
 
-        self._set_ollama_status(f"提示词「{name}」已保存", "green")
+        self.status_bar.showMessage(f"提示词「{name}」已保存", 5000)
 
     def _delete_prompt_template(self) -> None:
         name = self.prompt_template_combo.currentText()
-        if not name:
+        if not name or name == self._PLACEHOLDER_PROMPT:
             QMessageBox.warning(self, "提示", "请先选择要删除的提示词模板。")
             return
 
@@ -476,7 +530,7 @@ class MainWindow(QMainWindow):
         self.prompt_template_combo.blockSignals(False)
 
         self.ollama_prompt_edit.clear()
-        self._set_ollama_status(f"提示词「{name}」已删除", "green")
+        self.status_bar.showMessage(f"提示词「{name}」已删除", 5000)
 
     def _test_ollama(self) -> None:
         url = self.ollama_url_edit.text() or DEFAULT_OLLAMA_URL
@@ -1085,7 +1139,7 @@ class MainWindow(QMainWindow):
         logs_dir = self.settings.get("paths.logs_dir", "logs")
         log_path = Path(logs_dir)
         log_path.mkdir(parents=True, exist_ok=True)
-        fail_path = log_path / "fail_log.txt"
+        fail_path = log_path / "fail_log.log"
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         mode_map = {
             "transcribe": "仅转写",
@@ -1119,6 +1173,98 @@ class MainWindow(QMainWindow):
         self._result_viewer.show()
         self._result_viewer.raise_()
         self._result_viewer.activateWindow()
+
+    def _show_file_context_menu(self, pos) -> None:
+        item = self.file_list.itemAt(pos)
+        if item is None:
+            return
+        video_name = item.data(Qt.ItemDataRole.UserRole)
+        menu = QMenu(self)
+        retranscribe_action = menu.addAction("重新转写")
+        resummarize_action = menu.addAction("重新总结")
+        action = menu.exec(self.file_list.viewport().mapToGlobal(pos))
+        if action == retranscribe_action:
+            self._on_retranscribe(video_name)
+        elif action == resummarize_action:
+            self._on_resummarize(video_name)
+
+    def _find_video_path_by_name(self, video_name: str) -> Optional[str]:
+        for path in self._video_files:
+            if Path(path).stem == video_name:
+                return path
+        return None
+
+    def _on_retranscribe(self, video_name: str) -> None:
+        if self._worker_thread is not None and self._worker_thread.isRunning():
+            QMessageBox.warning(self, "提示", "当前有任务正在运行，请等待完成后再试。")
+            return
+
+        video_path = self._find_video_path_by_name(video_name)
+        if video_path is None:
+            QMessageBox.warning(
+                self,
+                "提示",
+                f"未找到原始视频文件: {video_name}\n请先在主界面加载包含该视频的文件或文件夹。",
+            )
+            return
+
+        output_dir = self._get_output_dir()
+        self._current_mode = "transcribe"
+        self._reset_counters()
+        self.progress_bar.setMaximum(1)
+        self.progress_bar.setValue(0)
+        self.progress_label.setText("0/1")
+        self._set_busy_state(True)
+
+        thread = QThread()
+        worker = TranscribeWorker([video_path], output_dir, self.settings)
+        worker.video_done.connect(self._on_single_video_transcribed)
+        worker.video_error.connect(self._on_transcribe_error)
+        worker.progress.connect(self._on_progress)
+        worker.error.connect(self._on_worker_error)
+        self._start_worker(thread, worker)
+
+    def _on_resummarize(self, video_name: str) -> None:
+        if self._worker_thread is not None and self._worker_thread.isRunning():
+            QMessageBox.warning(self, "提示", "当前有任务正在运行，请等待完成后再试。")
+            return
+
+        output_dir = self._get_output_dir()
+        transcript_path = None
+        for ext in ("txt", "srt", "vtt", "json"):
+            candidate = Path(output_dir) / f"{video_name}.{ext}"
+            if candidate.exists():
+                transcript_path = candidate
+                break
+        if transcript_path is None:
+            QMessageBox.warning(self, "提示", f"未找到转写文件: {video_name}")
+            return
+
+        self._current_mode = "summarize"
+        self._reset_counters()
+        self.progress_bar.setMaximum(1)
+        self.progress_bar.setValue(0)
+        self.progress_label.setText("0/1")
+        self._set_busy_state(True)
+        self.summary_view.clear()
+
+        custom_prompt = self.ollama_prompt_edit.toPlainText().strip()
+
+        thread = QThread()
+        worker = SummarizeWorker(
+            [video_name],
+            output_dir,
+            self.settings,
+            custom_prompt,
+            stream=True,
+        )
+        worker.stream_token.connect(self._on_stream_token)
+        worker.summarize_started.connect(self._on_summarize_started)
+        worker.video_done.connect(self._on_single_video_summarized)
+        worker.video_error.connect(self._on_summarize_error)
+        worker.progress.connect(self._on_progress)
+        worker.error.connect(self._on_worker_error)
+        self._start_worker(thread, worker)
 
     def _on_file_selected(
         self, current: Optional[QListWidgetItem], _previous: Optional[QListWidgetItem]

@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from src.config.settings import Settings
+from src.config.settings import Settings, APP_NAME, APP_VERSION
 
 
 @pytest.fixture(autouse=True)
@@ -17,31 +17,37 @@ def _reset_settings():
 
 
 class TestSettings:
+    def test_app_constants(self):
+        assert APP_NAME == "video2text"
+        assert APP_VERSION == "1.4.0"
+
     def test_load_existing_config(self, tmp_path):
         config_file = tmp_path / "config.ini"
         config_file.write_text(
-            "[app]\nname = test\nversion = 2.0.0\nlog_level = DEBUG\n",
+            "[transcription]\nmodel_path = large-v3\nbeam_size = 10\nlog_level = DEBUG\n",
             encoding="utf-8",
         )
         settings = Settings(config_path=str(config_file))
-        assert settings.get("app.name") == "test"
-        assert settings.get("app.version") == "2.0.0"
-        assert settings.get("app.log_level") == "DEBUG"
+        assert settings.get("transcription.model_path") == "large-v3"
+        assert settings.get_int("transcription.beam_size") == 10
+        assert settings.get("transcription.log_level") == "DEBUG"
 
     def test_missing_config_uses_caller_defaults(self, tmp_path):
         config_file = tmp_path / "config.ini"
         settings = Settings(config_path=str(config_file))
         assert not config_file.exists()
-        assert settings.get("app.name") is None
-        assert settings.get("app.name", "video2text") == "video2text"
+        assert settings.get("transcription.model_path") is None
+        assert settings.get("transcription.model_path", "large-v3") == "large-v3"
         assert settings.get_int("transcription.beam_size", 5) == 5
 
     def test_get_with_default(self, tmp_path):
         config_file = tmp_path / "config.ini"
-        config_file.write_text("[app]\nname = test\n", encoding="utf-8")
+        config_file.write_text(
+            "[transcription]\nmodel_path = small\n", encoding="utf-8"
+        )
         settings = Settings(config_path=str(config_file))
-        assert settings.get("app.name") == "test"
-        assert settings.get("app.missing", "fallback") == "fallback"
+        assert settings.get("transcription.model_path") == "small"
+        assert settings.get("transcription.missing", "fallback") == "fallback"
         assert settings.get("nonexistent.key", "default") == "default"
 
     def test_get_int(self, tmp_path):
@@ -72,39 +78,41 @@ class TestSettings:
 
     def test_set_and_save(self, tmp_path):
         config_file = tmp_path / "config.ini"
-        config_file.write_text("[app]\nname = test\n", encoding="utf-8")
+        config_file.write_text("[transcription]\nbeam_size = 5\n", encoding="utf-8")
         settings = Settings(config_path=str(config_file))
-        settings.set("app.version", "3.0.0")
+        settings.set("transcription.beam_size", "15")
         settings.save()
 
         settings.reload()
-        assert settings.get("app.version") == "3.0.0"
+        assert settings.get_int("transcription.beam_size") == 15
 
     def test_get_section(self, tmp_path):
         config_file = tmp_path / "config.ini"
         config_file.write_text(
-            "[app]\nname = test\nversion = 1.0\n",
+            "[transcription]\nmodel_path = small\nbeam_size = 3\n",
             encoding="utf-8",
         )
         settings = Settings(config_path=str(config_file))
-        section = settings.get_section("app")
-        assert section["name"] == "test"
-        assert section["version"] == "1.0"
+        section = settings.get_section("transcription")
+        assert section["model_path"] == "small"
+        assert section["beam_size"] == "3"
 
     def test_to_dict(self, tmp_path):
         config_file = tmp_path / "config.ini"
-        config_file.write_text("[app]\nname = test\n", encoding="utf-8")
+        config_file.write_text(
+            "[transcription]\nmodel_path = small\n", encoding="utf-8"
+        )
         settings = Settings(config_path=str(config_file))
         d = settings.to_dict()
-        assert "app" in d
-        assert d["app"]["name"] == "test"
+        assert "transcription" in d
+        assert d["transcription"]["model_path"] == "small"
 
     def test_update_from_dict(self, tmp_path):
         config_file = tmp_path / "config.ini"
-        config_file.write_text("[app]\nname = test\n", encoding="utf-8")
+        config_file.write_text("[transcription]\nbeam_size = 5\n", encoding="utf-8")
         settings = Settings(config_path=str(config_file))
-        settings.update_from_dict({"app": {"version": "5.0"}})
-        assert settings.get("app.version") == "5.0"
+        settings.update_from_dict({"transcription": {"beam_size": "20"}})
+        assert settings.get_int("transcription.beam_size") == 20
 
     def test_missing_config_returns_none(self, tmp_path):
         config_file = tmp_path / "config.ini"

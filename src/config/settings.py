@@ -22,6 +22,9 @@ DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
 DEFAULT_OLLAMA_TIMEOUT = 300
 DEFAULT_OLLAMA_MODEL = "qwen2.5:7b-instruct-q4_K_M"
 
+APP_NAME = "video2text"
+APP_VERSION = "1.6.0"
+
 
 def _get_base_dir() -> Path:
     """获取程序基础目录 - 支持 frozen（打包）和开发环境"""

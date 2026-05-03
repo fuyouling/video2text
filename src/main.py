@@ -1,5 +1,9 @@
 """Video2Text 主程序入口"""
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import sys
 import traceback
 from pathlib import Path

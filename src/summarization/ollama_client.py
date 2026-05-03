@@ -34,6 +34,9 @@ class OllamaClient:
         self.timeout = timeout
         self.max_retries = 3
         self._session = requests.Session()
+        ollama_api_key = os.environ.get("OLLAMA_API_KEY") or ""
+        if ollama_api_key:
+            self._session.headers.update({"Authorization": f"Bearer {ollama_api_key}"})
 
     def __enter__(self):
         return self
