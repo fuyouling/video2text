@@ -717,11 +717,16 @@ class MainWindow(QMainWindow):
 
         standalone_text = self.transcript_view.toPlainText().strip()
 
-        if not self._video_files and standalone_text:
+        video_names: list[str] = list(self._video_files)
+
+        if not video_names and self._completed_names:
+            video_names = list(self._completed_names)
+
+        if not video_names and standalone_text:
             self._summarize_standalone(standalone_text, output_dir)
             return
 
-        if not self._video_files:
+        if not video_names:
             QMessageBox.warning(
                 self,
                 "提示",
@@ -743,7 +748,7 @@ class MainWindow(QMainWindow):
         self._current_mode = "summarize"
         self._reset_counters()
 
-        total = len(self._video_files)
+        total = len(video_names)
         self.progress_bar.setMaximum(total)
         self.progress_bar.setValue(0)
         self.progress_label.setText(f"0/{total}")
@@ -754,7 +759,7 @@ class MainWindow(QMainWindow):
 
         thread = QThread()
         worker = SummarizeWorker(
-            self._video_files,
+            video_names,
             output_dir,
             self.settings,
             custom_prompt,
