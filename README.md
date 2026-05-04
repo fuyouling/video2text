@@ -1,17 +1,19 @@
 # Video2Text
 
-视频转文本工具 - 使用 faster_whisper 进行语音转写，使用 Ollama + Qwen2.5 进行文本总结。
+视频转文本工具 - 使用 faster_whisper 进行语音转写，使用 Ollama + Qwen2.5 或 NVIDIA API 进行文本总结。
 
 ## 功能特性
 
 - 🎬 支持多种视频格式（MP4, AVI, MOV, MKV等）
 - 🎤 高质量语音转写（基于 faster_whisper）
-- 🤖 智能文本总结（基于 Ollama + Qwen2.5）
+- 🤖 智能文本总结（支持本地 Ollama + Qwen2.5 和在线 NVIDIA API 两种模式）
 - 📝 多种输出格式（TXT, SRT, VTT, JSON）
 - ⚡ GPU加速支持
 - 🌍 多语言支持
 
 ## 安装
+
+> **Windows 用户**：如果希望免去源码安装步骤，可以直接下载打包好的 exe 绿色版程序，解压即用。详细安装教程请参阅 [Windows 安装教程（Wiki）](https://github.com/fuyouling/video2text/wiki)。
 
 ### 1. 创建虚拟环境
 
@@ -56,6 +58,16 @@ ollama serve
 # 拉取总结模型
 ollama pull qwen2.5:7b-instruct-q4_K_M
 ```
+
+> **使用 NVIDIA API 替代 Ollama**：如果希望使用在线模型进行总结，可跳过 Ollama 安装，在项目根目录创建 `.env` 文件并填入 API Key：
+> ```
+> NVIDIA_API_KEY=nvapi-你的API密钥
+> ```
+> 然后在 `config.ini` 中将 `provider` 改为 `nvidia`：
+> ```ini
+> [summarization]
+> provider = nvidia
+> ```
 
 ### 5. 模型文件下载
 ```
@@ -110,9 +122,10 @@ python -m src.ui.gui
 - 「摘要」标签页展示 Ollama 生成的摘要结果
 - 支持流式输出，摘要生成过程中实时显示文本
 
-**Ollama 配置面板：**
-- 配置 Ollama 服务地址、模型名称（下拉框选择或手动输入）
-- 一键刷新可用模型列表、启动/关闭/测试 Ollama 服务
+**总结配置面板：**
+- 支持切换「本地 Ollama 模型」和「在线 NVIDIA 模型」两种总结服务
+- Ollama：配置服务地址、模型名称（下拉框选择或手动输入）、一键启动/关闭/测试服务
+- NVIDIA：配置 API 地址、模型名称、Token 数、温度等参数、测试连接
 - 调整温度、最大长度等参数
 - 提示词模板管理：保存、加载、删除自定义提示词模板
 - 配置一键保存到 `config.ini`
@@ -178,7 +191,7 @@ pyinstaller video2text_portable.spec
 - `--input, -i`: 转写文本文件路径（必需）
 - `--output-dir, -o`: 输出目录（默认: output）
 - `--model, -m`: 总结模型（默认: qwen2.5:7b-instruct-q4_K_M）
-- `--max-length`: 最大长度（默认: 500）
+- `--max-length`: 最大长度（默认: 5000）
 - `--temperature`: 温度参数（默认: 0.7）
 - `--verbose, -v`: 详细输出
 
@@ -192,7 +205,7 @@ pyinstaller video2text_portable.spec
 - `--beam-size`: beam search大小（默认: 5）
 - `--temperature`: 转写温度参数（默认: 0.0）
 - `--summary-temperature`: 总结温度参数（默认: 0.7）
-- `--max-length`: 最大长度（默认: 500）
+- `--max-length`: 最大长度（默认: 5000）
 - `--verbose, -v`: 详细输出
 
 #### 其他命令
@@ -251,7 +264,7 @@ video2text/
 ├── prompts.json              # 提示词模板
 ├── requirements.txt          # 依赖文件
 ├── README.md                 # 说明文档
-├── LICENSE                   # MIT 许可证
+├── LICENSE                   # GPL v3 许可证
 ├── build_portable.ps1        # 便携版打包脚本
 ├── video2text_portable.spec  # PyInstaller 打包配置
 ├── src/                      # 源代码
@@ -304,7 +317,7 @@ video2text/
 - **CLI框架**: Typer + Rich
 - **GUI框架**: PySide6
 - **转写引擎**: faster-whisper
-- **总结引擎**: Ollama + Qwen2.5-7B
+- **总结引擎**: Ollama + Qwen2.5-7B / NVIDIA API
 - **视频处理**: FFmpeg
 - **日志系统**: Python logging
 - **配置管理**: Python configparser
@@ -324,6 +337,10 @@ video2text/
 ### 3. Ollama 连接失败
 
 确保 Ollama 服务正在运行：`ollama serve`
+
+### 4. NVIDIA API 连接失败
+
+检查 `.env` 文件中是否正确配置了 `NVIDIA_API_KEY`，或在 `config.ini` 的 `[summarization]` 中确认 `provider = nvidia`。
 
 ## 许可证
 
