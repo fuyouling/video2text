@@ -13,8 +13,7 @@
 | **操作系统** | Windows 10 / 11（64 位） |
 | **磁盘空间** | 至少 **15 GB** 可用空间（含模型文件） |
 | **内存（RAM）** | 建议 8 GB 及以上 |
-| **显卡（可选）** | NVIDIA 显卡 + CUDA 支持可大幅加速转写；无显卡也可使用 CPU 模式 |
-| **网络** | 首次使用总结功能时需要联网下载 Ollama 模型 |
+| **显卡（可选）** | NVIDIA 显卡(6G显存以上) + CUDA 支持可大幅加速转写；无显卡也可使用 CPU 模式(太慢不建议使用) |
 
 **磁盘空间明细参考：**
 
@@ -35,10 +34,10 @@
 | 文件 | 说明 |
 |------|------|
 | `OllamaSetup.exe` | Ollama 安装程序 |
-| `models.zip` | Ollama 的预下载模型文件（避免首次使用时在线下载） |
+| `models.zip` | Ollama 的预下载模型文件 |
 | `ffmpeg-*-win64-gpl.zip` | FFmpeg 安装包 |
 | `video2text_portable_windows_*.zip` | video2text 绿色版 exe 程序包 |
-| `large-v3.zip` | Whisper large-v3 语音识别模型文件 |
+| `large-v3.zip` | Whisper large-v3 语音识别模型文件,不解压到models的话会在线下载,如果在线下载网络不通可以配置文件中设置代理|
 
 > 请使用支持保留目录结构的解压工具（如 **7-Zip** 或 **Bandizip**）解压压缩包，确保文件夹结构完整。
 
