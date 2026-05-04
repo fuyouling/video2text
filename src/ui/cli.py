@@ -1,7 +1,6 @@
 """CLI命令定义"""
 
 import sys
-import time
 from pathlib import Path
 from typing import Optional
 
@@ -20,7 +19,6 @@ from src.preprocessing.video_processor import VideoProcessor
 from src.services.transcription_service import TranscriptionService
 from src.services.summarization_service import SummarizationService
 from src.storage.file_writer import FileWriter
-from src.storage.output_formatter import OutputFormatter
 from src.summarization.ollama_client import OllamaClient
 from src.text_processing.segment_merger import SegmentMerger
 from src.text_processing.text_cleaner import TextCleaner
@@ -255,8 +253,9 @@ def summarize(
 
             service.summarize(text, video_name=video_name)
 
+            summary_fmt = settings.get("output.summary_format", "txt").lower().strip()
             console.print(Panel.fit("[bold green]总结成功！[/bold green]"))
-            console.print(f"输出文件: {output_dir}/{video_name}_summary.txt")
+            console.print(f"输出文件: {output_dir}/{video_name}_summary.{summary_fmt}")
         finally:
             if service is not None:
                 service.close()
@@ -342,7 +341,6 @@ def run_pipeline(
         console.print(f"转写模型: {model_path}")
         console.print(f"总结模型: {summarization_model}")
 
-        start_time = time.time()
         sum_service = None
         ollama_client = None
 
@@ -432,35 +430,15 @@ def run_pipeline(
                             f"[yellow]警告: {tx_result.video_name} 总结失败: {e}[/yellow]"
                         )
 
-            # 保存完整数据
-            json_output = settings.get_bool("output.json_output", False)
-            if json_output:
-                video_info = video_processor.get_video_info(input_path)
-                formatter = OutputFormatter()
-                for tx_result in tx_results:
-                    video_name = tx_result.video_name
-                    processed_text, summary = summary_map.get(
-                        video_name, ("", "总结不可用")
-                    )
-                    output_data = formatter.create_output_data(
-                        video_name=video_name,
-                        video_path=input_path,
-                        duration=video_info.duration,
-                        transcript_segments=tx_result.segments,
-                        processed_text=processed_text,
-                        summary=summary,
-                        processing_time=time.time() - start_time,
-                    )
-                    file_writer.write_output_data(output_data, video_name)
-
             console.print(Panel.fit("[bold green]处理成功！[/bold green]"))
             console.print(f"输出目录: {output_dir}")
+            summary_fmt = settings.get("output.summary_format", "txt").lower().strip()
             for tx_result in tx_results:
                 for fmt in output_formats:
                     console.print(f"  - {tx_result.video_name}.{fmt} (转写结果)")
-                console.print(f"  - {tx_result.video_name}_summary.txt (摘要)")
-                if settings.get_bool("output.json_output", False):
-                    console.print(f"  - {tx_result.video_name}_full.json (完整数据)")
+                console.print(
+                    f"  - {tx_result.video_name}_summary.{summary_fmt} (摘要)"
+                )
         finally:
             tx_service.transcriber.unload_model()
             if sum_service is not None:

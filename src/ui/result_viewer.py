@@ -332,6 +332,15 @@ class BookmarkItem:
         self.text = text[:100]  # 保存前100个字符作为预览
 
 
+def _find_summary_path(output_dir: str, video_name: str) -> Optional[Path]:
+    """查找摘要文件（支持 _summary.txt 和 _summary.md）"""
+    for ext in ("txt", "md"):
+        p = Path(output_dir) / f"{video_name}_summary.{ext}"
+        if p.exists():
+            return p
+    return None
+
+
 class ResultViewerWindow(QMainWindow):
     """独立的结果查看窗口，支持全屏显示、多标签、搜索、书签、主题切换"""
 
@@ -605,10 +614,10 @@ class ResultViewerWindow(QMainWindow):
         # 重新渲染Markdown内容（清除搜索状态）
         if self._current_video_name:
             self._clear_search_state()
-            summary_path = (
-                Path(self._output_dir) / f"{self._current_video_name}_summary.txt"
+            summary_path = _find_summary_path(
+                self._output_dir, self._current_video_name
             )
-            if summary_path.exists():
+            if summary_path:
                 try:
                     summary_text = summary_path.read_text(encoding="utf-8")
                     self._display_markdown(summary_text)
@@ -720,11 +729,11 @@ class ResultViewerWindow(QMainWindow):
             return
 
         for txt_file in txt_files:
-            if txt_file.name.endswith("_summary.txt"):
+            if txt_file.name.endswith("_summary.txt") or txt_file.name.endswith(
+                "_summary.md"
+            ):
                 continue
             if txt_file.name.endswith("_keywords.txt"):
-                continue
-            if txt_file.name.endswith("_full.json"):
                 continue
             video_name = txt_file.stem
             if not video_name:
@@ -754,6 +763,46 @@ class ResultViewerWindow(QMainWindow):
             child.setData(0, Qt.ItemDataRole.UserRole + 1, str(txt_file.parent))
             parent.addChild(child)
             tree_key = str(txt_file.parent / video_name)
+            self._tree_name_map[tree_key] = child
+
+        try:
+            summary_files = sorted(
+                p
+                for p in output_path.rglob("*_summary.*")
+                if p.suffix in (".txt", ".md")
+            )
+        except OSError:
+            summary_files = []
+
+        for sf in summary_files:
+            vname = sf.stem.removesuffix("_summary")
+            if not vname or vname in video_names:
+                continue
+            video_names.add(vname)
+
+            rel = sf.parent.relative_to(output_path)
+            parts = list(rel.parts)
+
+            parent = root
+            for depth, part in enumerate(parts):
+                dir_key = "/".join(parts[: depth + 1])
+                if dir_key not in dir_nodes:
+                    node = QTreeWidgetItem()
+                    node.setText(0, part)
+                    node.setFlags(node.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+                    nf = node.font(0)
+                    nf.setBold(True)
+                    node.setFont(0, nf)
+                    parent.addChild(node)
+                    dir_nodes[dir_key] = node
+                parent = dir_nodes[dir_key]
+
+            child = QTreeWidgetItem()
+            child.setText(0, vname)
+            child.setData(0, Qt.ItemDataRole.UserRole, vname)
+            child.setData(0, Qt.ItemDataRole.UserRole + 1, str(sf.parent))
+            parent.addChild(child)
+            tree_key = str(sf.parent / vname)
             self._tree_name_map[tree_key] = child
 
         self._sort_folders_first(root)
@@ -868,8 +917,8 @@ class ResultViewerWindow(QMainWindow):
             self.transcript_view.setPlainText("(未找到转写文件)")
 
         # 加载摘要（Markdown渲染）
-        summary_path = Path(output_dir) / f"{video_name}_summary.txt"
-        if summary_path.exists():
+        summary_path = _find_summary_path(output_dir, video_name)
+        if summary_path:
             try:
                 summary_text = summary_path.read_text(encoding="utf-8")
                 self._display_markdown(summary_text)
@@ -913,6 +962,9 @@ class ResultViewerWindow(QMainWindow):
                 flags=re.IGNORECASE,
             )
 
+            safe_text = self._preprocess_md_tables(safe_text)
+            safe_text = self._preprocess_md_nested_lists(safe_text)
+
             try:
                 extensions = ["tables", "fenced_code", "extra", "sane_lists"]
                 if PYGMENTS_AVAILABLE:
@@ -932,13 +984,145 @@ class ResultViewerWindow(QMainWindow):
         default_font.setPointSize(font_size)
         self.summary_view.document().setDefaultFont(default_font)
 
+        final_html = self._fix_tables_for_qt(self._cached_html)
+        final_html = self._fix_nested_lists_for_qt(final_html)
         styled_html = f"""
         <style>
             {css}
         </style>
-        {self._cached_html}
+        {final_html}
         """
         self.summary_view.setHtml(styled_html)
+
+    def _fix_tables_for_qt(self, html: str) -> str:
+        """为 <table>/<th>/<td> 添加内联属性，确保 QTextBrowser 正确渲染表格边框"""
+        theme = self._theme_manager.THEMES.get(
+            self._theme_manager.current_theme, self._theme_manager.THEMES["light"]
+        )
+        border = theme["border_color"]
+        th_bg = theme["secondary_bg"]
+
+        html = re.sub(
+            r"<table>",
+            f'<table border="1" cellspacing="0" cellpadding="6" '
+            f'style="border-collapse:collapse; width:100%;">',
+            html,
+        )
+        html = re.sub(
+            r"<th>",
+            f'<th style="border:1px solid {border}; padding:6px 10px; '
+            f'background:{th_bg}; font-weight:bold; text-align:left;">',
+            html,
+        )
+        html = re.sub(
+            r"<td>",
+            f'<td style="border:1px solid {border}; padding:6px 10px;">',
+            html,
+        )
+        return html
+
+    @staticmethod
+    def _fix_nested_lists_for_qt(html: str) -> str:
+        """为嵌套 <ul>/<ol> 添加内联 margin-left，确保 QTextBrowser 正确渲染列表缩进。
+
+        QTextBrowser 对 CSS 选择器 ``ul ul`` / ``ol ol`` 等嵌套列表的 padding-left
+        支持不完整，需要通过内联 style 强制生效。
+        """
+        html = re.sub(
+            r"(<li[^>]*>(?:(?!</li>).)*?)<(ul|ol)([\s>])",
+            lambda m: (
+                f'{m.group(1)}<{m.group(2)} style="margin-left:1.5em;"{m.group(3)}'
+            ),
+            html,
+            flags=re.DOTALL,
+        )
+        return html
+
+    @staticmethod
+    def _preprocess_md_nested_lists(text: str) -> str:
+        """修复 LLM 生成的 2-space 缩进子列表，使其被 python-markdown 正确识别为嵌套列表。
+
+        python-markdown 要求子列表缩进 >= 父列表标记宽度（``- `` 为 2），
+        即嵌套列表至少需要 4-space 缩进。LLM 常用 2-space，导致被展平为同级列表。
+        此方法将所有缩进的列表标记增加 2-space 偏移。
+        """
+        lines = text.split("\n")
+        result: list[str] = []
+        in_code = False
+
+        for line in lines:
+            if line.lstrip().startswith("```"):
+                in_code = not in_code
+                result.append(line)
+                continue
+
+            if in_code:
+                result.append(line)
+                continue
+
+            if re.match(r"^( +)([-*+]|\d+[.)])\s", line):
+                result.append("  " + line)
+            else:
+                result.append(line)
+
+        return "\n".join(result)
+
+    @staticmethod
+    def _preprocess_md_tables(text: str) -> str:
+        """将缩进在列表项内部的表格块提到顶层，使 markdown tables 扩展能正确识别。
+
+        列表项里缩进的 ``| col | col |`` 行会被 python-markdown 视为列表延续文本，
+        而非表格。此方法在表格块之前插入空行以断开列表上下文，并去除表格行的缩进。
+        """
+        lines = text.split("\n")
+        result: list[str] = []
+        i = 0
+        in_code = False
+
+        while i < len(lines):
+            line = lines[i]
+
+            if line.lstrip().startswith("```"):
+                in_code = not in_code
+                result.append(line)
+                i += 1
+                continue
+
+            if in_code:
+                result.append(line)
+                i += 1
+                continue
+
+            stripped = line.lstrip()
+            indent = len(line) - len(stripped)
+
+            if indent > 0 and stripped.startswith("|") and stripped.count("|") >= 2:
+                table_block: list[str] = []
+                j = i
+                while j < len(lines):
+                    s = lines[j].lstrip()
+                    if s.startswith("|") and s.count("|") >= 2:
+                        table_block.append(s)
+                        j += 1
+                    else:
+                        break
+
+                if len(table_block) >= 3 and re.match(
+                    r"^\|[\s\-:|]+\|$", table_block[1].strip()
+                ):
+                    if result and result[-1].strip():
+                        result.append("")
+                    result.extend(table_block)
+                    i = j
+                    continue
+
+                result.append(line)
+                i += 1
+            else:
+                result.append(line)
+                i += 1
+
+        return "\n".join(result)
 
     # ─── 字体 ─────────────────────────────────────────────────
 
@@ -950,10 +1134,10 @@ class ResultViewerWindow(QMainWindow):
         # 重新渲染摘要（应用新字体大小，清除搜索状态）
         if self._current_video_name:
             self._clear_search_state()
-            summary_path = (
-                Path(self._output_dir) / f"{self._current_video_name}_summary.txt"
+            summary_path = _find_summary_path(
+                self._output_dir, self._current_video_name
             )
-            if summary_path.exists():
+            if summary_path:
                 try:
                     summary_text = summary_path.read_text(encoding="utf-8")
                     self._display_markdown(summary_text)

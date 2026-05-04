@@ -5,10 +5,10 @@ import os
 import tempfile
 from dataclasses import asdict
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 from src.transcription.transcriber import TranscriptSegment
 from src.text_processing.segment_merger import MergedSegment
-from src.storage.output_formatter import OutputFormatter, OutputData
+from src.storage.output_formatter import OutputFormatter
 from src.utils.exceptions import TranscriptionError, OutputError
 from src.utils.logger import get_logger
 from src.utils.output_validator import (
@@ -146,18 +146,32 @@ class FileWriter:
             logger.error(f"写入合并转写文本失败: {e}")
             raise
 
-    def write_summary(self, summary: str, filename: str, validate: bool = True) -> str:
+    SUPPORTED_SUMMARY_FORMATS = {"txt", "md"}
+
+    def write_summary(
+        self,
+        summary: str,
+        filename: str,
+        format: str = "txt",
+        validate: bool = True,
+    ) -> str:
         """写入摘要
 
         Args:
             summary: 摘要文本
             filename: 文件名
+            format: 文件格式 (txt, md)
             validate: 是否校验输出文件
 
         Returns:
             输出文件路径
         """
-        output_path = self.output_dir / f"{filename}_summary.txt"
+        fmt = format.lower().strip()
+        if fmt not in self.SUPPORTED_SUMMARY_FORMATS:
+            raise ValueError(
+                f"不支持的摘要格式: {format}，支持: {self.SUPPORTED_SUMMARY_FORMATS}"
+            )
+        output_path = self.output_dir / f"{filename}_summary.{fmt}"
         content = self.formatter.format_summary(summary)
 
         try:
@@ -171,6 +185,21 @@ class FileWriter:
         except Exception as e:
             logger.error(f"写入摘要失败: {e}")
             raise
+
+    def find_summary_file(self, filename: str) -> Optional[Path]:
+        """查找已存在的摘要文件（支持 txt/md）
+
+        Args:
+            filename: 文件名（不含 _summary 后缀）
+
+        Returns:
+            摘要文件路径，未找到返回 None
+        """
+        for fmt in self.SUPPORTED_SUMMARY_FORMATS:
+            candidate = self.output_dir / f"{filename}_summary.{fmt}"
+            if candidate.exists():
+                return candidate
+        return None
 
     def write_json(self, data: dict, filename: str, validate: bool = True) -> str:
         """写入JSON文件
@@ -197,35 +226,6 @@ class FileWriter:
             return str(output_path)
         except Exception as e:
             logger.error(f"写入JSON文件失败: {e}")
-            raise
-
-    def write_output_data(
-        self, output_data: OutputData, filename: str, validate: bool = True
-    ) -> str:
-        """写入完整输出数据
-
-        Args:
-            output_data: 输出数据结构
-            filename: 文件名
-            validate: 是否校验输出文件
-
-        Returns:
-            输出文件路径
-        """
-        output_path = self.output_dir / f"{filename}_full.json"
-        content = self.formatter.to_json(output_data)
-
-        try:
-            self._atomic_write(output_path, content)
-
-            if validate:
-                validate_output_file(str(output_path))
-                validate_output_content(str(output_path), "json")
-
-            logger.info(f"完整输出数据写入成功: {output_path}")
-            return str(output_path)
-        except Exception as e:
-            logger.error(f"写入完整输出数据失败: {e}")
             raise
 
     def write_text(self, text: str, filename: str, validate: bool = True) -> str:
@@ -282,45 +282,4 @@ class FileWriter:
             return str(output_path)
         except Exception as e:
             logger.error(f"写入关键词失败: {e}")
-            raise
-
-    def write_all_formats(
-        self,
-        segments: List[TranscriptSegment],
-        summary: str,
-        filename: str,
-        validate: bool = True,
-    ) -> dict:
-        """写入所有格式
-
-        Args:
-            segments: 转写段列表
-            summary: 摘要
-            filename: 文件名
-            validate: 是否校验输出文件
-
-        Returns:
-            各格式文件路径字典
-        """
-        paths = {}
-
-        try:
-            paths["txt"] = self.write_transcript(
-                segments, filename, "txt", validate=validate
-            )
-            paths["srt"] = self.write_transcript(
-                segments, filename, "srt", validate=validate
-            )
-            paths["vtt"] = self.write_transcript(
-                segments, filename, "vtt", validate=validate
-            )
-            paths["json"] = self.write_transcript(
-                segments, filename, "json", validate=validate
-            )
-            paths["summary"] = self.write_summary(summary, filename, validate=validate)
-
-            logger.info(f"所有格式写入成功: {filename}")
-            return paths
-        except Exception as e:
-            logger.error(f"写入所有格式失败: {e}")
             raise

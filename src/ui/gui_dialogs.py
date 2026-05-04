@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -18,14 +19,16 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QRadioButton,
     QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
-from src.config.settings import Settings, DEFAULT_OLLAMA_URL
+from src.config.settings import Settings, DEFAULT_OLLAMA_URL, DEFAULT_NVIDIA_API_URL
 from src.summarization.ollama_client import OllamaClient
 from src.ui.gui_workers import (
+    NvidiaCheckWorker,
     OllamaCheckWorker,
     OllamaListModelWorker,
     OllamaStartServiceWorker,
@@ -128,6 +131,13 @@ _KEY_LABELS: dict[str, str] = {
     "summarization.max_length": "最大长度",
     "summarization.temperature": "温度",
     "summarization.timeout": "超时时间",
+    "summarization.nvidia_api_url": "NVIDIA API 地址",
+    "summarization.nvidia_model": "NVIDIA 模型",
+    "summarization.nvidia_max_tokens": "最大 Token 数",
+    "summarization.nvidia_temperature": "温度",
+    "summarization.nvidia_top_p": "Top P",
+    "summarization.nvidia_frequency_penalty": "频率惩罚",
+    "summarization.nvidia_presence_penalty": "存在惩罚",
     "preprocessing.ffmpeg_path": "FFmpeg路径",
     "preprocessing.audio_sample_rate": "音频采样率",
     "preprocessing.audio_channels": "音频声道数",
@@ -136,7 +146,6 @@ _KEY_LABELS: dict[str, str] = {
     "output.output_dir": "输出目录",
     "output.transcript_format": "转写格式",
     "output.summary_format": "摘要格式",
-    "output.json_output": "JSON输出",
     "network.proxy": "代理地址",
     "paths.models_dir": "模型目录",
     "paths.logs_dir": "日志目录",
@@ -178,6 +187,10 @@ class ConfigEditorDialog(QDialog):
         layout.addWidget(btn_box)
 
     def _add_section_tab(self, section: str) -> None:
+        if section == "summarization":
+            self._create_summarization_tab()
+            return
+
         tab = QWidget()
         form = QFormLayout(tab)
         form.setContentsMargins(8, 8, 8, 8)
@@ -191,30 +204,179 @@ class ConfigEditorDialog(QDialog):
             full_key = f"{section}.{key}"
             if full_key in _SKIP_KEYS:
                 continue
-            if full_key == "summarization.model_name":
-                widget = self._create_model_combo(value, form)
+            widget = QLineEdit(value)
+            label = _KEY_LABELS.get(full_key, key)
+            if full_key in Settings.PATH_KEYS:
+                row = QHBoxLayout()
+                row.addWidget(widget, 1)
+                browse_btn = QPushButton("浏览")
+                browse_btn.setProperty("_path_edit", widget)
+                browse_btn.clicked.connect(self._browse_dir)
+                row.addWidget(browse_btn)
+                form.addRow(f"{label}:", row)
             else:
-                widget = QLineEdit(value)
-                label = _KEY_LABELS.get(full_key, key)
-                if full_key in Settings.PATH_KEYS:
-                    row = QHBoxLayout()
-                    row.addWidget(widget, 1)
-                    browse_btn = QPushButton("浏览")
-                    browse_btn.setProperty("_path_edit", widget)
-                    browse_btn.clicked.connect(self._browse_dir)
-                    row.addWidget(browse_btn)
-                    form.addRow(f"{label}:", row)
-                else:
-                    form.addRow(f"{label}:", widget)
+                form.addRow(f"{label}:", widget)
             section_edits[key] = widget
 
         self._edits[section] = section_edits
 
-        if section == "summarization":
-            self._add_ollama_service_buttons(form)
-
         tab_label = _SECTION_LABELS.get(section, section)
         self.tab_widget.addTab(tab, tab_label)
+
+    def _create_summarization_tab(self) -> None:
+        """创建总结选项卡 —— 包含 Ollama / NVIDIA 切换"""
+        tab = QWidget()
+        main_layout = QVBoxLayout(tab)
+        main_layout.setContentsMargins(8, 8, 8, 8)
+
+        section_edits: dict[str, QWidget] = {}
+
+        # ---- 服务商选择 ----
+        provider_group = QGroupBox("总结服务")
+        provider_layout = QHBoxLayout(provider_group)
+        self._radio_ollama = QRadioButton("本地 Ollama 模型")
+        self._radio_nvidia = QRadioButton("在线 NVIDIA 模型")
+        current_provider = self.settings.get("summarization.provider", "ollama")
+        if current_provider == "nvidia":
+            self._radio_nvidia.setChecked(True)
+        else:
+            self._radio_ollama.setChecked(True)
+        provider_layout.addWidget(self._radio_ollama)
+        provider_layout.addWidget(self._radio_nvidia)
+        main_layout.addWidget(provider_group)
+
+        # ---- Ollama 区域 ----
+        self._ollama_group = QGroupBox("Ollama 配置")
+        ollama_form = QFormLayout(self._ollama_group)
+        ollama_form.setContentsMargins(8, 8, 8, 8)
+
+        ollama_items = {
+            "ollama_url": self.settings.get(
+                "summarization.ollama_url", DEFAULT_OLLAMA_URL
+            ),
+            "model_name": self.settings.get("summarization.model_name", ""),
+            "max_length": self.settings.get("summarization.max_length", "5000"),
+            "temperature": self.settings.get("summarization.temperature", "0.7"),
+            "timeout": self.settings.get("summarization.timeout", "300"),
+        }
+
+        for key, value in ollama_items.items():
+            full_key = f"summarization.{key}"
+            if key == "model_name":
+                widget = self._create_model_combo(value, ollama_form)
+            else:
+                widget = QLineEdit(value)
+                label = _KEY_LABELS.get(full_key, key)
+                ollama_form.addRow(f"{label}:", widget)
+            section_edits[key] = widget
+
+        self._add_ollama_service_buttons(ollama_form)
+        main_layout.addWidget(self._ollama_group)
+
+        # ---- NVIDIA 区域 ----
+        self._nvidia_group = QGroupBox("NVIDIA 配置")
+        nvidia_form = QFormLayout(self._nvidia_group)
+        nvidia_form.setContentsMargins(8, 8, 8, 8)
+
+        nvidia_items = {
+            "nvidia_api_url": self.settings.get(
+                "summarization.nvidia_api_url", DEFAULT_NVIDIA_API_URL
+            ),
+            "nvidia_model": self.settings.get(
+                "summarization.nvidia_model", "openai/gpt-oss-120b"
+            ),
+            "nvidia_max_tokens": self.settings.get(
+                "summarization.nvidia_max_tokens", "100000"
+            ),
+            "nvidia_temperature": self.settings.get(
+                "summarization.nvidia_temperature", "1.0"
+            ),
+            "nvidia_top_p": self.settings.get("summarization.nvidia_top_p", "1.0"),
+            "nvidia_frequency_penalty": self.settings.get(
+                "summarization.nvidia_frequency_penalty", "0.0"
+            ),
+            "nvidia_presence_penalty": self.settings.get(
+                "summarization.nvidia_presence_penalty", "0.0"
+            ),
+        }
+
+        for key, value in nvidia_items.items():
+            full_key = f"summarization.{key}"
+            widget = QLineEdit(value)
+            label = _KEY_LABELS.get(full_key, key)
+            nvidia_form.addRow(f"{label}:", widget)
+            section_edits[key] = widget
+
+        self._add_nvidia_test_button(nvidia_form)
+        main_layout.addWidget(self._nvidia_group)
+
+        main_layout.addStretch()
+
+        self._edits["summarization"] = section_edits
+
+        # 连接信号
+        self._radio_ollama.toggled.connect(self._on_provider_changed)
+        self._on_provider_changed()
+
+        self.tab_widget.addTab(tab, "总结")
+
+    def _on_provider_changed(self) -> None:
+        """切换 Ollama / NVIDIA 区域的显示"""
+        is_ollama = self._radio_ollama.isChecked()
+        self._ollama_group.setVisible(is_ollama)
+        self._nvidia_group.setVisible(not is_ollama)
+
+    def _add_nvidia_test_button(self, form: QFormLayout) -> None:
+        """添加 NVIDIA 测试连接按钮"""
+        btn_row = QHBoxLayout()
+        self._nvidia_test_btn = QPushButton("测试连接")
+        self._nvidia_test_btn.clicked.connect(self._test_nvidia)
+        btn_row.addWidget(self._nvidia_test_btn)
+        self._nvidia_status_label = QLabel("")
+        btn_row.addWidget(self._nvidia_status_label, 1)
+        form.addRow(btn_row)
+
+        self._nvidia_check_thread: Optional[QThread] = None
+        self._nvidia_check_worker: Optional[NvidiaCheckWorker] = None
+
+    def _test_nvidia(self) -> None:
+        """测试 NVIDIA API 连接"""
+        edits = self._edits.get("summarization", {})
+        api_url = edits.get("nvidia_api_url")
+        url = api_url.text().strip() if api_url else DEFAULT_NVIDIA_API_URL
+
+        self._nvidia_status_label.setText("测试中...")
+        self._nvidia_status_label.setStyleSheet("color: orange")
+        self._nvidia_test_btn.setEnabled(False)
+
+        self._wait_async_thread("_nvidia_check_thread")
+        thread = QThread()
+        worker = NvidiaCheckWorker(url)
+        worker.moveToThread(thread)
+
+        def _on_result(ok: bool):
+            if ok:
+                self._nvidia_status_label.setText("连接成功")
+                self._nvidia_status_label.setStyleSheet("color: green")
+            else:
+                self._nvidia_status_label.setText("连接失败，请检查 API Key 和网络")
+                self._nvidia_status_label.setStyleSheet("color: red")
+
+        def _cleanup():
+            self._nvidia_check_thread = None
+            self._nvidia_check_worker = None
+            self._nvidia_test_btn.setEnabled(True)
+
+        worker.result.connect(_on_result)
+        thread.finished.connect(_cleanup)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(worker.deleteLater)
+        thread.started.connect(worker.run)
+        worker.finished.connect(thread.quit)
+        thread.start()
+        self._nvidia_check_thread = thread
+        self._nvidia_check_worker = worker
+        # get_logger("video2text").info("_nvidia_check_thread started for URL: %s", url)
 
     def _browse_dir(self) -> None:
         btn = self.sender()
@@ -418,6 +580,7 @@ class ConfigEditorDialog(QDialog):
             "_ollama_check_thread",
             "_ollama_list_thread",
             "_ollama_start_thread",
+            "_nvidia_check_thread",
         ):
             thread = getattr(self, attr, None)
             if thread is not None:
@@ -455,6 +618,12 @@ class ConfigEditorDialog(QDialog):
         for section, edits in self._edits.items():
             for key, widget in edits.items():
                 self.settings.set(f"{section}.{key}", self._widget_text(widget))
+
+        # 保存服务商选择
+        if hasattr(self, "_radio_nvidia"):
+            provider = "nvidia" if self._radio_nvidia.isChecked() else "ollama"
+            self.settings.set("summarization.provider", provider)
+
         self.settings.save()
         self.accept()
 
@@ -463,3 +632,9 @@ class ConfigEditorDialog(QDialog):
             items = self.settings.config.items(section)
             for key, widget in edits.items():
                 self._set_widget_text(widget, dict(items).get(key, ""))
+
+        # 重置服务商选择
+        if hasattr(self, "_radio_ollama"):
+            provider = self.settings.get("summarization.provider", "ollama")
+            self._radio_ollama.setChecked(provider != "nvidia")
+            self._radio_nvidia.setChecked(provider == "nvidia")

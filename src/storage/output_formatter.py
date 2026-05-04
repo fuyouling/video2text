@@ -1,29 +1,12 @@
 """输出格式化器"""
 
-import json
-from typing import List, Dict, Any
-from datetime import datetime
-from dataclasses import dataclass, asdict
+from typing import List
 from src.transcription.transcriber import TranscriptSegment
 from src.text_processing.segment_merger import MergedSegment
 from src.utils.logger import get_logger
 from src.utils.time_format import format_time_hms, format_time_srt, format_time_vtt
 
 logger = get_logger(__name__)
-
-
-@dataclass
-class OutputData:
-    """输出数据结构"""
-
-    video_name: str
-    video_path: str
-    duration: float
-    transcript: List[Dict[str, Any]]
-    processed_text: str
-    summary: str
-    timestamp: str
-    processing_time: float
 
 
 class OutputFormatter:
@@ -133,61 +116,3 @@ class OutputFormatter:
             lines.append("")
 
         return "\n".join(lines)
-
-    @staticmethod
-    def create_output_data(
-        video_name: str,
-        video_path: str,
-        duration: float,
-        transcript_segments: List[TranscriptSegment],
-        processed_text: str,
-        summary: str,
-        processing_time: float,
-    ) -> OutputData:
-        """创建输出数据结构
-
-        Args:
-            video_name: 视频名称
-            video_path: 视频路径
-            duration: 时长
-            transcript_segments: 转写段列表
-            processed_text: 处理后的文本
-            summary: 摘要
-            processing_time: 处理时间
-
-        Returns:
-            输出数据结构
-        """
-        transcript_data = [
-            {
-                "start": seg.start,
-                "end": seg.end,
-                "text": seg.text,
-                "confidence": seg.confidence,
-                "language": seg.language,
-            }
-            for seg in transcript_segments
-        ]
-
-        return OutputData(
-            video_name=video_name,
-            video_path=video_path,
-            duration=duration,
-            transcript=transcript_data,
-            processed_text=processed_text,
-            summary=summary,
-            timestamp=datetime.now().isoformat(),
-            processing_time=processing_time,
-        )
-
-    @staticmethod
-    def to_json(output_data: OutputData) -> str:
-        """转换为JSON格式
-
-        Args:
-            output_data: 输出数据结构
-
-        Returns:
-            JSON字符串
-        """
-        return json.dumps(asdict(output_data), ensure_ascii=False, indent=2)

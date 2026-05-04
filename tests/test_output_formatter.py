@@ -1,7 +1,7 @@
 """OutputFormatter 单元测试"""
 
 import pytest
-from src.storage.output_formatter import OutputFormatter, OutputData
+from src.storage.output_formatter import OutputFormatter
 from src.transcription.transcriber import TranscriptSegment
 from src.utils.time_format import format_time_hms, format_time_srt, format_time_vtt
 
@@ -60,37 +60,6 @@ class TestOutputFormatter:
 
     def test_format_vtt_time(self):
         assert format_time_vtt(1.5) == "00:00:01.500"
-
-    def test_create_output_data(self):
-        segments = [_make_segment(0.0, 1.5, "你好")]
-        data = self.formatter.create_output_data(
-            video_name="test",
-            video_path="/test.mp4",
-            duration=60.0,
-            transcript_segments=segments,
-            processed_text="你好",
-            summary="摘要",
-            processing_time=5.0,
-        )
-        assert data.video_name == "test"
-        assert data.duration == 60.0
-        assert len(data.transcript) == 1
-        assert data.summary == "摘要"
-
-    def test_to_json(self):
-        segments = [_make_segment(0.0, 1.5, "你好")]
-        data = self.formatter.create_output_data(
-            video_name="test",
-            video_path="/test.mp4",
-            duration=60.0,
-            transcript_segments=segments,
-            processed_text="你好",
-            summary="摘要",
-            processing_time=5.0,
-        )
-        json_str = self.formatter.to_json(data)
-        assert '"video_name": "test"' in json_str
-        assert '"你好"' in json_str
 
     def test_empty_segments(self):
         result = self.formatter.format_transcript([], include_timestamps=True)

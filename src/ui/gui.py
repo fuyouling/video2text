@@ -46,7 +46,7 @@ from src.ui.gui_workers import (
     UiLogHandler,
     UiLogSignal,
 )
-from src.ui.result_viewer import ResultViewerWindow
+from src.ui.result_viewer import ResultViewerWindow, _find_summary_path
 from src.transcription.transcriber import _model_cache as _transcriber_cache
 from src.utils.logger import get_logger
 
@@ -343,10 +343,11 @@ class MainWindow(QMainWindow):
             "关于 Video2Text",
             f"<h3>Video2Text</h3>"
             f"<p>版本: {APP_VERSION}</p>"
-            f"<p>视频转文本工具 —— 基于 faster-whisper + Ollama 的视频转写与摘要总结工具</p>"
+            f"<p>视频转文本工具 —— 基于 faster-whisper的视频转写工具</p>"
             f"<p>技术栈: faster-whisper · Ollama · PySide6</p>"
             f"<p>许可证: GNU GPL v3</p>"
-            f"<p>讨论群: QQ群 296875960</p>",
+            f"<p>讨论群: QQ群 296875960</p>"
+            f"<p>作者: 喵王龙</p>",
         )
 
     def _show_config_editor(self) -> None:
@@ -381,6 +382,7 @@ class MainWindow(QMainWindow):
 
     def _on_prompt_template_selected(self, name: str) -> None:
         if not name or name == self._PLACEHOLDER_PROMPT:
+            self.ollama_prompt_edit.clear()
             return
         content = self.prompt_manager.get_content(name)
         if content is not None:
@@ -533,15 +535,26 @@ class MainWindow(QMainWindow):
 
         loaded_count = 0
         for txt_file in transcript_files:
-            if txt_file.name.endswith("_summary.txt"):
+            if txt_file.name.endswith("_summary.txt") or txt_file.name.endswith(
+                "_summary.md"
+            ):
                 continue
             if txt_file.name.endswith("_keywords.txt"):
-                continue
-            if txt_file.name.endswith("_full.json"):
                 continue
 
             video_name = txt_file.stem
             if video_name not in self._completed_names:
+                self._completed_names.add(video_name)
+                item = QListWidgetItem(video_name)
+                item.setData(Qt.ItemDataRole.UserRole, video_name)
+                self.file_list.addItem(item)
+                loaded_count += 1
+
+        for summary_file in output_path.glob("*_summary.*"):
+            if summary_file.suffix not in (".txt", ".md"):
+                continue
+            video_name = summary_file.stem.removesuffix("_summary")
+            if video_name and video_name not in self._completed_names:
                 self._completed_names.add(video_name)
                 item = QListWidgetItem(video_name)
                 item.setData(Qt.ItemDataRole.UserRole, video_name)
@@ -1048,8 +1061,8 @@ class MainWindow(QMainWindow):
         else:
             self.transcript_view.setPlainText("(未找到转写文件)")
 
-        summary_path = Path(output_dir) / f"{video_name}_summary.txt"
-        if summary_path.exists():
+        summary_path = _find_summary_path(output_dir, video_name)
+        if summary_path:
             try:
                 self.summary_view.setPlainText(summary_path.read_text(encoding="utf-8"))
             except (OSError, UnicodeDecodeError) as exc:
