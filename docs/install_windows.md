@@ -1,41 +1,288 @@
-# Windows 安装教程 
+# Windows 安装教程
 
 本文档提供在 Windows 系统上安装打包好的 `video2text` 程序的完整步骤。
 
-## 包含的文件
+---
+
+## 系统要求
+
+在开始安装前，请确认您的系统满足以下条件：
+
+| 项目 | 要求 |
+|------|------|
+| **操作系统** | Windows 10 / 11（64 位） |
+| **磁盘空间** | 至少 **15 GB** 可用空间（含模型文件） |
+| **内存（RAM）** | 建议 8 GB 及以上 |
+| **显卡（可选）** | NVIDIA 显卡 + CUDA 支持可大幅加速转写；无显卡也可使用 CPU 模式 |
+| **网络** | 首次使用总结功能时需要联网下载 Ollama 模型 |
+
+**磁盘空间明细参考：**
+
+| 组件 | 大小 |
+|------|------|
+| `large-v3` 语音模型 | ~3 GB |
+| Ollama 总结模型（`qwen2.5:7b`） | ~4.7 GB |
+| FFmpeg | ~200 MB |
+| video2text 程序 | ~500 MB |
+| 运行时缓存及输出空间 | 预留若干 GB |
+
+---
+
+## 下载安装包
 
 安装包体积较大，已上传至 123 云盘，内含以下组件：
 
-- Ollama 安装包及模型文件
-- ffmpeg 安装包
-- video2text 绿色版 exe 程序包 video2text_portable_windows_20260426.zip
-- large‑v3 模型文件
+| 文件 | 说明 |
+|------|------|
+| `OllamaSetup.exe` | Ollama 安装程序 |
+| `models.zip` | Ollama 的预下载模型文件（避免首次使用时在线下载） |
+| `ffmpeg-*-win64-gpl.zip` | FFmpeg 安装包 |
+| `video2text_portable_windows_*.zip` | video2text 绿色版 exe 程序包 |
+| `large-v3.zip` | Whisper large-v3 语音识别模型文件 |
 
-> 请使用支持保留目录结构的解压工具（如 7‑Zip）解压压缩包，确保文件夹结构完整。
-> 连接:
+> 请使用支持保留目录结构的解压工具（如 **7-Zip** 或 **Bandizip**）解压压缩包，确保文件夹结构完整。
+
+**下载地址：**
 ```
 『来自123云盘用户喵王龙的分享』video2text
 链接：https://1840674647.share.123pan.cn/123pan/7CfNTd-SE7j3?pwd=viWa#
 提取码：viWa
 ```
 
+---
+
 ## 安装步骤
 
-1. **安装 Ollama**
-   - 运行 Ollama 的 exe 安装程序。
-   - 将 `models.zip` 解压到 `C:\Users\%USERNAME%\.ollama` 目录下。
-   - 开启Ollama,直接打开安装好的程序就行
+### 第一步：安装 Ollama（用于 AI 总结功能）
 
-2. **安装 ffmpeg**
-   - 直接运行 ffmpeg 安装程序。
-   - 完成后将 ffmpeg 所在目录添加到系统 `PATH` 环境变量，以便在命令行中直接调用。
-   - 运行 `ffmpeg -version` 检查是否成功显示版本信息。
+Ollama 是一个本地大语言模型运行框架，video2text 使用它来生成文本摘要。
 
-3. **部署 video2text**
-   - 解压 `video2text` 绿色版 exe 程序包。
-   - 将 `large‑v3` 模型文件解压到 `video2text.exe` 所在目录下的 `models` 子文件夹中。
+1. **运行安装程序**：双击 `OllamaSetup.exe`，按提示完成安装。安装过程无需手动配置，会自动完成。
 
-完成以上步骤后，即可在 Windows 环境下运行 `video2text`，并使用 large‑v3 模型进行视频转文本。
+2. **解压预下载模型**：
+   - 找到下载好的 `models.zip` 文件。
+   - 将其解压到 `C:\Users\你的用户名\.ollama` 目录下。
+   - 确保解压后的目录结构如下：
+     ```
+     C:\Users\你的用户名\.ollama\
+     └── models\
+         └── blobs\          ← 模型数据文件
+         └── manifests\      ← 模型清单文件
+     ```
+   > **提示**：`%USERPROFILE%` 环境变量会自动指向当前用户的主目录。在文件资源管理器地址栏输入 `%USERPROFILE%\.ollama` 可直接跳转。
+
+3. **启动 Ollama 服务**：
+   - 安装完成后，从开始菜单或桌面找到 **Ollama** 程序并运行。
+   - Ollama 会以后台服务形式运行，默认监听 `http://127.0.0.1:11434`。
+   - 系统托盘区会出现 Ollama 图标，表示服务已启动。
+
+4. **验证安装**（可选）：
+   - 打开命令提示符（`Win+R` → 输入 `cmd` → 回车），运行：
+     ```powershell
+     ollama list
+     ```
+   - 如果显示已安装的模型列表（如 `qwen2.5:7b-instruct-q4_K_M`），说明安装和模型解压均成功。
+   - 如果提示找不到命令，尝试重新打开一个命令提示符窗口（安装后需要新的终端窗口才能刷新 PATH）。
+
+> **如果没有预下载模型文件**：可以在线拉取模型，在命令提示符中运行：
+> ```powershell
+> ollama pull qwen2.5:7b-instruct-q4_K_M
+> ```
+> 模型文件约 4.7 GB，下载时间取决于网络速度。
+> 最好注册ollama的账号,官网地址:https://docs.ollama.com/
+> 提供免费的在线模型可使用,包括deepseek-v3.1:671b-cloud,gpt-oss:120b-cloud
+
+---
+
+### 第二步：安装 FFmpeg（用于视频音频提取）
+
+FFmpeg 是一个音视频处理工具，video2text 使用它从视频文件中提取音频。
+
+1. **解压安装包**：
+   - 将下载的 `ffmpeg-*-win64-gpl.zip` 解压到一个固定目录，例如 `C:\ffmpeg`。
+   - 解压后的目录结构如下：
+     ```
+     C:\ffmpeg\
+     └── bin\
+         ├── ffmpeg.exe
+         ├── ffplay.exe
+         └── ffprobe.exe
+     ```
+
+2. **添加到系统 PATH 环境变量**：
+   - 右键点击「此电脑」→「属性」→「高级系统设置」→「环境变量」。
+   - 在「系统变量」区域找到 `Path` 变量，双击打开。
+   - 点击「新建」，输入 FFmpeg 的 `bin` 目录路径：`C:\ffmpeg\bin`
+   - 依次点击「确定」关闭所有对话框。
+
+   > **快捷方法**（Windows 10/11）：按 `Win+S` 搜索「环境变量」→ 选择「编辑系统环境变量」→ 点击「环境变量」按钮。
+
+3. **验证安装**：
+   - **重新打开**一个命令提示符或 PowerShell 窗口（必须重新打开，旧窗口不会加载新的 PATH）。
+   - 运行以下命令：
+     ```powershell
+     ffmpeg -version
+     ```
+   - 如果显示 FFmpeg 版本信息（如 `ffmpeg version 7.x`），说明安装成功。
+   - 如果提示「不是内部或外部命令」，请检查 PATH 设置是否正确，或尝试重启电脑后再试。
+
+> **替代方案**：如果不想修改系统 PATH，也可以在 video2text 的配置文件 `config.ini` 中指定 FFmpeg 的完整路径：
+> ```ini
+> [preprocessing]
+> ffmpeg_path = C:\ffmpeg\bin\ffmpeg.exe
+> ```
+
+---
+
+### 第三步：部署 video2text 程序
+
+1. **解压程序包**：
+   - 将 `video2text_portable_windows_*.zip` 解压到你希望存放程序的位置，例如 `D:\video2text`。
+   - 该程序为**绿色版**，无需安装，不会写入注册表，解压即用。
+   - 解压后目录结构如下：
+      ```
+      D:\video2text\
+      ├── video2text.exe          ← 主程序
+      ├── video2text.bat          ← 启动脚本（自动设置工作目录）
+      ├── config.ini              ← 配置文件
+      ├── .env                    ← 环境变量配置（存放 API Key，需手动创建）
+      ├── assets\                 ← 图标资源
+      ├── models\                 ← 模型目录（需要放入模型文件）
+      │   └── readme.md
+      ├── output\                 ← 输出目录（转写和总结结果保存在此）
+      │   └── readme.md
+      ├── video\                  ← 视频存放目录（可选使用）
+      │   └── readme.md
+      ├── logs\                   ← 日志目录
+      │   └── readme.md
+      ├── README.md
+      └── README_PORTABLE.txt
+      ```
+
+   - **创建 `.env` 文件**（可选，使用 NVIDIA 在线总结服务时需要）：
+     - 在程序目录下新建一个名为 `.env` 的文本文件（注意文件名以点开头，无扩展名）。
+     - 用记事本打开，按需添加以下内容：
+       ```
+       # NVIDIA API Key（使用在线 NVIDIA 模型总结时需要）
+       NVIDIA_API_KEY=nvapi-你的API密钥
+
+       # Ollama API Key（使用带认证的 Ollama 服务时可选配置）
+       # OLLAMA_API_KEY=你的API密钥
+       ```
+     - 保存文件。程序启动时会自动读取该文件中的环境变量。
+     - 如果仅使用本地 Ollama 进行总结，则**无需创建**此文件。
+     - API Key 也可以通过系统环境变量设置，效果相同（系统环境变量优先级高于 `.env` 文件）。
+     - NVIDIA提供有很多免费的模型,如果网络访问有问题需要自行解决
+
+2. **放入语音识别模型**：
+   - 将下载的 `large-v3.zip` 解压到程序目录下的 `models` 文件夹中。
+   - 确保解压后模型文件位于 `models\large-v3\` 子目录下，且包含以下核心文件：
+     ```
+     D:\video2text\models\
+     └── large-v3\
+         ├── config.json
+         ├── model.bin              ← 核心模型文件（约 2.9 GB）
+         ├── preprocessor_config.json
+         ├── tokenizer.json
+         └── vocabulary.json
+     ```
+   > **重要**：`model.bin` 是最大的文件（约 2.9 GB），缺少此文件将无法进行转写。
+
+   > **如果没有预下载模型**：程序首次运行时会自动从 HuggingFace 下载模型（约 3 GB，需联网）。如果网络较慢，可在 `config.ini` 中配置代理：
+   > ```ini
+   > [network]
+   > proxy = http://127.0.0.1:7890
+   > ```
+
+---
+
+### 第四步：验证安装
+
+完成以上所有步骤后，按顺序验证各组件是否正常工作：
+
+1. **验证 FFmpeg**：
+   ```powershell
+   ffmpeg -version
+   ```
+   应显示版本信息。
+
+2. **验证 Ollama**：
+   ```powershell
+   ollama list
+   ```
+   应显示已安装的模型列表。
+
+3. **启动 video2text**：
+   - 双击 `video2text.exe` 或 `video2text.bat` 启动程序。
+   - 程序主窗口应正常显示，标题为「Video2Text - 视频转文本工具」。
+   - 底部状态栏会显示当前使用的配置文件路径。
+
+4. **快速测试**（可选）：
+   - 选择一个短小的视频文件（1-2 分钟即可）。
+   - 点击「仅转写」按钮，观察日志面板是否有输出、进度条是否推进。
+   - 转写完成后，右侧面板应显示转写文本。
+   - 点击「仅总结」按钮，确认 Ollama 能正常生成摘要。
+
+---
+
+## 安装常见问题
+
+### 问题 1：双击 video2text.exe 无反应或闪退
+
+- **原因**：通常是 FFmpeg 未正确安装或未添加到 PATH。
+- **解决**：
+  1. 打开命令提示符，运行 `ffmpeg -version` 确认 FFmpeg 可用。
+  2. 如果 FFmpeg 未添加到 PATH，在 `config.ini` 中手动指定路径：
+     ```ini
+     [preprocessing]
+     ffmpeg_path = C:\ffmpeg\bin\ffmpeg.exe
+     ```
+  3. 或者通过 `video2text.bat` 启动，它会自动设置工作目录。
+
+### 问题 2：Ollama 连接失败
+
+- **原因**：Ollama 服务未启动或启动异常。
+- **解决**：
+  1. 确认 Ollama 已安装：在命令提示符运行 `ollama --version`。
+  2. 启动 Ollama 服务：从开始菜单运行 Ollama，或在命令提示符运行 `ollama serve`。
+  3. 在 video2text 中，打开「设置 → 编辑配置 → 总结」标签页，点击「测试连接」按钮检查状态。
+  4. 也可点击「启动服务」按钮让 video2text 自动启动 Ollama。
+
+### 问题 3：模型文件缺失或不完整
+
+- **原因**：`models/large-v3/` 目录下缺少模型文件。
+- **解决**：
+  1. 检查 `models/large-v3/` 目录是否包含 `model.bin` 等 5 个核心文件。
+  2. 如果文件缺失，可重新解压 `large-v3.zip`，或删除该目录后重新运行程序（会自动下载）。
+  3. 确保文件没有被杀毒软件误删。
+
+### 问题 4：无 NVIDIA 显卡，转写报错
+
+- **原因**：默认配置使用 GPU（`device = cuda`），但系统无 NVIDIA 显卡。
+- **解决**：
+  1. 打开 `config.ini`，将 `[transcription]` 下的 `device` 改为 `cpu`：
+     ```ini
+     device = cpu
+     ```
+  2. CPU 模式下转写速度较慢，建议配合较短的视频测试。
+
+### 问题 5：转写时提示 GPU 显存不足（CUDA OOM）
+
+- **原因**：显卡显存不足以运行 large-v3 模型。
+- **解决**：
+  1. 程序会自动尝试降级（`float16` → `int8` → `float32` → CPU），一般无需手动干预。
+  2. 如果仍然失败，在 `config.ini` 中将 `compute_type` 改为 `int8` 以减少显存占用：
+     ```ini
+     compute_type = int8
+     ```
+  3. 或将 `device` 改为 `cpu` 使用 CPU 模式。
+
+### 问题 6：杀毒软件拦截
+
+- **原因**：部分杀毒软件可能将 PyInstaller 打包的 exe 误报为可疑程序。
+- **解决**：
+  1. 将 video2text 程序所在目录添加到杀毒软件的白名单/排除列表中。
+  2. 同时将 `models/large-v3/` 目录也加入排除，防止模型文件被误删。
 
 ---
 
