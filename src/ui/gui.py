@@ -105,6 +105,8 @@ class MainWindow(QMainWindow):
         self._sum_fail = 0
         self._fail_records: list[tuple[str, str, str]] = []
         self._current_video_name: Optional[str] = None
+        self._is_multi_thread = False
+        self._history_loaded = False
 
         self._setup_logging()
         self._init_ui()
@@ -525,15 +527,14 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "提示", f"输出目录不存在: {output_dir}")
             return
 
-        self.file_list.clear()
-        self._completed_names.clear()
+        self._history_loaded = True
 
         transcript_files: list[Path] = []
         for ext in ("txt", "srt", "vtt", "json"):
             transcript_files.extend(output_path.glob(f"*.{ext}"))
         transcript_files.sort(key=lambda p: p.name.lower())
 
-        loaded_count = 0
+        found_names: set[str] = set()
         for txt_file in transcript_files:
             if txt_file.name.endswith("_summary.txt") or txt_file.name.endswith(
                 "_summary.md"
@@ -541,31 +542,36 @@ class MainWindow(QMainWindow):
                 continue
             if txt_file.name.endswith("_keywords.txt"):
                 continue
-
-            video_name = txt_file.stem
-            if video_name not in self._completed_names:
-                self._completed_names.add(video_name)
-                item = QListWidgetItem(video_name)
-                item.setData(Qt.ItemDataRole.UserRole, video_name)
-                self.file_list.addItem(item)
-                loaded_count += 1
+            found_names.add(txt_file.stem)
 
         for summary_file in output_path.glob("*_summary.*"):
             if summary_file.suffix not in (".txt", ".md"):
                 continue
             video_name = summary_file.stem.removesuffix("_summary")
-            if video_name and video_name not in self._completed_names:
-                self._completed_names.add(video_name)
-                item = QListWidgetItem(video_name)
-                item.setData(Qt.ItemDataRole.UserRole, video_name)
-                self.file_list.addItem(item)
-                loaded_count += 1
+            if video_name:
+                found_names.add(video_name)
 
-        if loaded_count > 0:
-            self.status_bar.showMessage(f"已加载 {loaded_count} 个历史文件")
-            self.file_list.setCurrentRow(0)
-        else:
+        if not found_names:
+            QMessageBox.warning(
+                self,
+                "提示",
+                f"未在输出目录中找到历史文件:\n{output_dir}\n\n"
+                "请先完成转写，或更换包含历史文件的输出目录后重试。",
+            )
             self.status_bar.showMessage("未找到历史文件")
+            return
+
+        self.file_list.clear()
+        self._completed_names.clear()
+
+        for video_name in sorted(found_names, key=str.lower):
+            self._completed_names.add(video_name)
+            item = QListWidgetItem(video_name)
+            item.setData(Qt.ItemDataRole.UserRole, video_name)
+            self.file_list.addItem(item)
+
+        self.status_bar.showMessage(f"已加载 {len(found_names)} 个历史文件")
+        self.file_list.setCurrentRow(0)
 
     # ── worker 生成 ──
 
@@ -574,6 +580,22 @@ class MainWindow(QMainWindow):
         self.output_edit.setText(output_dir)
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         return output_dir
+
+    def _get_stream_setting(self) -> bool:
+        """根据当前配置决定是否使用流式输出"""
+        provider = self.settings.get("summarization.provider", "ollama")
+        if provider == "ollama":
+            return True
+        nvidia_mode = self.settings.get("summarization.nvidia_mode", "single")
+        if nvidia_mode == "multi":
+            return False
+        return self.settings.get_bool("summarization.nvidia_stream", True)
+
+    def _update_multi_thread_flag(self) -> None:
+        """更新多线程标志"""
+        provider = self.settings.get("summarization.provider", "ollama")
+        nvidia_mode = self.settings.get("summarization.nvidia_mode", "single")
+        self._is_multi_thread = provider == "nvidia" and nvidia_mode == "multi"
 
     def _start_worker(self, thread: QThread, worker) -> None:
         """启动 worker 线程并连接通用信号"""
@@ -747,6 +769,7 @@ class MainWindow(QMainWindow):
 
         self._current_mode = "summarize"
         self._reset_counters()
+        self._update_multi_thread_flag()
 
         total = len(video_names)
         self.progress_bar.setMaximum(total)
@@ -763,7 +786,7 @@ class MainWindow(QMainWindow):
             output_dir,
             self.settings,
             custom_prompt,
-            stream=True,
+            stream=self._get_stream_setting(),
         )
 
         worker.stream_token.connect(self._on_stream_token)
@@ -779,6 +802,7 @@ class MainWindow(QMainWindow):
         """独立文本总结（不依赖视频文件列表）"""
         self._current_mode = "summarize"
         self._reset_counters()
+        self._update_multi_thread_flag()
 
         self.progress_bar.setMaximum(1)
         self.progress_bar.setValue(0)
@@ -795,7 +819,7 @@ class MainWindow(QMainWindow):
             output_dir,
             self.settings,
             custom_prompt,
-            stream=True,
+            stream=self._get_stream_setting(),
         )
 
         worker.set_standalone_text(text)
@@ -814,13 +838,20 @@ class MainWindow(QMainWindow):
         self.summary_view.insertPlainText(token)
 
     def _on_summarize_started(self, video_name: str) -> None:
-        """开始总结新视频时清空摘要区"""
-        self.summary_view.clear()
+        """开始总结新视频时清空摘要区（多线程模式下不清空）"""
+        if not self._is_multi_thread:
+            self.summary_view.clear()
 
     def _on_single_video_summarized(self, video_name: str, summary: str) -> None:
         """单个视频总结完成"""
         self._sum_success += 1
-        self.summary_view.setPlainText(summary)
+        if video_name not in self._completed_names:
+            self._completed_names.add(video_name)
+            item = QListWidgetItem(video_name)
+            item.setData(Qt.ItemDataRole.UserRole, video_name)
+            self.file_list.addItem(item)
+        if not self._is_multi_thread:
+            self.summary_view.setPlainText(summary)
         self.status_bar.showMessage(f"总结完成: {video_name}", 5000)
 
     def _on_summarize_error(self, video_name: str, error_msg: str) -> None:
@@ -846,6 +877,7 @@ class MainWindow(QMainWindow):
 
         self._current_mode = "pipeline"
         self._reset_counters()
+        self._update_multi_thread_flag()
 
         total = len(self._video_files)
         self.progress_bar.setMaximum(total * 2)
@@ -862,7 +894,7 @@ class MainWindow(QMainWindow):
             output_dir,
             self.settings,
             custom_prompt,
-            stream=True,
+            stream=self._get_stream_setting(),
         )
 
         worker.transcribe_done.connect(self._on_single_video_transcribed)
@@ -930,7 +962,7 @@ class MainWindow(QMainWindow):
     # ── result file viewer ──
 
     def _open_result_viewer(self) -> None:
-        if not self._completed_names:
+        if not self._completed_names and not self._history_loaded:
             QMessageBox.warning(self, "提示", "请先完成转写或加载历史文件")
             return
 
@@ -1013,6 +1045,7 @@ class MainWindow(QMainWindow):
 
         self._current_mode = "summarize"
         self._reset_counters()
+        self._update_multi_thread_flag()
         self.progress_bar.setMaximum(1)
         self.progress_bar.setValue(0)
         self.progress_label.setText("0/1")
@@ -1027,7 +1060,7 @@ class MainWindow(QMainWindow):
             output_dir,
             self.settings,
             custom_prompt,
-            stream=True,
+            stream=self._get_stream_setting(),
         )
         worker.stream_token.connect(self._on_stream_token)
         worker.summarize_started.connect(self._on_summarize_started)

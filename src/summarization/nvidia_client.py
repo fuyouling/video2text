@@ -35,7 +35,7 @@ class NvidiaClient:
     ):
         self.api_url = api_url.rstrip("/")
         self.timeout = timeout
-        self.max_retries = 3
+        self.max_retries = 5
 
         self._api_key = api_key or os.environ.get("NVIDIA_API_KEY") or ""
         self._session = requests.Session()
@@ -135,6 +135,29 @@ class NvidiaClient:
                 )
 
                 with response:
+                    if response.status_code == 429:
+                        retry_after = response.headers.get("Retry-After")
+                        if retry_after:
+                            try:
+                                wait = int(retry_after)
+                            except ValueError:
+                                wait = 2 ** (attempt + 1)
+                        else:
+                            wait = 2 ** (attempt + 1)
+                        last_exc = SummarizationError(
+                            f"NVIDIA API 限流 (429), {wait} 秒后重试"
+                        )
+                        logger.warning(
+                            "NVIDIA API 429 限流 (尝试 %d/%d), 等待 %d 秒",
+                            attempt,
+                            self.max_retries,
+                            wait,
+                        )
+                        if attempt < self.max_retries:
+                            time.sleep(wait)
+                            continue
+                        raise last_exc
+
                     if response.status_code != 200:
                         error_msg = f"NVIDIA API 错误: {response.status_code}"
                         try:

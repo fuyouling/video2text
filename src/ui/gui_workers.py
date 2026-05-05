@@ -4,6 +4,7 @@ import logging
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -21,7 +22,7 @@ from src.services.transcription_service import TranscriptionService, TranscribeR
 from src.services.summarization_service import SummarizationService
 from src.storage.file_writer import FileWriter
 from src.summarization.ollama_client import OllamaClient
-from src.summarization.nvidia_client import NvidiaClient
+from src.summarization.providers import create_provider
 from src.text_processing.segment_merger import SegmentMerger
 from src.text_processing.text_cleaner import TextCleaner
 from src.transcription.transcriber import get_cached_transcriber
@@ -37,6 +38,23 @@ if sys.platform == "win32":
     CREATE_NO_WINDOW = subprocess.CREATE_NO_WINDOW
 else:
     CREATE_NO_WINDOW = 0
+
+
+class RateLimiter:
+    """简单的速率限制器 —— 确保请求间隔不低于指定秒数"""
+
+    def __init__(self, min_interval: float = 1.5):
+        self._lock = threading.Lock()
+        self._min_interval = min_interval
+        self._last_time = 0.0
+
+    def acquire(self) -> None:
+        with self._lock:
+            now = time.monotonic()
+            elapsed = now - self._last_time
+            if elapsed < self._min_interval:
+                time.sleep(self._min_interval - elapsed)
+            self._last_time = time.monotonic()
 
 
 def _get_output_formats(settings: Settings) -> list[str]:
@@ -221,15 +239,11 @@ class TranscribeWorker(QObject):
 
 
 class SummarizeWorker(QObject):
-    """后台总结线程 —— 支持流式输出"""
+    """后台总结线程 —— 支持流式输出和多线程并发"""
 
-    # 开始总结某个视频 (video_name)
     summarize_started = Signal(str)
-    # 流式 token 推送
     stream_token = Signal(str)
-    # 总结完成 (video_name, summary)
     video_done = Signal(str, str)
-    # 总结失败 (video_name, error_message)
     video_error = Signal(str, str)
     progress = Signal(int, int)
     error = Signal(str)
@@ -253,7 +267,6 @@ class SummarizeWorker(QObject):
         self._standalone_text: str = ""
 
     def set_standalone_text(self, text: str) -> None:
-        """设置独立文本内容（用于无视频文件时的纯文本总结）。"""
         self._standalone_text = text
 
     def cancel(self) -> None:
@@ -270,116 +283,218 @@ class SummarizeWorker(QObject):
         try:
             file_writer = FileWriter(self.output_dir)
             provider = self.settings.get("summarization.provider", "ollama")
+            nvidia_mode = self.settings.get("summarization.nvidia_mode", "single")
 
-            if provider == "nvidia":
-                self._run_nvidia(logger, file_writer)
+            if provider == "nvidia" and nvidia_mode == "multi":
+                self._run_multi_thread(logger, file_writer)
             else:
-                self._run_ollama(logger, file_writer)
+                self._run_single_thread(logger, file_writer, provider)
 
         except Exception as exc:
             logger.exception("总结线程异常")
             self.error.emit(str(exc))
         finally:
-            if hasattr(self, "_sum_service") and self._sum_service is not None:
-                self._sum_service.close()
-            if hasattr(self, "_ollama_client") and self._ollama_client is not None:
-                self._ollama_client.close()
-            if hasattr(self, "_nvidia_client") and self._nvidia_client is not None:
-                self._nvidia_client.close()
             self.finished.emit()
 
-    def _run_nvidia(self, logger, file_writer: FileWriter) -> None:
-        """使用 NVIDIA API 执行总结"""
-        nvidia_client = NvidiaClient(
-            api_url=self.settings.get(
-                "summarization.nvidia_api_url",
-                "https://integrate.api.nvidia.com/v1/chat/completions",
-            ),
-            timeout=self.settings.get_int("summarization.timeout", 600),
-        )
-        self._nvidia_client = nvidia_client
+    def _run_single_thread(
+        self, logger, file_writer: FileWriter, provider: str
+    ) -> None:
+        """单线程模式（Ollama 或 NVIDIA single）"""
+        if provider == "ollama":
+            ollama_url = self.settings.get(
+                "summarization.ollama_url", DEFAULT_OLLAMA_URL
+            )
+            try:
+                OllamaClient.ensure_service(ollama_url)
+            except RuntimeError as e:
+                msg = str(e)
+                logger.error(msg)
+                self.error.emit(msg)
+                self._emit_all_errors(msg)
+                return
 
-        if not nvidia_client.check_connection():
-            msg = "NVIDIA API 连接失败，请检查 API Key 和网络"
-            logger.error(msg)
-            self.error.emit(msg)
-            if self._standalone_text:
-                self.video_error.emit("(粘贴文本)", msg)
-                self.progress.emit(1, 1)
-            else:
-                for vp in self.video_files:
-                    self.video_error.emit(Path(vp).stem, msg)
-                self.progress.emit(len(self.video_files), len(self.video_files))
-            nvidia_client.close()
-            return
-
-        service = SummarizationService(
-            settings=self.settings,
-            file_writer=file_writer,
-            nvidia_client=nvidia_client,
-            provider="nvidia",
-            custom_prompt=self.custom_prompt,
-            on_stream_token=lambda token: self.stream_token.emit(token),
-            cancel_check=lambda: self._cancelled,
-        )
-        self._sum_service = service
-
-        self._execute_summarization(logger, service)
-
-    def _run_ollama(self, logger, file_writer: FileWriter) -> None:
-        """使用 Ollama 执行总结"""
-        ollama_url = self.settings.get("summarization.ollama_url", DEFAULT_OLLAMA_URL)
-        ollama_timeout = self.settings.get_int(
-            "summarization.timeout", DEFAULT_OLLAMA_TIMEOUT
-        )
-        model_name = self.settings.get("summarization.model_name", DEFAULT_OLLAMA_MODEL)
-        ollama_client = OllamaClient(ollama_url, timeout=ollama_timeout)
-        self._ollama_client = ollama_client
-
+        provider_inst = create_provider(self.settings)
         try:
-            OllamaClient.ensure_service(ollama_url)
-        except RuntimeError as e:
-            msg = str(e)
-            logger.error(msg)
-            self.error.emit(msg)
-            if self._standalone_text:
-                self.video_error.emit("(粘贴文本)", msg)
-                self.progress.emit(1, 1)
-            else:
-                for vp in self.video_files:
-                    self.video_error.emit(Path(vp).stem, msg)
-                self.progress.emit(len(self.video_files), len(self.video_files))
-            ollama_client.close()
+            if not provider_inst.check_connection():
+                msg = f"{provider} 连接失败"
+                logger.error(msg)
+                self.error.emit(msg)
+                self._emit_all_errors(msg)
+                return
+
+            service = SummarizationService(
+                settings=self.settings,
+                file_writer=file_writer,
+                provider=provider_inst,
+                custom_prompt=self.custom_prompt,
+                on_stream_token=lambda token: self.stream_token.emit(token),
+                cancel_check=lambda: self._cancelled,
+            )
+            try:
+                self._execute_summarization(logger, service)
+            finally:
+                service.close()
+        finally:
+            provider_inst.close()
+
+    def _run_multi_thread(self, logger, file_writer: FileWriter) -> None:
+        """多线程模式（NVIDIA multi）—— 强制非流式"""
+        provider_inst = create_provider(self.settings)
+        try:
+            if not provider_inst.check_connection():
+                msg = "NVIDIA API 连接失败，请检查 API Key 和网络"
+                logger.error(msg)
+                self.error.emit(msg)
+                self._emit_all_errors(msg)
+                return
+        finally:
+            provider_inst.close()
+
+        if self._standalone_text and not self.video_files:
+            self._execute_summarization_single_fallback(logger, file_writer)
             return
 
-        if not ollama_client.check_model(model_name):
-            logger.error("Ollama 模型 %s 不存在", model_name)
-            self.error.emit(f"Ollama 模型 {model_name} 不存在")
-            if self._standalone_text:
-                self.progress.emit(1, 1)
-            else:
-                for vp in self.video_files:
-                    self.video_error.emit(
-                        Path(vp).stem, f"Ollama 模型 {model_name} 不存在"
+        self._execute_summarization_multi(logger, file_writer)
+
+    def _execute_summarization_single_fallback(
+        self, logger, file_writer: FileWriter
+    ) -> None:
+        """独立文本在 multi 模式下退化为单线程"""
+        provider_inst = create_provider(self.settings)
+        try:
+            service = SummarizationService(
+                settings=self.settings,
+                file_writer=file_writer,
+                provider=provider_inst,
+                custom_prompt=self.custom_prompt,
+                cancel_check=lambda: self._cancelled,
+            )
+            try:
+                self.summarize_started.emit("(粘贴文本)")
+                summary = service.summarize(
+                    self._standalone_text,
+                    video_name="",
+                    stream=False,
+                )
+                if summary:
+                    self.video_done.emit("(粘贴文本)", summary)
+                else:
+                    self.video_error.emit("(粘贴文本)", "总结结果为空")
+            except Exception as e:
+                logger.exception("独立文本总结失败")
+                self.video_error.emit("(粘贴文本)", str(e))
+            finally:
+                service.close()
+        finally:
+            provider_inst.close()
+
+        self.progress.emit(1, 1)
+
+    def _execute_summarization_multi(self, logger, file_writer: FileWriter) -> None:
+        """多线程并发总结"""
+        thread_count = self.settings.get_int("summarization.nvidia_thread_count", 3)
+        total = len(self.video_files)
+        progress_lock = threading.Lock()
+        done_count = [0]
+
+        tasks: list[tuple[str, str]] = []
+        for video_path in self.video_files:
+            video_name = Path(video_path).stem
+            transcript_path = None
+            for ext in ("txt", "srt", "vtt", "json"):
+                candidate = Path(self.output_dir) / f"{video_name}.{ext}"
+                if candidate.exists():
+                    transcript_path = candidate
+                    break
+
+            if transcript_path is None:
+                logger.warning("未找到转写文件: %s", video_name)
+                self.video_error.emit(video_name, "未找到转写文件")
+                with progress_lock:
+                    done_count[0] += 1
+                self.progress.emit(done_count[0], total)
+                continue
+
+            try:
+                text = transcript_path.read_text(encoding="utf-8-sig")
+                if not text.strip():
+                    logger.warning("转写文件为空: %s", video_name)
+                    self.video_error.emit(video_name, "转写文件为空")
+                    with progress_lock:
+                        done_count[0] += 1
+                    self.progress.emit(done_count[0], total)
+                    continue
+                tasks.append((video_name, text))
+            except Exception as e:
+                logger.exception("读取转写文件失败: %s", video_name)
+                self.video_error.emit(video_name, str(e))
+                with progress_lock:
+                    done_count[0] += 1
+                self.progress.emit(done_count[0], total)
+
+        if not tasks:
+            return
+
+        rate_limiter = RateLimiter(min_interval=1.5)
+
+        def _process_video(video_name: str, text: str) -> tuple[str, str, str]:
+            if self._cancelled:
+                return video_name, "", "cancelled"
+
+            rate_limiter.acquire()
+            provider = create_provider(self.settings)
+            try:
+                service = SummarizationService(
+                    settings=self.settings,
+                    file_writer=file_writer,
+                    provider=provider,
+                    custom_prompt=self.custom_prompt,
+                    cancel_check=lambda: self._cancelled,
+                )
+                try:
+                    summary = service.summarize(
+                        text, video_name=video_name, stream=False
                     )
-                self.progress.emit(len(self.video_files), len(self.video_files))
-            ollama_client.close()
-            return
+                    return video_name, summary, ""
+                finally:
+                    service.close()
+            except Exception as e:
+                logger.exception("总结失败: %s", video_name)
+                return video_name, "", str(e)
+            finally:
+                provider.close()
 
-        service = SummarizationService(
-            settings=self.settings,
-            file_writer=file_writer,
-            client=ollama_client,
-            custom_prompt=self.custom_prompt,
-            on_stream_token=lambda token: self.stream_token.emit(token),
-            cancel_check=lambda: self._cancelled,
-        )
-        self._sum_service = service
+        with ThreadPoolExecutor(max_workers=thread_count) as executor:
+            futures = {}
+            for video_name, text in tasks:
+                if self._cancelled:
+                    break
+                self.summarize_started.emit(video_name)
+                future = executor.submit(_process_video, video_name, text)
+                futures[future] = video_name
 
-        self._execute_summarization(logger, service)
+            for future in as_completed(futures):
+                try:
+                    video_name, summary, err = future.result()
+                    if err == "cancelled":
+                        continue
+                    if summary:
+                        self.video_done.emit(video_name, summary)
+                    else:
+                        self.video_error.emit(
+                            video_name, err if err else "总结结果为空"
+                        )
+                except Exception as e:
+                    video_name = futures[future]
+                    logger.exception("线程异常: %s", video_name)
+                    self.video_error.emit(video_name, str(e))
+
+                with progress_lock:
+                    done_count[0] += 1
+                self.progress.emit(done_count[0], total)
 
     def _execute_summarization(self, logger, service: SummarizationService) -> None:
-        """执行总结逻辑（Ollama 和 NVIDIA 共用）"""
+        """串行总结逻辑（single 模式和 Ollama）"""
         if self._standalone_text and not self.video_files:
             try:
                 self.summarize_started.emit("(粘贴文本)")
@@ -442,21 +557,25 @@ class SummarizeWorker(QObject):
 
             self.progress.emit(idx + 1, total)
 
+    def _emit_all_errors(self, msg: str) -> None:
+        """连接失败时为所有视频发射错误信号"""
+        if self._standalone_text:
+            self.video_error.emit("(粘贴文本)", msg)
+            self.progress.emit(1, 1)
+        else:
+            for vp in self.video_files:
+                self.video_error.emit(Path(vp).stem, msg)
+            self.progress.emit(len(self.video_files), len(self.video_files))
+
 
 class PipelineWorker(QObject):
     """转写+总结管道线程 —— 每完成一个视频的转写就自动开始总结"""
 
-    # 转写完成 (video_name, segments_count, output_paths)
     transcribe_done = Signal(str, int, list)
-    # 转写失败 (video_name, error_message)
     transcribe_error = Signal(str, str)
-    # 开始总结某个视频 (video_name)
     summarize_started = Signal(str)
-    # 总结完成 (video_name, summary)
     summarize_done = Signal(str, str)
-    # 总结失败 (video_name, error_message)
     summarize_error = Signal(str, str)
-    # 流式 token
     stream_token = Signal(str)
     progress = Signal(int, int)
     error = Signal(str)
@@ -510,9 +629,6 @@ class PipelineWorker(QObject):
         )
 
         transcriber = None
-        sum_service = None
-        ollama_client = None
-        nvidia_client = None
         try:
             cfg = _load_tx_config(self.settings)
 
@@ -534,62 +650,26 @@ class PipelineWorker(QObject):
             )
             text_cleaner = TextCleaner()
 
-            provider = self.settings.get("summarization.provider", "ollama")
+            provider_name = self.settings.get("summarization.provider", "ollama")
+            nvidia_mode = self.settings.get("summarization.nvidia_mode", "single")
             sum_available = False
 
-            if provider == "nvidia":
-                nvidia_client = NvidiaClient(
-                    api_url=self.settings.get(
-                        "summarization.nvidia_api_url",
-                        "https://integrate.api.nvidia.com/v1/chat/completions",
-                    ),
-                    timeout=self.settings.get_int("summarization.timeout", 600),
-                )
-                sum_available = nvidia_client.check_connection()
-                if not sum_available:
-                    logger.warning("NVIDIA API 不可用，将只执行转写")
-
-                sum_service = SummarizationService(
-                    settings=self.settings,
-                    file_writer=file_writer,
-                    nvidia_client=nvidia_client,
-                    provider="nvidia",
-                    custom_prompt=self.custom_prompt,
-                    on_stream_token=lambda token: self.stream_token.emit(token),
-                    cancel_check=lambda: self._cancelled,
-                )
-            else:
+            if provider_name == "ollama":
                 ollama_url = self.settings.get(
                     "summarization.ollama_url", DEFAULT_OLLAMA_URL
                 )
-                ollama_timeout = self.settings.get_int(
-                    "summarization.timeout", DEFAULT_OLLAMA_TIMEOUT
-                )
-                model_name = self.settings.get(
-                    "summarization.model_name", DEFAULT_OLLAMA_MODEL
-                )
-                ollama_client = OllamaClient(ollama_url, timeout=ollama_timeout)
-
                 try:
                     OllamaClient.ensure_service(ollama_url)
                 except RuntimeError as e:
                     logger.warning("%s，将只执行转写", e)
 
-                sum_available = (
-                    ollama_client.check_connection()
-                    and ollama_client.check_model(model_name)
-                )
+            check_provider = create_provider(self.settings)
+            try:
+                sum_available = check_provider.check_connection()
                 if not sum_available:
                     logger.warning("总结服务不可用，将只执行转写")
-
-                sum_service = SummarizationService(
-                    settings=self.settings,
-                    file_writer=file_writer,
-                    client=ollama_client,
-                    custom_prompt=self.custom_prompt,
-                    on_stream_token=lambda token: self.stream_token.emit(token),
-                    cancel_check=lambda: self._cancelled,
-                )
+            finally:
+                check_provider.close()
 
             total = len(self.video_files)
             done_count = 0
@@ -628,19 +708,79 @@ class PipelineWorker(QObject):
 
             results = tx_service.run(self.video_files, self.output_dir)
 
-            for result in results:
-                if self._cancelled:
-                    break
+            if sum_available and provider_name == "nvidia" and nvidia_mode == "multi":
+                sum_done = self._summarize_results_multi(
+                    logger,
+                    file_writer,
+                    segment_merger,
+                    text_cleaner,
+                    results,
+                    sum_done,
+                    total,
+                    total_steps,
+                )
+            else:
+                sum_done = self._summarize_results_serial(
+                    logger,
+                    file_writer,
+                    segment_merger,
+                    text_cleaner,
+                    results,
+                    sum_done,
+                    total,
+                    total_steps,
+                    sum_available,
+                )
 
-                if sum_available:
-                    merged = segment_merger.merge_segments(result.segments)
-                    processed_text = segment_merger.format_segments_as_text(
-                        merged, include_timestamps=False
+        except Exception as exc:
+            logger.exception("管道线程异常")
+            self.error.emit(str(exc))
+        finally:
+            self._tx_service = None
+            self.finished.emit()
+
+    def _prepare_text(
+        self, result: TranscribeResult, segment_merger, text_cleaner
+    ) -> str:
+        merged = segment_merger.merge_segments(result.segments)
+        processed_text = segment_merger.format_segments_as_text(
+            merged, include_timestamps=False
+        )
+        return text_cleaner.clean(processed_text)
+
+    def _summarize_results_serial(
+        self,
+        logger,
+        file_writer,
+        segment_merger,
+        text_cleaner,
+        results,
+        sum_done,
+        total,
+        total_steps,
+        sum_available,
+    ) -> int:
+        for result in results:
+            if self._cancelled:
+                break
+
+            if sum_available:
+                processed_text = self._prepare_text(
+                    result, segment_merger, text_cleaner
+                )
+                provider_inst = create_provider(self.settings)
+                try:
+                    service = SummarizationService(
+                        settings=self.settings,
+                        file_writer=file_writer,
+                        provider=provider_inst,
+                        custom_prompt=self.custom_prompt,
+                        on_stream_token=lambda token: self.stream_token.emit(token),
+                        cancel_check=lambda: self._cancelled,
                     )
-                    processed_text = text_cleaner.clean(processed_text)
                     try:
                         self.summarize_started.emit(result.video_name)
-                        summary = sum_service.summarize(
+                        summary = service.summarize(
                             processed_text,
                             video_name=result.video_name,
                             stream=self.stream,
@@ -649,29 +789,103 @@ class PipelineWorker(QObject):
                             self.summarize_done.emit(result.video_name, summary)
                         else:
                             self.summarize_error.emit(result.video_name, "总结结果为空")
-                    except Exception as e:
-                        logger.exception("总结失败: %s", result.video_name)
-                        self.summarize_error.emit(result.video_name, str(e))
-                else:
-                    self.summarize_error.emit(
-                        result.video_name, "总结服务不可用，已跳过"
-                    )
+                    finally:
+                        service.close()
+                except Exception as e:
+                    logger.exception("总结失败: %s", result.video_name)
+                    self.summarize_error.emit(result.video_name, str(e))
+                finally:
+                    provider_inst.close()
+            else:
+                self.summarize_error.emit(result.video_name, "总结服务不可用，已跳过")
 
-                sum_done += 1
+            sum_done += 1
+            self.progress.emit(total + sum_done, total_steps)
+
+        return sum_done
+
+    def _summarize_results_multi(
+        self,
+        logger,
+        file_writer,
+        segment_merger,
+        text_cleaner,
+        results,
+        sum_done,
+        total,
+        total_steps,
+    ) -> int:
+        thread_count = self.settings.get_int("summarization.nvidia_thread_count", 3)
+        progress_lock = threading.Lock()
+        tasks: list[tuple[str, str]] = []
+
+        for result in results:
+            if self._cancelled:
+                break
+            processed_text = self._prepare_text(result, segment_merger, text_cleaner)
+            tasks.append((result.video_name, processed_text))
+
+        if not tasks:
+            return sum_done
+
+        rate_limiter = RateLimiter(min_interval=1.5)
+
+        def _process(video_name: str, text: str) -> tuple[str, str, str]:
+            if self._cancelled:
+                return video_name, "", "cancelled"
+            rate_limiter.acquire()
+            provider = create_provider(self.settings)
+            try:
+                service = SummarizationService(
+                    settings=self.settings,
+                    file_writer=file_writer,
+                    provider=provider,
+                    custom_prompt=self.custom_prompt,
+                    cancel_check=lambda: self._cancelled,
+                )
+                try:
+                    summary = service.summarize(
+                        text, video_name=video_name, stream=False
+                    )
+                    return video_name, summary, ""
+                finally:
+                    service.close()
+            except Exception as e:
+                logger.exception("总结失败: %s", video_name)
+                return video_name, "", str(e)
+            finally:
+                provider.close()
+
+        with ThreadPoolExecutor(max_workers=thread_count) as executor:
+            futures = {}
+            for video_name, text in tasks:
+                if self._cancelled:
+                    break
+                self.summarize_started.emit(video_name)
+                future = executor.submit(_process, video_name, text)
+                futures[future] = video_name
+
+            for future in as_completed(futures):
+                try:
+                    video_name, summary, err = future.result()
+                    if err == "cancelled":
+                        continue
+                    if summary:
+                        self.summarize_done.emit(video_name, summary)
+                    else:
+                        self.summarize_error.emit(
+                            video_name, err if err else "总结结果为空"
+                        )
+                except Exception as e:
+                    video_name = futures[future]
+                    logger.exception("线程异常: %s", video_name)
+                    self.summarize_error.emit(video_name, str(e))
+
+                with progress_lock:
+                    sum_done += 1
                 self.progress.emit(total + sum_done, total_steps)
 
-        except Exception as exc:
-            logger.exception("管道线程异常")
-            self.error.emit(str(exc))
-        finally:
-            self._tx_service = None
-            if sum_service is not None:
-                sum_service.close()
-            if ollama_client is not None:
-                ollama_client.close()
-            if nvidia_client is not None:
-                nvidia_client.close()
-            self.finished.emit()
+        return sum_done
 
 
 class OllamaCheckWorker(QObject):
@@ -772,6 +986,8 @@ class NvidiaCheckWorker(QObject):
         self.api_url = api_url
 
     def run(self) -> None:
+        from src.summarization.nvidia_client import NvidiaClient
+
         try:
             client = NvidiaClient(api_url=self.api_url)
             try:

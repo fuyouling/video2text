@@ -138,6 +138,9 @@ _KEY_LABELS: dict[str, str] = {
     "summarization.nvidia_top_p": "Top P",
     "summarization.nvidia_frequency_penalty": "频率惩罚",
     "summarization.nvidia_presence_penalty": "存在惩罚",
+    "summarization.nvidia_mode": "NVIDIA 模式",
+    "summarization.nvidia_thread_count": "NVIDIA 线程数",
+    "summarization.nvidia_stream": "NVIDIA 流式输出",
     "preprocessing.ffmpeg_path": "FFmpeg路径",
     "preprocessing.audio_sample_rate": "音频采样率",
     "preprocessing.audio_channels": "音频声道数",
@@ -307,6 +310,41 @@ class ConfigEditorDialog(QDialog):
             nvidia_form.addRow(f"{label}:", widget)
             section_edits[key] = widget
 
+        nvidia_mode = self.settings.get("summarization.nvidia_mode", "single")
+
+        self._nvidia_mode_combo = QComboBox()
+        self._nvidia_mode_combo.addItem("single", "单线程")
+        self._nvidia_mode_combo.addItem("multi", "多线程")
+        self._nvidia_mode_combo.setCurrentText(nvidia_mode)
+        nvidia_form.addRow("NVIDIA 模式:", self._nvidia_mode_combo)
+        section_edits["nvidia_mode"] = self._nvidia_mode_combo
+
+        self._nvidia_stream_combo = QComboBox()
+        self._nvidia_stream_combo.addItem("true", "是")
+        self._nvidia_stream_combo.addItem("false", "否")
+        nvidia_stream_val = self.settings.get("summarization.nvidia_stream", "true")
+        self._nvidia_stream_combo.setCurrentText(nvidia_stream_val)
+        self._nvidia_stream_row_label = QLabel("NVIDIA 流式输出:")
+        self._nvidia_stream_row = nvidia_form.addRow(
+            self._nvidia_stream_row_label, self._nvidia_stream_combo
+        )
+        section_edits["nvidia_stream"] = self._nvidia_stream_combo
+
+        nvidia_thread_count = self.settings.get(
+            "summarization.nvidia_thread_count", "3"
+        )
+        self._nvidia_thread_edit = QLineEdit(nvidia_thread_count)
+        self._nvidia_thread_row_label = QLabel("NVIDIA 线程数:")
+        self._nvidia_thread_row = nvidia_form.addRow(
+            self._nvidia_thread_row_label, self._nvidia_thread_edit
+        )
+        section_edits["nvidia_thread_count"] = self._nvidia_thread_edit
+
+        self._nvidia_mode_combo.currentIndexChanged.connect(
+            self._on_nvidia_mode_changed
+        )
+        self._on_nvidia_mode_changed()
+
         self._add_nvidia_test_button(nvidia_form)
         main_layout.addWidget(self._nvidia_group)
 
@@ -325,6 +363,14 @@ class ConfigEditorDialog(QDialog):
         is_ollama = self._radio_ollama.isChecked()
         self._ollama_group.setVisible(is_ollama)
         self._nvidia_group.setVisible(not is_ollama)
+
+    def _on_nvidia_mode_changed(self) -> None:
+        """切换 single/multi 模式时联动显隐流式输出和线程数"""
+        is_multi = self._nvidia_mode_combo.currentData() == "多线程"
+        self._nvidia_stream_combo.setVisible(not is_multi)
+        self._nvidia_stream_row_label.setVisible(not is_multi)
+        self._nvidia_thread_edit.setVisible(is_multi)
+        self._nvidia_thread_row_label.setVisible(is_multi)
 
     def _add_nvidia_test_button(self, form: QFormLayout) -> None:
         """添加 NVIDIA 测试连接按钮"""

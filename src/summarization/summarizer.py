@@ -98,7 +98,8 @@ class Summarizer:
             logger.error(f"总结失败: {e}")
             raise SummarizationError(f"总结失败: {e}")
 
-    def get_markdown_prompt(self) -> str:
+    @staticmethod
+    def get_markdown_prompt() -> str:
         """Markdown提示词
 
         Returns:
