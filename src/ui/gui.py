@@ -6,17 +6,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt, QThread, QTimer
+from PySide6.QtCore import QEvent, Qt, QThread, QTimer
 from PySide6.QtGui import QFont, QIcon, QTextCursor, QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QFileDialog,
-    QFormLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
@@ -32,6 +30,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.config.directory_manager import DirectoryManager
 from src.config.settings import (
     PromptManager,
     Settings,
@@ -108,8 +107,11 @@ class MainWindow(QMainWindow):
         self._is_multi_thread = False
         self._history_loaded = False
 
+        self._dir_manager = DirectoryManager(_PROJECT_ROOT / "favorite_dirs.json")
+
         self._setup_logging()
         self._init_ui()
+        self._load_favorite_dirs()
         self._load_prompt_config()
         self._load_prompt_templates()
 
@@ -170,10 +172,13 @@ class MainWindow(QMainWindow):
         # ── input row ──
         input_row = QHBoxLayout()
         input_row.addWidget(QLabel("输入:"))
-        self.input_edit = QLineEdit()
-        self.input_edit.setReadOnly(True)
-        self.input_edit.setPlaceholderText("请选择视频文件或文件夹…")
-        input_row.addWidget(self.input_edit, 1)
+        self.input_combo = QComboBox()
+        self.input_combo.setEditable(True)
+        self.input_combo.setPlaceholderText("请选择视频文件或文件夹…")
+        self.input_combo.setMinimumWidth(300)
+        self.input_combo.view().viewport().installEventFilter(self)
+        self.input_combo.activated.connect(self._on_input_combo_activated)
+        input_row.addWidget(self.input_combo, 1)
 
         self.input_file_btn = QPushButton("选择文件")
         self.input_file_btn.setMinimumWidth(_BTN_MIN_WIDTH)
@@ -195,10 +200,12 @@ class MainWindow(QMainWindow):
         # ── output row ──
         output_row = QHBoxLayout()
         output_row.addWidget(QLabel("输出:"))
-        self.output_edit = QLineEdit()
-        self.output_edit.setReadOnly(True)
-        self.output_edit.setText(_DEFAULT_OUTPUT_DIR)
-        output_row.addWidget(self.output_edit, 1)
+        self.output_combo = QComboBox()
+        self.output_combo.setEditable(True)
+        self.output_combo.setCurrentText(_DEFAULT_OUTPUT_DIR)
+        self.output_combo.setMinimumWidth(300)
+        self.output_combo.view().viewport().installEventFilter(self)
+        output_row.addWidget(self.output_combo, 1)
         self.output_btn = QPushButton("浏览")
         self.output_btn.setMinimumWidth(_BTN_MIN_WIDTH)
         self.output_btn.clicked.connect(self._select_output_dir)
@@ -335,6 +342,19 @@ class MainWindow(QMainWindow):
         edit_config_action = settings_menu.addAction("编辑配置")
         edit_config_action.triggered.connect(self._show_config_editor)
 
+        fav_menu = settings_menu.addMenu("收藏")
+        fav_input_action = fav_menu.addAction("收藏输入文件夹")
+        fav_input_action.triggered.connect(self._fav_input_dir)
+        fav_output_action = fav_menu.addAction("收藏输出文件夹")
+        fav_output_action.triggered.connect(self._fav_output_dir)
+        fav_both_action = fav_menu.addAction("收藏输入和输出文件夹")
+        fav_both_action.triggered.connect(self._fav_both_dirs)
+        fav_menu.addSeparator()
+        clear_input_action = fav_menu.addAction("移除所有输入目录")
+        clear_input_action.triggered.connect(self._clear_all_input_dirs)
+        clear_output_action = fav_menu.addAction("移除所有输出目录")
+        clear_output_action.triggered.connect(self._clear_all_output_dirs)
+
         help_menu = menu_bar.addMenu("帮助")
         about_action = help_menu.addAction("关于")
         about_action.triggered.connect(self._show_about)
@@ -348,8 +368,12 @@ class MainWindow(QMainWindow):
             f"<p>视频转文本工具 —— 基于 faster-whisper的视频转写工具</p>"
             f"<p>技术栈: faster-whisper · Ollama · PySide6</p>"
             f"<p>许可证: GNU GPL v3</p>"
+            f"<p>作者: 喵王龙</p>"
             f"<p>讨论群: QQ群 296875960</p>"
-            f"<p>作者: 喵王龙</p>",
+            f"<p>邮箱: zhonggh23@163.com</p>"
+            f'<p>Github: <a href="https://github.com/fuyouling/video2text">https://github.com/fuyouling/video2text</a></p>'
+            f'<p>文档: <a href="https://github.com/fuyouling/video2text/wiki">https://github.com/fuyouling/video2text/wiki</a></p>'
+            f"<p>版权所有 © 2026 喵王龙</p>",
         )
 
     def _show_config_editor(self) -> None:
@@ -377,10 +401,13 @@ class MainWindow(QMainWindow):
             idx = self.prompt_template_combo.findText(last_used)
             if idx >= 0:
                 self.prompt_template_combo.setCurrentIndex(idx)
-                self.ollama_prompt_edit.setPlainText(
-                    self.prompt_manager.get_content(last_used)
-                )
         self.prompt_template_combo.blockSignals(False)
+
+        current_text = self.prompt_template_combo.currentText()
+        if current_text and current_text != self._PLACEHOLDER_PROMPT:
+            content = self.prompt_manager.get_content(current_text)
+            if content:
+                self.ollama_prompt_edit.setPlainText(content)
 
     def _on_prompt_template_selected(self, name: str) -> None:
         if not name or name == self._PLACEHOLDER_PROMPT:
@@ -461,6 +488,165 @@ class MainWindow(QMainWindow):
         elif index == 1:
             self.status_bar.showMessage("摘要结果 —— 由 Ollama 生成（只读）")
 
+    # ── 常用目录管理 ──
+
+    def _load_favorite_dirs(self) -> None:
+        """从 DirectoryManager 加载常用目录到两个 QComboBox"""
+        self._refresh_input_combo()
+        self._refresh_output_combo()
+
+    def _refresh_input_combo(self) -> None:
+        """刷新输入下拉框的常用目录列表"""
+        current_text = self.input_combo.currentText()
+        self.input_combo.blockSignals(True)
+        self.input_combo.clear()
+        for d in self._dir_manager.get_input_dirs():
+            self.input_combo.addItem(d)
+        if current_text:
+            self.input_combo.setCurrentText(current_text)
+        self.input_combo.blockSignals(False)
+
+    def _refresh_output_combo(self) -> None:
+        """刷新输出下拉框的常用目录列表"""
+        current_text = self.output_combo.currentText()
+        self.output_combo.blockSignals(True)
+        self.output_combo.clear()
+        for d in self._dir_manager.get_output_dirs():
+            self.output_combo.addItem(d)
+        if current_text:
+            self.output_combo.setCurrentText(current_text)
+        else:
+            self.output_combo.setCurrentText(_DEFAULT_OUTPUT_DIR)
+        self.output_combo.blockSignals(False)
+
+    @staticmethod
+    def _extract_dir_from_input(text: str) -> str:
+        """从输入框文本中提取纯目录路径，去掉 '(已选择 N 个视频)' 等后缀"""
+        import re
+
+        m = re.match(r"^(.+?)\s*\(已选择\s+\d+\s*个视频\)\s*$", text)
+        if m:
+            return m.group(1).strip()
+        return text.strip()
+
+    def _fav_input_dir(self) -> None:
+        """菜单动作：收藏当前输入框路径为常用输入目录"""
+        raw = self.input_combo.currentText().strip()
+        if not raw:
+            QMessageBox.warning(self, "提示", "输入框为空，无法收藏。")
+            return
+        text = self._extract_dir_from_input(raw)
+        folder = str(Path(text).parent) if Path(text).is_file() else text
+        self._dir_manager.add_input_dir(folder)
+        self._refresh_input_combo()
+        self.status_bar.showMessage(f"已收藏输入目录: {folder}", 5000)
+
+    def _fav_output_dir(self) -> None:
+        """菜单动作：收藏当前输出框路径为常用输出目录"""
+        text = self.output_combo.currentText().strip()
+        if not text:
+            QMessageBox.warning(self, "提示", "输出框为空，无法收藏。")
+            return
+        self._dir_manager.add_output_dir(text)
+        self._refresh_output_combo()
+        self.status_bar.showMessage(f"已收藏输出目录: {text}", 5000)
+
+    def _fav_both_dirs(self) -> None:
+        """菜单动作：同时收藏当前输入和输出路径"""
+        raw_input = self.input_combo.currentText().strip()
+        output_text = self.output_combo.currentText().strip()
+        if not raw_input and not output_text:
+            QMessageBox.warning(self, "提示", "输入和输出框均为空，无法收藏。")
+            return
+        if raw_input:
+            input_text = self._extract_dir_from_input(raw_input)
+            folder = (
+                str(Path(input_text).parent)
+                if Path(input_text).is_file()
+                else input_text
+            )
+            self._dir_manager.add_input_dir(folder)
+        if output_text:
+            self._dir_manager.add_output_dir(output_text)
+        self._refresh_input_combo()
+        self._refresh_output_combo()
+        self.status_bar.showMessage("已收藏输入和输出目录", 5000)
+
+    def _clear_all_input_dirs(self) -> None:
+        dirs = self._dir_manager.get_input_dirs()
+        if not dirs:
+            self.status_bar.showMessage("输入目录列表已为空", 3000)
+            return
+        reply = QMessageBox.question(
+            self,
+            "确认清空",
+            f"确定要移除所有 {len(dirs)} 个常用输入目录吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self._dir_manager.clear_input_dirs()
+        self._refresh_input_combo()
+        self.status_bar.showMessage("已移除所有常用输入目录", 5000)
+
+    def _clear_all_output_dirs(self) -> None:
+        dirs = self._dir_manager.get_output_dirs()
+        if not dirs:
+            self.status_bar.showMessage("输出目录列表已为空", 3000)
+            return
+        reply = QMessageBox.question(
+            self,
+            "确认清空",
+            f"确定要移除所有 {len(dirs)} 个常用输出目录吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self._dir_manager.clear_output_dirs()
+        self._refresh_output_combo()
+        self.status_bar.showMessage("已移除所有常用输出目录", 5000)
+
+    def _remove_input_favorite(self, path: str) -> None:
+        """从常用输入目录中移除指定路径"""
+        self._dir_manager.remove_input_dir(path)
+        self._refresh_input_combo()
+        self.status_bar.showMessage(f"已移除常用输入目录: {path}", 3000)
+
+    def _remove_output_favorite(self, path: str) -> None:
+        """从常用输出目录中移除指定路径"""
+        self._dir_manager.remove_output_dir(path)
+        self._refresh_output_combo()
+        self.status_bar.showMessage(f"已移除常用输出目录: {path}", 3000)
+
+    def eventFilter(self, obj, event):
+        if (
+            event.type() == QEvent.Type.MouseButtonPress
+            and event.button() == Qt.MouseButton.RightButton
+        ):
+            combo = None
+            remove_fn = None
+            if obj is self.input_combo.view().viewport():
+                combo = self.input_combo
+                remove_fn = self._remove_input_favorite
+            elif obj is self.output_combo.view().viewport():
+                combo = self.output_combo
+                remove_fn = self._remove_output_favorite
+
+            if combo is not None:
+                view = combo.view()
+                index = view.indexAt(event.position().toPoint())
+                if index.isValid():
+                    path = index.data(Qt.ItemDataRole.DisplayRole)
+                    if path:
+                        menu = QMenu(self)
+                        delete_action = menu.addAction(f"删除「{path}」")
+                        action = menu.exec(event.globalPosition().toPoint())
+                        if action == delete_action:
+                            remove_fn(path)
+                return True
+
+        return super().eventFilter(obj, event)
+
     # ── input selection slots ──
 
     def _select_input_files(self) -> None:
@@ -472,12 +658,12 @@ class MainWindow(QMainWindow):
         )
         if paths:
             if len(paths) == 1:
-                self.input_edit.setText(paths[0])
+                self.input_combo.setCurrentText(paths[0])
             else:
-                self.input_edit.setText(f"已选择 {len(paths)} 个文件")
+                self.input_combo.setCurrentText(f"已选择 {len(paths)} 个文件")
             self._video_files = list(paths)
             last_dir = Path(paths[0]).parent.name
-            self.output_edit.setText(str(_PROJECT_ROOT / "output" / last_dir))
+            self.output_combo.setCurrentText(str(_PROJECT_ROOT / "output" / last_dir))
 
     def _select_input_folder(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, "选择视频文件夹")
@@ -493,12 +679,51 @@ class MainWindow(QMainWindow):
             if dialog.exec() == dialog.DialogCode.Accepted:
                 selected_files = dialog.get_selected_files()
                 if selected_files:
-                    self.input_edit.setText(
+                    self.input_combo.setCurrentText(
                         f"{folder} (已选择 {len(selected_files)} 个视频)"
                     )
                     self._video_files = selected_files
                     last_dir = Path(folder).name
-                    self.output_edit.setText(str(_PROJECT_ROOT / "output" / last_dir))
+                    self.output_combo.setCurrentText(
+                        str(_PROJECT_ROOT / "output" / last_dir)
+                    )
+                else:
+                    QMessageBox.information(self, "提示", "未选择任何视频文件")
+
+    def _on_input_combo_activated(self, index: int) -> None:
+        """从下拉框选择常用目录时，自动执行对应的选择文件/文件夹逻辑"""
+        text = self.input_combo.itemText(index).strip()
+        if not text:
+            return
+
+        path = Path(self._extract_dir_from_input(text))
+
+        if path.is_file():
+            self._video_files = [str(path)]
+            self.input_combo.setCurrentText(str(path))
+            last_dir = path.parent.name
+            self.output_combo.setCurrentText(str(_PROJECT_ROOT / "output" / last_dir))
+        elif path.is_dir():
+            video_files = self._scan_video_files(str(path))
+            if not video_files:
+                QMessageBox.information(
+                    self, "提示", "该文件夹及其子目录中未找到支持的视频文件"
+                )
+                return
+
+            dialog = VideoSelectionDialog(video_files, self)
+            if dialog.exec() == dialog.DialogCode.Accepted:
+                selected_files = dialog.get_selected_files()
+                if selected_files:
+                    self.input_combo.setItemText(
+                        index,
+                        f"{path} (已选择 {len(selected_files)} 个视频)",
+                    )
+                    self._video_files = selected_files
+                    last_dir = path.name
+                    self.output_combo.setCurrentText(
+                        str(_PROJECT_ROOT / "output" / last_dir)
+                    )
                 else:
                     QMessageBox.information(self, "提示", "未选择任何视频文件")
 
@@ -517,10 +742,10 @@ class MainWindow(QMainWindow):
     def _select_output_dir(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, "选择输出目录")
         if folder:
-            self.output_edit.setText(folder)
+            self.output_combo.setCurrentText(folder)
 
     def _load_history_files(self) -> None:
-        output_dir = self.output_edit.text().strip() or _DEFAULT_OUTPUT_DIR
+        output_dir = self.output_combo.currentText().strip() or _DEFAULT_OUTPUT_DIR
         output_path = Path(output_dir)
 
         if not output_path.exists():
@@ -576,8 +801,8 @@ class MainWindow(QMainWindow):
     # ── worker 生成 ──
 
     def _get_output_dir(self) -> str:
-        output_dir = self.output_edit.text().strip() or _DEFAULT_OUTPUT_DIR
-        self.output_edit.setText(output_dir)
+        output_dir = self.output_combo.currentText().strip() or _DEFAULT_OUTPUT_DIR
+        self.output_combo.setCurrentText(output_dir)
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         return output_dir
 
@@ -708,7 +933,7 @@ class MainWindow(QMainWindow):
 
     def _load_transcript_content(self, video_name: str) -> None:
         """加载指定视频的转写文本到编辑区"""
-        output_dir = self.output_edit.text().strip() or _DEFAULT_OUTPUT_DIR
+        output_dir = self.output_combo.currentText().strip() or _DEFAULT_OUTPUT_DIR
         transcript_path = None
         for ext in ("txt", "srt", "vtt", "json"):
             candidate = Path(output_dir) / f"{video_name}.{ext}"
@@ -966,7 +1191,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "提示", "请先完成转写或加载历史文件")
             return
 
-        output_dir = self.output_edit.text().strip() or _DEFAULT_OUTPUT_DIR
+        output_dir = self.output_combo.currentText().strip() or _DEFAULT_OUTPUT_DIR
         video_names = list(self._completed_names)
 
         if self._result_viewer is None or not self._result_viewer.isVisible():
@@ -1077,7 +1302,7 @@ class MainWindow(QMainWindow):
             return
         video_name = current.data(Qt.ItemDataRole.UserRole)
         self._current_video_name = video_name
-        output_dir = self.output_edit.text().strip() or _DEFAULT_OUTPUT_DIR
+        output_dir = self.output_combo.currentText().strip() or _DEFAULT_OUTPUT_DIR
 
         QTimer.singleShot(0, lambda: self._load_file_content(video_name, output_dir))
 

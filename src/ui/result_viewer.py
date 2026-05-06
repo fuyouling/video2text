@@ -2,8 +2,12 @@
 
 import logging
 import re
+import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
+
+from src.storage.bookmark_manager import BookmarkItem, BookmarkManager
 
 from PySide6.QtCore import Qt, QSettings, QTimer
 from PySide6.QtGui import (
@@ -17,14 +21,18 @@ from PySide6.QtGui import (
     QTextDocument,
 )
 from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QApplication,
     QComboBox,
     QDockWidget,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPushButton,
     QSpinBox,
@@ -56,6 +64,21 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+_INI_PATH: str = ""
+
+
+def _get_base_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent
+    return Path(__file__).resolve().parent.parent.parent
+
+
+def _get_settings() -> QSettings:
+    global _INI_PATH
+    if not _INI_PATH:
+        _INI_PATH = str(_get_base_dir() / "result_viewer.ini")
+    return QSettings(_INI_PATH, QSettings.Format.IniFormat)
+
 
 class ThemeManager:
     """主题管理器"""
@@ -71,6 +94,9 @@ class ThemeManager:
             "code_bg": "#f8f8f8",
             "blockquote_bg": "#f9f9f9",
             "blockquote_border": "#3498db",
+            "danger_color": "#dc3545",
+            "dock_close_hover": "#e81123",
+            "muted_color": "#888888",
         },
         "dark": {
             "name": "深色",
@@ -82,11 +108,14 @@ class ThemeManager:
             "code_bg": "#252526",
             "blockquote_bg": "#2d2d2d",
             "blockquote_border": "#4a9eff",
+            "danger_color": "#dc3545",
+            "dock_close_hover": "#c42b1c",
+            "muted_color": "#777777",
         },
     }
 
     def __init__(self):
-        self._settings = QSettings("Video2Text", "ResultViewer")
+        self._settings = _get_settings()
         self._current_theme = self._settings.value("theme", "light")
 
     @property
@@ -143,29 +172,58 @@ class ThemeManager:
                 background-color: {theme["accent_color"]};
                 color: white;
             }}
+            QPushButton#BookmarkDeleteBtn:hover {{
+                background-color: {theme["danger_color"]};
+                color: white;
+            }}
             QListWidget {{
                 background-color: {theme["secondary_bg"]};
                 color: {theme["text_color"]};
                 border: 1px solid {theme["border_color"]};
             }}
             QListWidget::item {{
-                padding: 4px;
+                padding: 6px 8px;
+                border-left: 3px solid transparent;
             }}
             QListWidget::item:selected {{
                 background-color: {theme["accent_color"]};
                 color: white;
+                border-left: 3px solid {theme["accent_color"]};
             }}
             QDockWidget {{
                 background-color: {theme["secondary_bg"]};
                 color: {theme["text_color"]};
-                titlebar-close-icon: none;
             }}
             QDockWidget::title {{
                 background: {theme["secondary_bg"]};
                 color: {theme["text_color"]};
-                padding: 6px 8px;
+                padding: 6px 30px 6px 10px;
                 border-bottom: 1px solid {theme["border_color"]};
                 font-weight: 600;
+            }}
+            QDockWidget::close-button {{
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 20px;
+                height: 20px;
+            }}
+            QDockWidget::close-button:hover {{
+                background-color: {theme["dock_close_hover"]};
+                border-radius: 3px;
+            }}
+            QDockWidget::float-button {{
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 20px;
+                height: 20px;
+            }}
+            QDockWidget::float-button:hover {{
+                background-color: {theme["accent_color"]};
+                border-radius: 3px;
+            }}
+            QLabel#BookmarkCountLabel {{
+                color: {theme["muted_color"]};
+                font-size: 11px;
             }}
             QStatusBar {{
                 background-color: {theme["secondary_bg"]};
@@ -322,16 +380,6 @@ class ThemeManager:
         """
 
 
-class BookmarkItem:
-    """书签项"""
-
-    def __init__(self, video_name: str, content_type: str, position: int, text: str):
-        self.video_name = video_name
-        self.content_type = content_type  # 'transcript' or 'summary'
-        self.position = position
-        self.text = text[:100]  # 保存前100个字符作为预览
-
-
 def _find_summary_path(output_dir: str, video_name: str) -> Optional[Path]:
     """查找摘要文件（支持 _summary.txt 和 _summary.md）"""
     for ext in ("txt", "md"):
@@ -353,7 +401,7 @@ class ResultViewerWindow(QMainWindow):
         self._output_dir = ""
         self._root_output_dir = ""
         self._flat_video_names: list[str] = []
-        self._bookmarks: list[BookmarkItem] = []
+        self._bookmark_mgr = BookmarkManager(_get_base_dir() / "bookmarks.json")
         self._all_video_names: list[str] = []
         self._current_video_name: Optional[str] = None
         self._search_matches: list[tuple[int, int]] = []
@@ -362,6 +410,7 @@ class ResultViewerWindow(QMainWindow):
         self._tree_name_map: dict[str, QTreeWidgetItem] = {}
         self._cached_md_text: str = ""
         self._cached_html: str = ""
+        self._selected_bookmark_date: str = ""
         self._search_timer = QTimer()
         self._search_timer.setSingleShot(True)
         self._search_timer.setInterval(300)
@@ -553,40 +602,77 @@ class ResultViewerWindow(QMainWindow):
         bookmark_layout.setContentsMargins(6, 6, 6, 6)
         bookmark_layout.setSpacing(4)
 
-        # 顶部：计数标签
         self._bookmark_count_label = QLabel("共 0 个书签")
-        self._bookmark_count_label.setStyleSheet("color: #888; font-size: 11px;")
+        self._bookmark_count_label.setObjectName("BookmarkCountLabel")
         bookmark_layout.addWidget(self._bookmark_count_label)
 
-        # 过滤输入框
+        filter_row = QHBoxLayout()
+        filter_row.setSpacing(4)
+
         self._bookmark_filter = QLineEdit()
         self._bookmark_filter.setPlaceholderText("过滤书签...")
         self._bookmark_filter.textChanged.connect(self._filter_bookmarks)
-        bookmark_layout.addWidget(self._bookmark_filter)
+        filter_row.addWidget(self._bookmark_filter, 1)
 
-        # 书签列表
+        self._bookmark_date_combo = QComboBox()
+        self._bookmark_date_combo.addItem("全部日期", "")
+        self._bookmark_date_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToContents
+        )
+        self._bookmark_date_combo.currentIndexChanged.connect(
+            self._on_bookmark_date_filter_changed
+        )
+        filter_row.addWidget(self._bookmark_date_combo)
+
+        self._bookmark_sort_combo = QComboBox()
+        self._bookmark_sort_combo.addItems(["按添加时间", "按文件名", "按内容类型"])
+        self._bookmark_sort_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToContents
+        )
+        self._bookmark_sort_combo.currentIndexChanged.connect(
+            self._on_bookmark_sort_changed
+        )
+        filter_row.addWidget(self._bookmark_sort_combo)
+
+        bookmark_layout.addLayout(filter_row)
+
         self.bookmark_list = QListWidget()
         self.bookmark_list.setSpacing(2)
+        self.bookmark_list.setSelectionMode(
+            QAbstractItemView.SelectionMode.ExtendedSelection
+        )
         self.bookmark_list.itemDoubleClicked.connect(self._on_bookmark_double_clicked)
+        self.bookmark_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.bookmark_list.customContextMenuRequested.connect(
+            self._show_bookmark_context_menu
+        )
         bookmark_layout.addWidget(self.bookmark_list)
 
-        # 空状态提示
-        self._bookmark_empty_label = QLabel("暂无书签\n双击可跳转到书签位置")
+        self._bookmark_empty_label = QLabel("暂无书签\nCtrl+B 添加书签")
         self._bookmark_empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._bookmark_empty_label.setStyleSheet("color: #aaa; font-size: 12px;")
+        self._bookmark_empty_label.setStyleSheet(
+            "color: #aaa; font-size: 12px; padding: 20px 0;"
+        )
         self._bookmark_empty_label.setVisible(True)
         bookmark_layout.addWidget(self._bookmark_empty_label)
 
-        # 按钮栏
         bookmark_btn_layout = QHBoxLayout()
         bookmark_btn_layout.setSpacing(4)
 
         delete_bookmark_btn = QPushButton("删除")
+        delete_bookmark_btn.setObjectName("BookmarkDeleteBtn")
         delete_bookmark_btn.setToolTip("删除选中书签")
         delete_bookmark_btn.clicked.connect(self._delete_bookmark)
         bookmark_btn_layout.addWidget(delete_bookmark_btn)
 
+        batch_delete_btn = QPushButton("批量删除")
+        batch_delete_btn.setObjectName("BookmarkDeleteBtn")
+        batch_delete_btn.setToolTip("删除所有选中的书签")
+        batch_delete_btn.clicked.connect(self._batch_delete_bookmarks)
+        bookmark_btn_layout.addWidget(batch_delete_btn)
+
         clear_bookmarks_btn = QPushButton("清空")
+        clear_bookmarks_btn.setObjectName("BookmarkDeleteBtn")
         clear_bookmarks_btn.setToolTip("清空所有书签")
         clear_bookmarks_btn.clicked.connect(self._clear_bookmarks)
         bookmark_btn_layout.addWidget(clear_bookmarks_btn)
@@ -1289,6 +1375,16 @@ class ResultViewerWindow(QMainWindow):
 
     # ─── 书签 ─────────────────────────────────────────────────
 
+    def _resolve_file_path(self, video_name: str, content_type: str) -> Optional[Path]:
+        """根据 video_name 和 content_type 定位实际文件路径"""
+        if content_type == "summary":
+            return _find_summary_path(self._output_dir, video_name)
+        for ext in ("txt", "srt", "vtt", "json"):
+            candidate = Path(self._output_dir) / f"{video_name}.{ext}"
+            if candidate.exists():
+                return candidate
+        return None
+
     def _add_bookmark(self):
         """添加书签"""
         if not self._current_video_name:
@@ -1303,7 +1399,6 @@ class ResultViewerWindow(QMainWindow):
         position = cursor.position()
         full_text = current_view.toPlainText()
 
-        # 截取光标位置附近的文本作为预览（前30字符 + 后70字符）
         start = max(0, position - 30)
         end = min(len(full_text), position + 70)
         context_text = full_text[start:end]
@@ -1312,27 +1407,68 @@ class ResultViewerWindow(QMainWindow):
             "transcript" if current_view == self.transcript_view else "summary"
         )
 
-        bookmark = BookmarkItem(
-            self._current_video_name, content_type, position, context_text
-        )
-        self._bookmarks.append(bookmark)
+        file_path_obj = self._resolve_file_path(self._current_video_name, content_type)
+        file_path_str = str(file_path_obj) if file_path_obj else ""
+        relative_path_str = ""
+        if file_path_obj and self._root_output_dir:
+            try:
+                relative_path_str = str(
+                    file_path_obj.relative_to(self._root_output_dir)
+                )
+            except ValueError:
+                relative_path_str = file_path_obj.name
 
+        created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        bookmark = BookmarkItem(
+            video_name=self._current_video_name,
+            content_type=content_type,
+            position=position,
+            text=context_text,
+            file_path=file_path_str,
+            relative_path=relative_path_str,
+            created_at=created_at,
+        )
+
+        existing = self._bookmark_mgr.get_all()
+        for b in existing:
+            if b.file_path == file_path_str and b.position == position:
+                reply = QMessageBox.question(
+                    self,
+                    "重复书签",
+                    "该位置已存在书签，是否仍要添加？",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                )
+                if reply != QMessageBox.StandardButton.Yes:
+                    return
+                break
+
+        self._bookmark_mgr.add(bookmark)
         self._refresh_bookmark_list()
-        self._save_bookmarks()
         self.status_bar.showMessage("书签已添加")
 
     def _delete_bookmark(self):
-        """删除书签"""
+        """删除当前选中书签"""
         current_item = self.bookmark_list.currentItem()
         if current_item is None:
             return
 
-        index = self.bookmark_list.row(current_item)
-        if 0 <= index < len(self._bookmarks):
-            del self._bookmarks[index]
-            self._refresh_bookmark_list()
-            self._save_bookmarks()
-            self.status_bar.showMessage("书签已删除")
+        index = current_item.data(Qt.ItemDataRole.UserRole)
+        if index is None:
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "确认删除",
+            "确定要删除该书签吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        self._bookmark_mgr.remove([index])
+        self._refresh_bookmark_list()
+        self.status_bar.showMessage("书签已删除")
 
     def _clear_bookmarks(self):
         """清空书签"""
@@ -1343,73 +1479,292 @@ class ResultViewerWindow(QMainWindow):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
-            self._bookmarks.clear()
+            self._bookmark_mgr.clear()
             self._refresh_bookmark_list()
-            self._save_bookmarks()
             self.status_bar.showMessage("书签已清空")
 
-    def _refresh_bookmark_list(self):
-        """刷新书签列表"""
-        self.bookmark_list.clear()
-        self._bookmark_count_label.setText(f"共 {len(self._bookmarks)} 个书签")
-        self._bookmark_empty_label.setVisible(len(self._bookmarks) == 0)
-        self.bookmark_list.setVisible(len(self._bookmarks) > 0)
+    def _refresh_bookmark_list(self, bookmarks: Optional[list[BookmarkItem]] = None):
+        """刷新书签列表
 
+        Args:
+            bookmarks: 可选的书签列表（用于排序/过滤视图）。为 None 时从 BookmarkManager 读取。
+        """
+        all_bookmarks = self._bookmark_mgr.get_all()
+        display_bookmarks = bookmarks if bookmarks is not None else all_bookmarks
+
+        self._update_date_filter_options(all_bookmarks)
+
+        selected_date = self._selected_bookmark_date
+        if selected_date:
+            display_bookmarks = [
+                b
+                for b in display_bookmarks
+                if b.created_at and b.created_at.startswith(selected_date)
+            ]
+
+        self.bookmark_list.clear()
+        total = len(all_bookmarks)
+        showing = len(display_bookmarks)
+
+        if (bookmarks is not None and showing != total) or selected_date:
+            self._bookmark_count_label.setText(f"显示 {showing} / 共 {total} 个书签")
+        else:
+            self._bookmark_count_label.setText(f"共 {total} 个书签")
+        self._bookmark_empty_label.setVisible(total == 0)
+        self.bookmark_list.setVisible(total > 0)
+
+        index_map = {
+            (b.file_path, b.position, b.created_at): i
+            for i, b in enumerate(all_bookmarks)
+        }
         type_labels = {"transcript": "转写", "summary": "摘要"}
-        for i, bookmark in enumerate(self._bookmarks):
+        for bookmark in display_bookmarks:
+            key = (bookmark.file_path, bookmark.position, bookmark.created_at)
+            real_index = index_map.get(key, -1)
+            if real_index < 0:
+                continue
+
             type_label = type_labels.get(bookmark.content_type, bookmark.content_type)
-            display_text = f"[{type_label}] {bookmark.video_name}"
+            path_display = bookmark.relative_path or bookmark.video_name
+            display_text = f"[{type_label}] {path_display}"
             if bookmark.text.strip():
                 display_text += f"\n  {bookmark.text.strip()[:60]}"
 
             item = QListWidgetItem(display_text)
-            item.setData(Qt.ItemDataRole.UserRole, i)
-            item.setToolTip(
-                f"文件: {bookmark.video_name}\n"
-                f"类型: {type_label}\n"
-                f"位置: {bookmark.position}\n"
-                f"---\n{bookmark.text}"
-            )
+            item.setData(Qt.ItemDataRole.UserRole, real_index)
+            tooltip_parts = [
+                f"文件: {bookmark.relative_path or bookmark.video_name}",
+                f"类型: {type_label}",
+                f"位置: {bookmark.position}",
+            ]
+            if bookmark.file_path:
+                tooltip_parts.append(f"路径: {bookmark.file_path}")
+            if bookmark.created_at:
+                tooltip_parts.append(f"创建: {bookmark.created_at}")
+            if bookmark.note:
+                tooltip_parts.append(f"备注: {bookmark.note}")
+            tooltip_parts.append("---")
+            tooltip_parts.append(bookmark.text)
+            item.setToolTip("\n".join(tooltip_parts))
             self.bookmark_list.addItem(item)
 
+    def _update_date_filter_options(self, bookmarks: list[BookmarkItem]):
+        """更新日期过滤下拉框的选项，保留当前选中项"""
+        dates: set[str] = set()
+        for b in bookmarks:
+            if b.created_at and len(b.created_at) >= 10:
+                dates.add(b.created_at[:10])
+
+        self._bookmark_date_combo.blockSignals(True)
+        self._bookmark_date_combo.clear()
+        self._bookmark_date_combo.addItem("全部日期", "")
+        for d in sorted(dates, reverse=True):
+            self._bookmark_date_combo.addItem(d, d)
+
+        restore_index = 0
+        if self._selected_bookmark_date:
+            for i in range(self._bookmark_date_combo.count()):
+                if (
+                    self._bookmark_date_combo.itemData(i)
+                    == self._selected_bookmark_date
+                ):
+                    restore_index = i
+                    break
+        self._bookmark_date_combo.setCurrentIndex(restore_index)
+        self._bookmark_date_combo.blockSignals(False)
+
+    def _on_bookmark_date_filter_changed(self, _index: int):
+        """日期过滤变更"""
+        self._selected_bookmark_date = self._bookmark_date_combo.currentData() or ""
+        self._on_bookmark_sort_changed(self._bookmark_sort_combo.currentIndex())
+
     def _on_bookmark_double_clicked(self, item: QListWidgetItem):
-        """书签双击事件"""
+        """书签双击事件 — 优先用 file_path 定位，失效书签提示删除"""
         index = item.data(Qt.ItemDataRole.UserRole)
-        if not (0 <= index < len(self._bookmarks)):
+        all_bookmarks = self._bookmark_mgr.get_all()
+        if not (0 <= index < len(all_bookmarks)):
             return
-        bookmark = self._bookmarks[index]
+        bookmark = all_bookmarks[index]
+
+        video_name = bookmark.video_name
+
+        if bookmark.file_path and Path(bookmark.file_path).exists():
+            video_name = Path(bookmark.file_path).stem
+        elif bookmark.relative_path and self._root_output_dir:
+            rebuilt = Path(self._root_output_dir) / bookmark.relative_path
+            if rebuilt.exists():
+                video_name = rebuilt.stem
+            else:
+                self._handle_stale_bookmark(bookmark, index)
+                return
+        elif bookmark.file_path:
+            self._handle_stale_bookmark(bookmark, index)
+            return
 
         found = False
         if self._folder_mode:
-            target = self._find_tree_item_by_name(bookmark.video_name)
+            target = self._find_tree_item_by_name(video_name)
             if target:
                 self._folder_tree.setCurrentItem(target)
                 found = True
         else:
             for i in range(self.file_list.count()):
                 list_item = self.file_list.item(i)
-                if list_item.data(Qt.ItemDataRole.UserRole) == bookmark.video_name:
+                if list_item.data(Qt.ItemDataRole.UserRole) == video_name:
                     self.file_list.setCurrentItem(list_item)
                     found = True
                     break
 
         if not found:
-            self.status_bar.showMessage(f"未找到文件: {bookmark.video_name}")
+            self._handle_stale_bookmark(bookmark, index)
             return
 
-        # 切换到对应的标签页
         if bookmark.content_type == "transcript":
             self.tabs.setCurrentWidget(self.transcript_view)
         else:
             self.tabs.setCurrentWidget(self.summary_view)
 
-        # 跳转到书签位置
         current_view = self.tabs.currentWidget()
         if isinstance(current_view, (QTextEdit, QTextBrowser)):
+            max_pos = len(current_view.toPlainText())
+            safe_pos = min(bookmark.position, max_pos)
             cursor = QTextCursor(current_view.document())
-            cursor.setPosition(bookmark.position)
+            cursor.setPosition(safe_pos)
             current_view.setTextCursor(cursor)
             current_view.setFocus()
+
+    def _handle_stale_bookmark(self, bookmark: BookmarkItem, index: int):
+        """失效书签处理：提示文件不存在，询问是否删除"""
+        msg = f"书签对应的文件不存在：\n{bookmark.file_path or bookmark.video_name}"
+        reply = QMessageBox.question(
+            self,
+            "书签失效",
+            f"{msg}\n\n是否删除该失效书签？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self._bookmark_mgr.remove([index])
+            self._refresh_bookmark_list()
+            self.status_bar.showMessage("已删除失效书签")
+
+    def _batch_delete_bookmarks(self):
+        """批量删除选中的书签"""
+        selected_items = self.bookmark_list.selectedItems()
+        if not selected_items:
+            QMessageBox.information(self, "提示", "请先选择要删除的书签")
+            return
+
+        count = len(selected_items)
+        reply = QMessageBox.question(
+            self,
+            "确认批量删除",
+            f"确定要删除选中的 {count} 个书签吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        indices = []
+        for item in selected_items:
+            idx = item.data(Qt.ItemDataRole.UserRole)
+            if idx is not None:
+                indices.append(idx)
+
+        self._bookmark_mgr.remove(indices)
+        self._refresh_bookmark_list()
+        self.status_bar.showMessage(f"已删除 {count} 个书签")
+
+    def _show_bookmark_context_menu(self, pos):
+        """书签右键上下文菜单"""
+        item = self.bookmark_list.itemAt(pos)
+        menu = QMenu(self)
+
+        goto_action = menu.addAction("跳转到位置")
+        copy_action = menu.addAction("复制书签信息")
+        edit_note_action = menu.addAction("编辑备注")
+        menu.addSeparator()
+        delete_action = menu.addAction("删除选中")
+
+        action = menu.exec(self.bookmark_list.mapToGlobal(pos))
+        if action is None:
+            return
+
+        if action == goto_action and item is not None:
+            self._on_bookmark_double_clicked(item)
+        elif action == copy_action and item is not None:
+            self._copy_bookmark_info(item)
+        elif action == edit_note_action and item is not None:
+            self._edit_bookmark_note(item)
+        elif action == delete_action:
+            self._batch_delete_bookmarks()
+
+    def _copy_bookmark_info(self, item: QListWidgetItem):
+        """复制书签信息到剪贴板"""
+        index = item.data(Qt.ItemDataRole.UserRole)
+        all_bookmarks = self._bookmark_mgr.get_all()
+        if not (0 <= index < len(all_bookmarks)):
+            return
+        bookmark = all_bookmarks[index]
+        type_labels = {"transcript": "转写", "summary": "摘要"}
+        type_label = type_labels.get(bookmark.content_type, bookmark.content_type)
+        info = (
+            f"视频: {bookmark.video_name}\n"
+            f"类型: {type_label}\n"
+            f"位置: {bookmark.position}\n"
+            f"预览: {bookmark.text}"
+        )
+        if bookmark.file_path:
+            info += f"\n路径: {bookmark.file_path}"
+        if bookmark.note:
+            info += f"\n备注: {bookmark.note}"
+
+        clipboard = QApplication.clipboard()
+        if clipboard:
+            clipboard.setText(info)
+        self.status_bar.showMessage("书签信息已复制到剪贴板")
+
+    def _edit_bookmark_note(self, item: QListWidgetItem):
+        """编辑书签备注"""
+        index = item.data(Qt.ItemDataRole.UserRole)
+        all_bookmarks = self._bookmark_mgr.get_all()
+        if not (0 <= index < len(all_bookmarks)):
+            return
+        bookmark = all_bookmarks[index]
+
+        note, ok = QInputDialog.getText(
+            self,
+            "编辑备注",
+            "请输入备注:",
+            QLineEdit.EchoMode.Normal,
+            bookmark.note,
+        )
+        if ok:
+            updated = BookmarkItem(
+                video_name=bookmark.video_name,
+                content_type=bookmark.content_type,
+                position=bookmark.position,
+                text=bookmark.text,
+                file_path=bookmark.file_path,
+                relative_path=bookmark.relative_path,
+                created_at=bookmark.created_at,
+                note=note,
+            )
+            self._bookmark_mgr.remove([index])
+            self._bookmark_mgr.add(updated)
+            self._refresh_bookmark_list()
+            self.status_bar.showMessage("备注已更新")
+
+    def _on_bookmark_sort_changed(self, index: int):
+        """书签排序变更"""
+        all_bookmarks = self._bookmark_mgr.get_all()
+        if index == 0:
+            self._refresh_bookmark_list(all_bookmarks)
+        elif index == 1:
+            sorted_bm = sorted(all_bookmarks, key=lambda b: b.video_name.lower())
+            self._refresh_bookmark_list(sorted_bm)
+        elif index == 2:
+            sorted_bm = sorted(all_bookmarks, key=lambda b: b.content_type)
+            self._refresh_bookmark_list(sorted_bm)
 
     def _toggle_bookmark_dock(self):
         """切换书签面板显示"""
@@ -1421,48 +1776,44 @@ class ResultViewerWindow(QMainWindow):
     def _filter_bookmarks(self, text: str):
         """根据输入过滤书签列表"""
         type_labels = {"transcript": "转写", "summary": "摘要"}
+        all_bookmarks = self._bookmark_mgr.get_all()
+        total_visible = 0
         for i in range(self.bookmark_list.count()):
             item = self.bookmark_list.item(i)
             index = item.data(Qt.ItemDataRole.UserRole)
-            if 0 <= index < len(self._bookmarks):
-                bookmark = self._bookmarks[index]
+            if 0 <= index < len(all_bookmarks):
+                bookmark = all_bookmarks[index]
                 searchable = (
                     f"{bookmark.video_name} "
+                    f"{bookmark.relative_path} "
                     f"{type_labels.get(bookmark.content_type, '')} "
-                    f"{bookmark.text}"
+                    f"{bookmark.text} "
+                    f"{bookmark.note}"
                 ).lower()
-                item.setHidden(bool(text) and text.lower() not in searchable)
+                hidden = bool(text) and text.lower() not in searchable
+                item.setHidden(hidden)
+                if not hidden:
+                    total_visible += 1
+            else:
+                item.setHidden(bool(text))
+                if not text:
+                    total_visible += 1
+
+        total = len(all_bookmarks)
+        if text or self._selected_bookmark_date:
+            self._bookmark_count_label.setText(
+                f"显示 {total_visible} / 共 {total} 个书签"
+            )
+        else:
+            self._bookmark_count_label.setText(f"共 {total} 个书签")
 
     def _load_bookmarks(self):
         """加载书签"""
-        settings = QSettings("Video2Text", "ResultViewer")
-        bookmark_data = settings.value("bookmarks", [], list)
-        self._bookmarks = []
-        for data in bookmark_data:
-            if isinstance(data, dict):
-                bookmark = BookmarkItem(
-                    video_name=data.get("video_name", ""),
-                    content_type=data.get("content_type", "transcript"),
-                    position=data.get("position", 0),
-                    text=data.get("text", ""),
-                )
-                self._bookmarks.append(bookmark)
         self._refresh_bookmark_list()
 
     def _save_bookmarks(self):
-        """保存书签"""
-        settings = QSettings("Video2Text", "ResultViewer")
-        bookmark_data = []
-        for bookmark in self._bookmarks:
-            bookmark_data.append(
-                {
-                    "video_name": bookmark.video_name,
-                    "content_type": bookmark.content_type,
-                    "position": bookmark.position,
-                    "text": bookmark.text,
-                }
-            )
-        settings.setValue("bookmarks", bookmark_data)
+        """保存书签 — BookmarkManager 的 add/remove/clear 已自动持久化，此方法保留兼容性"""
+        pass
 
     # ─── 标签页切换 ────────────────────────────────────────────
 
@@ -1474,7 +1825,7 @@ class ResultViewerWindow(QMainWindow):
 
     def _restore_window_state(self):
         """恢复窗口大小、位置、工具栏和分割器状态"""
-        settings = QSettings("Video2Text", "ResultViewer")
+        settings = _get_settings()
         geometry = settings.value("geometry")
         if geometry is not None:
             self.restoreGeometry(geometry)
@@ -1487,7 +1838,7 @@ class ResultViewerWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """关闭时保存窗口状态"""
-        settings = QSettings("Video2Text", "ResultViewer")
+        settings = _get_settings()
         settings.setValue("geometry", self.saveGeometry())
         settings.setValue("windowState", self.saveState())
         settings.setValue("splitterState", self._main_splitter.saveState())

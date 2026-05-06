@@ -13,7 +13,7 @@ logger = get_logger(__name__)
 
 # 禁用 Hugging Face Hub 的警告
 os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
-os.environ["HF_HUB_OFFLINE"] = "0"
+os.environ["HF_HUB_OFFLINE"] = "1"
 
 _model_cache: Dict[str, "Transcriber"] = {}
 _model_cache_lock = threading.Lock()
@@ -200,8 +200,9 @@ class Transcriber:
                         "可在 config.ini 的 [network] 节设置 proxy。"
                     )
             except ImportError:
-                logger.warning(
-                    "model_downloader模块不可用，尝试使用faster-whisper自动下载"
+                raise TranscriptionError(
+                    "模型文件不完整且 model_downloader 模块不可用，"
+                    "请手动下载模型到 models/ 目录。"
                 )
 
         try:
@@ -219,7 +220,7 @@ class Transcriber:
                 compute_type=self.compute_type,
                 num_workers=self.num_workers,
                 download_root=self.download_root,
-                local_files_only=False,
+                local_files_only=True,
             )
 
             self._loaded = True
@@ -301,7 +302,7 @@ class Transcriber:
                         compute_type=ct,
                         num_workers=self.num_workers,
                         download_root=self.download_root,
-                        local_files_only=False,
+                        local_files_only=True,
                     )
                     self.device = "cpu"
                     self.compute_type = ct

@@ -239,3 +239,10 @@ prompts.json
 
 #同步本地工作目录
 sync_to_tools.ps1
+
+# 结果查看器窗口布局
+result_viewer.ini
+# 书签数据
+bookmarks.json
+# 常用目录配置
+favorite_dirs.json
