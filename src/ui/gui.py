@@ -367,6 +367,8 @@ class MainWindow(QMainWindow):
         watermark_action.triggered.connect(self._open_watermark_remover)
 
         help_menu = menu_bar.addMenu("帮助")
+        donate_action = help_menu.addAction("捐赠支持")
+        donate_action.triggered.connect(self._show_donate)
         about_action = help_menu.addAction("关于")
         about_action.triggered.connect(self._show_about)
 
@@ -386,6 +388,12 @@ class MainWindow(QMainWindow):
             f'<p>文档: <a href="https://github.com/fuyouling/video2text/wiki">https://github.com/fuyouling/video2text/wiki</a></p>'
             f"<p>版权所有 © 2026 喵王龙</p>",
         )
+
+    def _show_donate(self) -> None:
+        from src.ui.donate_dialog import DonateDialog
+
+        dialog = DonateDialog(self)
+        dialog.exec()
 
     def _show_config_editor(self) -> None:
         dialog = ConfigEditorDialog(self)
