@@ -1,6 +1,6 @@
 # Video2Text
 
-视频转文本工具 - 使用 faster_whisper 进行语音转写，使用 Ollama + Qwen2.5 或 NVIDIA API 进行文本总结。
+视频转文本工具 - 使用 faster_whisper 进行语音转写，默认使用 Ollama + Qwen2.5 或 NVIDIA API 进行文本总结，语音转写和文本总结模型可自行更换。
 
 ## 功能特性
 
@@ -14,6 +14,7 @@
 ## 安装
 
 > **Windows 用户**：如果希望免去源码安装步骤，可以直接下载打包好的 exe 绿色版程序，解压即用。详细安装教程请参阅 [Windows 安装教程（Wiki）](https://github.com/fuyouling/video2text/wiki)。
+> 或者直接查看文件 docs\install_windows.md
 
 ### 1. 创建虚拟环境
 

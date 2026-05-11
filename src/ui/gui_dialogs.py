@@ -111,6 +111,7 @@ _SECTION_LABELS: dict[str, str] = {
     "output": "输出",
     "network": "网络",
     "paths": "路径",
+    "tools": "工具",
 }
 
 _KEY_LABELS: dict[str, str] = {
@@ -153,6 +154,11 @@ _KEY_LABELS: dict[str, str] = {
     "paths.models_dir": "模型目录",
     "paths.logs_dir": "日志目录",
     "paths.video_dir": "视频目录",
+    "tools.watermark_mode": "水印处理模式",
+    "tools.watermark_blur_size": "模糊核大小",
+    "tools.watermark_inpaint_radius": "修复半径",
+    "tools.watermark_output_dir": "输出子目录",
+    "tools.watermark_max_batch": "批量上限",
 }
 
 
@@ -390,6 +396,8 @@ class ConfigEditorDialog(QDialog):
         edits = self._edits.get("summarization", {})
         api_url = edits.get("nvidia_api_url")
         url = api_url.text().strip() if api_url else DEFAULT_NVIDIA_API_URL
+        model_edit = edits.get("nvidia_model")
+        model = model_edit.text().strip() if model_edit else ""
 
         self._nvidia_status_label.setText("测试中...")
         self._nvidia_status_label.setStyleSheet("color: orange")
@@ -400,13 +408,22 @@ class ConfigEditorDialog(QDialog):
         worker = NvidiaCheckWorker(url)
         worker.moveToThread(thread)
 
-        def _on_result(ok: bool):
+        def _on_result(ok: bool, latency_ms: float):
             if ok:
-                self._nvidia_status_label.setText("连接成功")
+                self._nvidia_status_label.setText(f"连接成功 ({latency_ms:.0f}ms)")
                 self._nvidia_status_label.setStyleSheet("color: green")
+                get_logger("video2text").info(
+                    "NVIDIA 连接测试成功: url=%s model=%s 延迟=%.0fms",
+                    url,
+                    model,
+                    latency_ms,
+                )
             else:
                 self._nvidia_status_label.setText("连接失败，请检查 API Key 和网络")
                 self._nvidia_status_label.setStyleSheet("color: red")
+                get_logger("video2text").warning(
+                    "NVIDIA 连接测试失败: url=%s model=%s", url, model
+                )
 
         def _cleanup():
             self._nvidia_check_thread = None
@@ -528,10 +545,11 @@ class ConfigEditorDialog(QDialog):
 
     def _test_ollama(self) -> None:
         url = self._get_ollama_url()
+        model = self._model_combo.currentText().strip() if self._model_combo else ""
         self._set_ollama_status("测试中...", "orange")
         self._wait_async_thread("_ollama_check_thread")
         thread = QThread()
-        worker = OllamaCheckWorker(url)
+        worker = OllamaCheckWorker(url, model)
         worker.moveToThread(thread)
         worker.result.connect(self._on_check_result)
         thread.finished.connect(self._cleanup_check_thread)
@@ -543,14 +561,22 @@ class ConfigEditorDialog(QDialog):
         self._ollama_check_thread = thread
         self._ollama_check_worker = worker
 
-    def _on_check_result(self, ok: bool) -> None:
+    def _on_check_result(self, ok: bool, latency_ms: float) -> None:
         url = self._get_ollama_url()
+        model = self._model_combo.currentText().strip() if self._model_combo else ""
         if ok:
-            self._set_ollama_status("连接成功", "green")
-            get_logger("video2text").info("Ollama 连接测试成功: %s", url)
+            self._set_ollama_status(f"连接成功 ({latency_ms:.0f}ms)", "green")
+            get_logger("video2text").info(
+                "Ollama 连接测试成功: url=%s model=%s 延迟=%.0fms",
+                url,
+                model,
+                latency_ms,
+            )
         else:
             self._set_ollama_status("连接失败", "red")
-            get_logger("video2text").warning("Ollama 连接测试失败: %s", url)
+            get_logger("video2text").warning(
+                "Ollama 连接测试失败: url=%s model=%s", url, model
+            )
 
     def _start_ollama_service(self) -> None:
         url = self._get_ollama_url()

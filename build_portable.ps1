@@ -127,6 +127,12 @@ if (Test-Path "assets") {
     Write-Host "  Copied: assets/ (for icons)" -ForegroundColor Green
 }
 
+# Copy docs folder
+if (Test-Path "docs") {
+    Copy-Item -Recurse -Force "docs" "$portableDir\docs"
+    Write-Host "  Copied: docs/ (documentation)" -ForegroundColor Green
+}
+
 # Copy config.ini if exists
 if (Test-Path "config.ini") {
     Copy-Item -Force "config.ini" "$portableDir\"

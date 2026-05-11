@@ -334,8 +334,9 @@ class SummarizeWorker(QObject):
                 self._execute_summarization(logger, service)
             finally:
                 service.close()
-        finally:
-            provider_inst.close()
+        except Exception as e:
+            logger.exception("总结流程异常")
+            self.error.emit(str(e))
 
     def _run_multi_thread(self, logger, file_writer: FileWriter) -> None:
         """多线程模式（NVIDIA multi）—— 强制非流式"""
@@ -385,8 +386,9 @@ class SummarizeWorker(QObject):
                 self.video_error.emit("(粘贴文本)", str(e))
             finally:
                 service.close()
-        finally:
-            provider_inst.close()
+        except Exception as e:
+            logger.exception("总结流程异常")
+            self.video_error.emit("(粘贴文本)", str(e))
 
         self.progress.emit(1, 1)
 
@@ -794,8 +796,6 @@ class PipelineWorker(QObject):
                 except Exception as e:
                     logger.exception("总结失败: %s", result.video_name)
                     self.summarize_error.emit(result.video_name, str(e))
-                finally:
-                    provider_inst.close()
             else:
                 self.summarize_error.emit(result.video_name, "总结服务不可用，已跳过")
 
@@ -853,8 +853,6 @@ class PipelineWorker(QObject):
             except Exception as e:
                 logger.exception("总结失败: %s", video_name)
                 return video_name, "", str(e)
-            finally:
-                provider.close()
 
         with ThreadPoolExecutor(max_workers=thread_count) as executor:
             futures = {}
@@ -891,22 +889,29 @@ class PipelineWorker(QObject):
 class OllamaCheckWorker(QObject):
     """异步检查 Ollama 连接状态"""
 
-    result = Signal(bool)
+    result = Signal(bool, float)
     finished = Signal()
 
-    def __init__(self, url: str) -> None:
+    def __init__(self, url: str, model: str = "") -> None:
         super().__init__()
         self.url = url
+        self.model = model
 
     def run(self) -> None:
         try:
             client = OllamaClient(base_url=self.url)
             try:
-                self.result.emit(client.check_connection())
+                t0 = time.monotonic()
+                if self.model:
+                    ok = client.check_model(self.model)
+                else:
+                    ok = client.check_connection()
+                latency_ms = (time.monotonic() - t0) * 1000
+                self.result.emit(ok, latency_ms)
             finally:
                 client.close()
         except Exception:
-            self.result.emit(False)
+            self.result.emit(False, 0.0)
         finally:
             self.finished.emit()
 
@@ -978,7 +983,7 @@ class OllamaListModelWorker(QObject):
 class NvidiaCheckWorker(QObject):
     """异步检查 NVIDIA API 连接状态"""
 
-    result = Signal(bool)
+    result = Signal(bool, float)
     finished = Signal()
 
     def __init__(self, api_url: str) -> None:
@@ -991,10 +996,13 @@ class NvidiaCheckWorker(QObject):
         try:
             client = NvidiaClient(api_url=self.api_url)
             try:
-                self.result.emit(client.check_connection())
+                t0 = time.monotonic()
+                ok = client.check_connection()
+                latency_ms = (time.monotonic() - t0) * 1000
+                self.result.emit(ok, latency_ms)
             finally:
                 client.close()
         except Exception:
-            self.result.emit(False)
+            self.result.emit(False, 0.0)
         finally:
             self.finished.emit()

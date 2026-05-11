@@ -217,11 +217,8 @@ video/*
 # kilo 
 .kilo/
 
-# 特定文档
-docs/需求和环境信息.md
-docs/项目设计文档.md
-docs/在线模型添加.md
-!docs/
+# 设计问价
+plans/
 
 # 输出文件
 output/*

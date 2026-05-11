@@ -7,7 +7,13 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import QEvent, Qt, QThread, QTimer
-from PySide6.QtGui import QFont, QIcon, QTextCursor, QCloseEvent
+from PySide6.QtGui import (
+    QFont,
+    QIcon,
+    QKeySequence,
+    QTextCursor,
+    QCloseEvent,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -355,6 +361,11 @@ class MainWindow(QMainWindow):
         clear_output_action = fav_menu.addAction("移除所有输出目录")
         clear_output_action.triggered.connect(self._clear_all_output_dirs)
 
+        tools_menu = settings_menu.addMenu("工具")
+        watermark_action = tools_menu.addAction("图片去水印")
+        watermark_action.setShortcut(QKeySequence("Ctrl+M"))
+        watermark_action.triggered.connect(self._open_watermark_remover)
+
         help_menu = menu_bar.addMenu("帮助")
         about_action = help_menu.addAction("关于")
         about_action.triggered.connect(self._show_about)
@@ -381,6 +392,12 @@ class MainWindow(QMainWindow):
         if dialog.exec() == dialog.DialogCode.Accepted:
             self._load_prompt_config()
             self.status_bar.showMessage("配置已保存", 5000)
+
+    def _open_watermark_remover(self) -> None:
+        from src.ui.watermark_dialog import WatermarkRemovalDialog
+
+        dialog = WatermarkRemovalDialog(self)
+        dialog.exec()
 
     def _load_prompt_config(self) -> None:
         prompt = self.settings.get("summarization.custom_prompt", "")
@@ -831,7 +848,6 @@ class MainWindow(QMainWindow):
         thread.started.connect(worker.run)
         worker.finished.connect(thread.quit)
         thread.finished.connect(self._on_thread_finished)
-        thread.finished.connect(worker.deleteLater)
         thread.start()
 
     def _set_busy_state(self, busy: bool) -> None:
@@ -1141,8 +1157,16 @@ class MainWindow(QMainWindow):
 
     def _on_thread_finished(self) -> None:
         self._set_busy_state(False)
+
+        worker = self._worker
+        thread = self._worker_thread
         self._worker = None
         self._worker_thread = None
+
+        if thread is not None:
+            thread.wait(3000)
+        if worker is not None:
+            worker.deleteLater()
 
         self.progress_bar.setValue(self.progress_bar.maximum())
 
@@ -1347,6 +1371,10 @@ class MainWindow(QMainWindow):
             if not self._worker_thread.wait(3000):
                 self._worker_thread.terminate()
                 self._worker_thread.wait(1000)
+            if self._worker is not None:
+                self._worker.deleteLater()
+            self._worker = None
+            self._worker_thread = None
 
         for name in ("video2text", "src"):
             lg = logging.getLogger(name)
@@ -1368,11 +1396,39 @@ class MainWindow(QMainWindow):
 
 
 def main() -> None:
+    import faulthandler
+    import threading
+
+    _log_dir = Path("logs")
+    _log_dir.mkdir(parents=True, exist_ok=True)
+    _crash_log = open(_log_dir / "crash.log", "a", encoding="utf-8")
+    faulthandler.enable(file=_crash_log, all_threads=True)
+
+    def _thread_excepthook(args):
+        import traceback
+
+        msg = f"Unhandled exception in thread {args.thread}:\n"
+        msg += "".join(
+            traceback.format_exception(
+                args.exc_type, args.exc_value, args.exc_traceback
+            )
+        )
+        logging.getLogger("video2text").error(msg)
+        try:
+            with open(_log_dir / "thread_error.log", "a", encoding="utf-8") as f:
+                f.write(f"[{datetime.now()}] {msg}\n")
+        except Exception:
+            pass
+
+    threading.excepthook = _thread_excepthook
+
     app = QApplication()
     app.setStyle("Fusion")
     window = MainWindow()
     window.show()
     app.exec()
+
+    _crash_log.close()
 
 
 if __name__ == "__main__":
