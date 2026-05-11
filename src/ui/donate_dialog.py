@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -5,6 +6,8 @@ from PySide6.QtGui import QPixmap, QResizeEvent
 from PySide6.QtWidgets import QDialog, QLabel, QVBoxLayout
 
 ASSETS_DIR = Path(__file__).resolve().parent.parent.parent / "assets"
+if not ASSETS_DIR.exists() and getattr(sys, "frozen", False):
+    ASSETS_DIR = Path(sys.executable).parent / "assets"
 
 
 class DonateDialog(QDialog):
