@@ -8,6 +8,7 @@ from typing import Optional
 
 from PySide6.QtCore import QEvent, Qt, QThread, QTimer
 from PySide6.QtGui import (
+    QAction,
     QFont,
     QIcon,
     QKeySequence,
@@ -284,8 +285,7 @@ class MainWindow(QMainWindow):
         self.transcript_view.setFont(QFont("Consolas", 9))
         self.transcript_view.setPlaceholderText(
             "转写完成后文本自动填充到此处，可直接编辑修改，\n"
-            "修改后点击「仅总结」将编辑后的文本发送给 Ollama 进行摘要。\n"
-            "也可直接粘贴任意文本到此处，用于单独总结。"
+            "修改后点击右键「重新总结」将编辑后的文本进行摘要。\n"
         )
         self.result_tabs.addTab(self.transcript_view, "文本内容")
         self.summary_view = QTextEdit()
@@ -294,6 +294,11 @@ class MainWindow(QMainWindow):
         self.result_tabs.addTab(self.summary_view, "摘要")
         self.result_tabs.currentChanged.connect(self._on_tab_changed)
         content_layout.addWidget(self.result_tabs, 3)
+
+        save_transcript_action = QAction("保存文本", self)
+        save_transcript_action.setShortcut(QKeySequence("Ctrl+S"))
+        save_transcript_action.triggered.connect(self._save_transcript)
+        self.addAction(save_transcript_action)
         results_layout.addLayout(content_layout)
         right_splitter.addWidget(results_group)
 
@@ -508,10 +513,25 @@ class MainWindow(QMainWindow):
     def _on_tab_changed(self, index: int) -> None:
         if index == 0:
             self.status_bar.showMessage(
-                "文本内容 —— 可直接编辑，编辑后点击「仅总结」将文本发送给 Ollama 进行摘要"
+                "文本内容 —— 可直接编辑，Ctrl+S 保存，编辑后点击右键「重新总结」将文本进行摘要"
             )
         elif index == 1:
-            self.status_bar.showMessage("摘要结果 —— 由 Ollama 生成（只读）")
+            self.status_bar.showMessage("摘要结果（只读）")
+
+    def _save_transcript(self) -> None:
+        """保存当前文本内容到文件"""
+        if not self._current_video_name:
+            self.status_bar.showMessage("没有选中的视频，无法保存", 3000)
+            return
+        output_dir = self.output_combo.currentText().strip() or _DEFAULT_OUTPUT_DIR
+        text = self.transcript_view.toPlainText()
+        save_path = Path(output_dir) / f"{self._current_video_name}.txt"
+        try:
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+            save_path.write_text(text, encoding="utf-8")
+            self.status_bar.showMessage(f"已保存: {save_path}", 5000)
+        except OSError as exc:
+            self.status_bar.showMessage(f"保存失败: {exc}", 5000)
 
     # ── 常用目录管理 ──
 

@@ -583,10 +583,10 @@ class ResultViewerWindow(QMainWindow):
         toolbar.addSeparator()
 
         # 关闭按钮
-        close_action = QAction("关闭", self)
-        close_action.setShortcut(QKeySequence("Ctrl+W"))
-        close_action.triggered.connect(self.close)
-        toolbar.addAction(close_action)
+        # close_action = QAction("关闭", self)
+        # close_action.setShortcut(QKeySequence("Ctrl+W"))
+        # close_action.triggered.connect(self.close)
+        # toolbar.addAction(close_action)
 
     def _create_bookmark_dock(self):
         """创建书签停靠窗口"""
