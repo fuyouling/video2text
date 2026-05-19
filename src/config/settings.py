@@ -32,7 +32,7 @@ DEFAULT_NVIDIA_THREAD_COUNT = 2
 DEFAULT_NVIDIA_STREAM = True
 
 APP_NAME = "video2text"
-APP_VERSION = "1.8.0"
+APP_VERSION = "1.8.1"
 
 
 def _get_base_dir() -> Path:

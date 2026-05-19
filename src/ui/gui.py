@@ -9,6 +9,7 @@ from typing import Optional
 from PySide6.QtCore import QEvent, Qt, QThread, QTimer
 from PySide6.QtGui import (
     QAction,
+    QColor,
     QFont,
     QIcon,
     QKeySequence,
@@ -22,6 +23,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
@@ -113,6 +115,9 @@ class MainWindow(QMainWindow):
         self._current_video_name: Optional[str] = None
         self._is_multi_thread = False
         self._history_loaded = False
+
+        self._match_positions: list[tuple[int, int]] = []
+        self._current_match_index: int = -1
 
         self._dir_manager = DirectoryManager(_PROJECT_ROOT / "favorite_dirs.json")
 
@@ -284,8 +289,7 @@ class MainWindow(QMainWindow):
         self.transcript_view = QTextEdit()
         self.transcript_view.setFont(QFont("Consolas", 9))
         self.transcript_view.setPlaceholderText(
-            "转写完成后文本自动填充到此处，可直接编辑修改，\n"
-            "修改后点击右键「重新总结」将编辑后的文本进行摘要。\n"
+            "转写完成后文本自动填充到此处，可直接编辑修改，修改后点击右键「重新总结」将编辑后的文本进行摘要。"
         )
         self.result_tabs.addTab(self.transcript_view, "文本内容")
         self.summary_view = QTextEdit()
@@ -299,7 +303,16 @@ class MainWindow(QMainWindow):
         save_transcript_action.setShortcut(QKeySequence("Ctrl+S"))
         save_transcript_action.triggered.connect(self._save_transcript)
         self.addAction(save_transcript_action)
+
+        find_action = QAction("查找替换", self)
+        find_action.setShortcut(QKeySequence("Ctrl+F"))
+        find_action.triggered.connect(self._toggle_search_bar)
+        self.addAction(find_action)
+
         results_layout.addLayout(content_layout)
+        self._search_widget = self._create_search_bar()
+        self._search_widget.setVisible(False)
+        results_layout.addWidget(self._search_widget)
         right_splitter.addWidget(results_group)
 
         # ── 提示词配置面板 ──
@@ -309,10 +322,7 @@ class MainWindow(QMainWindow):
         self.ollama_prompt_edit = QTextEdit()
         self.ollama_prompt_edit.setMaximumHeight(100)
         self.ollama_prompt_edit.setPlaceholderText(
-            "自定义总结提示词（可选）：\n"
-            "输入您希望模型如何总结的指令，例如：\n"
-            "「请用英文总结以下文本，列出3个要点」\n"
-            "留空则使用默认提示词。"
+            "自定义总结提示词（可选），留空则使用默认提示词"
         )
         prompt_layout.addWidget(self.ollama_prompt_edit)
 
@@ -431,13 +441,10 @@ class MainWindow(QMainWindow):
             idx = self.prompt_template_combo.findText(last_used)
             if idx >= 0:
                 self.prompt_template_combo.setCurrentIndex(idx)
+                content = self.prompt_manager.get_content(last_used)
+                if content:
+                    self.ollama_prompt_edit.setPlainText(content)
         self.prompt_template_combo.blockSignals(False)
-
-        current_text = self.prompt_template_combo.currentText()
-        if current_text and current_text != self._PLACEHOLDER_PROMPT:
-            content = self.prompt_manager.get_content(current_text)
-            if content:
-                self.ollama_prompt_edit.setPlainText(content)
 
     def _on_prompt_template_selected(self, name: str) -> None:
         if not name or name == self._PLACEHOLDER_PROMPT:
@@ -513,10 +520,10 @@ class MainWindow(QMainWindow):
     def _on_tab_changed(self, index: int) -> None:
         if index == 0:
             self.status_bar.showMessage(
-                "文本内容 —— 可直接编辑，Ctrl+S 保存，编辑后点击右键「重新总结」将文本进行摘要"
+                "文本内容 —— 可直接编辑，编辑后点击右键「重新总结」将文本进行摘要,Ctrl+S 保存，Ctrl+F 查找替换"
             )
         elif index == 1:
-            self.status_bar.showMessage("摘要结果（只读）")
+            self.status_bar.showMessage("摘要结果，只读")
 
     def _save_transcript(self) -> None:
         """保存当前文本内容到文件"""
@@ -532,6 +539,221 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage(f"已保存: {save_path}", 5000)
         except OSError as exc:
             self.status_bar.showMessage(f"保存失败: {exc}", 5000)
+
+    # ── 查找替换 ──
+
+    def _create_search_bar(self) -> QWidget:
+        widget = QWidget()
+        main_layout = QVBoxLayout(widget)
+        main_layout.setContentsMargins(0, 4, 0, 0)
+
+        search_row = QHBoxLayout()
+        search_row.addWidget(QLabel("查找:"))
+        self._search_input = QLineEdit()
+        self._search_input.setPlaceholderText("输入搜索内容…")
+        self._search_input.setClearButtonEnabled(True)
+        self._search_input.returnPressed.connect(self._find_next)
+        self._search_input.textChanged.connect(self._find_all_matches)
+        search_row.addWidget(self._search_input, 1)
+
+        self._search_prev_btn = QPushButton("▲")
+        self._search_prev_btn.setFixedWidth(32)
+        self._search_prev_btn.setToolTip("上一个")
+        self._search_prev_btn.clicked.connect(self._find_prev)
+        search_row.addWidget(self._search_prev_btn)
+
+        self._search_next_btn = QPushButton("▼")
+        self._search_next_btn.setFixedWidth(32)
+        self._search_next_btn.setToolTip("下一个 (Enter)")
+        self._search_next_btn.clicked.connect(self._find_next)
+        search_row.addWidget(self._search_next_btn)
+
+        self._search_count_label = QLabel("")
+        self._search_count_label.setMinimumWidth(90)
+        search_row.addWidget(self._search_count_label)
+
+        close_btn = QPushButton("✕")
+        close_btn.setFixedWidth(28)
+        close_btn.setToolTip("关闭搜索栏")
+        close_btn.clicked.connect(self._close_search_bar)
+        search_row.addWidget(close_btn)
+
+        main_layout.addLayout(search_row)
+
+        replace_row = QHBoxLayout()
+        replace_row.addWidget(QLabel("替换:"))
+        self._replace_input = QLineEdit()
+        self._replace_input.setPlaceholderText("替换为…")
+        replace_row.addWidget(self._replace_input, 1)
+
+        self._replace_btn = QPushButton("替换")
+        self._replace_btn.setMinimumWidth(60)
+        self._replace_btn.clicked.connect(self._replace_current)
+        replace_row.addWidget(self._replace_btn)
+
+        self._replace_all_btn = QPushButton("全部替换")
+        self._replace_all_btn.setMinimumWidth(80)
+        self._replace_all_btn.clicked.connect(self._replace_all)
+        replace_row.addWidget(self._replace_all_btn)
+
+        main_layout.addLayout(replace_row)
+
+        return widget
+
+    def _toggle_search_bar(self) -> None:
+        if self._search_widget.isVisible():
+            self._close_search_bar()
+        else:
+            self._search_widget.setVisible(True)
+            self._search_input.setFocus()
+            cursor = self.transcript_view.textCursor()
+            if cursor.hasSelection():
+                self._search_input.setText(cursor.selectedText())
+            elif self._search_input.text():
+                self._find_all_matches()
+
+    def _find_all_matches(self) -> None:
+        self._clear_highlights()
+        self._match_positions = []
+        self._current_match_index = -1
+
+        search_text = self._search_input.text()
+        if not search_text:
+            self._search_count_label.setText("")
+            return
+
+        document = self.transcript_view.document()
+        cursor = QTextCursor(document)
+
+        while True:
+            cursor = document.find(search_text, cursor)
+            if cursor.isNull():
+                break
+            self._match_positions.append(
+                (cursor.selectionStart(), cursor.selectionEnd())
+            )
+
+        count = len(self._match_positions)
+        if count == 0:
+            self._search_count_label.setText("未找到匹配")
+            return
+
+        current_pos = self.transcript_view.textCursor().position()
+        idx = 0
+        for i, (start, _) in enumerate(self._match_positions):
+            if start >= current_pos:
+                idx = i
+                break
+
+        self._current_match_index = idx
+        self._goto_match(idx)
+
+    def _highlight_all_matches(self) -> None:
+        normal_color = QColor(255, 255, 100)
+        current_color = QColor(255, 140, 0)
+        document = self.transcript_view.document()
+        selections = []
+        for i, (start, end) in enumerate(self._match_positions):
+            sel = QTextEdit.ExtraSelection()
+            sel.format.setBackground(
+                current_color if i == self._current_match_index else normal_color
+            )
+            cur = QTextCursor(document)
+            cur.setPosition(start)
+            cur.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+            sel.cursor = cur
+            selections.append(sel)
+        self.transcript_view.setExtraSelections(selections)
+
+    def _clear_highlights(self) -> None:
+        self.transcript_view.setExtraSelections([])
+
+    def _goto_match(self, index: int) -> None:
+        if (
+            not self._match_positions
+            or index < 0
+            or index >= len(self._match_positions)
+        ):
+            return
+        self._current_match_index = index
+        start, end = self._match_positions[index]
+        cursor = self.transcript_view.textCursor()
+        cursor.setPosition(start)
+        self.transcript_view.setTextCursor(cursor)
+        self.transcript_view.ensureCursorVisible()
+        self._highlight_all_matches()
+        total = len(self._match_positions)
+        self._search_count_label.setText(f"{index + 1} / {total}")
+
+    def _find_next(self) -> None:
+        if not self._match_positions:
+            self._find_all_matches()
+            return
+        self._current_match_index = (self._current_match_index + 1) % len(
+            self._match_positions
+        )
+        self._goto_match(self._current_match_index)
+
+    def _find_prev(self) -> None:
+        if not self._match_positions:
+            self._find_all_matches()
+            return
+        self._current_match_index = (self._current_match_index - 1) % len(
+            self._match_positions
+        )
+        self._goto_match(self._current_match_index)
+
+    def _replace_current(self) -> None:
+        if not self._match_positions or self._current_match_index < 0:
+            return
+        replace_text = self._replace_input.text()
+        start, end = self._match_positions[self._current_match_index]
+        cursor = self.transcript_view.textCursor()
+        cursor.beginEditBlock()
+        cursor.setPosition(start)
+        cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+        cursor.insertText(replace_text)
+        cursor.endEditBlock()
+        self._find_all_matches()
+
+    def _replace_all(self) -> None:
+        search_text = self._search_input.text()
+        replace_text = self._replace_input.text()
+        if not search_text:
+            return
+        document = self.transcript_view.document()
+        edit_cursor = QTextCursor(document)
+        edit_cursor.beginEditBlock()
+        count = 0
+        pos = 0
+        while True:
+            found = document.find(search_text, pos)
+            if found.isNull():
+                break
+            edit_cursor.setPosition(found.selectionStart())
+            edit_cursor.setPosition(
+                found.selectionEnd(), QTextCursor.MoveMode.KeepAnchor
+            )
+            edit_cursor.insertText(replace_text)
+            count += 1
+            pos = edit_cursor.position()
+        edit_cursor.endEditBlock()
+        self._match_positions = []
+        self._current_match_index = -1
+        self._clear_highlights()
+        if count > 0:
+            self._search_count_label.setText(f"已替换 {count} 处")
+            self.status_bar.showMessage(f"已替换 {count} 处文本", 5000)
+        else:
+            self._search_count_label.setText("未找到匹配")
+
+    def _close_search_bar(self) -> None:
+        if not self._search_widget.isVisible():
+            return
+        self._search_widget.setVisible(False)
+        self._clear_highlights()
+        self._match_positions = []
+        self._current_match_index = -1
 
     # ── 常用目录管理 ──
 
@@ -1384,6 +1606,9 @@ class MainWindow(QMainWindow):
                 self.summary_view.setPlainText(f"读取失败: {exc}")
         else:
             self.summary_view.setPlainText("(未找到摘要文件)")
+
+        if self._search_widget.isVisible() and self._search_input.text():
+            self._find_all_matches()
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if self._worker_thread is not None and self._worker_thread.isRunning():
