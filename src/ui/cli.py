@@ -11,15 +11,13 @@ from rich.panel import Panel
 from src.config.settings import (
     Settings,
     APP_VERSION,
-    DEFAULT_OLLAMA_URL,
-    DEFAULT_OLLAMA_TIMEOUT,
     DEFAULT_OLLAMA_MODEL,
 )
 from src.preprocessing.video_processor import VideoProcessor
 from src.services.transcription_service import TranscriptionService
 from src.services.summarization_service import SummarizationService
 from src.storage.file_writer import FileWriter
-from src.summarization.ollama_client import OllamaClient
+from src.summarization.providers import create_provider
 from src.text_processing.segment_merger import SegmentMerger
 from src.text_processing.text_cleaner import TextCleaner
 from src.transcription.transcriber import Transcriber
@@ -224,30 +222,27 @@ def summarize(
         file_writer = FileWriter(output_dir)
         video_name = text_path.stem
 
-        ollama_url = settings.get("summarization.ollama_url", DEFAULT_OLLAMA_URL)
-        ollama_timeout = settings.get_int(
-            "summarization.timeout", DEFAULT_OLLAMA_TIMEOUT
-        )
-        model_name = model or settings.get(
-            "summarization.model_name", DEFAULT_OLLAMA_MODEL
-        )
-        ollama_client = OllamaClient(ollama_url, timeout=ollama_timeout)
+        if temperature is not None:
+            settings.set("summarization.temperature", str(temperature))
+        if max_length is not None:
+            settings.set("summarization.max_length", str(max_length))
+        if model is not None:
+            settings.set("summarization.model_name", model)
+
+        provider_inst = create_provider(settings)
         service = None
 
         try:
-            if not ollama_client.check_connection():
-                raise SummarizationError("无法连接到Ollama服务")
-
-            if not ollama_client.check_model(model_name):
-                raise SummarizationError(f"模型 {model_name} 不存在")
+            if not provider_inst.check_connection():
+                provider_name = settings.get("summarization.provider", "ollama")
+                raise SummarizationError(
+                    f"无法连接到{provider_name}总结服务，请检查配置"
+                )
 
             service = SummarizationService(
                 settings=settings,
                 file_writer=file_writer,
-                client=ollama_client,
-                model_name=model_name,
-                temperature=temperature,
-                max_length=max_length,
+                provider=provider_inst,
                 on_progress=lambda msg: console.print(f"  {msg}"),
             )
 
@@ -259,7 +254,8 @@ def summarize(
         finally:
             if service is not None:
                 service.close()
-            ollama_client.close()
+            else:
+                provider_inst.close()
 
     except Video2TextError as e:
         console.print(f"[bold red]错误: {e}[/bold red]")
@@ -307,6 +303,7 @@ def run_pipeline(
         summarization_model = summarization_model or settings.get(
             "summarization.model_name", DEFAULT_OLLAMA_MODEL
         )
+        settings.set("summarization.model_name", summarization_model)
         device = device or settings.get("transcription.device", "auto")
         beam_size = (
             beam_size
@@ -340,9 +337,6 @@ def run_pipeline(
         console.print(f"输出目录: {output_dir}")
         console.print(f"转写模型: {model_path}")
         console.print(f"总结模型: {summarization_model}")
-
-        sum_service = None
-        ollama_client = None
 
         transcriber = Transcriber(
             model_path=model_path,
@@ -382,12 +376,6 @@ def run_pipeline(
             )
             text_cleaner = TextCleaner()
 
-            ollama_url = settings.get("summarization.ollama_url", DEFAULT_OLLAMA_URL)
-            ollama_timeout = settings.get_int(
-                "summarization.timeout", DEFAULT_OLLAMA_TIMEOUT
-            )
-            ollama_client = OllamaClient(ollama_url, timeout=ollama_timeout)
-
             summary_map: dict[str, tuple[str, str]] = {}
             for tx_result in tx_results:
                 merged = segment_merger.merge_segments(tx_result.segments)
@@ -397,38 +385,43 @@ def run_pipeline(
                 processed_text = text_cleaner.clean(processed_text)
                 summary_map[tx_result.video_name] = (processed_text, "总结不可用")
 
-            sum_available = ollama_client.check_connection()
+            if summary_temperature is not None:
+                settings.set("summarization.temperature", str(summary_temperature))
+            if max_length is not None:
+                settings.set("summarization.max_length", str(max_length))
+
+            provider_inst = create_provider(settings)
+            sum_available = provider_inst.check_connection()
             if not sum_available:
-                console.print("[yellow]警告: 无法连接到Ollama服务，跳过总结[/yellow]")
-            elif not ollama_client.check_model(summarization_model):
+                provider_name = settings.get("summarization.provider", "ollama")
                 console.print(
-                    f"[yellow]警告: 模型 {summarization_model} 不存在，跳过总结[/yellow]"
+                    f"[yellow]警告: 无法连接到{provider_name}总结服务，跳过总结[/yellow]"
                 )
-                sum_available = False
+                provider_inst.close()
             else:
-                sum_service = SummarizationService(
-                    settings=settings,
-                    file_writer=file_writer,
-                    client=ollama_client,
-                    model_name=summarization_model,
-                    temperature=summary_temperature,
-                    max_length=max_length,
-                    on_progress=lambda msg: console.print(f"  {msg}"),
-                )
-                for tx_result in tx_results:
-                    processed_text = summary_map[tx_result.video_name][0]
-                    try:
-                        summary = sum_service.summarize(
-                            processed_text, video_name=tx_result.video_name
-                        )
-                        summary_map[tx_result.video_name] = (
-                            processed_text,
-                            summary or "总结不可用",
-                        )
-                    except Exception as e:
-                        console.print(
-                            f"[yellow]警告: {tx_result.video_name} 总结失败: {e}[/yellow]"
-                        )
+                try:
+                    sum_service = SummarizationService(
+                        settings=settings,
+                        file_writer=file_writer,
+                        provider=provider_inst,
+                        on_progress=lambda msg: console.print(f"  {msg}"),
+                    )
+                    for tx_result in tx_results:
+                        processed_text = summary_map[tx_result.video_name][0]
+                        try:
+                            summary = sum_service.summarize(
+                                processed_text, video_name=tx_result.video_name
+                            )
+                            summary_map[tx_result.video_name] = (
+                                processed_text,
+                                summary or "总结不可用",
+                            )
+                        except Exception as e:
+                            console.print(
+                                f"[yellow]警告: {tx_result.video_name} 总结失败: {e}[/yellow]"
+                            )
+                finally:
+                    provider_inst.close()
 
             console.print(Panel.fit("[bold green]处理成功！[/bold green]"))
             console.print(f"输出目录: {output_dir}")
@@ -441,10 +434,6 @@ def run_pipeline(
                 )
         finally:
             tx_service.transcriber.unload_model()
-            if sum_service is not None:
-                sum_service.close()
-            if ollama_client is not None:
-                ollama_client.close()
 
     except Video2TextError as e:
         console.print(f"[bold red]错误: {e}[/bold red]")

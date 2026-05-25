@@ -216,6 +216,8 @@ class NvidiaClient:
                 break
             try:
                 data = _json.loads(data_str)
+                if "error" in data:
+                    raise SummarizationError(f"NVIDIA 流式错误: {data['error']}")
                 choices = data.get("choices", [])
                 if choices:
                     delta = choices[0].get("delta", {})

@@ -348,6 +348,10 @@ class OllamaClient:
                                     "Ollama 流式响应 JSON 解析失败: %s", line[:200]
                                 )
                                 continue
+                            if "error" in data:
+                                raise SummarizationError(
+                                    f"Ollama 流式错误: {data['error']}"
+                                )
                             if "response" in data:
                                 token = data["response"]
                                 result += token

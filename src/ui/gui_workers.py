@@ -330,13 +330,12 @@ class SummarizeWorker(QObject):
                 on_stream_token=lambda token: self.stream_token.emit(token),
                 cancel_check=lambda: self._cancelled,
             )
-            try:
-                self._execute_summarization(logger, service)
-            finally:
-                service.close()
+            self._execute_summarization(logger, service)
         except Exception as e:
             logger.exception("总结流程异常")
             self.error.emit(str(e))
+        finally:
+            provider_inst.close()
 
     def _run_multi_thread(self, logger, file_writer: FileWriter) -> None:
         """多线程模式（NVIDIA multi）—— 强制非流式"""
@@ -780,22 +779,21 @@ class PipelineWorker(QObject):
                         on_stream_token=lambda token: self.stream_token.emit(token),
                         cancel_check=lambda: self._cancelled,
                     )
-                    try:
-                        self.summarize_started.emit(result.video_name)
-                        summary = service.summarize(
-                            processed_text,
-                            video_name=result.video_name,
-                            stream=self.stream,
-                        )
-                        if summary:
-                            self.summarize_done.emit(result.video_name, summary)
-                        else:
-                            self.summarize_error.emit(result.video_name, "总结结果为空")
-                    finally:
-                        service.close()
+                    self.summarize_started.emit(result.video_name)
+                    summary = service.summarize(
+                        processed_text,
+                        video_name=result.video_name,
+                        stream=self.stream,
+                    )
+                    if summary:
+                        self.summarize_done.emit(result.video_name, summary)
+                    else:
+                        self.summarize_error.emit(result.video_name, "总结结果为空")
                 except Exception as e:
                     logger.exception("总结失败: %s", result.video_name)
                     self.summarize_error.emit(result.video_name, str(e))
+                finally:
+                    provider_inst.close()
             else:
                 self.summarize_error.emit(result.video_name, "总结服务不可用，已跳过")
 
@@ -843,16 +841,13 @@ class PipelineWorker(QObject):
                     custom_prompt=self.custom_prompt,
                     cancel_check=lambda: self._cancelled,
                 )
-                try:
-                    summary = service.summarize(
-                        text, video_name=video_name, stream=False
-                    )
-                    return video_name, summary, ""
-                finally:
-                    service.close()
+                summary = service.summarize(text, video_name=video_name, stream=False)
+                return video_name, summary, ""
             except Exception as e:
                 logger.exception("总结失败: %s", video_name)
                 return video_name, "", str(e)
+            finally:
+                provider.close()
 
         with ThreadPoolExecutor(max_workers=thread_count) as executor:
             futures = {}
