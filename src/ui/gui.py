@@ -294,7 +294,7 @@ class MainWindow(QMainWindow):
         self.result_tabs.addTab(self.transcript_view, "文本内容")
         self.summary_view = QTextEdit()
         self.summary_view.setFont(QFont("Consolas", 9))
-        self.summary_view.setPlaceholderText("摘要结果，可直接编辑修改，Ctrl+S 保存。")
+        self.summary_view.setPlaceholderText("摘要结果，可直接编辑修改，Ctrl+S 保存，Ctrl+F 查找替换。")
         self.result_tabs.addTab(self.summary_view, "摘要")
         self.result_tabs.currentChanged.connect(self._on_tab_changed)
         content_layout.addWidget(self.result_tabs, 3)
@@ -523,7 +523,7 @@ class MainWindow(QMainWindow):
                 "文本内容 —— 可直接编辑，编辑后点击右键「重新总结」将文本进行摘要，Ctrl+S 保存，Ctrl+F 查找替换"
             )
         elif index == 1:
-            self.status_bar.showMessage("摘要结果 —— 可直接编辑修改，Ctrl+S 保存")
+            self.status_bar.showMessage("摘要结果 —— 可直接编辑修改，Ctrl+S 保存，Ctrl+F 查找替换")
         if self._search_widget.isVisible() and self._search_input.text():
             self._find_all_matches()
 
