@@ -293,8 +293,8 @@ class MainWindow(QMainWindow):
         )
         self.result_tabs.addTab(self.transcript_view, "文本内容")
         self.summary_view = QTextEdit()
-        self.summary_view.setReadOnly(True)
         self.summary_view.setFont(QFont("Consolas", 9))
+        self.summary_view.setPlaceholderText("摘要结果，可直接编辑修改，Ctrl+S 保存。")
         self.result_tabs.addTab(self.summary_view, "摘要")
         self.result_tabs.currentChanged.connect(self._on_tab_changed)
         content_layout.addWidget(self.result_tabs, 3)
@@ -520,25 +520,65 @@ class MainWindow(QMainWindow):
     def _on_tab_changed(self, index: int) -> None:
         if index == 0:
             self.status_bar.showMessage(
-                "文本内容 —— 可直接编辑，编辑后点击右键「重新总结」将文本进行摘要,Ctrl+S 保存，Ctrl+F 查找替换"
+                "文本内容 —— 可直接编辑，编辑后点击右键「重新总结」将文本进行摘要，Ctrl+S 保存，Ctrl+F 查找替换"
             )
         elif index == 1:
-            self.status_bar.showMessage("摘要结果，只读")
+            self.status_bar.showMessage("摘要结果 —— 可直接编辑修改，Ctrl+S 保存")
+        if self._search_widget.isVisible() and self._search_input.text():
+            self._find_all_matches()
 
     def _save_transcript(self) -> None:
-        """保存当前文本内容到文件"""
+        """保存当前活动标签页的内容到文件（根据配置的输出格式自动匹配）"""
         if not self._current_video_name:
             self.status_bar.showMessage("没有选中的视频，无法保存", 3000)
             return
         output_dir = self.output_combo.currentText().strip() or _DEFAULT_OUTPUT_DIR
-        text = self.transcript_view.toPlainText()
-        save_path = Path(output_dir) / f"{self._current_video_name}.txt"
+        current_tab = self.result_tabs.currentIndex()
+        if current_tab == 0:
+            text = self.transcript_view.toPlainText()
+            save_path = self._resolve_transcript_path(output_dir)
+        else:
+            text = self.summary_view.toPlainText()
+            save_path = self._resolve_summary_path(output_dir)
         try:
             save_path.parent.mkdir(parents=True, exist_ok=True)
             save_path.write_text(text, encoding="utf-8")
             self.status_bar.showMessage(f"已保存: {save_path}", 5000)
         except OSError as exc:
             self.status_bar.showMessage(f"保存失败: {exc}", 5000)
+
+    def _resolve_transcript_path(self, output_dir: str) -> Path:
+        """根据配置的转写格式，找到已存在的转写文件路径，或按首选格式生成新路径"""
+        name = self._current_video_name
+        formats = self.settings.get_list("output.transcript_format", ["txt"])
+        formats = [f.lower().strip() for f in formats if f.lower().strip()]
+        if not formats:
+            formats = ["txt"]
+        for fmt in formats:
+            candidate = Path(output_dir) / f"{name}.{fmt}"
+            if candidate.exists():
+                return candidate
+        return Path(output_dir) / f"{name}.{formats[0]}"
+
+    def _resolve_summary_path(self, output_dir: str) -> Path:
+        """根据配置的摘要格式，找到已存在的摘要文件路径，或按配置格式生成新路径"""
+        name = self._current_video_name
+        fmt = self.settings.get("output.summary_format", "txt").lower().strip()
+        if fmt not in ("txt", "md"):
+            fmt = "txt"
+        candidate = Path(output_dir) / f"{name}_summary.{fmt}"
+        if candidate.exists():
+            return candidate
+        for ext in ("txt", "md"):
+            alt = Path(output_dir) / f"{name}_summary.{ext}"
+            if alt.exists():
+                return alt
+        return candidate
+
+    def _active_edit(self) -> QTextEdit:
+        if self.result_tabs.currentIndex() == 1:
+            return self.summary_view
+        return self.transcript_view
 
     # ── 查找替换 ──
 
@@ -606,7 +646,7 @@ class MainWindow(QMainWindow):
         else:
             self._search_widget.setVisible(True)
             self._search_input.setFocus()
-            cursor = self.transcript_view.textCursor()
+            cursor = self._active_edit().textCursor()
             if cursor.hasSelection():
                 self._search_input.setText(cursor.selectedText())
             elif self._search_input.text():
@@ -622,7 +662,8 @@ class MainWindow(QMainWindow):
             self._search_count_label.setText("")
             return
 
-        document = self.transcript_view.document()
+        edit = self._active_edit()
+        document = edit.document()
         cursor = QTextCursor(document)
 
         while True:
@@ -638,7 +679,7 @@ class MainWindow(QMainWindow):
             self._search_count_label.setText("未找到匹配")
             return
 
-        current_pos = self.transcript_view.textCursor().position()
+        current_pos = edit.textCursor().position()
         idx = 0
         for i, (start, _) in enumerate(self._match_positions):
             if start >= current_pos:
@@ -651,7 +692,8 @@ class MainWindow(QMainWindow):
     def _highlight_all_matches(self) -> None:
         normal_color = QColor(255, 255, 100)
         current_color = QColor(255, 140, 0)
-        document = self.transcript_view.document()
+        edit = self._active_edit()
+        document = edit.document()
         selections = []
         for i, (start, end) in enumerate(self._match_positions):
             sel = QTextEdit.ExtraSelection()
@@ -663,10 +705,11 @@ class MainWindow(QMainWindow):
             cur.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
             sel.cursor = cur
             selections.append(sel)
-        self.transcript_view.setExtraSelections(selections)
+        edit.setExtraSelections(selections)
 
     def _clear_highlights(self) -> None:
         self.transcript_view.setExtraSelections([])
+        self.summary_view.setExtraSelections([])
 
     def _goto_match(self, index: int) -> None:
         if (
@@ -677,10 +720,11 @@ class MainWindow(QMainWindow):
             return
         self._current_match_index = index
         start, end = self._match_positions[index]
-        cursor = self.transcript_view.textCursor()
+        edit = self._active_edit()
+        cursor = edit.textCursor()
         cursor.setPosition(start)
-        self.transcript_view.setTextCursor(cursor)
-        self.transcript_view.ensureCursorVisible()
+        edit.setTextCursor(cursor)
+        edit.ensureCursorVisible()
         self._highlight_all_matches()
         total = len(self._match_positions)
         self._search_count_label.setText(f"{index + 1} / {total}")
@@ -708,7 +752,8 @@ class MainWindow(QMainWindow):
             return
         replace_text = self._replace_input.text()
         start, end = self._match_positions[self._current_match_index]
-        cursor = self.transcript_view.textCursor()
+        edit = self._active_edit()
+        cursor = edit.textCursor()
         cursor.beginEditBlock()
         cursor.setPosition(start)
         cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
@@ -721,7 +766,8 @@ class MainWindow(QMainWindow):
         replace_text = self._replace_input.text()
         if not search_text:
             return
-        document = self.transcript_view.document()
+        edit = self._active_edit()
+        document = edit.document()
         edit_cursor = QTextCursor(document)
         edit_cursor.beginEditBlock()
         count = 0
@@ -1342,6 +1388,8 @@ class MainWindow(QMainWindow):
             item.setData(Qt.ItemDataRole.UserRole, video_name)
             self.file_list.addItem(item)
         if not self._is_multi_thread:
+            self.summary_view.setPlainText(summary)
+        elif self._current_video_name == video_name:
             self.summary_view.setPlainText(summary)
         self.status_bar.showMessage(f"总结完成: {video_name}", 5000)
 
