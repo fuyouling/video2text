@@ -166,7 +166,7 @@ def log_error_with_context(
         logger_name: 日志记录器名称
         step_name: 失败步骤名称
         error: 异常对象
-        video_path: 相关视频路径
+        video_path: 相关文件路径
     """
     log = logging.getLogger(logger_name)
     context_parts = [f"步骤: {step_name}"]

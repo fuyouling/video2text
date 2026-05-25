@@ -2,17 +2,7 @@
 
 from typing import Callable, Optional, Protocol
 
-from src.config.settings import (
-    Settings,
-    DEFAULT_OLLAMA_URL,
-    DEFAULT_OLLAMA_TIMEOUT,
-    DEFAULT_OLLAMA_MODEL,
-    DEFAULT_NVIDIA_API_URL,
-    DEFAULT_NVIDIA_MODEL,
-    DEFAULT_NVIDIA_MAX_TOKENS,
-    DEFAULT_NVIDIA_TEMPERATURE,
-    DEFAULT_NVIDIA_TOP_P,
-)
+from src.config.settings import Settings
 from src.summarization.nvidia_client import NvidiaClient
 from src.summarization.ollama_client import OllamaClient
 from src.summarization.summarizer import Summarizer
@@ -63,12 +53,10 @@ class OllamaProvider:
     """Ollama 提供商 —— 本地模型总结"""
 
     def __init__(self, settings: Settings) -> None:
-        ollama_url = settings.get("summarization.ollama_url", DEFAULT_OLLAMA_URL)
-        ollama_timeout = settings.get_int(
-            "summarization.timeout", DEFAULT_OLLAMA_TIMEOUT
-        )
+        ollama_url = settings.get("summarization.ollama_url", "http://127.0.0.1:11434")
+        ollama_timeout = settings.get_int("summarization.timeout", 300)
         self._model_name = settings.get(
-            "summarization.model_name", DEFAULT_OLLAMA_MODEL
+            "summarization.model_name", "qwen2.5:7b-instruct-q4_K_M"
         )
         self._temperature = settings.get_float("summarization.temperature", 0.7)
         self._max_length = settings.get_int("summarization.max_length", 5000)
@@ -106,16 +94,10 @@ class NvidiaProvider:
 
     def __init__(self, settings: Settings) -> None:
         nvidia_timeout = settings.get_int("summarization.timeout", 600)
-        self._model = settings.get("summarization.nvidia_model", DEFAULT_NVIDIA_MODEL)
-        self._max_tokens = settings.get_int(
-            "summarization.nvidia_max_tokens", DEFAULT_NVIDIA_MAX_TOKENS
-        )
-        self._temperature = settings.get_float(
-            "summarization.nvidia_temperature", DEFAULT_NVIDIA_TEMPERATURE
-        )
-        self._top_p = settings.get_float(
-            "summarization.nvidia_top_p", DEFAULT_NVIDIA_TOP_P
-        )
+        self._model = settings.get("summarization.nvidia_model", "openai/gpt-oss-120b")
+        self._max_tokens = settings.get_int("summarization.nvidia_max_tokens", 100000)
+        self._temperature = settings.get_float("summarization.nvidia_temperature", 1.0)
+        self._top_p = settings.get_float("summarization.nvidia_top_p", 1.0)
         self._frequency_penalty = settings.get_float(
             "summarization.nvidia_frequency_penalty", 0.0
         )
@@ -125,7 +107,8 @@ class NvidiaProvider:
 
         self._client = NvidiaClient(
             api_url=settings.get(
-                "summarization.nvidia_api_url", DEFAULT_NVIDIA_API_URL
+                "summarization.nvidia_api_url",
+                "https://integrate.api.nvidia.com/v1/chat/completions",
             ),
             timeout=nvidia_timeout,
         )

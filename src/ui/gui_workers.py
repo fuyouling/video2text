@@ -1,4 +1,4 @@
-"""GUI Worker 线程 —— 使用服务层，支持流式输出、断点续传、单视频即时回调"""
+"""GUI Worker 线程 —— 使用服务层，支持流式输出、断点续传、单文件即时回调"""
 
 import logging
 import sys
@@ -11,12 +11,7 @@ from typing import Optional
 
 from PySide6.QtCore import QObject, Signal
 
-from src.config.settings import (
-    Settings,
-    DEFAULT_OLLAMA_URL,
-    DEFAULT_OLLAMA_TIMEOUT,
-    DEFAULT_OLLAMA_MODEL,
-)
+from src.config.settings import Settings
 from src.preprocessing.video_processor import VideoProcessor
 from src.services.transcription_service import TranscriptionService, TranscribeResult
 from src.services.summarization_service import SummarizationService
@@ -129,7 +124,7 @@ class UiLogHandler(logging.Handler):
 
 
 class TranscribeWorker(QObject):
-    """后台转写线程 —— 每完成一个视频立即通过信号通知 GUI"""
+    """后台转写线程 —— 每完成一个文件立即通过信号通知 GUI"""
 
     # (video_name, segments_count, output_paths)
     video_done = Signal(str, int, list)
@@ -302,7 +297,7 @@ class SummarizeWorker(QObject):
         """单线程模式（Ollama 或 NVIDIA single）"""
         if provider == "ollama":
             ollama_url = self.settings.get(
-                "summarization.ollama_url", DEFAULT_OLLAMA_URL
+                "summarization.ollama_url", "http://127.0.0.1:11434"
             )
             try:
                 OllamaClient.ensure_service(ollama_url)
@@ -559,7 +554,7 @@ class SummarizeWorker(QObject):
             self.progress.emit(idx + 1, total)
 
     def _emit_all_errors(self, msg: str) -> None:
-        """连接失败时为所有视频发射错误信号"""
+        """连接失败时为所有文件发射错误信号"""
         if self._standalone_text:
             self.video_error.emit("(粘贴文本)", msg)
             self.progress.emit(1, 1)
@@ -570,7 +565,7 @@ class SummarizeWorker(QObject):
 
 
 class PipelineWorker(QObject):
-    """转写+总结管道线程 —— 每完成一个视频的转写就自动开始总结"""
+    """转写+总结管道线程 —— 每完成一个文件的转写就自动开始总结"""
 
     transcribe_done = Signal(str, int, list)
     transcribe_error = Signal(str, str)
@@ -657,7 +652,7 @@ class PipelineWorker(QObject):
 
             if provider_name == "ollama":
                 ollama_url = self.settings.get(
-                    "summarization.ollama_url", DEFAULT_OLLAMA_URL
+                    "summarization.ollama_url", "http://127.0.0.1:11434"
                 )
                 try:
                     OllamaClient.ensure_service(ollama_url)

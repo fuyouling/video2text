@@ -64,7 +64,7 @@ class SummarizationService:
 
         Args:
             text: 待总结文本
-            video_name: 视频名称（用于保存结果文件）
+            video_name: 文件名称（用于保存结果文件）
             stream: 是否流式输出
 
         Returns:

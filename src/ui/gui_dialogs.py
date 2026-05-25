@@ -1,5 +1,6 @@
 """GUI 对话框组件"""
 
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -13,19 +14,20 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
-    QListWidget,
-    QListWidgetItem,
     QMessageBox,
     QPushButton,
     QRadioButton,
     QTabWidget,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
-from src.config.settings import Settings, DEFAULT_OLLAMA_URL, DEFAULT_NVIDIA_API_URL
+from src.config.settings import Settings
 from src.summarization.ollama_client import OllamaClient
 from src.ui.gui_workers import (
     NvidiaCheckWorker,
@@ -37,69 +39,264 @@ from src.utils.logger import get_logger
 
 
 class VideoSelectionDialog(QDialog):
-    """视频文件选择对话框"""
+    """媒体文件选择对话框 —— 树形视图 + 批量筛选"""
 
     def __init__(self, video_files: list[str], parent=None) -> None:
         super().__init__(parent)
         self.video_files = video_files
+
+        settings = Settings()
+        self._video_exts: set[str] = set(
+            ext.lower()
+            for ext in settings.get_list("preprocessing.supported_video_formats")
+        )
+        self._audio_exts: set[str] = set(
+            ext.lower()
+            for ext in settings.get_list("preprocessing.supported_audio_formats")
+        )
+
         self._init_ui()
 
     def _init_ui(self) -> None:
-        self.setWindowTitle("选择视频文件")
-        self.resize(600, 500)
+        self.setWindowTitle("选择媒体文件")
+        self.resize(700, 550)
 
         layout = QVBoxLayout(self)
 
-        info_label = QLabel(
-            f"共找到 {len(self.video_files)} 个视频文件，请选择需要处理的文件："
+        self._info_label = QLabel(
+            f"共找到 {len(self.video_files)} 个媒体文件，请选择需要处理的文件："
         )
-        layout.addWidget(info_label)
+        layout.addWidget(self._info_label)
 
-        self.file_list = QListWidget()
-        self.file_list.setSelectionMode(QListWidget.SelectionMode.NoSelection)
-        for file_path in self.video_files:
-            item = QListWidgetItem(Path(file_path).name)
-            item.setData(Qt.ItemDataRole.UserRole, file_path)
-            item.setCheckState(Qt.CheckState.Checked)
-            self.file_list.addItem(item)
-        layout.addWidget(self.file_list)
+        toolbar = QHBoxLayout()
+        only_video_btn = QPushButton("仅视频")
+        only_video_btn.clicked.connect(self._select_only_video)
+        toolbar.addWidget(only_video_btn)
+        only_audio_btn = QPushButton("仅音频")
+        only_audio_btn.clicked.connect(self._select_only_audio)
+        toolbar.addWidget(only_audio_btn)
+        select_all_toolbar_btn = QPushButton("全部")
+        select_all_toolbar_btn.clicked.connect(self._select_all)
+        toolbar.addWidget(select_all_toolbar_btn)
+        toolbar.addSpacing(16)
+        toolbar.addWidget(QLabel("后缀:"))
+        self._suffix_combo = QComboBox()
+        self._suffix_combo.setMinimumWidth(80)
+        toolbar.addWidget(self._suffix_combo)
+        select_suffix_btn = QPushButton("选中该后缀")
+        select_suffix_btn.clicked.connect(self._select_by_suffix)
+        toolbar.addWidget(select_suffix_btn)
+        toolbar.addStretch()
+        layout.addLayout(toolbar)
 
-        button_layout = QHBoxLayout()
+        self._tree = QTreeWidget()
+        self._tree.setHeaderLabels(["文件名", "类型"])
+        self._tree.setSelectionMode(QTreeWidget.SelectionMode.NoSelection)
+        self._tree.setAnimated(True)
+        self._build_tree()
+        self._tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self._tree.header().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.ResizeToContents
+        )
+        self._tree.expandAll()
+        self._tree.itemChanged.connect(self._update_info_label)
+        self._update_info_label()
+        layout.addWidget(self._tree)
+
+        bottom_layout = QHBoxLayout()
         select_all_btn = QPushButton("全选")
         select_all_btn.clicked.connect(self._select_all)
-        button_layout.addWidget(select_all_btn)
+        bottom_layout.addWidget(select_all_btn)
         deselect_all_btn = QPushButton("取消全选")
         deselect_all_btn.clicked.connect(self._deselect_all)
-        button_layout.addWidget(deselect_all_btn)
-        button_layout.addStretch()
-        layout.addLayout(button_layout)
-
-        ok_cancel_layout = QHBoxLayout()
+        bottom_layout.addWidget(deselect_all_btn)
+        bottom_layout.addStretch()
         ok_btn = QPushButton("确定")
         ok_btn.setDefault(True)
         ok_btn.clicked.connect(self.accept)
-        ok_cancel_layout.addWidget(ok_btn)
+        bottom_layout.addWidget(ok_btn)
         cancel_btn = QPushButton("取消")
         cancel_btn.clicked.connect(self.reject)
-        ok_cancel_layout.addWidget(cancel_btn)
-        layout.addLayout(ok_cancel_layout)
+        bottom_layout.addWidget(cancel_btn)
+        layout.addLayout(bottom_layout)
+
+    def _build_tree(self) -> None:
+        self._leaf_items: list[QTreeWidgetItem] = []
+        paths = [Path(f) for f in self.video_files]
+        if not paths:
+            return
+
+        try:
+            common = Path(os.path.commonpath(paths))
+        except ValueError:
+            common = None
+
+        suffix_map: dict[str, str] = {}
+        for p in paths:
+            ext = p.suffix.lower()
+            if ext in self._video_exts:
+                suffix_map[ext] = "视频"
+            elif ext in self._audio_exts:
+                suffix_map[ext] = "音频"
+            else:
+                suffix_map[ext] = "媒体"
+
+        rel_pairs: list[tuple[Path, Path]] = []
+        for p in paths:
+            if common:
+                try:
+                    rel = p.relative_to(common)
+                except ValueError:
+                    rel = p
+            else:
+                rel = p
+            rel_pairs.append((rel, p))
+
+        need_folder = any(rel.parent != Path(".") for rel, _ in rel_pairs)
+
+        if not need_folder:
+            for _, abs_p in sorted(rel_pairs, key=lambda x: x[0].name.lower()):
+                ext = abs_p.suffix.lower()
+                media_type = suffix_map.get(ext, "媒体")
+                icon = (
+                    "🎬"
+                    if media_type == "视频"
+                    else "🎵"
+                    if media_type == "音频"
+                    else "📄"
+                )
+                item = QTreeWidgetItem([f"{icon} {abs_p.name}", media_type])
+                item.setData(0, Qt.ItemDataRole.UserRole, str(abs_p))
+                item.setCheckState(0, Qt.CheckState.Checked)
+                self._tree.addTopLevelItem(item)
+                self._leaf_items.append(item)
+        else:
+            folder_nodes: dict[tuple[str, ...], QTreeWidgetItem] = {}
+            for rel, abs_p in rel_pairs:
+                parts = rel.parent.parts
+                if not parts:
+                    ext = abs_p.suffix.lower()
+                    media_type = suffix_map.get(ext, "媒体")
+                    icon = (
+                        "🎬"
+                        if media_type == "视频"
+                        else "🎵"
+                        if media_type == "音频"
+                        else "📄"
+                    )
+                    item = QTreeWidgetItem([f"{icon} {abs_p.name}", media_type])
+                    item.setData(0, Qt.ItemDataRole.UserRole, str(abs_p))
+                    item.setCheckState(0, Qt.CheckState.Checked)
+                    self._tree.addTopLevelItem(item)
+                    self._leaf_items.append(item)
+                    continue
+                for i in range(len(parts)):
+                    sub_key = parts[: i + 1]
+                    if sub_key not in folder_nodes:
+                        fi = QTreeWidgetItem([f"📁 {parts[i]}", ""])
+                        fi.setFlags(
+                            fi.flags()
+                            | Qt.ItemFlag.ItemIsAutoTristate
+                            | Qt.ItemFlag.ItemIsUserCheckable
+                        )
+                        fi.setCheckState(0, Qt.CheckState.Checked)
+                        if i == 0:
+                            self._tree.addTopLevelItem(fi)
+                        else:
+                            folder_nodes[parts[:i]].addChild(fi)
+                        folder_nodes[sub_key] = fi
+                self._add_file_item(folder_nodes[parts], abs_p, suffix_map)
+
+        present_suffixes = {p.suffix.lower() for p in paths}
+        self._suffix_combo.clear()
+        for ext in sorted(present_suffixes):
+            self._suffix_combo.addItem(ext)
+
+    def _add_file_item(
+        self, parent: QTreeWidgetItem, abs_p: Path, suffix_map: dict
+    ) -> None:
+        ext = abs_p.suffix.lower()
+        media_type = suffix_map.get(ext, "媒体")
+        icon = "🎬" if media_type == "视频" else "🎵" if media_type == "音频" else "📄"
+        item = QTreeWidgetItem([f"{icon} {abs_p.name}", media_type])
+        item.setData(0, Qt.ItemDataRole.UserRole, str(abs_p))
+        item.setCheckState(0, Qt.CheckState.Checked)
+        parent.addChild(item)
+        self._leaf_items.append(item)
+
+    def _iter_leaves(self):
+        yield from self._leaf_items
+
+    def _update_info_label(self) -> None:
+        total = len(self._leaf_items)
+        checked = sum(
+            1
+            for item in self._leaf_items
+            if item.checkState(0) == Qt.CheckState.Checked
+        )
+        self._info_label.setText(f"共找到 {total} 个媒体文件，已选择 {checked} 个：")
+
+    def _select_only_video(self) -> None:
+        self._tree.blockSignals(True)
+        for item in self._iter_leaves():
+            path = item.data(0, Qt.ItemDataRole.UserRole)
+            ext = Path(path).suffix.lower()
+            item.setCheckState(
+                0,
+                Qt.CheckState.Checked
+                if ext in self._video_exts
+                else Qt.CheckState.Unchecked,
+            )
+        self._tree.blockSignals(False)
+        self._update_info_label()
+
+    def _select_only_audio(self) -> None:
+        self._tree.blockSignals(True)
+        for item in self._iter_leaves():
+            path = item.data(0, Qt.ItemDataRole.UserRole)
+            ext = Path(path).suffix.lower()
+            item.setCheckState(
+                0,
+                Qt.CheckState.Checked
+                if ext in self._audio_exts
+                else Qt.CheckState.Unchecked,
+            )
+        self._tree.blockSignals(False)
+        self._update_info_label()
 
     def _select_all(self) -> None:
-        for i in range(self.file_list.count()):
-            item = self.file_list.item(i)
-            item.setCheckState(Qt.CheckState.Checked)
+        self._tree.blockSignals(True)
+        for item in self._iter_leaves():
+            item.setCheckState(0, Qt.CheckState.Checked)
+        self._tree.blockSignals(False)
+        self._update_info_label()
 
     def _deselect_all(self) -> None:
-        for i in range(self.file_list.count()):
-            item = self.file_list.item(i)
-            item.setCheckState(Qt.CheckState.Unchecked)
+        self._tree.blockSignals(True)
+        for item in self._iter_leaves():
+            item.setCheckState(0, Qt.CheckState.Unchecked)
+        self._tree.blockSignals(False)
+        self._update_info_label()
+
+    def _select_by_suffix(self) -> None:
+        target = self._suffix_combo.currentText().strip().lower()
+        if not target:
+            return
+        self._tree.blockSignals(True)
+        for item in self._iter_leaves():
+            path = item.data(0, Qt.ItemDataRole.UserRole)
+            ext = Path(path).suffix.lower()
+            item.setCheckState(
+                0, Qt.CheckState.Checked if ext == target else Qt.CheckState.Unchecked
+            )
+        self._tree.blockSignals(False)
+        self._update_info_label()
 
     def get_selected_files(self) -> list[str]:
         selected: list[str] = []
-        for i in range(self.file_list.count()):
-            item = self.file_list.item(i)
-            if item.checkState() == Qt.CheckState.Checked:
-                selected.append(item.data(Qt.ItemDataRole.UserRole))
+        for item in self._iter_leaves():
+            if item.checkState(0) == Qt.CheckState.Checked:
+                selected.append(item.data(0, Qt.ItemDataRole.UserRole))
         return selected
 
 
@@ -147,6 +344,7 @@ _KEY_LABELS: dict[str, str] = {
     "preprocessing.audio_channels": "音频声道数",
     "preprocessing.max_chunk_duration": "最大分段时长",
     "preprocessing.supported_video_formats": "支持的视频格式",
+    "preprocessing.supported_audio_formats": "支持的音频格式",
     "output.output_dir": "输出目录",
     "output.transcript_format": "转写格式",
     "output.summary_format": "摘要格式",
@@ -261,7 +459,7 @@ class ConfigEditorDialog(QDialog):
 
         ollama_items = {
             "ollama_url": self.settings.get(
-                "summarization.ollama_url", DEFAULT_OLLAMA_URL
+                "summarization.ollama_url", "http://127.0.0.1:11434"
             ),
             "model_name": self.settings.get("summarization.model_name", ""),
             "max_length": self.settings.get("summarization.max_length", "5000"),
@@ -289,7 +487,8 @@ class ConfigEditorDialog(QDialog):
 
         nvidia_items = {
             "nvidia_api_url": self.settings.get(
-                "summarization.nvidia_api_url", DEFAULT_NVIDIA_API_URL
+                "summarization.nvidia_api_url",
+                "https://integrate.api.nvidia.com/v1/chat/completions",
             ),
             "nvidia_model": self.settings.get(
                 "summarization.nvidia_model", "openai/gpt-oss-120b"
@@ -395,7 +594,11 @@ class ConfigEditorDialog(QDialog):
         """测试 NVIDIA API 连接"""
         edits = self._edits.get("summarization", {})
         api_url = edits.get("nvidia_api_url")
-        url = api_url.text().strip() if api_url else DEFAULT_NVIDIA_API_URL
+        url = (
+            api_url.text().strip()
+            if api_url
+            else "https://integrate.api.nvidia.com/v1/chat/completions"
+        )
         model_edit = edits.get("nvidia_model")
         model = model_edit.text().strip() if model_edit else ""
 
@@ -532,8 +735,8 @@ class ConfigEditorDialog(QDialog):
         edits = self._edits.get("summarization", {})
         url_edit = edits.get("ollama_url")
         if url_edit is not None:
-            return url_edit.text().strip() or DEFAULT_OLLAMA_URL
-        return DEFAULT_OLLAMA_URL
+            return url_edit.text().strip() or "http://127.0.0.1:11434"
+        return "http://127.0.0.1:11434"
 
     def _set_ollama_status(self, text: str, color: str) -> None:
         self._ollama_status_label.setText(text)

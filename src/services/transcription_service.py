@@ -28,7 +28,7 @@ else:
 
 @dataclass
 class TranscribeResult:
-    """单个视频的转写结果"""
+    """单个媒体的转写结果"""
 
     video_name: str
     segments: List[TranscriptSegment]
@@ -39,11 +39,11 @@ class TranscriptionService:
     """转写服务 —— 统一 CLI / GUI 的转写逻辑
 
     主要职责：
-    1. 验证视频 → 提取音频 → 切片（长视频）→ 转写 → 保存结果
+    1. 验证媒体 → 提取音频 → 切片（长音频）→ 转写 → 保存结果
     2. 支持断点续传：长音频切片转写时，将已完成的切片结果持久化到
        ``<output_dir>/.checkpoint/<video_name>_chunks.json``，
        重新运行时自动跳过已完成的切片。
-    3. 每完成一个视频立即通过回调通知调用方（用于 GUI 实时刷新）。
+    3. 每完成一个文件立即通过回调通知调用方（用于 GUI 实时刷新）。
     4. 支持暂停/继续：通过 pause()/resume() 控制，暂停期间阻塞当前转写切片。
     """
 
@@ -113,14 +113,14 @@ class TranscriptionService:
     # ------------------------------------------------------------------
 
     def run(self, video_files: List[str], output_dir: str) -> List[TranscribeResult]:
-        """批量转写多个视频，每完成一个视频立即回调 & 保存结果。
+        """批量转写多个文件，每完成一个文件立即回调 & 保存结果。
 
         Args:
-            video_files: 视频文件路径列表
+            video_files: 文件路径列表
             output_dir: 输出目录
 
         Returns:
-            所有视频的转写结果列表
+            所有文件的转写结果列表
         """
         self._checkpoint_dir = Path(output_dir) / ".checkpoint"
         self._checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -171,15 +171,15 @@ class TranscriptionService:
     # ------------------------------------------------------------------
 
     def _transcribe_single(self, video_path: str, output_dir: str) -> TranscribeResult:
-        """转写单个视频。"""
+        """转写单个文件。"""
         video_name = Path(video_path).stem
         temp_audio = Path(output_dir) / f"temp_{video_name}.wav"
 
         try:
-            with log_step(f"视频校验 ({video_name})"):
+            with log_step(f"媒体校验 ({video_name})"):
                 self.video_processor.validate_video(video_path)
                 video_info = self.video_processor.get_video_info(video_path)
-                self._log(f"视频时长: {video_info.duration:.2f} 秒")
+                self._log(f"媒体时长: {video_info.duration:.2f} 秒")
 
             with log_step(f"音频提取 ({video_name})"):
                 self.video_processor.extract_audio(
@@ -191,7 +191,7 @@ class TranscriptionService:
                 )
 
             if video_info.duration > self.max_chunk_duration:
-                with log_step(f"长视频切片转写 ({video_name})"):
+                with log_step(f"长音频切片转写 ({video_name})"):
                     segments = self._transcribe_chunked(
                         temp_audio, video_name, video_path, output_dir
                     )

@@ -11,13 +11,6 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
-from src.config.settings import (
-    DEFAULT_NVIDIA_API_URL,
-    DEFAULT_NVIDIA_MODEL,
-    DEFAULT_NVIDIA_MAX_TOKENS,
-    DEFAULT_NVIDIA_TEMPERATURE,
-    DEFAULT_NVIDIA_TOP_P,
-)
 from src.utils.exceptions import SummarizationError
 from src.utils.logger import get_logger
 
@@ -29,7 +22,7 @@ class NvidiaClient:
 
     def __init__(
         self,
-        api_url: str = DEFAULT_NVIDIA_API_URL,
+        api_url: str = "https://integrate.api.nvidia.com/v1/chat/completions",
         api_key: Optional[str] = None,
         timeout: int = 600,
     ):
@@ -63,7 +56,7 @@ class NvidiaClient:
 
         try:
             payload = {
-                "model": DEFAULT_NVIDIA_MODEL,
+                "model": "openai/gpt-oss-120b",
                 "messages": [{"role": "user", "content": "hi"}],
                 "max_tokens": 1,
                 "temperature": 1.0,
@@ -82,11 +75,11 @@ class NvidiaClient:
 
     def generate(
         self,
-        model: str = DEFAULT_NVIDIA_MODEL,
+        model: str = "openai/gpt-oss-120b",
         prompt: str = "",
-        temperature: float = DEFAULT_NVIDIA_TEMPERATURE,
-        max_tokens: int = DEFAULT_NVIDIA_MAX_TOKENS,
-        top_p: float = DEFAULT_NVIDIA_TOP_P,
+        temperature: float = 1.0,
+        max_tokens: int = 100000,
+        top_p: float = 1.0,
         frequency_penalty: float = 0.0,
         presence_penalty: float = 0.0,
         stream: bool = False,

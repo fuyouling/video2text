@@ -8,7 +8,6 @@ import requests
 import json as _json
 import time
 from typing import Callable, List, Optional
-from src.config.settings import DEFAULT_OLLAMA_URL, DEFAULT_OLLAMA_TIMEOUT
 from src.utils.exceptions import SummarizationError
 from src.utils.logger import get_logger
 
@@ -21,9 +20,7 @@ class OllamaClient:
     # 类级别进程引用，所有实例共享同一个 Ollama 服务进程
     _service_process: Optional[subprocess.Popen] = None
 
-    def __init__(
-        self, base_url: str = DEFAULT_OLLAMA_URL, timeout: int = DEFAULT_OLLAMA_TIMEOUT
-    ):
+    def __init__(self, base_url: str = "http://127.0.0.1:11434", timeout: int = 300):
         """初始化Ollama客户端
 
         Args:
@@ -53,7 +50,7 @@ class OllamaClient:
     # ------------------------------------------------------------------
 
     @classmethod
-    def start_service(cls, url: str = DEFAULT_OLLAMA_URL) -> bool:
+    def start_service(cls, url: str = "http://127.0.0.1:11434") -> bool:
         """启动 Ollama 服务进程（如果尚未运行）。
 
         如果 Ollama 已在外部启动（例如用户手动运行了 ``ollama serve``），
@@ -136,7 +133,7 @@ class OllamaClient:
         logger.info("Ollama 服务进程已停止 (PID: %s)", pid)
 
     @classmethod
-    def is_service_running(cls, url: str = DEFAULT_OLLAMA_URL) -> bool:
+    def is_service_running(cls, url: str = "http://127.0.0.1:11434") -> bool:
         """检查 Ollama 服务是否正在运行（通过 HTTP 探测）。
 
         Args:
@@ -154,7 +151,7 @@ class OllamaClient:
     @classmethod
     def ensure_service(
         cls,
-        url: str = DEFAULT_OLLAMA_URL,
+        url: str = "http://127.0.0.1:11434",
         max_retries: int = 3,
         wait_seconds: float = 5,
     ) -> bool:

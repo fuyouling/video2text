@@ -730,7 +730,7 @@ class ResultViewerWindow(QMainWindow):
     # ─── 文件加载与过滤 ────────────────────────────────────────
 
     def load_files(self, video_names: list[str], output_dir: str):
-        """加载多个视频文件"""
+        """加载多个文件"""
         self._output_dir = output_dir
         self._root_output_dir = output_dir
         self._flat_video_names = sorted(video_names, key=lambda x: x.lower())
@@ -955,7 +955,7 @@ class ResultViewerWindow(QMainWindow):
             item.addChild(child)
 
     def _update_folder_counts(self, item: QTreeWidgetItem):
-        """递归更新文件夹节点名称，后缀显示直接子视频数量"""
+        """递归更新文件夹节点名称，后缀显示直接子文件数量"""
         video_count = sum(
             1
             for i in range(item.childCount())
@@ -990,7 +990,7 @@ class ResultViewerWindow(QMainWindow):
         return None
 
     def load_content(self, video_name: str, output_dir: str):
-        """加载指定视频的转写和摘要内容"""
+        """加载指定文件的转写和摘要内容"""
         self._current_video_name = video_name
         self._output_dir = output_dir
 
@@ -1867,7 +1867,7 @@ class ResultViewerWindow(QMainWindow):
         type_labels = {"transcript": "转写", "summary": "摘要"}
         type_label = type_labels.get(bookmark.content_type, bookmark.content_type)
         info = (
-            f"视频: {bookmark.video_name}\n"
+            f"文件: {bookmark.video_name}\n"
             f"类型: {type_label}\n"
             f"位置: {bookmark.position}\n"
             f"预览: {bookmark.text}"

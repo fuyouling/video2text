@@ -1,6 +1,7 @@
-"""Video2Text GUI —— 基于 PySide6 的视频转文本图形界面"""
+"""Video2Text GUI —— 基于 PySide6 的媒体转文本图形界面"""
 
 import logging
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -9,12 +10,13 @@ from typing import Optional
 from PySide6.QtCore import QEvent, Qt, QThread, QTimer
 from PySide6.QtGui import (
     QAction,
+    QCloseEvent,
     QColor,
     QFont,
     QIcon,
     QKeySequence,
+    QTextCharFormat,
     QTextCursor,
-    QCloseEvent,
 )
 from PySide6.QtWidgets import (
     QApplication,
@@ -58,26 +60,6 @@ from src.ui.result_viewer import ResultViewerWindow, _find_summary_path
 from src.transcription.transcriber import _model_cache as _transcriber_cache
 from src.utils.logger import get_logger
 
-SUPPORTED_VIDEO_EXTENSIONS = {
-    ".mp4",
-    ".avi",
-    ".mov",
-    ".mkv",
-    ".flv",
-    ".wmv",
-    ".webm",
-    ".ts",
-    ".mts",
-    ".m4v",
-    ".3gp",
-    ".mpeg",
-    ".mpg",
-    ".vob",
-    ".ogv",
-    ".rm",
-    ".rmvb",
-}
-
 if getattr(sys, "frozen", False):
     _PROJECT_ROOT = Path(sys.executable).parent
 else:
@@ -86,11 +68,13 @@ _DEFAULT_OUTPUT_DIR = str(_PROJECT_ROOT / "output")
 
 _BTN_MIN_WIDTH = 100
 
-_VIDEO_FILTER_STR = (
-    "视频文件 ("
-    + " ".join(f"*{ext}" for ext in sorted(SUPPORTED_VIDEO_EXTENSIONS))
-    + ");;所有文件 (*.*)"
-)
+_LOG_COLOR_RULES = [
+    (re.compile(r"失败|错误|异常|✘"), QColor("#F44336")),
+    (re.compile(r"成功|完成|✔"), QColor("#4CAF50")),
+    (re.compile(r"回退|降级|重试|不完整|超时"), QColor("#FF9800")),
+    (re.compile(r"正在|开始|加载|▶"), QColor("#2196F3")),
+    (re.compile(r"\[\d+/\d+\]"), QColor("#00BCD4")),
+]
 
 
 class MainWindow(QMainWindow):
@@ -100,6 +84,15 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.settings = Settings()
         self.prompt_manager = PromptManager()
+        self._video_exts = set(
+            ext.lower()
+            for ext in self.settings.get_list("preprocessing.supported_video_formats")
+        )
+        self._audio_exts = set(
+            ext.lower()
+            for ext in self.settings.get_list("preprocessing.supported_audio_formats")
+        )
+        self._media_exts = self._video_exts | self._audio_exts
         self._video_files: list[str] = []
         self._completed_names: set[str] = set()
         self._worker_thread: Optional[QThread] = None
@@ -140,24 +133,43 @@ class MainWindow(QMainWindow):
 
     _MAX_LOG_BLOCKS = 5000
 
+    def _get_log_color(self, msg: str) -> QColor | None:
+        for pattern, color in _LOG_COLOR_RULES:
+            if pattern.search(msg):
+                return color
+        return None
+
     def _append_log(self, msg: str) -> None:
-        self.log_text.append(msg)
+        cursor = self.log_text.textCursor()
+        cursor.movePosition(QTextCursor.End)
+
+        color = self._get_log_color(msg)
+        if color:
+            fmt = QTextCharFormat()
+            fmt.setForeground(color)
+            cursor.setCharFormat(fmt)
+
+        cursor.insertText(msg + "\n")
+
+        if color:
+            cursor.setCharFormat(QTextCharFormat())
+
+        self.log_text.setTextCursor(cursor)
+        self.log_text.ensureCursorVisible()
+
         doc = self.log_text.document()
         if doc.blockCount() > self._MAX_LOG_BLOCKS:
-            cursor = QTextCursor(doc)
-            cursor.movePosition(QTextCursor.Start)
-            cursor.movePosition(
+            trim_cursor = QTextCursor(doc)
+            trim_cursor.movePosition(QTextCursor.Start)
+            trim_cursor.movePosition(
                 QTextCursor.Down,
                 QTextCursor.KeepAnchor,
                 doc.blockCount() - self._MAX_LOG_BLOCKS,
             )
-            cursor.removeSelectedText()
-        cursor = self.log_text.textCursor()
-        cursor.movePosition(QTextCursor.End)
-        self.log_text.setTextCursor(cursor)
+            trim_cursor.removeSelectedText()
 
     def _init_ui(self) -> None:
-        self.setWindowTitle("Video2Text - 视频转文本工具")
+        self.setWindowTitle("Video2Text - 媒体转文本工具")
         self.resize(1200, 800)
 
         icon_path = (
@@ -186,7 +198,7 @@ class MainWindow(QMainWindow):
         input_row.addWidget(QLabel("输入:"))
         self.input_combo = QComboBox()
         self.input_combo.setEditable(True)
-        self.input_combo.setPlaceholderText("请选择视频文件或文件夹…")
+        self.input_combo.setPlaceholderText("请选择视频/音频文件或文件夹…")
         self.input_combo.setMinimumWidth(300)
         self.input_combo.view().viewport().installEventFilter(self)
         self.input_combo.activated.connect(self._on_input_combo_activated)
@@ -294,7 +306,9 @@ class MainWindow(QMainWindow):
         self.result_tabs.addTab(self.transcript_view, "文本内容")
         self.summary_view = QTextEdit()
         self.summary_view.setFont(QFont("Consolas", 9))
-        self.summary_view.setPlaceholderText("摘要结果，可直接编辑修改，Ctrl+S 保存，Ctrl+F 查找替换。")
+        self.summary_view.setPlaceholderText(
+            "摘要结果，可直接编辑修改，Ctrl+S 保存，Ctrl+F 查找替换。"
+        )
         self.result_tabs.addTab(self.summary_view, "摘要")
         self.result_tabs.currentChanged.connect(self._on_tab_changed)
         content_layout.addWidget(self.result_tabs, 3)
@@ -393,7 +407,7 @@ class MainWindow(QMainWindow):
             "关于 Video2Text",
             f"<h3>Video2Text</h3>"
             f"<p>版本: {APP_VERSION}</p>"
-            f"<p>视频转文本工具 —— 基于 faster-whisper的视频转写工具</p>"
+            f"<p>媒体转文本工具 —— 基于 faster-whisper的媒体转写工具</p>"
             f"<p>技术栈: faster-whisper · Ollama · PySide6</p>"
             f"<p>许可证: GNU GPL v3</p>"
             f"<p>作者: 喵王龙</p>"
@@ -523,14 +537,16 @@ class MainWindow(QMainWindow):
                 "文本内容 —— 可直接编辑，编辑后点击右键「重新总结」将文本进行摘要，Ctrl+S 保存，Ctrl+F 查找替换"
             )
         elif index == 1:
-            self.status_bar.showMessage("摘要结果 —— 可直接编辑修改，Ctrl+S 保存，Ctrl+F 查找替换")
+            self.status_bar.showMessage(
+                "摘要结果 —— 可直接编辑修改，Ctrl+S 保存，Ctrl+F 查找替换"
+            )
         if self._search_widget.isVisible() and self._search_input.text():
             self._find_all_matches()
 
     def _save_transcript(self) -> None:
         """保存当前活动标签页的内容到文件（根据配置的输出格式自动匹配）"""
         if not self._current_video_name:
-            self.status_bar.showMessage("没有选中的视频，无法保存", 3000)
+            self.status_bar.showMessage("没有选中的文件，无法保存", 3000)
             return
         output_dir = self.output_combo.currentText().strip() or _DEFAULT_OUTPUT_DIR
         current_tab = self.result_tabs.currentIndex()
@@ -834,10 +850,8 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def _extract_dir_from_input(text: str) -> str:
-        """从输入框文本中提取纯目录路径，去掉 '(已选择 N 个视频)' 等后缀"""
-        import re
-
-        m = re.match(r"^(.+?)\s*\(已选择\s+\d+\s*个视频\)\s*$", text)
+        """从输入框文本中提取纯目录路径，去掉 '(已选择 N 个文件)' 等后缀"""
+        m = re.match(r"^(.+?)\s*\(已选择\s+\d+\s*个文件\)\s*$", text)
         if m:
             return m.group(1).strip()
         return text.strip()
@@ -962,12 +976,19 @@ class MainWindow(QMainWindow):
 
     # ── input selection slots ──
 
+    def _get_media_filter_str(self) -> str:
+        return (
+            "媒体文件 ("
+            + " ".join(f"*{ext}" for ext in sorted(self._media_exts))
+            + ");;所有文件 (*.*)"
+        )
+
     def _select_input_files(self) -> None:
         paths, _ = QFileDialog.getOpenFileNames(
             self,
-            "选择视频文件",
+            "选择媒体文件",
             "",
-            _VIDEO_FILTER_STR,
+            self._get_media_filter_str(),
         )
         if paths:
             if len(paths) == 1:
@@ -979,12 +1000,12 @@ class MainWindow(QMainWindow):
             self.output_combo.setCurrentText(str(_PROJECT_ROOT / "output" / last_dir))
 
     def _select_input_folder(self) -> None:
-        folder = QFileDialog.getExistingDirectory(self, "选择视频文件夹")
+        folder = QFileDialog.getExistingDirectory(self, "选择媒体文件夹")
         if folder:
             video_files = self._scan_video_files(folder)
             if not video_files:
                 QMessageBox.information(
-                    self, "提示", "该文件夹及其子目录中未找到支持的视频文件"
+                    self, "提示", "该文件夹及其子目录中未找到支持的媒体文件"
                 )
                 return
 
@@ -993,7 +1014,7 @@ class MainWindow(QMainWindow):
                 selected_files = dialog.get_selected_files()
                 if selected_files:
                     self.input_combo.setCurrentText(
-                        f"{folder} (已选择 {len(selected_files)} 个视频)"
+                        f"{folder} (已选择 {len(selected_files)} 个文件)"
                     )
                     self._video_files = selected_files
                     last_dir = Path(folder).name
@@ -1001,7 +1022,7 @@ class MainWindow(QMainWindow):
                         str(_PROJECT_ROOT / "output" / last_dir)
                     )
                 else:
-                    QMessageBox.information(self, "提示", "未选择任何视频文件")
+                    QMessageBox.information(self, "提示", "未选择任何文件")
 
     def _on_input_combo_activated(self, index: int) -> None:
         """从下拉框选择常用目录时，自动执行对应的选择文件/文件夹逻辑"""
@@ -1020,7 +1041,7 @@ class MainWindow(QMainWindow):
             video_files = self._scan_video_files(str(path))
             if not video_files:
                 QMessageBox.information(
-                    self, "提示", "该文件夹及其子目录中未找到支持的视频文件"
+                    self, "提示", "该文件夹及其子目录中未找到支持的媒体文件"
                 )
                 return
 
@@ -1030,7 +1051,7 @@ class MainWindow(QMainWindow):
                 if selected_files:
                     self.input_combo.setItemText(
                         index,
-                        f"{path} (已选择 {len(selected_files)} 个视频)",
+                        f"{path} (已选择 {len(selected_files)} 个文件)",
                     )
                     self._video_files = selected_files
                     last_dir = path.name
@@ -1038,14 +1059,13 @@ class MainWindow(QMainWindow):
                         str(_PROJECT_ROOT / "output" / last_dir)
                     )
                 else:
-                    QMessageBox.information(self, "提示", "未选择任何视频文件")
+                    QMessageBox.information(self, "提示", "未选择任何文件")
 
-    @staticmethod
-    def _scan_video_files(folder: str) -> list[str]:
+    def _scan_video_files(self, folder: str) -> list[str]:
         folder_path = Path(folder)
         files: list[str] = []
         seen: set[str] = set()
-        for ext in SUPPORTED_VIDEO_EXTENSIONS:
+        for ext in self._media_exts:
             for f in folder_path.rglob(f"*{ext}"):
                 if f.is_file() and str(f) not in seen:
                     seen.add(str(f))
@@ -1193,7 +1213,7 @@ class MainWindow(QMainWindow):
 
     def _on_transcribe(self) -> None:
         if not self._video_files:
-            QMessageBox.warning(self, "提示", "请先选择输入视频文件或文件夹。")
+            QMessageBox.warning(self, "提示", "请先选择输入文件或文件夹。")
             return
 
         output_dir = self._get_output_dir()
@@ -1227,7 +1247,7 @@ class MainWindow(QMainWindow):
     def _on_single_video_transcribed(
         self, video_name: str, segments_count: int, output_paths: list
     ) -> None:
-        """单个视频转写完成 —— 立即更新 GUI"""
+        """单个文件转写完成 —— 立即更新 GUI"""
         self._tx_success += 1
         self._current_video_name = video_name
         if video_name not in self._completed_names:
@@ -1244,7 +1264,7 @@ class MainWindow(QMainWindow):
         )
 
     def _load_transcript_content(self, video_name: str) -> None:
-        """加载指定视频的转写文本到编辑区"""
+        """加载指定文件的转写文本到编辑区"""
         output_dir = self.output_combo.currentText().strip() or _DEFAULT_OUTPUT_DIR
         transcript_path = None
         for ext in ("txt", "srt", "vtt", "json"):
@@ -1264,7 +1284,7 @@ class MainWindow(QMainWindow):
             )
 
     def _on_transcribe_error(self, video_name: str, error_msg: str) -> None:
-        """单个视频转写失败"""
+        """单个文件转写失败"""
         self._tx_fail += 1
         self._fail_records.append((video_name, "转写", error_msg))
         self.status_bar.showMessage(f"转写失败: {video_name} — {error_msg}", 5000)
@@ -1289,7 +1309,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(
                 self,
                 "提示",
-                "请先选择视频文件或文件夹，并完成转写后再进行总结。\n"
+                "请先选择文件或文件夹，并完成转写后再进行总结。\n"
                 "或在「文本内容」标签页中粘贴文本后点击「仅总结」。",
             )
             return
@@ -1336,7 +1356,7 @@ class MainWindow(QMainWindow):
         self._start_worker(thread, worker)
 
     def _summarize_standalone(self, text: str, output_dir: str) -> None:
-        """独立文本总结（不依赖视频文件列表）"""
+        """独立文本总结（不依赖文件列表）"""
         self._current_mode = "summarize"
         self._reset_counters()
         self._update_multi_thread_flag()
@@ -1375,12 +1395,12 @@ class MainWindow(QMainWindow):
         self.summary_view.insertPlainText(token)
 
     def _on_summarize_started(self, video_name: str) -> None:
-        """开始总结新视频时清空摘要区（多线程模式下不清空）"""
+        """开始总结新文件时清空摘要区（多线程模式下不清空）"""
         if not self._is_multi_thread:
             self.summary_view.clear()
 
     def _on_single_video_summarized(self, video_name: str, summary: str) -> None:
-        """单个视频总结完成"""
+        """单个文件总结完成"""
         self._sum_success += 1
         if video_name not in self._completed_names:
             self._completed_names.add(video_name)
@@ -1394,7 +1414,7 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage(f"总结完成: {video_name}", 5000)
 
     def _on_summarize_error(self, video_name: str, error_msg: str) -> None:
-        """单个视频总结失败"""
+        """单个文件总结失败"""
         self._sum_fail += 1
         self._fail_records.append((video_name, "总结", error_msg))
         self.status_bar.showMessage(f"总结失败: {video_name} — {error_msg}", 5000)
@@ -1403,7 +1423,7 @@ class MainWindow(QMainWindow):
 
     def _on_pipeline(self) -> None:
         if not self._video_files:
-            QMessageBox.warning(self, "提示", "请先选择输入视频文件或文件夹。")
+            QMessageBox.warning(self, "提示", "请先选择输入文件或文件夹。")
             return
 
         output_dir = self._get_output_dir()
@@ -1554,7 +1574,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(
                 self,
                 "提示",
-                f"未找到原始视频文件: {video_name}\n请先在主界面加载包含该视频的文件或文件夹。",
+                f"未找到原始文件: {video_name}\n请先在主界面加载包含该文件的目录。",
             )
             return
 

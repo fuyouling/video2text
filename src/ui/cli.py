@@ -11,7 +11,6 @@ from rich.panel import Panel
 from src.config.settings import (
     Settings,
     APP_VERSION,
-    DEFAULT_OLLAMA_MODEL,
 )
 from src.preprocessing.video_processor import VideoProcessor
 from src.services.transcription_service import TranscriptionService
@@ -29,7 +28,7 @@ from src.utils.exceptions import (
 from src.utils.logger import setup_logger, get_logger
 from src.utils.validators import validate_executable_path
 
-app = typer.Typer(help="Video2Text - 视频转文本工具")
+app = typer.Typer(help="Video2Text - 媒体转文本工具")
 console = Console()
 
 SUPPORTED_TRANSCRIPT_FORMATS = {"txt", "srt", "vtt", "json"}
@@ -94,7 +93,7 @@ def _init_common(
 
 @app.command()
 def transcribe(
-    input_path: str = typer.Argument(..., help="视频文件路径"),
+    input_path: str = typer.Argument(..., help="媒体文件路径（视频或音频）"),
     output_dir: Optional[str] = typer.Option(
         None, "--output-dir", "-o", help="输出目录"
     ),
@@ -107,7 +106,7 @@ def transcribe(
     temperature: Optional[float] = typer.Option(None, "--temperature", help="温度参数"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="详细输出"),
 ):
-    """转写视频为文本"""
+    """转写媒体为文本"""
     try:
         settings = get_settings()
 
@@ -267,7 +266,7 @@ def summarize(
 
 @app.command()
 def run_pipeline(
-    input_path: str = typer.Argument(..., help="视频文件路径"),
+    input_path: str = typer.Argument(..., help="媒体文件路径（视频或音频）"),
     output_dir: Optional[str] = typer.Option(
         None, "--output-dir", "-o", help="输出目录"
     ),
@@ -301,7 +300,7 @@ def run_pipeline(
             "transcription.model_path", "large-v3"
         )
         summarization_model = summarization_model or settings.get(
-            "summarization.model_name", DEFAULT_OLLAMA_MODEL
+            "summarization.model_name", "qwen2.5:7b-instruct-q4_K_M"
         )
         settings.set("summarization.model_name", summarization_model)
         device = device or settings.get("transcription.device", "auto")
@@ -458,8 +457,8 @@ def help_command():
     commands = [
         {
             "name": "transcribe",
-            "description": "转写视频为文本",
-            "usage": "video2text transcribe <视频文件路径> [选项]",
+            "description": "转写媒体为文本",
+            "usage": "video2text transcribe <媒体文件路径> [选项]",
             "options": [
                 ("--output-dir, -o", "输出目录"),
                 ("--language, -l", "语言代码 (如: zh, en, auto)"),
@@ -476,7 +475,7 @@ def help_command():
             "usage": "video2text summarize <转写文本文件路径> [选项]",
             "options": [
                 ("--output-dir, -o", "输出目录"),
-                ("--model, -m", f"总结模型 (如: {DEFAULT_OLLAMA_MODEL})"),
+                ("--model, -m", "总结模型 (如: qwen2.5:7b-instruct-q4_K_M)"),
                 ("--max-length", "最大长度"),
                 ("--temperature", "温度参数"),
                 ("--verbose, -v", "详细输出"),
@@ -485,7 +484,7 @@ def help_command():
         {
             "name": "run-pipeline",
             "description": "运行完整处理管道（转写+总结）",
-            "usage": "video2text run-pipeline <视频文件路径> [选项]",
+            "usage": "video2text run-pipeline <媒体文件路径> [选项]",
             "options": [
                 ("--output-dir, -o", "输出目录"),
                 ("--language, -l", "语言代码"),
