@@ -163,12 +163,6 @@ def main():
         shutil.copy2(config_src, portable_dir / "config.ini")
         log("  Copied: config.ini", "green")
 
-    # Copy prompts.json
-    prompts_src = root / "prompts.json"
-    if prompts_src.exists():
-        shutil.copy2(prompts_src, portable_dir / "prompts.json")
-        log("  Copied: prompts.json", "green")
-
     # Create README
     readme_text = """\
 Video2Text Portable Version - User Manual

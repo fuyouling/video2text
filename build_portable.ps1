@@ -139,12 +139,6 @@ if (Test-Path "config.ini") {
     Write-Host "  Copied: config.ini" -ForegroundColor Green
 }
 
-# Copy prompts.json if exists
-if (Test-Path "prompts.json") {
-    Copy-Item -Force "prompts.json" "$portableDir\"
-    Write-Host "  Copied: prompts.json" -ForegroundColor Green
-}
-
 # Create README
 $readme = @"
 Video2Text Portable Version - User Manual
