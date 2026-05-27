@@ -70,7 +70,7 @@ class VideoSelectionDialog(QDialog):
             | Qt.WindowType.WindowMinMaxButtonsHint
             | Qt.WindowType.WindowMaximizeButtonHint
         )
-        self.resize(700, 550)
+        self.resize(1000, 600)
 
         layout = QVBoxLayout(self)
 
