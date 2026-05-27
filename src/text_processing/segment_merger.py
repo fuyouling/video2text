@@ -54,7 +54,7 @@ class SegmentMerger:
         if not segments:
             return []
 
-        logger.info("开始%s，原始段落数: %d", label, len(segments))
+        logger.debug("开始%s，原始段落数: %d", label, len(segments))
 
         merged: List[MergedSegment] = []
         current: Optional[MergedSegment] = None
@@ -82,7 +82,7 @@ class SegmentMerger:
         if current:
             merged.append(current)
 
-        logger.info("%s完成，合并后段落数: %d", label, len(merged))
+        logger.debug("%s完成，合并后段落数: %d", label, len(merged))
         return merged
 
     def merge_segments(self, segments: List[TranscriptSegment]) -> List[MergedSegment]:
@@ -156,7 +156,7 @@ class SegmentMerger:
         threshold = min_length if min_length is not None else self.min_length
         filtered = [seg for seg in segments if len(seg.text.strip()) >= threshold]
 
-        logger.info(f"过滤短段落，保留: {len(filtered)}/{len(segments)}")
+        logger.info("过滤短段落，保留: %d/%d", len(filtered), len(segments))
         return filtered
 
     def format_segments_as_text(

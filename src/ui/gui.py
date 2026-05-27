@@ -20,6 +20,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QGroupBox,
@@ -47,6 +48,7 @@ from src.config.settings import (
     Settings,
     APP_VERSION,
 )
+from src.storage.file_writer import FileWriter
 from src.summarization.ollama_client import OllamaClient
 from src.ui.gui_dialogs import ConfigEditorDialog, VideoSelectionDialog
 from src.ui.gui_workers import (
@@ -60,6 +62,8 @@ from src.ui.result_viewer import ResultViewerWindow, _find_summary_path
 from src.transcription.transcriber import _model_cache as _transcriber_cache
 from src.utils.logger import get_logger
 
+logger = get_logger(__name__)
+
 if getattr(sys, "frozen", False):
     _PROJECT_ROOT = Path(sys.executable).parent
 else:
@@ -69,9 +73,9 @@ _DEFAULT_OUTPUT_DIR = str(_PROJECT_ROOT / "output")
 _BTN_MIN_WIDTH = 100
 
 _LOG_COLOR_RULES = [
-    (re.compile(r"失败|错误|异常|✘"), QColor("#F44336")),
-    (re.compile(r"成功|完成|✔"), QColor("#4CAF50")),
-    (re.compile(r"回退|降级|重试|不完整|超时"), QColor("#FF9800")),
+    (re.compile(r"失败|错误|异常|✘|✗"), QColor("#F44336")),
+    (re.compile(r"成功|完成|✔|✓"), QColor("#4CAF50")),
+    (re.compile(r"回退|降级|重试|不完整|超时|⚠|⏸|⏳"), QColor("#FF9800")),
     (re.compile(r"正在|开始|加载|▶"), QColor("#2196F3")),
     (re.compile(r"\[\d+/\d+\]"), QColor("#00BCD4")),
 ]
@@ -143,20 +147,82 @@ class MainWindow(QMainWindow):
         cursor = self.log_text.textCursor()
         cursor.movePosition(QTextCursor.End)
 
-        color = self._get_log_color(msg)
+        m_tag = re.match(r"^(\[[\u4e00-\u9fa5\d/]+\])(.*)$", msg)
+        m_tag_step = re.match(r"^(\[\d+/\d+\])(.*?)( ✓| ✗)(.*)$", msg)
+        m_step = re.match(r"^(  [├└]─ )(.+?)( ✓| ✗)(.*)$", msg)
+        m_prog = re.match(r"^(  [├└]─ )(.+?)( …)(.*)$", msg)
+        m_state = re.match(r"^(  [├└]─ )(⏸|▶)(.*)$", msg)
+
+        if m_tag_step:
+            self._insert_colored(cursor, m_tag_step.group(1), QColor("#00BCD4"))
+            self._insert_colored(cursor, m_tag_step.group(2))
+            ok = "✓" in m_tag_step.group(3)
+            self._insert_colored(
+                cursor,
+                m_tag_step.group(3),
+                QColor("#4CAF50") if ok else QColor("#F44336"),
+            )
+            self._insert_colored(cursor, m_tag_step.group(4), QColor("#757575"))
+        elif m_tag:
+            self._insert_colored(cursor, m_tag.group(1), QColor("#9C27B0"))
+            self._insert_colored(cursor, m_tag.group(2))
+        elif m_step:
+            self._insert_colored(cursor, m_step.group(1), QColor("#9E9E9E"))
+            self._insert_colored(cursor, m_step.group(2))
+            ok = "✓" in m_step.group(3)
+            self._insert_colored(
+                cursor,
+                m_step.group(3),
+                QColor("#4CAF50") if ok else QColor("#F44336"),
+            )
+            self._insert_colored(cursor, m_step.group(4), QColor("#757575"))
+        elif m_state:
+            self._insert_colored(cursor, m_state.group(1), QColor("#9E9E9E"))
+            is_resume = "▶" in m_state.group(2)
+            self._insert_colored(
+                cursor,
+                m_state.group(2),
+                QColor("#2196F3") if is_resume else QColor("#FF9800"),
+            )
+            self._insert_colored(cursor, m_state.group(3))
+        elif m_prog:
+            self._insert_colored(cursor, m_prog.group(1), QColor("#9E9E9E"))
+            self._insert_colored(cursor, m_prog.group(2))
+            self._insert_colored(cursor, m_prog.group(3), QColor("#2196F3"))
+            self._insert_colored(cursor, m_prog.group(4), QColor("#757575"))
+        else:
+            color = self._get_log_color(msg)
+            if color:
+                fmt = QTextCharFormat()
+                fmt.setForeground(color)
+                cursor.setCharFormat(fmt)
+            cursor.insertText(msg + "\n")
+            if color:
+                cursor.setCharFormat(QTextCharFormat())
+            self.log_text.setTextCursor(cursor)
+            self.log_text.ensureCursorVisible()
+            self._trim_log()
+            return
+
+        cursor.insertText("\n")
+        self.log_text.setTextCursor(cursor)
+        self.log_text.ensureCursorVisible()
+        self._trim_log()
+
+    def _insert_colored(
+        self, cursor: QTextCursor, text: str, color: QColor | None = None
+    ) -> None:
+        if not text:
+            return
         if color:
             fmt = QTextCharFormat()
             fmt.setForeground(color)
             cursor.setCharFormat(fmt)
-
-        cursor.insertText(msg + "\n")
-
+        cursor.insertText(text)
         if color:
             cursor.setCharFormat(QTextCharFormat())
 
-        self.log_text.setTextCursor(cursor)
-        self.log_text.ensureCursorVisible()
-
+    def _trim_log(self) -> None:
         doc = self.log_text.document()
         if doc.blockCount() > self._MAX_LOG_BLOCKS:
             trim_cursor = QTextCursor(doc)
@@ -193,7 +259,37 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(10, 10, 10, 10)
         root.setSpacing(8)
 
-        # ── input row ──
+        root.addLayout(self._create_input_row())
+        root.addLayout(self._create_output_row())
+        root.addLayout(self._create_run_row())
+
+        # ── splitter: logs + right panel ──
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        log_group = QGroupBox("日志输出")
+        log_layout = QVBoxLayout(log_group)
+        self.log_text = QTextEdit()
+        self.log_text.setReadOnly(True)
+        self.log_text.setFont(QFont("Consolas", 9))
+        log_layout.addWidget(self.log_text)
+        splitter.addWidget(log_group)
+
+        right_splitter = QSplitter(Qt.Orientation.Vertical)
+        right_splitter.addWidget(self._create_results_panel())
+        right_splitter.addWidget(self._create_prompt_panel())
+        right_splitter.setStretchFactor(0, 3)
+        right_splitter.setStretchFactor(1, 1)
+        splitter.addWidget(right_splitter)
+
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 1)
+        root.addWidget(splitter, 1)
+
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        self.status_bar.showMessage(f"配置: {self.settings.config_path}")
+
+    def _create_input_row(self) -> QHBoxLayout:
         input_row = QHBoxLayout()
         input_row.addWidget(QLabel("输入:"))
         self.input_combo = QComboBox()
@@ -219,9 +315,9 @@ class MainWindow(QMainWindow):
         )
         self.open_viewer_btn.clicked.connect(self._open_result_viewer)
         input_row.addWidget(self.open_viewer_btn)
-        root.addLayout(input_row)
+        return input_row
 
-        # ── output row ──
+    def _create_output_row(self) -> QHBoxLayout:
         output_row = QHBoxLayout()
         output_row.addWidget(QLabel("输出:"))
         self.output_combo = QComboBox()
@@ -245,9 +341,9 @@ class MainWindow(QMainWindow):
         self.pause_btn.setEnabled(False)
         self.pause_btn.clicked.connect(self._on_pause_resume)
         output_row.addWidget(self.pause_btn)
-        root.addLayout(output_row)
+        return output_row
 
-        # ── run / progress row ──
+    def _create_run_row(self) -> QHBoxLayout:
         run_row = QHBoxLayout()
         self.progress_label = QLabel("就绪:")
         run_row.addWidget(self.progress_label)
@@ -269,23 +365,9 @@ class MainWindow(QMainWindow):
         self.combine_btn.setToolTip("先执行语音转写，完成后自动对转写文本进行摘要总结")
         self.combine_btn.clicked.connect(self._on_pipeline)
         run_row.addWidget(self.combine_btn)
-        root.addLayout(run_row)
+        return run_row
 
-        # ── splitter: logs + right panel ──
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-
-        # left: log panel
-        log_group = QGroupBox("日志输出")
-        log_layout = QVBoxLayout(log_group)
-        self.log_text = QTextEdit()
-        self.log_text.setReadOnly(True)
-        self.log_text.setFont(QFont("Consolas", 9))
-        log_layout.addWidget(self.log_text)
-        splitter.addWidget(log_group)
-
-        # right: results + ollama config
-        right_splitter = QSplitter(Qt.Orientation.Vertical)
-
+    def _create_results_panel(self) -> QWidget:
         results_group = QGroupBox("结果查看")
         results_layout = QVBoxLayout(results_group)
 
@@ -327,9 +409,9 @@ class MainWindow(QMainWindow):
         self._search_widget = self._create_search_bar()
         self._search_widget.setVisible(False)
         results_layout.addWidget(self._search_widget)
-        right_splitter.addWidget(results_group)
+        return results_group
 
-        # ── 提示词配置面板 ──
+    def _create_prompt_panel(self) -> QWidget:
         prompt_group = QGroupBox("提示词配置")
         prompt_layout = QVBoxLayout(prompt_group)
 
@@ -354,21 +436,16 @@ class MainWindow(QMainWindow):
         self.prompt_delete_btn = QPushButton("删除提示词")
         self.prompt_delete_btn.clicked.connect(self._delete_prompt_template)
         prompt_btn_row.addWidget(self.prompt_delete_btn)
+        self.markdown_enabled_cb = QCheckBox("Markdown格式")
+        self.markdown_enabled_cb.setToolTip(
+            "勾选后总结输出将自动应用Markdown格式指令。\n"
+            "如需自定义Markdown格式，请直接编辑 prompts.json 中的 markdown_prompt 字段。"
+        )
+        self.markdown_enabled_cb.setChecked(self.prompt_manager.get_markdown_enabled())
+        self.markdown_enabled_cb.toggled.connect(self._on_markdown_toggled)
+        prompt_btn_row.addWidget(self.markdown_enabled_cb)
         prompt_layout.addLayout(prompt_btn_row)
-
-        right_splitter.addWidget(prompt_group)
-
-        right_splitter.setStretchFactor(0, 3)
-        right_splitter.setStretchFactor(1, 1)
-        splitter.addWidget(right_splitter)
-
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 1)
-        root.addWidget(splitter, 1)
-
-        self.status_bar = QStatusBar()
-        self.setStatusBar(self.status_bar)
-        self.status_bar.showMessage(f"配置: {self.settings.config_path}")
+        return prompt_group
 
     def _create_menu_bar(self) -> None:
         menu_bar = self.menuBar()
@@ -405,17 +482,33 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "关于 Video2Text",
-            f"<h3>Video2Text</h3>"
-            f"<p>版本: {APP_VERSION}</p>"
-            f"<p>媒体转文本工具 —— 基于 faster-whisper的媒体转写工具</p>"
-            f"<p>技术栈: faster-whisper · Ollama · PySide6</p>"
-            f"<p>许可证: GNU GPL v3</p>"
-            f"<p>作者: 喵王龙</p>"
-            f"<p>讨论群: QQ群 296875960</p>"
-            f"<p>邮箱: zhonggh23@163.com</p>"
-            f'<p>Github: <a href="https://github.com/fuyouling/video2text">https://github.com/fuyouling/video2text</a></p>'
-            f'<p>文档: <a href="https://github.com/fuyouling/video2text/wiki">https://github.com/fuyouling/video2text/wiki</a></p>'
-            f"<p>版权所有 © 2026 喵王龙</p>",
+            "<div style='min-width:420px'>"
+            "<h2 style='margin-bottom:4px'>🎬 Video2Text</h2>"
+            f"<p style='color:#666;margin-top:0'>版本 {APP_VERSION} · 媒体转文本工具</p>"
+            "<hr>"
+            "<p>基于 <b>faster-whisper</b> 的高精度语音转写，支持 <b>Ollama</b> + Qwen2.5 本地总结和 <b>NVIDIA API</b> 在线总结。</p>"
+            "<p><b>核心功能：</b></p>"
+            "<ul style='margin-top:2px'>"
+            "<li>16 种视频 + 7 种音频格式转写</li>"
+            "<li>长音频自动分段 + 断点续传</li>"
+            "<li>NVIDIA 多线程并发总结</li>"
+            "<li>图形化配置编辑器 · 收藏目录管理</li>"
+            "</ul>"
+            "<hr>"
+            "<table style='font-size:13px'>"
+            "<tr><td style='padding:2px 12px 2px 0;color:#888'>作者</td><td>喵王龙</td></tr>"
+            "<tr><td style='padding:2px 12px 2px 0;color:#888'>许可证</td><td>GNU GPL v3</td></tr>"
+            "<tr><td style='padding:2px 12px 2px 0;color:#888'>技术栈</td><td>faster-whisper · Ollama · NVIDIA API · PySide6 · FFmpeg</td></tr>"
+            "<tr><td style='padding:2px 12px 2px 0;color:#888'>讨论群</td><td>QQ群 296875960</td></tr>"
+            "<tr><td style='padding:2px 12px 2px 0;color:#888'>邮箱</td><td>zhonggh23@163.com</td></tr>"
+            "</table>"
+            "<hr>"
+            "<p>"
+            '<a href="https://github.com/fuyouling/video2text">GitHub 仓库</a> · '
+            '<a href="https://github.com/fuyouling/video2text/wiki">使用文档</a>'
+            "</p>"
+            "<p style='color:#999;font-size:12px'>版权所有 © 2026 喵王龙</p>"
+            "</div>",
         )
 
     def _show_donate(self) -> None:
@@ -531,6 +624,9 @@ class MainWindow(QMainWindow):
         self.ollama_prompt_edit.clear()
         self.status_bar.showMessage(f"提示词「{name}」已删除", 5000)
 
+    def _on_markdown_toggled(self, checked: bool) -> None:
+        self.prompt_manager.set_markdown_enabled(checked)
+
     def _on_tab_changed(self, index: int) -> None:
         if index == 0:
             self.status_bar.showMessage(
@@ -582,14 +678,13 @@ class MainWindow(QMainWindow):
         fmt = self.settings.get("output.summary_format", "txt").lower().strip()
         if fmt not in ("txt", "md"):
             fmt = "txt"
-        candidate = Path(output_dir) / f"{name}_summary.{fmt}"
-        if candidate.exists():
-            return candidate
-        for ext in ("txt", "md"):
-            alt = Path(output_dir) / f"{name}_summary.{ext}"
-            if alt.exists():
-                return alt
-        return candidate
+        preferred = Path(output_dir) / f"{name}_summary.{fmt}"
+        if preferred.exists():
+            return preferred
+        found = FileWriter(output_dir).find_summary_file(name)
+        if found:
+            return found
+        return preferred
 
     def _active_edit(self) -> QTextEdit:
         if self.result_tabs.currentIndex() == 1:
@@ -686,9 +781,12 @@ class MainWindow(QMainWindow):
             cursor = document.find(search_text, cursor)
             if cursor.isNull():
                 break
-            self._match_positions.append(
-                (cursor.selectionStart(), cursor.selectionEnd())
-            )
+            start = cursor.selectionStart()
+            end = cursor.selectionEnd()
+            if start == end:
+                cursor.setPosition(end + 1)
+                continue
+            self._match_positions.append((start, end))
 
         count = len(self._match_positions)
         if count == 0:
@@ -1066,10 +1164,18 @@ class MainWindow(QMainWindow):
         files: list[str] = []
         seen: set[str] = set()
         for ext in self._media_exts:
-            for f in folder_path.rglob(f"*{ext}"):
-                if f.is_file() and str(f) not in seen:
-                    seen.add(str(f))
-                    files.append(str(f))
+            try:
+                for f in folder_path.rglob(f"*{ext}"):
+                    try:
+                        if f.is_file():
+                            normalized = str(f).lower()
+                            if normalized not in seen:
+                                seen.add(normalized)
+                                files.append(str(f))
+                    except PermissionError:
+                        logger.warning("无权访问文件，已跳过: %s", f)
+            except PermissionError:
+                logger.warning("无权遍历目录，已跳过: %s", folder_path)
         return sorted(files)
 
     def _select_output_dir(self) -> None:
@@ -1157,6 +1263,19 @@ class MainWindow(QMainWindow):
 
     def _start_worker(self, thread: QThread, worker) -> None:
         """启动 worker 线程并连接通用信号"""
+        if self._worker_thread is not None and self._worker_thread.isRunning():
+            if self._worker is not None and hasattr(self._worker, "cancel"):
+                self._worker.cancel()
+            self._worker_thread.quit()
+            self._worker_thread.wait(3000)
+            if self._worker_thread.isRunning():
+                self._worker_thread.terminate()
+                self._worker_thread.wait(1000)
+            if self._worker is not None:
+                self._worker.deleteLater()
+            self._worker = None
+            self._worker_thread = None
+
         self._worker_thread = thread
         self._worker = worker
 
@@ -1266,12 +1385,7 @@ class MainWindow(QMainWindow):
     def _load_transcript_content(self, video_name: str) -> None:
         """加载指定文件的转写文本到编辑区"""
         output_dir = self.output_combo.currentText().strip() or _DEFAULT_OUTPUT_DIR
-        transcript_path = None
-        for ext in ("txt", "srt", "vtt", "json"):
-            candidate = Path(output_dir) / f"{video_name}.{ext}"
-            if candidate.exists():
-                transcript_path = candidate
-                break
+        transcript_path = FileWriter(output_dir).find_transcript_file(video_name)
         if transcript_path is None:
             return
         try:
@@ -1393,6 +1507,7 @@ class MainWindow(QMainWindow):
         """流式 token —— 追加到摘要区"""
         self.summary_view.moveCursor(QTextCursor.End)
         self.summary_view.insertPlainText(token)
+        self.summary_view.ensureCursorVisible()
 
     def _on_summarize_started(self, video_name: str) -> None:
         """开始总结新文件时清空摘要区（多线程模式下不清空）"""
@@ -1600,12 +1715,7 @@ class MainWindow(QMainWindow):
             return
 
         output_dir = self._get_output_dir()
-        transcript_path = None
-        for ext in ("txt", "srt", "vtt", "json"):
-            candidate = Path(output_dir) / f"{video_name}.{ext}"
-            if candidate.exists():
-                transcript_path = candidate
-                break
+        transcript_path = FileWriter(output_dir).find_transcript_file(video_name)
         if transcript_path is None:
             QMessageBox.warning(self, "提示", f"未找到转写文件: {video_name}")
             return
@@ -1650,12 +1760,7 @@ class MainWindow(QMainWindow):
 
     def _load_file_content(self, video_name: str, output_dir: str) -> None:
         """在事件循环空闲时加载文件内容，避免阻塞 GUI 线程。"""
-        transcript_path = None
-        for ext in ("txt", "srt", "vtt", "json"):
-            candidate = Path(output_dir) / f"{video_name}.{ext}"
-            if candidate.exists():
-                transcript_path = candidate
-                break
+        transcript_path = FileWriter(output_dir).find_transcript_file(video_name)
         if transcript_path is not None:
             try:
                 self.transcript_view.setPlainText(
@@ -1682,12 +1787,8 @@ class MainWindow(QMainWindow):
         if self._worker_thread is not None and self._worker_thread.isRunning():
             if self._worker is not None and hasattr(self._worker, "cancel"):
                 self._worker.cancel()
-            if self._worker is not None and hasattr(self._worker, "_pause_event"):
-                self._worker._pause_event.set()
-            if self._worker is not None and hasattr(self._worker, "_service"):
-                service = self._worker._service
-                if service is not None and hasattr(service, "_pause_event"):
-                    service._pause_event.set()
+            if self._worker is not None and hasattr(self._worker, "unpause"):
+                self._worker.unpause()
             self._worker_thread.quit()
             if not self._worker_thread.wait(3000):
                 self._worker_thread.terminate()
@@ -1723,33 +1824,34 @@ def main() -> None:
     _log_dir = Path("logs")
     _log_dir.mkdir(parents=True, exist_ok=True)
     _crash_log = open(_log_dir / "crash.log", "a", encoding="utf-8")
-    faulthandler.enable(file=_crash_log, all_threads=True)
+    try:
+        faulthandler.enable(file=_crash_log, all_threads=True)
 
-    def _thread_excepthook(args):
-        import traceback
+        def _thread_excepthook(args):
+            import traceback
 
-        msg = f"Unhandled exception in thread {args.thread}:\n"
-        msg += "".join(
-            traceback.format_exception(
-                args.exc_type, args.exc_value, args.exc_traceback
+            msg = f"Unhandled exception in thread {args.thread}:\n"
+            msg += "".join(
+                traceback.format_exception(
+                    args.exc_type, args.exc_value, args.exc_traceback
+                )
             )
-        )
-        logging.getLogger("video2text").error(msg)
-        try:
-            with open(_log_dir / "thread_error.log", "a", encoding="utf-8") as f:
-                f.write(f"[{datetime.now()}] {msg}\n")
-        except Exception:
-            pass
+            logging.getLogger("video2text").error(msg)
+            try:
+                with open(_log_dir / "thread_error.log", "a", encoding="utf-8") as f:
+                    f.write(f"[{datetime.now()}] {msg}\n")
+            except Exception:
+                pass
 
-    threading.excepthook = _thread_excepthook
+        threading.excepthook = _thread_excepthook
 
-    app = QApplication()
-    app.setStyle("Fusion")
-    window = MainWindow()
-    window.show()
-    app.exec()
-
-    _crash_log.close()
+        app = QApplication()
+        app.setStyle("Fusion")
+        window = MainWindow()
+        window.show()
+        app.exec()
+    finally:
+        _crash_log.close()
 
 
 if __name__ == "__main__":

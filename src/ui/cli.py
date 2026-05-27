@@ -63,7 +63,7 @@ def get_model_path(settings: Settings, model_name: Optional[str] = None) -> str:
         return str(model_path)
 
     logger = get_logger(__name__)
-    logger.warning(f"本地模型不存在: {model_path}，将尝试从Hugging Face下载")
+    logger.warning("本地模型不存在: %s，将尝试从Hugging Face下载", model_path)
     return model_name
 
 
@@ -245,7 +245,7 @@ def summarize(
                 on_progress=lambda msg: console.print(f"  {msg}"),
             )
 
-            service.summarize(text, video_name=video_name)
+            service.summarize(text, video_name=video_name, index=1, total=1)
 
             summary_fmt = settings.get("output.summary_format", "txt").lower().strip()
             console.print(Panel.fit("[bold green]总结成功！[/bold green]"))
@@ -322,7 +322,7 @@ def run_pipeline(
         max_length = (
             max_length
             if max_length is not None
-            else settings.get_int("summarization.max_length", 5000)
+            else settings.get_int("summarization.max_length", 10000)
         )
 
         model_path = get_model_path(settings, transcription_model)
@@ -373,7 +373,11 @@ def run_pipeline(
                 max_gap=settings.get_float("text_processing.max_gap", 2.0),
                 min_length=settings.get_int("text_processing.min_length", 50),
             )
-            text_cleaner = TextCleaner()
+            text_cleaner = TextCleaner(
+                {
+                    "filler_words": settings.get_list("text_processing.filler_words"),
+                }
+            )
 
             summary_map: dict[str, tuple[str, str]] = {}
             for tx_result in tx_results:
@@ -405,11 +409,14 @@ def run_pipeline(
                         provider=provider_inst,
                         on_progress=lambda msg: console.print(f"  {msg}"),
                     )
-                    for tx_result in tx_results:
+                    for idx, tx_result in enumerate(tx_results):
                         processed_text = summary_map[tx_result.video_name][0]
                         try:
                             summary = sum_service.summarize(
-                                processed_text, video_name=tx_result.video_name
+                                processed_text,
+                                video_name=tx_result.video_name,
+                                index=idx + 1,
+                                total=len(tx_results),
                             )
                             summary_map[tx_result.video_name] = (
                                 processed_text,

@@ -49,10 +49,14 @@ def setup_logger(
             return logger
 
         logger.setLevel(level_int)
-        preserved = [
-            h for h in logger.handlers if not isinstance(h, logging.StreamHandler)
+        external_handlers = [
+            h
+            for h in logger.handlers
+            if not isinstance(h, (RotatingFileHandler, logging.StreamHandler))
         ]
         logger.handlers.clear()
+        for h in external_handlers:
+            logger.addHandler(h)
 
         formatter = logging.Formatter(
             "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -99,9 +103,6 @@ def setup_logger(
             console_handler.setFormatter(formatter)
             logger.addHandler(console_handler)
 
-        for h in preserved:
-            logger.addHandler(h)
-
         _CONFIGURED_LOGGERS.add(name)
     return logger
 
@@ -141,15 +142,15 @@ def log_step(
         raise ValueError(f"无效的日志级别: {level}")
 
     log = logging.getLogger(logger_name)
-    start_ts = time.time()
+    start_ts = time.monotonic()
 
     log.log(level_int, "▶ 步骤开始: %s", step_name)
     try:
         yield
-        elapsed = time.time() - start_ts
+        elapsed = time.monotonic() - start_ts
         log.log(level_int, "✔ 步骤完成: %s (%.2fs)", step_name, elapsed)
     except Exception as e:
-        elapsed = time.time() - start_ts
+        elapsed = time.monotonic() - start_ts
         log.error("✘ 步骤失败: %s (%.2fs) - %s", step_name, elapsed, e)
         raise
 

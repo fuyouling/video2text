@@ -10,13 +10,9 @@ from src.config.settings import Settings
 from src.preprocessing.ffmpeg import ensure_ffmpeg, ensure_ffprobe
 from src.utils.exceptions import VideoFileError
 from src.utils.logger import get_logger
+from src.utils.subprocess_compat import CREATE_NO_WINDOW
 
 logger = get_logger(__name__)
-
-if sys.platform == "win32":
-    CREATE_NO_WINDOW = subprocess.CREATE_NO_WINDOW
-else:
-    CREATE_NO_WINDOW = 0
 
 
 @dataclass
@@ -122,7 +118,7 @@ class VideoProcessor:
                 error_msg = result.stderr or result.stdout
                 raise VideoFileError(f"媒体文件损坏: {error_msg}")
 
-            logger.info(f"媒体文件验证通过: {video_path}")
+            logger.debug("媒体文件验证通过: %s", video_path)
             return True
 
         except subprocess.TimeoutExpired:
@@ -131,8 +127,6 @@ class VideoProcessor:
             raise
         except Exception as e:
             raise VideoFileError(f"媒体验证失败: {e}")
-
-    validate_video = validate_media
 
     def get_video_info(self, video_path: str) -> VideoInfo:
         """获取媒体信息
@@ -260,77 +254,33 @@ class VideoProcessor:
         output_file = Path(output_path)
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
-        if self.is_audio_file(video_path):
-            cmd = [
-                self.ffmpeg_path,
-                "-i",
-                video_path,
-                "-vn",
-                "-acodec",
-                "pcm_s16le",
-                "-ar",
-                str(sample_rate),
-                "-ac",
-                str(channels),
-                "-y",
-                str(output_file),
-            ]
-            logger.info(f"开始转换音频: {video_path}")
-            logger.debug(f"FFmpeg命令: {' '.join(cmd)}")
+        if not self.is_audio_file(video_path):
+            if video_info is None:
+                video_info = self.get_video_info(video_path)
+            if not video_info.has_audio:
+                raise VideoFileError(f"媒体文件没有音轨，无法提取音频: {video_path}")
 
-            try:
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=3600,
-                    creationflags=CREATE_NO_WINDOW,
-                    encoding="utf-8",
-                    errors="ignore",
-                )
+        label = "转换音频" if self.is_audio_file(video_path) else "提取音频"
+        logger.debug("开始%s: %s", label, video_path)
 
-                if result.returncode != 0:
-                    error_msg = result.stderr or result.stdout
-                    logger.warning(
-                        "pcm_s16le 转换失败，尝试自动转码回退: %s", error_msg[:200]
-                    )
-                    return self._extract_audio_fallback(
-                        video_path, str(output_file), sample_rate, channels
-                    )
+        return self._run_ffmpeg_pcm_extract(
+            video_path, str(output_file), sample_rate, channels, label
+        )
 
-                if not output_file.exists():
-                    logger.warning("音频文件未生成，尝试自动转码回退")
-                    return self._extract_audio_fallback(
-                        video_path, str(output_file), sample_rate, channels
-                    )
-
-                logger.info(f"音频转换成功: {output_file}")
-                return str(output_file)
-
-            except subprocess.TimeoutExpired:
-                raise VideoFileError("音频转换超时")
-            except VideoFileError:
-                raise
-            except Exception as e:
-                logger.warning("音频转换异常，尝试自动转码回退: %s", e)
-                try:
-                    return self._extract_audio_fallback(
-                        video_path, str(output_file), sample_rate, channels
-                    )
-                except VideoFileError as fallback_err:
-                    raise VideoFileError(
-                        f"音频转换失败（含回退）: {e}"
-                    ) from fallback_err
-
-        if video_info is None:
-            video_info = self.get_video_info(video_path)
-        if not video_info.has_audio:
-            raise VideoFileError(f"媒体文件没有音轨，无法提取音频: {video_path}")
-
+    def _run_ffmpeg_pcm_extract(
+        self,
+        input_path: str,
+        output_path: str,
+        sample_rate: int,
+        channels: int,
+        label: str,
+    ) -> str:
+        """使用 pcm_s16le 编码提取/转换音频，失败时自动回退。"""
+        output_file = Path(output_path)
         cmd = [
             self.ffmpeg_path,
             "-i",
-            video_path,
+            input_path,
             "-vn",
             "-acodec",
             "pcm_s16le",
@@ -341,9 +291,7 @@ class VideoProcessor:
             "-y",
             str(output_file),
         ]
-
-        logger.info(f"开始提取音频: {video_path}")
-        logger.debug(f"FFmpeg命令: {' '.join(cmd)}")
+        logger.debug("FFmpeg命令: %s", " ".join(cmd))
 
         try:
             result = subprocess.run(
@@ -359,33 +307,35 @@ class VideoProcessor:
             if result.returncode != 0:
                 error_msg = result.stderr or result.stdout
                 logger.warning(
-                    "pcm_s16le 提取失败，尝试自动转码回退: %s", error_msg[:200]
+                    "pcm_s16le %s失败，尝试自动转码回退: %s", label, error_msg[:200]
                 )
                 return self._extract_audio_fallback(
-                    video_path, str(output_file), sample_rate, channels
+                    input_path, str(output_file), sample_rate, channels
                 )
 
             if not output_file.exists():
                 logger.warning("音频文件未生成，尝试自动转码回退")
                 return self._extract_audio_fallback(
-                    video_path, str(output_file), sample_rate, channels
+                    input_path, str(output_file), sample_rate, channels
                 )
 
-            logger.info(f"音频提取成功: {output_file}")
+            logger.debug("音频%s成功: %s", label, output_file)
             return str(output_file)
 
         except subprocess.TimeoutExpired:
-            raise VideoFileError("音频提取超时")
+            raise VideoFileError(f"音频{label}超时")
         except VideoFileError:
             raise
         except Exception as e:
-            logger.warning("音频提取异常，尝试自动转码回退: %s", e)
+            logger.warning("音频%s异常，尝试自动转码回退: %s", label, e)
             try:
                 return self._extract_audio_fallback(
-                    video_path, str(output_file), sample_rate, channels
+                    input_path, str(output_file), sample_rate, channels
                 )
             except VideoFileError as fallback_err:
-                raise VideoFileError(f"音频提取失败（含回退）: {e}") from fallback_err
+                raise VideoFileError(
+                    f"音频{label}失败（含回退）: {e}"
+                ) from fallback_err
 
     def _extract_audio_fallback(
         self,
@@ -419,7 +369,7 @@ class VideoProcessor:
         ]
 
         logger.info("回退方案: 使用 libmp3lame 提取音频")
-        logger.debug(f"FFmpeg命令: {' '.join(cmd)}")
+        logger.debug("FFmpeg命令: %s", " ".join(cmd))
 
         try:
             result = subprocess.run(
@@ -465,7 +415,7 @@ class VideoProcessor:
             if convert_result.returncode != 0:
                 raise VideoFileError(f"MP3 转 WAV 失败: {convert_result.stderr}")
 
-            logger.info(f"回退方案提取成功: {output_file}")
+            logger.info("回退方案提取成功: %s", output_file)
             return str(output_file)
 
         except VideoFileError:
@@ -539,7 +489,7 @@ class VideoProcessor:
                 error_msg = result.stderr or result.stdout
                 raise VideoFileError(f"缩略图生成失败: {error_msg}")
 
-            logger.info(f"缩略图生成成功: {output_file}")
+            logger.info("缩略图生成成功: %s", output_file)
             return str(output_file)
 
         except VideoFileError:

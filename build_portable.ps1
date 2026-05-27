@@ -139,6 +139,12 @@ if (Test-Path "config.ini") {
     Write-Host "  Copied: config.ini" -ForegroundColor Green
 }
 
+# Copy prompts.json if exists
+if (Test-Path "prompts.json") {
+    Copy-Item -Force "prompts.json" "$portableDir\"
+    Write-Host "  Copied: prompts.json" -ForegroundColor Green
+}
+
 # Create README
 $readme = @"
 Video2Text Portable Version - User Manual
@@ -176,7 +182,18 @@ if ($NoZip) {
     $zipPath = $null
 } else {
     Write-Host "[6/6] Creating ZIP package (excluding models)..." -ForegroundColor Yellow
-    $zipName = "video2text_portable_windows_$(Get-Date -Format 'yyyyMMdd').zip"
+    # Read version from src/config/settings.py
+    $version = "unknown"
+    $settingsPy = "src\config\settings.py"
+    if (Test-Path $settingsPy) {
+        foreach ($line in Get-Content $settingsPy) {
+            if ($line -match '^APP_VERSION\s*=\s*["''](.+?)["'']') {
+                $version = $Matches[1]
+                break
+            }
+        }
+    }
+    $zipName = "video2text_portable_windows_v$version.zip"
     $zipPath = Join-Path "dist" $zipName
 
     # Stop any running video2text.exe to release file locks

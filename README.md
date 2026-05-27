@@ -4,12 +4,17 @@
 
 ## 功能特性
 
-- 🎬 支持多种视频格式（MP4, AVI, MOV, MKV等）
+- 🎬 支持多种视频和音频格式（16种视频 + 7种音频：MP3, WAV, FLAC, AAC, OGG, M4A, WMA）
 - 🎤 高质量语音转写（基于 faster_whisper）
 - 🤖 智能文本总结（支持本地 Ollama + Qwen2.5 和在线 NVIDIA API 两种模式）
 - 📝 多种输出格式（TXT, SRT, VTT, JSON）
 - ⚡ GPU加速支持
 - 🌍 多语言支持
+- 🔄 长音频自动分段转写 + 断点续传（基于 checkpoint 机制）
+- 🧵 多线程并发总结（NVIDIA multi 模式，支持速率限制与自动重试）
+- 📂 收藏目录管理（常用输入/输出目录一键切换）
+- 🔍 查找替换（`Ctrl+F` 快速定位文本）
+- ⚙️ 图形化配置编辑器（可视化编辑所有配置项）
 
 ## 安装
 
@@ -69,6 +74,12 @@ ollama pull qwen2.5:7b-instruct-q4_K_M
 > [summarization]
 > provider = nvidia
 > ```
+>
+> **`.env` 文件完整配置示例：**
+> ```
+> NVIDIA_API_KEY=nvapi-你的API密钥
+> OLLAMA_API_KEY=你的Ollama密钥（可选，仅用于需要认证的 Ollama 端点）
+> ```
 
 ### 5. 模型文件下载
 ```
@@ -78,10 +89,16 @@ https://huggingface.co/Systran/faster-whisper-large-v3/resolve/main/model.bin?do
 
 ## 使用方法
 
-### 转写视频
+### 转写视频/音频
 
 ```bash
 python -m src.main transcribe video/sample.mp4 --output-dir output
+```
+
+音频文件使用相同命令，支持 MP3, WAV, FLAC, AAC, OGG, M4A, WMA 格式：
+
+```bash
+python -m src.main transcribe audio/sample.mp3 --output-dir output
 ```
 
 ### 总结文本
@@ -106,9 +123,10 @@ python -m src.ui.gui
 主界面采用左右分栏布局，左侧为实时日志面板，右侧为结果查看与 Ollama 配置面板。
 
 **输入与输出：**
-- 支持选择单个视频文件或整个文件夹（自动递归扫描子目录中的视频）
-- 文件夹选择时弹出对话框，可勾选需要处理的视频
+- 支持选择单个视频/音频文件或整个文件夹（自动递归扫描子目录中的媒体文件）
+- 文件夹选择时弹出对话框，可勾选需要处理的文件
 - 可自定义输出目录，并支持加载历史转写/总结文件
+- 收藏目录管理：将常用输入/输出目录添加到收藏，一键快速切换
 
 **任务操作：**
 - **仅转写** — 仅执行语音转写，不进行摘要总结
@@ -127,9 +145,18 @@ python -m src.ui.gui
 - 支持切换「本地 Ollama 模型」和「在线 NVIDIA 模型」两种总结服务
 - Ollama：配置服务地址、模型名称（下拉框选择或手动输入）、一键启动/关闭/测试服务
 - NVIDIA：配置 API 地址、模型名称、Token 数、温度等参数、测试连接
+- NVIDIA 多线程模式：`nvidia_mode=multi` 时使用线程池并发处理，支持配置线程数（`nvidia_thread_count`），内置速率限制与 429 自动重试
 - 调整温度、最大长度等参数
 - 提示词模板管理：保存、加载、删除自定义提示词模板
-- 配置一键保存到 `config.ini`
+- 配置一键保存到 `config.ini`（`Ctrl+S` 快捷键）
+
+**查找替换：**
+- 主窗口支持 `Ctrl+F` 打开查找替换栏，快速定位转写文本中的关键词
+
+**配置编辑器：**
+- 通过菜单「设置 → 编辑配置」打开图形化配置编辑器
+- 可视化编辑 `config.ini` 中所有配置段（转写、总结、预处理、输出、网络、文本处理等）
+- 修改后即时生效，无需手动编辑文件
 
 #### 结果查看面板
 
@@ -178,13 +205,17 @@ pyinstaller video2text_portable.spec
 
 #### 转写命令 (transcribe)
 
-- `--input, -i`: 视频文件路径（必需）
+- `--input, -i`: 视频/音频文件路径（必需）
 - `--output-dir, -o`: 输出目录（默认: output）
 - `--language, -l`: 语言代码（默认: auto）
 - `--model, -m`: 转写模型（默认: large-v3）
 - `--device, -d`: 设备类型（默认: auto）
 - `--beam-size`: beam search大小（默认: 5）
+- `--best-of`: 候选数量（默认: 5）
+- `--compute-type`: 计算精度类型（默认: float16）
 - `--temperature`: 温度参数（默认: 0.0）
+- `--condition-on-previous-text`: 基于前文条件转写（默认: true）
+- `--word-timestamps`: 词级时间戳（默认: false）
 - `--verbose, -v`: 详细输出
 
 #### 总结命令 (summarize)
@@ -257,6 +288,18 @@ json_output = true
 - `json_output` 控制完整管道输出的 `{video_name}_full.json`
 - `{video_name}_summary.txt` 为摘要输出，由 `summarize` 或 `run-pipeline` 生成
 
+### 摘要输出格式
+
+摘要输出格式由 `config.ini` 中的 `output.summary_format` 控制：
+
+- `txt` - 纯文本格式（`{video_name}_summary.txt`）
+- `md` - Markdown 格式（`{video_name}_summary.md`，默认值）
+
+```ini
+[output]
+summary_format = md
+```
+
 ## 项目结构
 
 ```
@@ -272,7 +315,8 @@ video2text/
 │   ├── __init__.py
 │   ├── main.py               # 程序入口
 │   ├── config/               # 配置管理模块
-│   │   └── settings.py
+│   │   ├── settings.py
+│   │   └── directory_manager.py  # 收藏目录管理
 │   ├── ui/                   # 用户界面模块
 │   │   ├── cli.py            # CLI 命令定义
 │   │   ├── gui.py            # GUI 主窗口
@@ -289,13 +333,16 @@ video2text/
 │   │   └── text_cleaner.py
 │   ├── summarization/        # 总结引擎模块
 │   │   ├── ollama_client.py
-│   │   └── summarizer.py
+│   │   ├── summarizer.py
+│   │   ├── providers.py      # 总结服务提供者工厂
+│   │   └── nvidia_client.py  # NVIDIA API 客户端
 │   ├── services/             # 业务服务模块
 │   │   ├── transcription_service.py
 │   │   └── summarization_service.py
 │   ├── storage/              # 输出存储模块
 │   │   ├── file_writer.py
-│   │   └── output_formatter.py
+│   │   ├── output_formatter.py
+│   │   └── bookmark_manager.py  # 书签管理
 │   └── utils/                # 工具模块
 │       ├── exceptions.py
 │       ├── logger.py
@@ -309,8 +356,7 @@ video2text/
 ├── video/                    # 视频目录
 ├── assets/                   # 资源文件（图标等）
 ├── docs/                     # 项目文档
-├── tests/                    # 测试目录
-└── .github/workflows/        # GitHub Actions CI/CD
+└── tests/                    # 测试目录
 ```
 
 ## 技术栈
@@ -322,8 +368,85 @@ video2text/
 - **视频处理**: FFmpeg
 - **日志系统**: Python logging
 - **配置管理**: Python configparser
-- **数据校验**: Pydantic
 - **打包工具**: PyInstaller
+
+## 配置参考
+
+以下为 `config.ini` 中各配置段的关键参数说明。完整配置请参考项目中的 `config.ini` 文件。
+
+### [transcription] 转写配置
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `model_path` | `large-v3` | 转写模型路径 |
+| `device` | `cuda` | 计算设备（`cuda` / `cpu`） |
+| `language` | `zh` | 转写语言（`auto` 为自动检测） |
+| `beam_size` | `5` | Beam search 大小 |
+| `best_of` | `5` | 候选数量，从多个候选中选择最佳结果 |
+| `temperature` | `0.0` | 采样温度，0 表示贪心解码 |
+| `compute_type` | `float16` | 计算精度类型（`float16` / `float32` / `int8`） |
+| `num_workers` | `1` | 转写工作线程数 |
+| `vad_filter` | `True` | 启用 VAD 语音活动检测过滤静音段 |
+| `condition_on_previous_text` | `True` | 基于前文上下文进行条件转写 |
+| `word_timestamps` | `False` | 启用词级时间戳（会增加处理时间） |
+
+### [summarization] 总结配置
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `provider` | `ollama` | 总结服务提供者（`ollama` / `nvidia`） |
+| `ollama_url` | `http://127.0.0.1:11434` | Ollama 服务地址 |
+| `model_name` | `qwen2.5:7b-instruct-q4_K_M` | Ollama 模型名称 |
+| `max_length` | `10000` | Ollama 最大输出长度 |
+| `temperature` | `0.7` | Ollama 采样温度 |
+| `timeout` | `600` | Ollama 请求超时时间（秒） |
+| `custom_prompt` | （空） | 自定义提示词模板 |
+| `nvidia_api_url` | NVIDIA API 端点 | NVIDIA API 请求地址 |
+| `nvidia_model` | `openai/gpt-oss-120b` | NVIDIA 模型名称 |
+| `nvidia_max_tokens` | `100000` | NVIDIA 最大 Token 数 |
+| `nvidia_temperature` | `1.0` | NVIDIA 采样温度 |
+| `nvidia_top_p` | `1.0` | NVIDIA 核采样参数 |
+| `nvidia_frequency_penalty` | `0.0` | NVIDIA 频率惩罚 |
+| `nvidia_presence_penalty` | `0.0` | NVIDIA 存在惩罚 |
+| `nvidia_mode` | `multi` | NVIDIA 执行模式（`single` 串行流式 / `multi` 并发） |
+| `nvidia_thread_count` | `5` | NVIDIA 多线程并发数（仅 `multi` 模式生效） |
+| `nvidia_stream` | `true` | NVIDIA 流式输出（仅 `single` 模式生效，`multi` 模式下始终关闭） |
+
+### [preprocessing] 预处理配置
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `ffmpeg_path` | `ffmpeg` | FFmpeg 可执行文件路径 |
+| `audio_sample_rate` | `16000` | 音频采样率（Hz） |
+| `audio_channels` | `1` | 音频声道数 |
+| `max_chunk_duration` | `300` | 长音频分段时长阈值（秒），超过此值自动分段 |
+| `supported_video_formats` | `.mp4,.avi,...` | 支持的视频格式列表（共 16 种） |
+| `supported_audio_formats` | `.mp3,.wav,...` | 支持的音频格式列表（共 7 种） |
+
+### [output] 输出配置
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `output_dir` | `output` | 默认输出目录 |
+| `transcript_format` | `txt` | 转写输出格式（`txt` / `srt` / `vtt` / `json`，可逗号分隔多选） |
+| `summary_format` | `md` | 摘要输出格式（`txt` / `md`） |
+
+### [network] 网络配置
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `proxy` | `http://127.0.0.1:7890` | HTTP 代理地址 |
+| `hf_mirror_url` | HuggingFace 镜像地址 | HuggingFace 模型下载镜像 URL |
+| `download_timeout` | `300` | 下载超时时间（秒） |
+| `download_max_retries` | `3` | 下载最大重试次数 |
+
+### [text_processing] 文本处理配置
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `max_gap` | `2.0` | 分段合并最大间隔（秒） |
+| `min_length` | `50` | 分段最小字符长度 |
+| `filler_words` | `嗯,啊,呃,...` | 填充词列表（逗号分隔），自动清理 |
 
 ## 常见问题
 
@@ -342,6 +465,24 @@ video2text/
 ### 4. NVIDIA API 连接失败
 
 检查 `.env` 文件中是否正确配置了 `NVIDIA_API_KEY`，或在 `config.ini` 的 `[summarization]` 中确认 `provider = nvidia`。
+
+### 5. 模型下载缓慢或失败
+
+国内用户可在 `config.ini` 的 `[network]` 段配置 HuggingFace 镜像地址加速下载：
+
+```ini
+[network]
+hf_mirror_url = https://huggingface.co/Systran/faster-whisper-large-v3/resolve/main
+```
+
+也可以配置网络代理：
+
+```ini
+[network]
+proxy = http://127.0.0.1:7890
+download_timeout = 300
+download_max_retries = 3
+```
 
 ## 许可证
 

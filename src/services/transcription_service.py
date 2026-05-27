@@ -1,29 +1,28 @@
 """转写服务 —— 统一 CLI / GUI 的转写逻辑，支持断点续传"""
 
 import hashlib
-import json
 import os
 import shutil
+import statistics
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, List, Optional
 
+from src.config.settings import Settings
 from src.preprocessing.video_processor import VideoProcessor
 from src.storage.file_writer import FileWriter
 from src.transcription.transcriber import TranscriptSegment, Transcriber
 from src.utils.exceptions import TranscriptionError, Video2TextError
-from src.utils.logger import get_logger, log_step, log_error_with_context
+from src.utils.json_utils import atomic_write_json, safe_read_json
+from src.utils.logger import get_logger, log_error_with_context
+from src.utils.subprocess_compat import CREATE_NO_WINDOW
 
 logger = get_logger(__name__)
-
-if sys.platform == "win32":
-    CREATE_NO_WINDOW = subprocess.CREATE_NO_WINDOW
-else:
-    CREATE_NO_WINDOW = 0
 
 
 @dataclass
@@ -85,6 +84,10 @@ class TranscriptionService:
         self._pause_event = threading.Event()
         self._pause_event.set()  # 初始状态：非暂停
 
+        self._history_file = (
+            Path(Settings().config_path).parent / "transcription_history.json"
+        )
+
     # ------------------------------------------------------------------
     # 暂停 / 继续
     # ------------------------------------------------------------------
@@ -92,12 +95,12 @@ class TranscriptionService:
     def pause(self) -> None:
         """暂停转写。当前切片完成后会阻塞，直到调用 resume()。"""
         self._pause_event.clear()
-        logger.info("转写已暂停")
+        logger.info("  ├─ ⏸ 转写已暂停")
 
     def resume(self) -> None:
         """继续被暂停的转写。"""
         self._pause_event.set()
-        logger.info("转写已继续")
+        logger.info("  └─ ▶ 转写已继续")
 
     @property
     def is_paused(self) -> bool:
@@ -106,7 +109,9 @@ class TranscriptionService:
 
     def _wait_if_paused(self) -> None:
         """如果处于暂停状态，则阻塞直到恢复。"""
-        self._pause_event.wait()
+        while not self._pause_event.wait(timeout=0.5):
+            if self.cancel_check and self.cancel_check():
+                break
 
     # ------------------------------------------------------------------
     # 公开 API
@@ -140,7 +145,7 @@ class TranscriptionService:
                 break
 
             video_name = Path(video_path).stem
-            self._log(f"[{idx + 1}/{total}] 开始转写: {video_name}")
+            self._log(f"[{idx + 1}/{total}] 开始处理: {video_name}")
 
             try:
                 result = self._transcribe_single(video_path, output_dir)
@@ -148,10 +153,6 @@ class TranscriptionService:
 
                 if self.on_video_done:
                     self.on_video_done(result)
-
-                self._log(
-                    f"[{idx + 1}/{total}] 转写完成: {video_name} ({len(result.segments)} 段)"
-                )
 
             except Video2TextError as e:
                 logger.error("转写失败 %s: %s", video_path, e)
@@ -176,42 +177,61 @@ class TranscriptionService:
         temp_audio = Path(output_dir) / f"temp_{video_name}.wav"
 
         try:
-            with log_step(f"媒体校验 ({video_name})"):
-                self.video_processor.validate_video(video_path)
-                video_info = self.video_processor.get_video_info(video_path)
-                self._log(f"媒体时长: {video_info.duration:.2f} 秒")
+            t0 = time.monotonic()
+            self.video_processor.validate_media(video_path)
+            video_info = self.video_processor.get_video_info(video_path)
+            self.video_processor.extract_audio(
+                video_path,
+                str(temp_audio),
+                sample_rate=16000,
+                channels=1,
+                video_info=video_info,
+            )
+            elapsed = time.monotonic() - t0
+            self._log(f"  ├─ 音频提取 ✓ ({elapsed:.1f}s)")
 
-            with log_step(f"音频提取 ({video_name})"):
-                self.video_processor.extract_audio(
-                    video_path,
-                    str(temp_audio),
-                    sample_rate=16000,
-                    channels=1,
-                    video_info=video_info,
-                )
+            duration_str = self._format_duration(video_info.duration)
+            est = self._estimate_transcribe_time(video_info.duration)
+            est_str = self._format_duration(est) if est is not None else "-"
+            self._log(f"  ├─ 音频时长: {duration_str} | 预估转写时间: {est_str}")
+            # self._log("  ├─ 语音转写开始")
+
+            t0 = time.monotonic()
+            last_progress_ts = [t0]
+
+            def _on_progress(start: float, end: float, count: int) -> None:
+                now = time.monotonic()
+                if now - last_progress_ts[0] >= 30:
+                    last_progress_ts[0] = now
+                    elapsed = now - t0
+                    self._log(f"  ├─ 语音转写 … ({count} 段, {elapsed:.0f}s)")
 
             if video_info.duration > self.max_chunk_duration:
-                with log_step(f"长音频切片转写 ({video_name})"):
-                    segments = self._transcribe_chunked(
-                        temp_audio, video_name, video_path, output_dir
-                    )
+                segments = self._transcribe_chunked(
+                    temp_audio, video_name, video_path, output_dir
+                )
             else:
-                with log_step(f"语音转写 ({video_name})"):
-                    segments = self.transcriber.transcribe(
-                        str(temp_audio),
-                        language=self.language,
-                        beam_size=self.beam_size,
-                        temperature=self.temperature,
-                        vad_filter=self.vad_filter,
-                    )
+                segments = self.transcriber.transcribe(
+                    str(temp_audio),
+                    language=self.language,
+                    beam_size=self.beam_size,
+                    temperature=self.temperature,
+                    vad_filter=self.vad_filter,
+                    progress_callback=_on_progress,
+                )
+            elapsed = time.monotonic() - t0
+            lang = segments[0].language if segments else self.language
+            self._log(
+                f"  ├─ 语音转写 ✓ ({len(segments)} 段, 语言: {lang}, 耗时 {elapsed:.1f}s)"
+            )
+            self._save_history_record(video_info.duration, elapsed)
 
             output_paths = []
             for fmt in self.output_formats:
-                with log_step(f"保存 {fmt.upper()} ({video_name})"):
-                    p = self.file_writer.write_transcript(
-                        segments, video_name, format=fmt
-                    )
-                    output_paths.append(p)
+                p = self.file_writer.write_transcript(segments, video_name, fmt=fmt)
+                output_paths.append(p)
+            formats = ", ".join(f".{fmt}" for fmt in self.output_formats)
+            self._log(f"  └─ 保存完成 ✓ ({formats})")
 
             return TranscribeResult(
                 video_name=video_name,
@@ -234,7 +254,7 @@ class TranscriptionService:
     ) -> List[TranscriptSegment]:
         """长音频切片转写，支持断点续传。"""
         hash_input = f"{video_path}:chunk={self.max_chunk_duration}"
-        path_hash = hashlib.md5(hash_input.encode("utf-8")).hexdigest()[:8]
+        path_hash = hashlib.md5(hash_input.encode("utf-8")).hexdigest()[:12]
         checkpoint_file = self._checkpoint_dir / f"{video_name}_{path_hash}_chunks.json"
 
         chunk_dir = Path(tempfile.mkdtemp(prefix="audio_chunks_", dir=output_dir))
@@ -278,24 +298,22 @@ class TranscriptionService:
             # 加载已完成的切片结果（断点续传）
             done_chunks: dict = {}
             if checkpoint_file.exists():
-                try:
-                    loaded = json.loads(checkpoint_file.read_text(encoding="utf-8"))
-                    if isinstance(loaded, dict):
-                        done_chunks = loaded
-                    else:
+                loaded = safe_read_json(checkpoint_file)
+                if isinstance(loaded, dict):
+                    done_chunks = loaded
+                else:
+                    if loaded is not None:
                         logger.warning(
                             "断点文件格式异常（非 dict），忽略: %s", checkpoint_file
                         )
-                        done_chunks = {}
-                    logger.info(
-                        "加载断点续传数据: %d/%d 个切片已完成 (%d 个失败待重试)",
-                        len(done_chunks)
-                        - sum(1 for v in done_chunks.values() if "error" in v),
-                        total_chunks,
-                        sum(1 for v in done_chunks.values() if "error" in v),
-                    )
-                except (json.JSONDecodeError, OSError):
                     done_chunks = {}
+                logger.info(
+                    "加载断点续传数据: %d/%d 个切片已完成 (%d 个失败待重试)",
+                    len(done_chunks)
+                    - sum(1 for v in done_chunks.values() if "error" in v),
+                    total_chunks,
+                    sum(1 for v in done_chunks.values() if "error" in v),
+                )
 
             all_segments: List[TranscriptSegment] = []
             cumulative_offset = 0.0
@@ -465,7 +483,9 @@ class TranscriptionService:
         except OSError:
             pass
 
-        logger.error("无法确定切片时长，使用默认值 %.1f", self.max_chunk_duration)
+        logger.error(
+            "所有切片时长估算方法均失败，使用默认值 %.1f", self.max_chunk_duration
+        )
         return float(self.max_chunk_duration)
 
     def _log(self, message: str):
@@ -477,17 +497,7 @@ class TranscriptionService:
     @staticmethod
     def _write_checkpoint(checkpoint_file: Path, data: dict) -> None:
         """原子写入断点文件，防止崩溃导致数据损坏。"""
-        fd, tmp_path = tempfile.mkstemp(dir=checkpoint_file.parent, suffix=".tmp")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            os.replace(tmp_path, str(checkpoint_file))
-        except BaseException:
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
-            raise
+        atomic_write_json(checkpoint_file, data)
 
     def _cleanup_stale_checkpoints(self, video_files: List[str]) -> None:
         """清理不属于当前批次的过期断点文件。"""
@@ -497,7 +507,7 @@ class TranscriptionService:
         for cp_file in self._checkpoint_dir.glob("*_chunks.json"):
             name_part = cp_file.name.removesuffix("_chunks.json")
             # 文件名格式: {video_name}_{hash}_chunks.json
-            # 提取 video_name: 取最后一个 '_' 前的部分（hash 固定 8 字符）
+            # 提取 video_name: 取最后一个 '_' 前的部分（hash 固定 12 字符）
             underscore_idx = name_part.rfind("_")
             if underscore_idx > 0:
                 stem = name_part[:underscore_idx]
@@ -509,3 +519,69 @@ class TranscriptionService:
                     logger.info("清理过期断点文件: %s", cp_file.name)
                 except OSError:
                     pass
+
+    def _load_history(self) -> List[dict]:
+        if not self._history_file.exists():
+            return []
+        data = safe_read_json(self._history_file)
+        if not isinstance(data, dict):
+            return []
+        records = data.get("records", [])
+        return records if isinstance(records, list) else []
+
+    def _save_history_record(
+        self, audio_duration: float, transcribe_time: float
+    ) -> None:
+        model = Path(self.transcriber.model_path).name
+        device = self.transcriber.device
+        compute_type = self.transcriber.compute_type
+
+        record = {
+            "audio_duration": round(audio_duration, 2),
+            "transcribe_time": round(transcribe_time, 2),
+            "model": model,
+            "device": device,
+            "compute_type": compute_type,
+        }
+
+        records = self._load_history()
+        records.append(record)
+        if len(records) > 1000:
+            records = records[-1000:]
+
+        data = {"records": records}
+        try:
+            self._history_file.parent.mkdir(parents=True, exist_ok=True)
+            atomic_write_json(self._history_file, data)
+        except Exception as e:
+            logger.warning("保存转写历史记录失败（不影响主流程）: %s", e)
+
+    def _estimate_transcribe_time(self, audio_duration: float) -> Optional[float]:
+        model = Path(self.transcriber.model_path).name
+        device = self.transcriber.device
+        compute_type = self.transcriber.compute_type
+
+        records = self._load_history()
+        matched = [
+            r
+            for r in records
+            if r.get("model") == model
+            and r.get("device") == device
+            and r.get("compute_type") == compute_type
+            and r.get("audio_duration", 0) > 0
+            and r.get("transcribe_time", 0) > 0
+        ]
+        if not matched:
+            return None
+
+        speeds = [r["transcribe_time"] / r["audio_duration"] for r in matched]
+        median_speed = statistics.median(speeds)
+        return audio_duration * median_speed
+
+    @staticmethod
+    def _format_duration(seconds: float) -> str:
+        total = int(seconds)
+        if total <= 60:
+            return f"{total}秒"
+        m, s = divmod(total, 60)
+        return f"{m}分{s}秒"

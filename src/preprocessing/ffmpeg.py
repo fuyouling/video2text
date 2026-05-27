@@ -16,13 +16,9 @@ from typing import Dict
 
 from src.utils.exceptions import VideoFileError
 from src.utils.logger import get_logger
+from src.utils.subprocess_compat import CREATE_NO_WINDOW as _CREATE_NO_WINDOW
 
 logger = get_logger(__name__)
-
-if sys.platform == "win32":
-    _CREATE_NO_WINDOW = subprocess.CREATE_NO_WINDOW
-else:
-    _CREATE_NO_WINDOW = 0
 
 _cache: Dict[str, str] = {}
 _ffprobe_cache: Dict[str, str] = {}
@@ -49,13 +45,21 @@ def ensure_ffmpeg(ffmpeg_path: str = "ffmpeg") -> str:
             return _cache[ffmpeg_path]
 
     resolved = shutil.which(ffmpeg_path)
-    if not resolved:
+    if not resolved and ffmpeg_path != "ffmpeg":
+        logger.warning("指定的 FFmpeg 路径 '%s' 未找到，尝试系统 PATH", ffmpeg_path)
         resolved = shutil.which("ffmpeg")
     if not resolved:
-        common_paths = [
-            Path.home() / "ffmpeg" / "bin" / "ffmpeg.exe",
-            Path("C:/") / "ffmpeg" / "bin" / "ffmpeg.exe",
-        ]
+        common_paths = []
+        if sys.platform == "win32":
+            common_paths = [
+                Path.home() / "ffmpeg" / "bin" / "ffmpeg.exe",
+                Path("C:/") / "ffmpeg" / "bin" / "ffmpeg.exe",
+            ]
+        else:
+            common_paths = [
+                Path("/usr/local/bin/ffmpeg"),
+                Path("/usr/bin/ffmpeg"),
+            ]
         for p in common_paths:
             if p.exists():
                 resolved = str(p)
@@ -83,7 +87,7 @@ def ensure_ffmpeg(ffmpeg_path: str = "ffmpeg") -> str:
         )
         if result.returncode != 0:
             raise VideoFileError("FFmpeg不可用")
-        logger.info("FFmpeg检查通过: %s", resolved)
+        logger.debug("FFmpeg检查通过: %s", resolved)
     except subprocess.TimeoutExpired:
         raise VideoFileError("FFmpeg检查超时")
 
@@ -147,7 +151,7 @@ def ensure_ffprobe(ffmpeg_path: str = "ffmpeg") -> str:
         )
         if result.returncode != 0:
             raise VideoFileError("ffprobe 不可用")
-        logger.info("ffprobe 检查通过: %s", resolved)
+        logger.debug("ffprobe 检查通过: %s", resolved)
     except subprocess.TimeoutExpired:
         raise VideoFileError("ffprobe 检查超时")
 

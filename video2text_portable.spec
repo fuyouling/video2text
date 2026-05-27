@@ -58,6 +58,7 @@ a = Analysis(
     binaries=pyside6_bins + ctranslate2_bins,
     datas=[
         ('config.ini', '.'),
+        ('prompts.json', '.'),
         ('logs/readme.md', 'logs'),
         ('models/readme.md', 'models'),
         ('output/readme.md', 'output'),

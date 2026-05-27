@@ -21,18 +21,21 @@ from src.summarization.providers import create_provider
 from src.text_processing.segment_merger import SegmentMerger
 from src.text_processing.text_cleaner import TextCleaner
 from src.transcription.transcriber import get_cached_transcriber
-from src.utils.exceptions import ConfigurationError
 from src.utils.logger import get_logger, setup_logger
 from src.utils.validators import validate_executable_path
 
+from src.utils.subprocess_compat import CREATE_NO_WINDOW
+
 SUPPORTED_TRANSCRIPT_FORMATS = {"txt", "srt", "vtt", "json"}
 
-if sys.platform == "win32":
-    import subprocess
 
-    CREATE_NO_WINDOW = subprocess.CREATE_NO_WINDOW
-else:
-    CREATE_NO_WINDOW = 0
+def _setup_worker_logger(settings: Settings):
+    return setup_logger(
+        "video2text",
+        log_dir=settings.get("paths.logs_dir", "logs"),
+        level=settings.get("app.log_level", "INFO"),
+        log_to_console=False,
+    )
 
 
 class RateLimiter:
@@ -87,14 +90,7 @@ def _load_tx_config(settings: Settings) -> TranscriptionConfig:
     output_formats = _get_output_formats(settings)
 
     ffmpeg_path = settings.get("preprocessing.ffmpeg_path", "ffmpeg")
-    try:
-        ffmpeg_path = validate_executable_path(ffmpeg_path, "FFmpeg")
-    except ConfigurationError as e:
-        if "不安全字符" in str(e):
-            raise
-        get_logger(__name__).warning(
-            "FFmpeg 路径验证失败，使用原始路径: %s", ffmpeg_path
-        )
+    ffmpeg_path = validate_executable_path(ffmpeg_path, "FFmpeg")
 
     return TranscriptionConfig(
         language=language,
@@ -152,26 +148,28 @@ class TranscribeWorker(QObject):
         self._cancelled = True
 
     def pause(self) -> None:
-        if self._service is not None:
-            self._service.pause()
+        with self._service_lock:
+            if self._service is not None:
+                self._service.pause()
 
     def resume(self) -> None:
-        if self._service is not None:
-            self._service.resume()
+        with self._service_lock:
+            if self._service is not None:
+                self._service.resume()
+
+    def unpause(self) -> None:
+        """强制解除暂停状态（用于关闭窗口时确保线程不阻塞）。"""
+        with self._service_lock:
+            if self._service is not None:
+                self._service.resume()
 
     @property
     def is_paused(self) -> bool:
         with self._service_lock:
-            service = self._service
-        return service.is_paused if service else False
+            return self._service.is_paused if self._service else False
 
     def run(self) -> None:
-        logger = setup_logger(
-            "video2text",
-            log_dir=self.settings.get("paths.logs_dir", "logs"),
-            level=self.settings.get("app.log_level", "INFO"),
-            log_to_console=False,
-        )
+        logger = _setup_worker_logger(self.settings)
 
         transcriber = None
         try:
@@ -186,6 +184,14 @@ class TranscribeWorker(QObject):
             )
             transcriber.load_model()
             logger.info("转写模型加载完成")
+
+            model_name = Path(cfg.model_path).name
+            logger.info(
+                "[初始化] 模型: %s | 设备: %s (%s) | FFmpeg: ✓",
+                model_name,
+                transcriber.device,
+                transcriber.compute_type,
+            )
 
             video_processor = VideoProcessor(ffmpeg_path=cfg.ffmpeg_path)
             file_writer = FileWriter(self.output_dir)
@@ -221,7 +227,8 @@ class TranscribeWorker(QObject):
                 on_video_error=on_video_error,
                 cancel_check=lambda: self._cancelled,
             )
-            self._service = service
+            with self._service_lock:
+                self._service = service
 
             service.run(self.video_files, self.output_dir)
 
@@ -229,7 +236,8 @@ class TranscribeWorker(QObject):
             logger.exception("转写线程异常")
             self.error.emit(str(exc))
         finally:
-            self._service = None
+            with self._service_lock:
+                self._service = None
             self.finished.emit()
 
 
@@ -268,12 +276,7 @@ class SummarizeWorker(QObject):
         self._cancelled = True
 
     def run(self) -> None:
-        logger = setup_logger(
-            "video2text",
-            log_dir=self.settings.get("paths.logs_dir", "logs"),
-            level=self.settings.get("app.log_level", "INFO"),
-            log_to_console=False,
-        )
+        logger = _setup_worker_logger(self.settings)
 
         try:
             file_writer = FileWriter(self.output_dir)
@@ -299,24 +302,27 @@ class SummarizeWorker(QObject):
             ollama_url = self.settings.get(
                 "summarization.ollama_url", "http://127.0.0.1:11434"
             )
-            try:
-                OllamaClient.ensure_service(ollama_url)
-            except RuntimeError as e:
-                msg = str(e)
+            ollama_model = self.settings.get("summarization.ollama_model", "")
+            if not OllamaClient.full_check(ollama_url, ollama_model or ""):
+                msg = "Ollama 服务不可用"
                 logger.error(msg)
                 self.error.emit(msg)
                 self._emit_all_errors(msg)
                 return
+        else:
+            provider_inst = create_provider(self.settings)
+            try:
+                if not provider_inst.check_connection():
+                    msg = "NVIDIA API 连接: ✗ 失败"
+                    logger.error(msg)
+                    self.error.emit(msg)
+                    self._emit_all_errors(msg)
+                    return
+            finally:
+                provider_inst.close()
 
         provider_inst = create_provider(self.settings)
         try:
-            if not provider_inst.check_connection():
-                msg = f"{provider} 连接失败"
-                logger.error(msg)
-                self.error.emit(msg)
-                self._emit_all_errors(msg)
-                return
-
             service = SummarizationService(
                 settings=self.settings,
                 file_writer=file_writer,
@@ -325,7 +331,7 @@ class SummarizeWorker(QObject):
                 on_stream_token=lambda token: self.stream_token.emit(token),
                 cancel_check=lambda: self._cancelled,
             )
-            self._execute_summarization(logger, service)
+            self._execute_summarization(logger, service, file_writer)
         except Exception as e:
             logger.exception("总结流程异常")
             self.error.emit(str(e))
@@ -337,7 +343,7 @@ class SummarizeWorker(QObject):
         provider_inst = create_provider(self.settings)
         try:
             if not provider_inst.check_connection():
-                msg = "NVIDIA API 连接失败，请检查 API Key 和网络"
+                msg = "NVIDIA API 连接: ✗ 失败"
                 logger.error(msg)
                 self.error.emit(msg)
                 self._emit_all_errors(msg)
@@ -366,10 +372,13 @@ class SummarizeWorker(QObject):
             )
             try:
                 self.summarize_started.emit("(粘贴文本)")
+                logger.info("[1/1] (粘贴文本)")
                 summary = service.summarize(
                     self._standalone_text,
                     video_name="",
                     stream=False,
+                    index=1,
+                    total=1,
                 )
                 if summary:
                     self.video_done.emit("(粘贴文本)", summary)
@@ -388,7 +397,7 @@ class SummarizeWorker(QObject):
 
     def _execute_summarization_multi(self, logger, file_writer: FileWriter) -> None:
         """多线程并发总结"""
-        thread_count = self.settings.get_int("summarization.nvidia_thread_count", 3)
+        thread_count = self.settings.get_int("summarization.nvidia_thread_count", 5)
         total = len(self.video_files)
         progress_lock = threading.Lock()
         done_count = [0]
@@ -396,12 +405,7 @@ class SummarizeWorker(QObject):
         tasks: list[tuple[str, str]] = []
         for video_path in self.video_files:
             video_name = Path(video_path).stem
-            transcript_path = None
-            for ext in ("txt", "srt", "vtt", "json"):
-                candidate = Path(self.output_dir) / f"{video_name}.{ext}"
-                if candidate.exists():
-                    transcript_path = candidate
-                    break
+            transcript_path = file_writer.find_transcript_file(video_name)
 
             if transcript_path is None:
                 logger.warning("未找到转写文件: %s", video_name)
@@ -431,9 +435,15 @@ class SummarizeWorker(QObject):
         if not tasks:
             return
 
+        task_total = len(tasks)
         rate_limiter = RateLimiter(min_interval=1.5)
+        summary_format = (
+            self.settings.get("output.summary_format", "txt").lower().strip()
+        )
 
-        def _process_video(video_name: str, text: str) -> tuple[str, str, str]:
+        def _process_video(
+            idx: int, video_name: str, text: str
+        ) -> tuple[str, str, str]:
             if self._cancelled:
                 return video_name, "", "cancelled"
 
@@ -449,55 +459,70 @@ class SummarizeWorker(QObject):
                 )
                 try:
                     summary = service.summarize(
-                        text, video_name=video_name, stream=False
+                        text,
+                        video_name=video_name,
+                        stream=False,
                     )
                     return video_name, summary, ""
                 finally:
                     service.close()
             except Exception as e:
-                logger.exception("总结失败: %s", video_name)
                 return video_name, "", str(e)
             finally:
                 provider.close()
 
         with ThreadPoolExecutor(max_workers=thread_count) as executor:
             futures = {}
-            for video_name, text in tasks:
+            for idx, (video_name, text) in enumerate(tasks):
                 if self._cancelled:
                     break
                 self.summarize_started.emit(video_name)
-                future = executor.submit(_process_video, video_name, text)
-                futures[future] = video_name
+                future = executor.submit(_process_video, idx, video_name, text)
+                futures[future] = (video_name, idx)
 
             for future in as_completed(futures):
                 try:
                     video_name, summary, err = future.result()
                     if err == "cancelled":
                         continue
+
+                    _, idx = futures[future]
+                    with progress_lock:
+                        done_count[0] += 1
+
                     if summary:
+                        logger.info("[%d/%d] %s", idx + 1, task_total, video_name)
+                        logger.info("  └─ 语音总结完成 ✓ (.%s)", summary_format)
                         self.video_done.emit(video_name, summary)
                     else:
-                        self.video_error.emit(
-                            video_name, err if err else "总结结果为空"
-                        )
+                        err_msg = err if err else "总结结果为空"
+                        logger.info("[%d/%d] %s", idx + 1, task_total, video_name)
+                        logger.info("  └─ 语音总结失败 ✗ %s", err_msg)
+                        self.video_error.emit(video_name, err_msg)
                 except Exception as e:
-                    video_name = futures[future]
-                    logger.exception("线程异常: %s", video_name)
+                    video_name, idx = futures[future]
+                    with progress_lock:
+                        done_count[0] += 1
+                    logger.info("[%d/%d] %s", idx + 1, task_total, video_name)
+                    logger.info("  └─ 语音总结失败 ✗ %s", e)
                     self.video_error.emit(video_name, str(e))
 
-                with progress_lock:
-                    done_count[0] += 1
                 self.progress.emit(done_count[0], total)
 
-    def _execute_summarization(self, logger, service: SummarizationService) -> None:
+    def _execute_summarization(
+        self, logger, service: SummarizationService, file_writer: FileWriter
+    ) -> None:
         """串行总结逻辑（single 模式和 Ollama）"""
         if self._standalone_text and not self.video_files:
             try:
                 self.summarize_started.emit("(粘贴文本)")
+                logger.info("[1/1] (粘贴文本)")
                 summary = service.summarize(
                     self._standalone_text,
                     video_name="",
                     stream=self.stream,
+                    index=1,
+                    total=1,
                 )
                 if summary:
                     self.video_done.emit("(粘贴文本)", summary)
@@ -517,12 +542,7 @@ class SummarizeWorker(QObject):
                 break
 
             video_name = Path(video_path).stem
-            transcript_path = None
-            for ext in ("txt", "srt", "vtt", "json"):
-                candidate = Path(self.output_dir) / f"{video_name}.{ext}"
-                if candidate.exists():
-                    transcript_path = candidate
-                    break
+            transcript_path = file_writer.find_transcript_file(video_name)
 
             if transcript_path is None:
                 logger.warning("未找到转写文件: %s", video_name)
@@ -538,10 +558,14 @@ class SummarizeWorker(QObject):
                     self.progress.emit(idx + 1, total)
                     continue
 
-                logger.info("开始总结 (%d/%d): %s", idx + 1, total, video_name)
                 self.summarize_started.emit(video_name)
+                logger.info("[%d/%d] %s", idx + 1, total, video_name)
                 summary = service.summarize(
-                    text, video_name=video_name, stream=self.stream
+                    text,
+                    video_name=video_name,
+                    stream=self.stream,
+                    index=idx + 1,
+                    total=total,
                 )
                 if summary:
                     self.video_done.emit(video_name, summary)
@@ -600,29 +624,27 @@ class PipelineWorker(QObject):
 
     def pause(self) -> None:
         with self._tx_service_lock:
-            service = self._tx_service
-        if service is not None:
-            service.pause()
+            if self._tx_service is not None:
+                self._tx_service.pause()
 
     def resume(self) -> None:
         with self._tx_service_lock:
-            service = self._tx_service
-        if service is not None:
-            service.resume()
+            if self._tx_service is not None:
+                self._tx_service.resume()
+
+    def unpause(self) -> None:
+        """强制解除暂停状态（用于关闭窗口时确保线程不阻塞）。"""
+        with self._tx_service_lock:
+            if self._tx_service is not None:
+                self._tx_service.resume()
 
     @property
     def is_paused(self) -> bool:
         with self._tx_service_lock:
-            service = self._tx_service
-        return service.is_paused if service else False
+            return self._tx_service.is_paused if self._tx_service else False
 
     def run(self) -> None:
-        logger = setup_logger(
-            "video2text",
-            log_dir=self.settings.get("paths.logs_dir", "logs"),
-            level=self.settings.get("app.log_level", "INFO"),
-            log_to_console=False,
-        )
+        logger = _setup_worker_logger(self.settings)
 
         transcriber = None
         try:
@@ -644,28 +666,46 @@ class PipelineWorker(QObject):
                 max_gap=self.settings.get_float("text_processing.max_gap", 2.0),
                 min_length=self.settings.get_int("text_processing.min_length", 50),
             )
-            text_cleaner = TextCleaner()
+            text_cleaner = TextCleaner(
+                {
+                    "filler_words": self.settings.get_list(
+                        "text_processing.filler_words"
+                    ),
+                }
+            )
 
             provider_name = self.settings.get("summarization.provider", "ollama")
             nvidia_mode = self.settings.get("summarization.nvidia_mode", "single")
             sum_available = False
+            provider_label = "Ollama" if provider_name == "ollama" else "NVIDIA API"
 
             if provider_name == "ollama":
                 ollama_url = self.settings.get(
                     "summarization.ollama_url", "http://127.0.0.1:11434"
                 )
-                try:
-                    OllamaClient.ensure_service(ollama_url)
-                except RuntimeError as e:
-                    logger.warning("%s，将只执行转写", e)
-
-            check_provider = create_provider(self.settings)
-            try:
-                sum_available = check_provider.check_connection()
+                ollama_model = self.settings.get("summarization.ollama_model", "")
+                sum_available = OllamaClient.full_check(ollama_url, ollama_model or "")
                 if not sum_available:
-                    logger.warning("总结服务不可用，将只执行转写")
-            finally:
-                check_provider.close()
+                    logger.warning("Ollama 服务不可用，将只执行转写")
+            else:
+                check_provider = create_provider(self.settings)
+                try:
+                    sum_available = check_provider.check_connection()
+                    if not sum_available:
+                        logger.warning("%s 连接: ✗ 失败，将只执行转写", provider_label)
+                finally:
+                    check_provider.close()
+
+            model_name = Path(cfg.model_path).name
+            sum_status = "✓" if sum_available else "✗"
+            logger.info(
+                "[初始化] 模型: %s | 设备: %s (%s) | FFmpeg: ✓ | %s: %s",
+                model_name,
+                transcriber.device,
+                transcriber.compute_type,
+                provider_label,
+                sum_status,
+            )
 
             total = len(self.video_files)
             done_count = 0
@@ -700,7 +740,8 @@ class PipelineWorker(QObject):
                 on_video_error=on_tx_error,
                 cancel_check=lambda: self._cancelled,
             )
-            self._tx_service = tx_service
+            with self._tx_service_lock:
+                self._tx_service = tx_service
 
             results = tx_service.run(self.video_files, self.output_dir)
 
@@ -732,7 +773,8 @@ class PipelineWorker(QObject):
             logger.exception("管道线程异常")
             self.error.emit(str(exc))
         finally:
-            self._tx_service = None
+            with self._tx_service_lock:
+                self._tx_service = None
             self.finished.emit()
 
     def _prepare_text(
@@ -756,7 +798,7 @@ class PipelineWorker(QObject):
         total_steps,
         sum_available,
     ) -> int:
-        for result in results:
+        for idx, result in enumerate(results):
             if self._cancelled:
                 break
 
@@ -775,10 +817,13 @@ class PipelineWorker(QObject):
                         cancel_check=lambda: self._cancelled,
                     )
                     self.summarize_started.emit(result.video_name)
+                    logger.info("[%d/%d] %s", idx + 1, len(results), result.video_name)
                     summary = service.summarize(
                         processed_text,
                         video_name=result.video_name,
                         stream=self.stream,
+                        index=idx + 1,
+                        total=len(results),
                     )
                     if summary:
                         self.summarize_done.emit(result.video_name, summary)
@@ -808,7 +853,7 @@ class PipelineWorker(QObject):
         total,
         total_steps,
     ) -> int:
-        thread_count = self.settings.get_int("summarization.nvidia_thread_count", 3)
+        thread_count = self.settings.get_int("summarization.nvidia_thread_count", 5)
         progress_lock = threading.Lock()
         tasks: list[tuple[str, str]] = []
 
@@ -822,8 +867,12 @@ class PipelineWorker(QObject):
             return sum_done
 
         rate_limiter = RateLimiter(min_interval=1.5)
+        task_total = len(tasks)
+        summary_format = (
+            self.settings.get("output.summary_format", "txt").lower().strip()
+        )
 
-        def _process(video_name: str, text: str) -> tuple[str, str, str]:
+        def _process(idx: int, video_name: str, text: str) -> tuple[str, str, str]:
             if self._cancelled:
                 return video_name, "", "cancelled"
             rate_limiter.acquire()
@@ -836,37 +885,45 @@ class PipelineWorker(QObject):
                     custom_prompt=self.custom_prompt,
                     cancel_check=lambda: self._cancelled,
                 )
-                summary = service.summarize(text, video_name=video_name, stream=False)
+                summary = service.summarize(
+                    text,
+                    video_name=video_name,
+                    stream=False,
+                )
                 return video_name, summary, ""
             except Exception as e:
-                logger.exception("总结失败: %s", video_name)
                 return video_name, "", str(e)
             finally:
                 provider.close()
 
         with ThreadPoolExecutor(max_workers=thread_count) as executor:
             futures = {}
-            for video_name, text in tasks:
+            for idx, (video_name, text) in enumerate(tasks):
                 if self._cancelled:
                     break
                 self.summarize_started.emit(video_name)
-                future = executor.submit(_process, video_name, text)
-                futures[future] = video_name
+                future = executor.submit(_process, idx, video_name, text)
+                futures[future] = (video_name, idx)
 
             for future in as_completed(futures):
                 try:
                     video_name, summary, err = future.result()
                     if err == "cancelled":
                         continue
+                    _, idx = futures[future]
                     if summary:
+                        logger.info("[%d/%d] %s", idx + 1, task_total, video_name)
+                        logger.info("  └─ 语音总结完成 ✓ (.%s)", summary_format)
                         self.summarize_done.emit(video_name, summary)
                     else:
-                        self.summarize_error.emit(
-                            video_name, err if err else "总结结果为空"
-                        )
+                        err_msg = err if err else "总结结果为空"
+                        logger.info("[%d/%d] %s", idx + 1, task_total, video_name)
+                        logger.info("  └─ 语音总结失败 ✗ %s", err_msg)
+                        self.summarize_error.emit(video_name, err_msg)
                 except Exception as e:
-                    video_name = futures[future]
-                    logger.exception("线程异常: %s", video_name)
+                    video_name, idx = futures[future]
+                    logger.info("[%d/%d] %s", idx + 1, task_total, video_name)
+                    logger.info("  └─ 语音总结失败 ✗ %s", e)
                     self.summarize_error.emit(video_name, str(e))
 
                 with progress_lock:
@@ -900,7 +957,8 @@ class OllamaCheckWorker(QObject):
                 self.result.emit(ok, latency_ms)
             finally:
                 client.close()
-        except Exception:
+        except Exception as exc:
+            get_logger(__name__).warning("Ollama 连接: ✗ 异常 %s", exc)
             self.result.emit(False, 0.0)
         finally:
             self.finished.emit()
@@ -964,7 +1022,8 @@ class OllamaListModelWorker(QObject):
             finally:
                 client.close()
             self.result.emit(models)
-        except Exception:
+        except Exception as exc:
+            get_logger(__name__).warning("Ollama 模型列表: ✗ 获取失败 %s", exc)
             self.result.emit([])
         finally:
             self.finished.emit()
@@ -992,7 +1051,8 @@ class NvidiaCheckWorker(QObject):
                 self.result.emit(ok, latency_ms)
             finally:
                 client.close()
-        except Exception:
+        except Exception as exc:
+            get_logger(__name__).warning("NVIDIA API 连接: ✗ 异常 %s", exc)
             self.result.emit(False, 0.0)
         finally:
             self.finished.emit()

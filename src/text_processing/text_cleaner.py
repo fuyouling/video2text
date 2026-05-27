@@ -22,7 +22,7 @@ class TextCleaner:
         self.filler_words = sorted(
             self.config.get(
                 "filler_words",
-                ["嗯", "啊", "呃", "那个", "这个", "就是", "然后", "嗯嗯", "啊啊"],
+                ["嗯", "啊", "呃", "嗯嗯", "啊啊"],
             ),
             key=len,
             reverse=True,
@@ -58,7 +58,7 @@ class TextCleaner:
         cleaned = self.normalize_quotes(cleaned)
         cleaned = self.remove_repeated_chars(cleaned)
 
-        logger.debug(f"文本清理完成: {len(text)} -> {len(cleaned)} 字符")
+        logger.debug("文本清理完成: %d -> %d 字符", len(text), len(cleaned))
         return cleaned.strip()
 
     def remove_fillers(self, text: str) -> str:
@@ -86,7 +86,7 @@ class TextCleaner:
         """
         if self.normalize_punctuation:
             text = re.sub(
-                "[，。！？、；：\u201c\u201d''（）【】《》]",
+                "[，。！？、；：\u201c\u201d\u2018\u2019（）【】《》]",
                 lambda m: {
                     "，": ",",
                     "。": ".",
@@ -97,8 +97,8 @@ class TextCleaner:
                     "：": ":",
                     "\u201c": '"',
                     "\u201d": '"',
-                    "'": "'",
                     "\u2018": "'",
+                    "\u2019": "'",
                     "（": "(",
                     "）": ")",
                     "【": "[",
@@ -120,7 +120,8 @@ class TextCleaner:
 
         text = re.sub(r"([，。！？、；：])[ \t]+", r"\1", text)
 
-        text = re.sub(r"([，。！？、；：])\1+", r"\1", text)
+        text = re.sub(r"([，！？、；：])\1+", r"\1", text)
+        text = re.sub(r"。{4,}", "。。。", text)
 
         text = re.sub(r"[ \t]+", " ", text)
 
@@ -168,40 +169,6 @@ class TextCleaner:
         text = re.sub(r"([\u4e00-\u9fff])\1{4,}", r"\1\1\1", text)
 
         return text
-
-    def capitalize_sentences(self, text: str, language: str = "en") -> str:
-        """句子首字母大写（仅适用于英文）
-
-        Args:
-            text: 原始文本
-            language: 语言代码，中文(zh)跳过处理
-
-        Returns:
-            首字母大写后的文本
-        """
-        if language.startswith("zh"):
-            return text
-
-        sentences = re.split(r"([.!?]+\s*)", text)
-
-        for i in range(0, len(sentences), 2):
-            if sentences[i] and len(sentences[i]) > 0:
-                sentences[i] = sentences[i][0].upper() + sentences[i][1:]
-
-        return "".join(sentences)
-
-    def remove_empty_lines(self, text: str) -> str:
-        """移除空行
-
-        Args:
-            text: 原始文本
-
-        Returns:
-            移除空行后的文本
-        """
-        lines = text.split("\n")
-        non_empty_lines = [line for line in lines if line.strip()]
-        return "\n".join(non_empty_lines)
 
     def truncate_text(self, text: str, max_length: int, ellipsis: str = "...") -> str:
         """截断文本

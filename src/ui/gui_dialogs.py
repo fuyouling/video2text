@@ -38,6 +38,18 @@ from src.ui.gui_workers import (
 from src.utils.logger import get_logger
 
 
+def _format_file_size(size_bytes: int) -> str:
+    """将字节数格式化为可读的文件大小字符串"""
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} KB"
+    elif size_bytes < 1024 * 1024 * 1024:
+        return f"{size_bytes / (1024 * 1024):.1f} MB"
+    else:
+        return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
+
+
 class VideoSelectionDialog(QDialog):
     """媒体文件选择对话框 —— 树形视图 + 批量筛选"""
 
@@ -59,6 +71,11 @@ class VideoSelectionDialog(QDialog):
 
     def _init_ui(self) -> None:
         self.setWindowTitle("选择媒体文件")
+        self.setWindowFlags(
+            self.windowFlags()
+            | Qt.WindowType.WindowMinMaxButtonsHint
+            | Qt.WindowType.WindowMaximizeButtonHint
+        )
         self.resize(700, 550)
 
         layout = QVBoxLayout(self)
@@ -82,21 +99,53 @@ class VideoSelectionDialog(QDialog):
         toolbar.addWidget(QLabel("后缀:"))
         self._suffix_combo = QComboBox()
         self._suffix_combo.setMinimumWidth(80)
+        self._suffix_combo.currentIndexChanged.connect(self._select_by_suffix)
         toolbar.addWidget(self._suffix_combo)
-        select_suffix_btn = QPushButton("选中该后缀")
-        select_suffix_btn.clicked.connect(self._select_by_suffix)
-        toolbar.addWidget(select_suffix_btn)
+        toolbar.addSpacing(16)
+        toolbar.addWidget(QLabel("大小:"))
+        self._size_combo = QComboBox()
+        self._size_combo.setMinimumWidth(120)
+        self._size_tiers = [
+            ("全部", 0, None),
+            ("< 10 MB", 0, 10 * 1024 * 1024),
+            ("10 - 100 MB", 10 * 1024 * 1024, 100 * 1024 * 1024),
+            ("100 MB - 1 GB", 100 * 1024 * 1024, 1024 * 1024 * 1024),
+            ("1 - 5 GB", 1024 * 1024 * 1024, 5 * 1024 * 1024 * 1024),
+            ("> 5 GB", 5 * 1024 * 1024 * 1024, None),
+        ]
+        for label, _, _ in self._size_tiers:
+            self._size_combo.addItem(label)
+        self._size_combo.currentIndexChanged.connect(self._select_by_size)
+        toolbar.addWidget(self._size_combo)
         toolbar.addStretch()
         layout.addLayout(toolbar)
 
         self._tree = QTreeWidget()
-        self._tree.setHeaderLabels(["文件名", "类型"])
+        self._tree.setHeaderLabels(["文件名", "类型", "大小"])
         self._tree.setSelectionMode(QTreeWidget.SelectionMode.NoSelection)
         self._tree.setAnimated(True)
         self._build_tree()
+        self._tree.header().setStretchLastSection(False)
         self._tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self._tree.header().setSectionResizeMode(
             1, QHeaderView.ResizeMode.ResizeToContents
+        )
+        self._tree.header().setSectionResizeMode(
+            2, QHeaderView.ResizeMode.ResizeToContents
+        )
+        model = self._tree.model()
+        _ALIGN_RIGHT = int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        model.setHeaderData(
+            1,
+            Qt.Orientation.Horizontal,
+            _ALIGN_RIGHT,
+            Qt.ItemDataRole.TextAlignmentRole,
+        )
+        model.setHeaderData(
+            2,
+            Qt.Orientation.Horizontal,
+            _ALIGN_RIGHT,
+            Qt.ItemDataRole.TextAlignmentRole,
         )
         self._tree.expandAll()
         self._tree.itemChanged.connect(self._update_info_label)
@@ -165,9 +214,22 @@ class VideoSelectionDialog(QDialog):
                     if media_type == "音频"
                     else "📄"
                 )
-                item = QTreeWidgetItem([f"{icon} {abs_p.name}", media_type])
+                try:
+                    size_bytes = abs_p.stat().st_size
+                    size_str = _format_file_size(size_bytes)
+                except OSError:
+                    size_bytes = -1
+                    size_str = "-"
+                item = QTreeWidgetItem([f"{icon} {abs_p.name}", media_type, size_str])
                 item.setData(0, Qt.ItemDataRole.UserRole, str(abs_p))
+                item.setData(0, Qt.ItemDataRole.UserRole + 1, size_bytes)
                 item.setCheckState(0, Qt.CheckState.Checked)
+                item.setTextAlignment(
+                    1, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                )
+                item.setTextAlignment(
+                    2, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                )
                 self._tree.addTopLevelItem(item)
                 self._leaf_items.append(item)
         else:
@@ -184,16 +246,31 @@ class VideoSelectionDialog(QDialog):
                         if media_type == "音频"
                         else "📄"
                     )
-                    item = QTreeWidgetItem([f"{icon} {abs_p.name}", media_type])
+                    try:
+                        size_bytes = abs_p.stat().st_size
+                        size_str = _format_file_size(size_bytes)
+                    except OSError:
+                        size_bytes = -1
+                        size_str = "-"
+                    item = QTreeWidgetItem(
+                        [f"{icon} {abs_p.name}", media_type, size_str]
+                    )
                     item.setData(0, Qt.ItemDataRole.UserRole, str(abs_p))
+                    item.setData(0, Qt.ItemDataRole.UserRole + 1, size_bytes)
                     item.setCheckState(0, Qt.CheckState.Checked)
+                    item.setTextAlignment(
+                        1, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                    )
+                    item.setTextAlignment(
+                        2, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                    )
                     self._tree.addTopLevelItem(item)
                     self._leaf_items.append(item)
                     continue
                 for i in range(len(parts)):
                     sub_key = parts[: i + 1]
                     if sub_key not in folder_nodes:
-                        fi = QTreeWidgetItem([f"📁 {parts[i]}", ""])
+                        fi = QTreeWidgetItem([f"📁 {parts[i]}", "", ""])
                         fi.setFlags(
                             fi.flags()
                             | Qt.ItemFlag.ItemIsAutoTristate
@@ -218,9 +295,22 @@ class VideoSelectionDialog(QDialog):
         ext = abs_p.suffix.lower()
         media_type = suffix_map.get(ext, "媒体")
         icon = "🎬" if media_type == "视频" else "🎵" if media_type == "音频" else "📄"
-        item = QTreeWidgetItem([f"{icon} {abs_p.name}", media_type])
+        try:
+            size_bytes = abs_p.stat().st_size
+            size_str = _format_file_size(size_bytes)
+        except OSError:
+            size_bytes = -1
+            size_str = "-"
+        item = QTreeWidgetItem([f"{icon} {abs_p.name}", media_type, size_str])
         item.setData(0, Qt.ItemDataRole.UserRole, str(abs_p))
+        item.setData(0, Qt.ItemDataRole.UserRole + 1, size_bytes)
         item.setCheckState(0, Qt.CheckState.Checked)
+        item.setTextAlignment(
+            1, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        item.setTextAlignment(
+            2, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
         parent.addChild(item)
         self._leaf_items.append(item)
 
@@ -292,6 +382,26 @@ class VideoSelectionDialog(QDialog):
         self._tree.blockSignals(False)
         self._update_info_label()
 
+    def _select_by_size(self) -> None:
+        idx = self._size_combo.currentIndex()
+        if idx < 0 or idx >= len(self._size_tiers):
+            return
+        _, lo, hi = self._size_tiers[idx]
+        self._tree.blockSignals(True)
+        for item in self._iter_leaves():
+            size_bytes: int = item.data(0, Qt.ItemDataRole.UserRole + 1)
+            if size_bytes < 0:
+                item.setCheckState(0, Qt.CheckState.Unchecked)
+                continue
+            ok = size_bytes >= lo
+            if hi is not None:
+                ok = ok and size_bytes < hi
+            item.setCheckState(
+                0, Qt.CheckState.Checked if ok else Qt.CheckState.Unchecked
+            )
+        self._tree.blockSignals(False)
+        self._update_info_label()
+
     def get_selected_files(self) -> list[str]:
         selected: list[str] = []
         for item in self._iter_leaves():
@@ -309,6 +419,7 @@ _SECTION_LABELS: dict[str, str] = {
     "network": "网络",
     "paths": "路径",
     "tools": "工具",
+    "text_processing": "文本处理",
 }
 
 _KEY_LABELS: dict[str, str] = {
@@ -324,6 +435,8 @@ _KEY_LABELS: dict[str, str] = {
     "transcription.compute_type": "计算类型",
     "transcription.num_workers": "工作线程数",
     "transcription.vad_filter": "VAD过滤",
+    "transcription.condition_on_previous_text": "基于前文条件",
+    "transcription.word_timestamps": "词级时间戳",
     "summarization.ollama_url": "Ollama服务地址",
     "summarization.model_name": "模型名称",
     "summarization.max_length": "最大长度",
@@ -349,6 +462,9 @@ _KEY_LABELS: dict[str, str] = {
     "output.transcript_format": "转写格式",
     "output.summary_format": "摘要格式",
     "network.proxy": "代理地址",
+    "network.hf_mirror_url": "HuggingFace镜像地址",
+    "network.download_timeout": "下载超时",
+    "network.download_max_retries": "下载重试次数",
     "paths.models_dir": "模型目录",
     "paths.logs_dir": "日志目录",
     "paths.video_dir": "视频目录",
@@ -357,6 +473,63 @@ _KEY_LABELS: dict[str, str] = {
     "tools.watermark_inpaint_radius": "修复半径",
     "tools.watermark_output_dir": "输出子目录",
     "tools.watermark_max_batch": "批量上限",
+    "text_processing.max_gap": "合并最大间隔",
+    "text_processing.min_length": "最小合并长度",
+    "text_processing.filler_words": "填充词列表",
+}
+
+_KEY_TOOLTIPS: dict[str, str] = {
+    "app.log_level": "日志级别: DEBUG / INFO / WARNING / ERROR",
+    "transcription.model_path": "Whisper 模型名称或本地路径。可选: large-v3, medium, small, tiny, 或模型目录绝对路径",
+    "transcription.device": "推理设备: cuda (NVIDIA GPU), cpu, auto (自动选择)",
+    "transcription.language": "转写语言代码: zh (中文), en (英文), ja (日文) 等，留空或 auto 自动检测",
+    "transcription.beam_size": "束搜索宽度 (1~10)，越大越准确但越慢",
+    "transcription.best_of": "采样候选数量，从 N 个候选中选最优结果",
+    "transcription.temperature": "采样温度: 0 为贪心解码 (最确定)，值越高结果越随机",
+    "transcription.compute_type": "计算精度: float16, int8, float32。int8 显存占用最少，float16 精度最佳",
+    "transcription.num_workers": "并行转写工作线程数，多文件转写时的并发度",
+    "transcription.vad_filter": "是否启用 VAD 语音活动检测，过滤静音段可减少幻觉: True / False",
+    "transcription.condition_on_previous_text": "是否基于前文上下文条件生成，可提高连贯性但可能传播错误: True / False",
+    "transcription.word_timestamps": "是否生成词级时间戳，启用后可精确定位每个词的时间: True / False",
+    "summarization.ollama_url": "Ollama 服务地址，默认 http://127.0.0.1:11434",
+    "summarization.model_name": "Ollama 模型名称，点击「刷新模型列表」获取可用模型",
+    "summarization.max_length": "生成摘要的最大 token 数，长文本建议 10000+",
+    "summarization.temperature": "生成温度 (0~2)，越低越确定性，建议 0.3~0.8",
+    "summarization.timeout": "请求超时时间 (秒)，长文本建议 600+",
+    "summarization.nvidia_api_url": "NVIDIA API 端点地址",
+    "summarization.nvidia_model": "NVIDIA 模型标识，如 openai/gpt-oss-120b",
+    "summarization.nvidia_max_tokens": "最大生成 token 数",
+    "summarization.nvidia_temperature": "生成温度 (0~2)",
+    "summarization.nvidia_top_p": "核采样概率阈值 (0~1)，控制输出多样性",
+    "summarization.nvidia_frequency_penalty": "频率惩罚 (-2.0~2.0)，降低重复用词概率",
+    "summarization.nvidia_presence_penalty": "存在惩罚 (-2.0~2.0)，鼓励谈论新话题",
+    "summarization.nvidia_mode": "NVIDIA 模式: single (单线程，支持流式), multi (多线程并发)",
+    "summarization.nvidia_thread_count": "多线程模式下的并发线程数",
+    "summarization.nvidia_stream": "是否启用流式输出 (仅单线程模式有效): true / false",
+    "preprocessing.ffmpeg_path": "FFmpeg 可执行文件路径或命令名，需在 PATH 中或填写完整路径",
+    "preprocessing.audio_sample_rate": "音频采样率 (Hz)，Whisper 推荐 16000",
+    "preprocessing.audio_channels": "音频声道数: 1=单声道 (推荐), 2=立体声",
+    "preprocessing.max_chunk_duration": "长音频分段时长 (秒)，超过此值自动分段处理",
+    "preprocessing.supported_video_formats": "支持的视频文件后缀，逗号分隔",
+    "preprocessing.supported_audio_formats": "支持的音频文件后缀，逗号分隔",
+    "output.output_dir": "输出目录，支持相对路径 (相对程序目录) 和绝对路径",
+    "output.transcript_format": "转写输出格式: txt, srt, vtt, json (可选多种，逗号分隔)",
+    "output.summary_format": "摘要输出格式: txt (纯文本), md (Markdown)",
+    "network.proxy": "HTTP 代理地址 (如 http://127.0.0.1:7890)，用于访问外部 API，留空不使用",
+    "network.hf_mirror_url": "HuggingFace 模型下载地址，国内用户可替换为镜像地址",
+    "network.download_timeout": "模型下载超时时间 (秒)",
+    "network.download_max_retries": "模型下载失败重试次数",
+    "paths.models_dir": "模型文件存储目录，支持相对路径和绝对路径",
+    "paths.logs_dir": "日志文件存储目录",
+    "paths.video_dir": "视频文件默认目录",
+    "text_processing.max_gap": "段落合并最大时间间隔 (秒)，间隔超过此值的段落不会合并",
+    "text_processing.min_length": "最小文本长度，短于此长度的段落会尝试与相邻段落合并",
+    "text_processing.filler_words": "需要清除的填充词，逗号分隔",
+    "tools.watermark_mode": "水印处理模式: blur (模糊), inpaint (修复填充)",
+    "tools.watermark_blur_size": "模糊核大小 (奇数)，越大模糊效果越强 (仅 blur 模式)",
+    "tools.watermark_inpaint_radius": "修复半径，越大修复范围越广 (仅 inpaint 模式)",
+    "tools.watermark_output_dir": "去水印输出子目录名，相对于原图目录",
+    "tools.watermark_max_batch": "单次批量处理的最大图片数量",
 }
 
 
@@ -371,7 +544,7 @@ class ConfigEditorDialog(QDialog):
 
     def _init_ui(self) -> None:
         self.setWindowTitle("编辑配置")
-        self.resize(600, 480)
+        self.resize(600, 560)
 
         layout = QVBoxLayout(self)
 
@@ -412,6 +585,9 @@ class ConfigEditorDialog(QDialog):
             if full_key in _SKIP_KEYS:
                 continue
             widget = QLineEdit(value)
+            tooltip = _KEY_TOOLTIPS.get(full_key)
+            if tooltip:
+                widget.setToolTip(tooltip)
             label = _KEY_LABELS.get(full_key, key)
             if full_key in Settings.PATH_KEYS:
                 row = QHBoxLayout()
@@ -462,9 +638,9 @@ class ConfigEditorDialog(QDialog):
                 "summarization.ollama_url", "http://127.0.0.1:11434"
             ),
             "model_name": self.settings.get("summarization.model_name", ""),
-            "max_length": self.settings.get("summarization.max_length", "5000"),
+            "max_length": self.settings.get("summarization.max_length", "10000"),
             "temperature": self.settings.get("summarization.temperature", "0.7"),
-            "timeout": self.settings.get("summarization.timeout", "300"),
+            "timeout": self.settings.get("summarization.timeout", "600"),
         }
 
         for key, value in ollama_items.items():
@@ -475,6 +651,9 @@ class ConfigEditorDialog(QDialog):
                 widget = QLineEdit(value)
                 label = _KEY_LABELS.get(full_key, key)
                 ollama_form.addRow(f"{label}:", widget)
+            tooltip = _KEY_TOOLTIPS.get(full_key)
+            if tooltip:
+                widget.setToolTip(tooltip)
             section_edits[key] = widget
 
         self._add_ollama_service_buttons(ollama_form)
@@ -511,6 +690,9 @@ class ConfigEditorDialog(QDialog):
         for key, value in nvidia_items.items():
             full_key = f"summarization.{key}"
             widget = QLineEdit(value)
+            tooltip = _KEY_TOOLTIPS.get(full_key)
+            if tooltip:
+                widget.setToolTip(tooltip)
             label = _KEY_LABELS.get(full_key, key)
             nvidia_form.addRow(f"{label}:", widget)
             section_edits[key] = widget
@@ -521,6 +703,9 @@ class ConfigEditorDialog(QDialog):
         self._nvidia_mode_combo.addItem("single", "单线程")
         self._nvidia_mode_combo.addItem("multi", "多线程")
         self._nvidia_mode_combo.setCurrentText(nvidia_mode)
+        self._nvidia_mode_combo.setToolTip(
+            _KEY_TOOLTIPS.get("summarization.nvidia_mode", "")
+        )
         nvidia_form.addRow("NVIDIA 模式:", self._nvidia_mode_combo)
         section_edits["nvidia_mode"] = self._nvidia_mode_combo
 
@@ -529,6 +714,9 @@ class ConfigEditorDialog(QDialog):
         self._nvidia_stream_combo.addItem("false", "否")
         nvidia_stream_val = self.settings.get("summarization.nvidia_stream", "true")
         self._nvidia_stream_combo.setCurrentText(nvidia_stream_val)
+        self._nvidia_stream_combo.setToolTip(
+            _KEY_TOOLTIPS.get("summarization.nvidia_stream", "")
+        )
         self._nvidia_stream_row_label = QLabel("NVIDIA 流式输出:")
         self._nvidia_stream_row = nvidia_form.addRow(
             self._nvidia_stream_row_label, self._nvidia_stream_combo
@@ -536,9 +724,12 @@ class ConfigEditorDialog(QDialog):
         section_edits["nvidia_stream"] = self._nvidia_stream_combo
 
         nvidia_thread_count = self.settings.get(
-            "summarization.nvidia_thread_count", "3"
+            "summarization.nvidia_thread_count", "5"
         )
         self._nvidia_thread_edit = QLineEdit(nvidia_thread_count)
+        self._nvidia_thread_edit.setToolTip(
+            _KEY_TOOLTIPS.get("summarization.nvidia_thread_count", "")
+        )
         self._nvidia_thread_row_label = QLabel("NVIDIA 线程数:")
         self._nvidia_thread_row = nvidia_form.addRow(
             self._nvidia_thread_row_label, self._nvidia_thread_edit
@@ -616,16 +807,16 @@ class ConfigEditorDialog(QDialog):
                 self._nvidia_status_label.setText(f"连接成功 ({latency_ms:.0f}ms)")
                 self._nvidia_status_label.setStyleSheet("color: green")
                 get_logger("video2text").info(
-                    "NVIDIA 连接测试成功: url=%s model=%s 延迟=%.0fms",
+                    "NVIDIA API 连接: ✓ 成功 (%.0fms) | url=%s model=%s",
+                    latency_ms,
                     url,
                     model,
-                    latency_ms,
                 )
             else:
                 self._nvidia_status_label.setText("连接失败，请检查 API Key 和网络")
                 self._nvidia_status_label.setStyleSheet("color: red")
                 get_logger("video2text").warning(
-                    "NVIDIA 连接测试失败: url=%s model=%s", url, model
+                    "NVIDIA API 连接: ✗ 失败 | url=%s model=%s", url, model
                 )
 
         def _cleanup():
@@ -770,15 +961,15 @@ class ConfigEditorDialog(QDialog):
         if ok:
             self._set_ollama_status(f"连接成功 ({latency_ms:.0f}ms)", "green")
             get_logger("video2text").info(
-                "Ollama 连接测试成功: url=%s model=%s 延迟=%.0fms",
+                "Ollama 连接: ✓ 成功 (%.0fms) | url=%s model=%s",
+                latency_ms,
                 url,
                 model,
-                latency_ms,
             )
         else:
             self._set_ollama_status("连接失败", "red")
             get_logger("video2text").warning(
-                "Ollama 连接测试失败: url=%s model=%s", url, model
+                "Ollama 连接: ✗ 失败 | url=%s model=%s", url, model
             )
 
     def _start_ollama_service(self) -> None:
@@ -810,11 +1001,13 @@ class ConfigEditorDialog(QDialog):
         if ok:
             if status == "already_running":
                 self._set_ollama_status("Ollama 服务已在运行中", "green")
+                logger.info("Ollama 服务启动: ✓ 已在运行")
             else:
                 self._set_ollama_status("Ollama 服务已启动", "green")
-                logger.info("Ollama 服务启动成功")
+                logger.info("Ollama 服务启动: ✓ 成功")
         elif status == "not_found":
             self._set_ollama_status("未找到ollama命令", "red")
+            logger.warning("Ollama 服务启动: ✗ 未找到ollama命令")
             QMessageBox.warning(
                 self,
                 "提示",
@@ -823,13 +1016,14 @@ class ConfigEditorDialog(QDialog):
             )
         elif status == "timeout":
             self._set_ollama_status("启动超时，请稍后测试连接", "orange")
-            logger.warning("Ollama 服务启动超时")
+            logger.warning("Ollama 服务启动: ✗ 超时")
         else:
             self._set_ollama_status("启动失败", "red")
-            logger.error("Ollama 服务启动失败")
+            logger.error("Ollama 服务启动: ✗ 失败")
 
     def _stop_ollama_service(self) -> None:
         url = self._get_ollama_url()
+        self._set_ollama_status("正在关闭...", "orange")
         if OllamaClient._service_process is None:
             self._set_ollama_status("Ollama 非本程序启动，无法关闭", "orange")
             return

@@ -19,7 +19,7 @@ def _reset_settings():
 class TestSettings:
     def test_app_constants(self):
         assert APP_NAME == "video2text"
-        assert APP_VERSION == "1.4.0"
+        assert APP_VERSION == "2.1.1"
 
     def test_load_existing_config(self, tmp_path):
         config_file = tmp_path / "config.ini"

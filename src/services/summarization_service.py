@@ -8,7 +8,7 @@ from src.config.settings import Settings
 from src.storage.file_writer import FileWriter
 from src.summarization.providers import SummarizationProvider, create_provider
 from src.utils.exceptions import SummarizationError
-from src.utils.logger import get_logger, log_step
+from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -59,6 +59,8 @@ class SummarizationService:
         *,
         video_name: str = "",
         stream: bool = False,
+        index: int = 0,
+        total: int = 0,
     ) -> str:
         """总结文本。
 
@@ -75,28 +77,28 @@ class SummarizationService:
 
         label = video_name or "(未命名)"
 
+        if total > 0:
+            self._log(f"  ├─ 语音总结开始")
+
         def _on_token(token: str):
             if self.on_stream_token:
                 self.on_stream_token(token)
 
-        with log_step(f"生成总结 ({label})"):
-            summary = self.provider.summarize(
-                text,
-                custom_prompt=self.custom_prompt or "",
-                stream=stream,
-                on_token=_on_token if stream else None,
-            )
+        summary = self.provider.summarize(
+            text,
+            custom_prompt=self.custom_prompt or "",
+            stream=stream,
+            on_token=_on_token if stream else None,
+        )
 
         if not summary or not summary.strip():
             raise SummarizationError("模型返回空总结")
 
         if video_name:
-            with log_step(f"保存摘要 ({video_name})"):
-                self.file_writer.write_summary(
-                    summary, video_name, format=self.summary_format
-                )
+            self.file_writer.write_summary(summary, video_name, fmt=self.summary_format)
 
-        self._log(f"总结完成: {label}")
+        if total > 0:
+            self._log(f"  └─ 语音总结完成 ✓ (.{self.summary_format})")
         return summary
 
     def summarize_batch(
@@ -133,10 +135,14 @@ class SummarizationService:
             video_name = item.get("video_name", f"item_{idx}")
             text = item.get("text", "")
 
-            self._log(f"[{idx + 1}/{total}] 开始总结: {video_name}")
-
             try:
-                summary = self.summarize(text, video_name=video_name, stream=stream)
+                summary = self.summarize(
+                    text,
+                    video_name=video_name,
+                    stream=stream,
+                    index=idx + 1,
+                    total=total,
+                )
                 results.append(summary)
             except Exception as e:
                 logger.error("总结失败 %s: %s", video_name, e)
@@ -148,6 +154,9 @@ class SummarizationService:
     def _summarize_batch_concurrent(
         self, items: List[dict], stream: bool, total: int, max_workers: int
     ) -> List[str]:
+        if stream:
+            logger.warning("并发模式不支持流式输出，自动切换为非流式")
+
         results: dict[int, str] = {}
         progress_lock = threading.Lock()
         done_count = [0]
@@ -175,13 +184,15 @@ class SummarizationService:
 
                 if summary and summary.strip():
                     self.file_writer.write_summary(
-                        summary, video_name, format=self.summary_format
+                        summary, video_name, fmt=self.summary_format
                     )
 
                 with progress_lock:
                     done_count[0] += 1
                     current = done_count[0]
-                self._log(f"[{current}/{total}] 总结完成: {video_name}")
+                self._log(
+                    f"[{current}/{total}] 总结完成: {video_name} (.{self.summary_format})"
+                )
 
                 return idx, summary if summary else ""
             except Exception as e:

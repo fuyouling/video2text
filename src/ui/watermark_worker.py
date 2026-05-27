@@ -78,6 +78,8 @@ class WatermarkWorker(QObject):
 
     @staticmethod
     def _compute_output_path(src_path: str, output_base: str, use_flat: bool) -> str:
+        if not output_base or not output_base.strip():
+            output_base = "nowm"
         src = Path(src_path)
         base = Path(output_base)
 

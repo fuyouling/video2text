@@ -20,13 +20,15 @@ class TestTextCleaner:
         assert self.cleaner.remove_extra_whitespace("hello\r\nworld") == "hello\nworld"
 
     def test_remove_fillers(self):
-        text = "嗯今天嗯嗯我们那个讨论一下"
+        text = "嗯今天嗯嗯我们讨论一下"
         result = self.cleaner.remove_fillers(text)
-        # \b 不适用于中文字符边界，填充词可能不会被完全移除
-        # 但至少验证函数不会崩溃且返回非空字符串
-        assert len(result) > 0
-        assert "今天" in result
-        assert "讨论" in result
+        assert result == "今天我们讨论一下"
+
+    def test_remove_fillers_preserves_semantic_words(self):
+        """那个/这个/就是/然后 不应被删除（非默认填充词）"""
+        text = "然后那个苹果就是很甜的"
+        result = self.cleaner.remove_fillers(text)
+        assert result == text
 
     def test_fix_punctuation_no_normalize(self):
         """默认不转换中文标点"""
@@ -56,12 +58,6 @@ class TestTextCleaner:
         assert self.cleaner.remove_repeated_chars("!!!") == "!!!"
         assert self.cleaner.remove_repeated_chars("aa") == "aa"
 
-    def test_capitalize_sentences(self):
-        result = self.cleaner.capitalize_sentences("hello. world.")
-        # split 会把分隔符（含空格）单独分组，导致拼接后可能丢失空格
-        assert "Hello" in result
-        assert "World" in result
-
     def test_truncate_text(self):
         assert self.cleaner.truncate_text("hello", 10) == "hello"
         assert self.cleaner.truncate_text("hello world", 8) == "hello..."
@@ -71,3 +67,18 @@ class TestTextCleaner:
         result = self.cleaner.clean(text)
         assert len(result) > 0
         assert "  " not in result  # no double spaces
+
+    def test_fix_punctuation_preserves_chinese_ellipsis(self):
+        """中文省略号。。。不应被压缩为单个句号"""
+        cleaner = TextCleaner({"normalize_punctuation": False})
+        text = "好吧。。。"
+        result = cleaner.fix_punctuation(text)
+        assert "。。。" in result
+        assert result == "好吧。。。"
+
+    def test_fix_punctuation_reduces_repeated_punctuation(self):
+        """重复标点应被压缩（省略号除外）"""
+        cleaner = TextCleaner({"normalize_punctuation": False})
+        assert cleaner.fix_punctuation("你好！！！") == "你好！"
+        assert cleaner.fix_punctuation("你好？？？") == "你好？"
+        assert cleaner.fix_punctuation("你好，，，") == "你好，"

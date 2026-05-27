@@ -184,6 +184,11 @@ def apply_inpaint(img: np.ndarray, regions: list[Region], radius: int) -> np.nda
 def apply_watermark_removal(
     img: np.ndarray, regions: list[Region], mode: str, params: dict
 ) -> np.ndarray:
+    if img.ndim == 2:
+        img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    elif img.ndim == 3 and img.shape[2] == 1:
+        img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+
     has_alpha = img.ndim == 3 and img.shape[2] == 4
     if has_alpha:
         bgr = img[:, :, :3]
@@ -520,8 +525,9 @@ class CanvasWidget(QWidget):
             self._drawing = False
             pts = self._freehand_img_pts
             if len(pts) >= 10:
-                unique = [pts[0]]
-                for p in pts[1:]:
+                valid_pts = [p for p in pts if p is not None]
+                unique = [valid_pts[0]]
+                for p in valid_pts[1:]:
                     if p != unique[-1]:
                         unique.append(p)
                 if len(unique) >= 3:

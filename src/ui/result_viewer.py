@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Optional, Union
 
 from src.storage.bookmark_manager import BookmarkItem, BookmarkManager
+from src.storage.file_writer import FileWriter
+from src.utils.paths import get_base_dir as _get_base_dir
 
 from PySide6.QtCore import Qt, QSettings, QTimer
 from PySide6.QtGui import (
@@ -65,12 +67,6 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 _INI_PATH: str = ""
-
-
-def _get_base_dir() -> Path:
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent
-    return Path(__file__).resolve().parent.parent.parent
 
 
 def _get_settings() -> QSettings:
@@ -386,11 +382,7 @@ class ThemeManager:
 
 def _find_summary_path(output_dir: str, video_name: str) -> Optional[Path]:
     """查找摘要文件（支持 _summary.txt 和 _summary.md）"""
-    for ext in ("txt", "md"):
-        p = Path(output_dir) / f"{video_name}_summary.{ext}"
-        if p.exists():
-            return p
-    return None
+    return FileWriter(output_dir).find_summary_file(video_name)
 
 
 class ResultViewerWindow(QMainWindow):
@@ -1076,7 +1068,7 @@ class ResultViewerWindow(QMainWindow):
                 self._cached_html = markdown.markdown(safe_text, extensions=extensions)
                 self._cached_md_text = markdown_text
             except Exception as exc:
-                logger.warning(f"Markdown 渲染失败: {exc}")
+                logger.warning("Markdown 渲染失败: %s", exc)
                 self.summary_view.setPlainText(markdown_text)
                 return
 
@@ -1245,7 +1237,7 @@ class ResultViewerWindow(QMainWindow):
                     summary_text = summary_path.read_text(encoding="utf-8")
                     self._display_markdown(summary_text)
                 except Exception:
-                    logger.warning(f"重新渲染摘要失败: {summary_path}")
+                    logger.warning("重新渲染摘要失败: %s", summary_path)
 
     # ─── 全屏 ─────────────────────────────────────────────────
 

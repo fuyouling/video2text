@@ -1,0 +1,6 @@
+{
+  "templates": {},
+  "last_used": "",
+  "markdown_prompt": "\n请将总结内容以Markdown格式输出，形式如下：\n- **要点标题**\n\t- 内容\n\t- 内容\n- **要点标题**\n\t- 内容\n\t- 内容\n\n保持Markdown格式的正确性，确保输出可以直接渲染。\n",
+  "markdown_enabled": true
+}

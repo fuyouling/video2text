@@ -4,6 +4,7 @@ import sys
 import time
 from pathlib import Path
 from src.utils.logger import get_logger
+from src.utils.paths import get_base_dir
 
 logger = get_logger("video2text")
 
@@ -45,10 +46,7 @@ class ModelDownloader:
         if not self.model_config:
             raise ValueError(f"未知的模型: {model_name}")
 
-        if getattr(sys, "frozen", False):
-            self._base_dir = Path(sys.executable).parent
-        else:
-            self._base_dir = Path(__file__).resolve().parent.parent.parent
+        self._base_dir = get_base_dir()
 
         self.models_dir = self._base_dir / self.model_config["models_dir"]
         self.model_path = self.models_dir / "model.bin"

@@ -21,10 +21,10 @@ class OutputValidationError(OutputError):
 
 
 SRT_TIMESTAMP_RE = re.compile(
-    r"^(\d{2}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{3})$"
+    r"^(\d{2}:\d{2}:\d{2},\d{1,3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{1,3})$"
 )
 VTT_TIMESTAMP_RE = re.compile(
-    r"^(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})$"
+    r"^(\d{2}:\d{2}:\d{2}\.\d{1,3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{1,3})(?:\s|$)"
 )
 
 
@@ -291,7 +291,7 @@ def validate_output_content(file_path: str, fmt: str) -> None:
             file_path=file_path,
         )
 
-    content = path.read_text(encoding="utf-8")
+    content = path.read_text(encoding="utf-8-sig")
 
     if fmt == "srt":
         validate_srt_content(content)

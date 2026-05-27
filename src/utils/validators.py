@@ -191,11 +191,6 @@ def validate_executable_path(path: str, name: str = "executable") -> str:
         "\r",
         ">",
         "<",
-        "!",
-        "#",
-        "~",
-        "{",
-        "}",
     ]
     for ch in dangerous_chars:
         if ch in path:

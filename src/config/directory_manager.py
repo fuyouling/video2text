@@ -9,12 +9,11 @@
 第一次运行时文件不存在，目录列表为空。
 """
 
-import json
 import os
-import tempfile
 import threading
 from pathlib import Path
 
+from src.utils.json_utils import atomic_write_json, safe_read_json
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -38,13 +37,21 @@ class DirectoryManager:
         """从 JSON 文件加载常用目录列表"""
         if not self._file_path.exists():
             return
-        try:
-            data = json.loads(self._file_path.read_text(encoding="utf-8"))
-            self._input_dirs = list(data.get("input_dirs", []))
-            self._output_dirs = list(data.get("output_dirs", []))
-            logger.info("常用目录加载成功: %s", self._file_path)
-        except (json.JSONDecodeError, OSError) as exc:
-            logger.warning("常用目录加载失败: %s", exc)
+        data = safe_read_json(self._file_path)
+        if data is None:
+            logger.warning("常用目录加载失败: %s", self._file_path)
+            return
+        input_dirs = data.get("input_dirs", [])
+        output_dirs = data.get("output_dirs", [])
+        if not isinstance(input_dirs, list):
+            logger.warning("input_dirs 格式异常（非 list），忽略")
+            input_dirs = []
+        if not isinstance(output_dirs, list):
+            logger.warning("output_dirs 格式异常（非 list），忽略")
+            output_dirs = []
+        self._input_dirs = list(input_dirs)
+        self._output_dirs = list(output_dirs)
+        logger.info("常用目录加载成功: %s", self._file_path)
 
     def _save(self) -> None:
         """原子写入 JSON 文件"""
@@ -54,24 +61,10 @@ class DirectoryManager:
         }
         try:
             self._file_path.parent.mkdir(parents=True, exist_ok=True)
-            fd, tmp_path = tempfile.mkstemp(dir=self._file_path.parent, suffix=".tmp")
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    json.dump(data, f, ensure_ascii=False, indent=2)
-                try:
-                    os.replace(tmp_path, str(self._file_path))
-                except OSError:
-                    import shutil
-
-                    shutil.move(tmp_path, str(self._file_path))
-            except BaseException:
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
-                raise
+            atomic_write_json(self._file_path, data)
         except OSError as exc:
             logger.error("常用目录保存失败: %s", exc)
+            raise
 
     def get_input_dirs(self) -> list[str]:
         """获取常用输入目录列表"""

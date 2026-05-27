@@ -5,7 +5,6 @@ default 参数传入。本模块不内置任何默认配置值。
 """
 
 import configparser
-import json
 import os
 import sys
 import tempfile
@@ -14,19 +13,14 @@ from pathlib import Path
 from typing import Any, Optional
 
 from src.utils.exceptions import ConfigurationError
+from src.utils.json_utils import atomic_write_json, safe_read_json
 from src.utils.logger import get_logger
+from src.utils.paths import get_base_dir as _get_base_dir
 
 logger = get_logger(__name__)
 
 APP_NAME = "video2text"
-APP_VERSION = "2.0.0"
-
-
-def _get_base_dir() -> Path:
-    """获取程序基础目录 - 支持 frozen（打包）和开发环境"""
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent
-    return Path(__file__).resolve().parent.parent.parent
+APP_VERSION = "2.1.1"
 
 
 class Settings:
@@ -64,34 +58,36 @@ class Settings:
         注意：单例模式下，仅首次实例化时加载配置文件。
         后续调用 Settings() 不会重新加载，修改配置请使用 set() + save()。
         """
-        if self._initialized:
-            if config_path and config_path != self.config_path:
-                logger.warning(
-                    "Settings 单例已初始化，忽略新的 config_path: %s (当前: %s)",
-                    config_path,
-                    self.config_path,
-                )
-            return
+        with self._lock:
+            if self._initialized:
+                if config_path and config_path != self.config_path:
+                    logger.warning(
+                        "Settings 单例已初始化，忽略新的 config_path: %s (当前: %s)",
+                        config_path,
+                        self.config_path,
+                    )
+                return
 
-        self.config = configparser.ConfigParser(interpolation=None)
-        self._base_dir = _get_base_dir()
+            self.config = configparser.ConfigParser(interpolation=None)
+            self._base_dir = _get_base_dir()
 
-        if config_path:
-            self.config_path = config_path
-        else:
-            self.config_path = self._get_default_config_path()
+            if config_path:
+                self.config_path = config_path
+            else:
+                self.config_path = self._get_default_config_path()
 
-        if Path(self.config_path).exists():
-            self._load()
-        else:
-            logger.info(f"配置文件不存在: {self.config_path}，使用调用方默认值")
+            if Path(self.config_path).exists():
+                self._load()
+            else:
+                logger.info("配置文件不存在: %s，使用调用方默认值", self.config_path)
 
-        self._initialized = True
+            self._initialized = True
 
     @classmethod
     def _reset(cls) -> None:
         """重置单例（仅供测试使用）"""
-        cls._instance = None
+        with cls._lock:
+            cls._instance = None
 
     def _get_default_config_path(self) -> str:
         """获取默认配置文件路径 - 支持绿色版"""
@@ -121,7 +117,7 @@ class Settings:
         """内部加载，首次初始化时调用，输出日志"""
         try:
             self.config.read(self.config_path, encoding="utf-8")
-            logger.info(f"配置文件加载成功: {self.config_path}")
+            logger.info("配置文件加载成功: %s", self.config_path)
         except Exception as e:
             raise ConfigurationError(f"加载配置文件失败: {e}")
 
@@ -154,7 +150,7 @@ class Settings:
                         pass
                     raise
 
-            logger.info(f"配置文件保存成功: {self.config_path}")
+            logger.info("配置文件保存成功: %s", self.config_path)
         except ConfigurationError:
             raise
         except Exception as e:
@@ -196,7 +192,7 @@ class Settings:
                     self.config.add_section(section)
 
                 self.config.set(section, option, str(value))
-            logger.debug(f"配置项已更新: {key} = {value}")
+            logger.debug("配置项已更新: %s", key)
         except ValueError:
             raise ConfigurationError(f"无效的配置键格式: {key}")
 
@@ -274,6 +270,14 @@ class Settings:
         return result
 
 
+_DEFAULT_MARKDOWN_PROMPT = (
+    "\n请将总结内容以Markdown格式输出，形式如下：\n"
+    "- **要点标题**\n\t- 内容\n\t- 内容\n"
+    "- **要点标题**\n\t- 内容\n\t- 内容\n\n"
+    "保持Markdown格式的正确性，确保输出可以直接渲染。\n"
+)
+
+
 class PromptManager:
     """提示词模板管理器 - 将用户自定义提示词保存为命名模板，支持持久化
 
@@ -304,42 +308,38 @@ class PromptManager:
         self._file_path = base_dir / "prompts.json"
         self._templates: dict[str, str] = {}
         self._last_used: str = ""
+        self._markdown_prompt: str = _DEFAULT_MARKDOWN_PROMPT
+        self._markdown_enabled: bool = True
         self._load()
         self._initialized = True
 
     def _load(self) -> None:
         if not self._file_path.exists():
             return
-        try:
-            data = json.loads(self._file_path.read_text(encoding="utf-8"))
-            self._templates = data.get("templates", {})
-            self._last_used = data.get("last_used", "")
-            logger.info(f"提示词模板加载成功: {self._file_path}")
-        except Exception as e:
-            logger.warning(f"提示词模板加载失败: {e}")
+        data = safe_read_json(self._file_path)
+        if data is None:
+            logger.warning("提示词模板加载失败: %s", self._file_path)
+            return
+        self._templates = data.get("templates", {})
+        self._last_used = data.get("last_used", "")
+        self._markdown_prompt = data.get("markdown_prompt", _DEFAULT_MARKDOWN_PROMPT)
+        self._markdown_enabled = data.get("markdown_enabled", True)
+        logger.info("提示词模板加载成功: %s", self._file_path)
 
     def save(self) -> None:
         try:
             data = {
                 "templates": self._templates,
                 "last_used": self._last_used,
+                "markdown_prompt": self._markdown_prompt,
+                "markdown_enabled": self._markdown_enabled,
             }
             self._file_path.parent.mkdir(parents=True, exist_ok=True)
-            fd, tmp_path = tempfile.mkstemp(dir=self._file_path.parent, suffix=".tmp")
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    json.dump(data, f, ensure_ascii=False, indent=2)
-                os.replace(tmp_path, self._file_path)
-            except BaseException:
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
-                raise
+            atomic_write_json(self._file_path, data)
         except ConfigurationError:
             raise
         except Exception as e:
-            logger.error(f"提示词模板保存失败: {e}")
+            logger.error("提示词模板保存失败: %s", e)
             raise ConfigurationError(f"提示词模板保存失败: {e}")
 
     def get_names(self) -> list[str]:
@@ -369,3 +369,34 @@ class PromptManager:
         if self._last_used and self._last_used in self._templates:
             return self._templates[self._last_used]
         return ""
+
+    def get_markdown_prompt(self) -> str:
+        return self._markdown_prompt
+
+    def set_markdown_prompt(self, value: str) -> None:
+        self._markdown_prompt = value
+        self.save()
+
+    def get_markdown_enabled(self) -> bool:
+        return self._markdown_enabled
+
+    def set_markdown_enabled(self, value: bool) -> None:
+        self._markdown_enabled = value
+        self.save()
+
+    def build_prompt(self, text: str, custom_prompt: str = "") -> str:
+        """构建完整的用户提示词
+
+        包含默认 system prompt、Markdown 格式指令（如果启用）、用户文本。
+        如果 custom_prompt 非空则替换默认 system prompt。
+        """
+        if custom_prompt and custom_prompt.strip():
+            base = custom_prompt.strip()
+        else:
+            base = "你是一个专业的文本总结助手，擅长提取关键信息并生成简洁准确的总结。"
+
+        if self._markdown_enabled:
+            md_prompt = self._markdown_prompt
+            if md_prompt.strip():
+                return f"{base}\n\n{md_prompt}\n\n文本内容：\n{text}"
+        return f"{base}\n\n文本内容：\n{text}"

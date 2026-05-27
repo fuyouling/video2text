@@ -25,10 +25,12 @@ class NvidiaClient:
         api_url: str = "https://integrate.api.nvidia.com/v1/chat/completions",
         api_key: Optional[str] = None,
         timeout: int = 600,
+        model: str = "openai/gpt-oss-120b",
     ):
         self.api_url = api_url.rstrip("/")
         self.timeout = timeout
         self.max_retries = 5
+        self._model = model
 
         self._api_key = api_key or os.environ.get("NVIDIA_API_KEY") or ""
         self._session = requests.Session()
@@ -56,7 +58,7 @@ class NvidiaClient:
 
         try:
             payload = {
-                "model": "openai/gpt-oss-120b",
+                "model": self._model,
                 "messages": [{"role": "user", "content": "hi"}],
                 "max_tokens": 1,
                 "temperature": 1.0,
@@ -191,35 +193,48 @@ class NvidiaClient:
                 logger.info("%d 秒后重试...", wait)
                 time.sleep(wait)
 
-        raise last_exc
+        raise last_exc or SummarizationError("NVIDIA API 请求失败（未知错误）")
 
     def _handle_streaming(
         self, response: requests.Response, on_token: Optional[Callable[[str], None]]
     ) -> str:
         """处理流式响应"""
         full_text = ""
-        for line in response.iter_lines():
-            if not line:
-                continue
-            decoded = line.decode("utf-8")
-            if not decoded.startswith("data: "):
-                continue
-            data_str = decoded[6:]
-            if data_str.strip() == "[DONE]":
-                break
-            try:
-                data = _json.loads(data_str)
-                if "error" in data:
-                    raise SummarizationError(f"NVIDIA 流式错误: {data['error']}")
-                choices = data.get("choices", [])
-                if choices:
-                    delta = choices[0].get("delta", {})
-                    content = delta.get("content", "")
-                    if content:
-                        full_text += content
-                        if on_token:
-                            on_token(content)
-            except _json.JSONDecodeError:
-                logger.warning("NVIDIA 流式响应 JSON 解析失败: %s", data_str[:200])
-                continue
+        try:
+            for line in response.iter_lines():
+                if not line:
+                    continue
+                decoded = line.decode("utf-8")
+                if not decoded.startswith("data: "):
+                    continue
+                data_str = decoded[6:]
+                if data_str.strip() == "[DONE]":
+                    break
+                try:
+                    data = _json.loads(data_str)
+                    if "error" in data:
+                        raise SummarizationError(f"NVIDIA 流式错误: {data['error']}")
+                    choices = data.get("choices", [])
+                    if choices:
+                        delta = choices[0].get("delta", {})
+                        content = delta.get("content", "")
+                        if content:
+                            full_text += content
+                            if on_token:
+                                on_token(content)
+                except _json.JSONDecodeError:
+                    logger.warning("NVIDIA 流式响应 JSON 解析失败: %s", data_str[:200])
+                    continue
+        except (
+            requests.exceptions.ConnectionError,
+            requests.exceptions.ChunkedEncodingError,
+        ) as e:
+            if full_text:
+                logger.warning(
+                    "NVIDIA 流式连接中断，已接收部分文本 (%d 字符): %s",
+                    len(full_text),
+                    e,
+                )
+            else:
+                raise SummarizationError(f"NVIDIA 流式连接失败: {e}") from e
         return full_text

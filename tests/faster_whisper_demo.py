@@ -1,4 +1,9 @@
+import pytest
 from faster_whisper import WhisperModel
+
+
+pytestmark = pytest.mark.skip(reason="requires GPU and model download")
+
 
 model_size = "models/large-v3"
 
@@ -12,7 +17,10 @@ model = WhisperModel(model_size, device="cuda", compute_type="float16")
 
 segments, info = model.transcribe("video/test002.mp4", beam_size=5)
 
-print("Detected language '%s' with probability %f" % (info.language, info.language_probability))
+print(
+    "Detected language '%s' with probability %f"
+    % (info.language, info.language_probability)
+)
 
 for segment in segments:
     print("[%.2fs -> %.2fs] %s" % (segment.start, segment.end, segment.text))

@@ -3,11 +3,13 @@
 import os
 import sys
 import threading
+from collections import OrderedDict
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Callable, Tuple
 from dataclasses import dataclass
 from src.utils.exceptions import TranscriptionError
 from src.utils.logger import get_logger
+from src.utils.paths import get_base_dir as _get_base_dir
 
 logger = get_logger(__name__)
 
@@ -15,7 +17,8 @@ logger = get_logger(__name__)
 os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
 os.environ["HF_HUB_OFFLINE"] = "1"
 
-_model_cache: Dict[str, "Transcriber"] = {}
+_MAX_MODEL_CACHE = 2
+_model_cache: OrderedDict[str, "Transcriber"] = OrderedDict()
 _model_cache_lock = threading.Lock()
 
 
@@ -29,26 +32,32 @@ def get_cached_transcriber(
     """获取缓存的 Transcriber 实例，避免重复加载模型。
 
     相同 (model_path, device, compute_type, num_workers) 组合只创建一次实例。
-    不同参数组合会创建新实例，旧实例不会自动卸载（需手动调用 unload_model）。
+    缓存最多保留 _MAX_MODEL_CACHE 个实例，超出时淘汰最久未使用的条目。
     """
     cache_key = f"{model_path}|{device}|{compute_type}|{num_workers}"
     with _model_cache_lock:
         if cache_key in _model_cache:
             cached = _model_cache[cache_key]
             if cached._loaded:
+                _model_cache.move_to_end(cache_key)
                 logger.info("复用已缓存的转写模型: %s", cache_key)
                 return cached
             else:
                 del _model_cache[cache_key]
 
-    transcriber = Transcriber(
-        model_path=model_path,
-        device=device,
-        compute_type=compute_type,
-        num_workers=num_workers,
-        download_root=download_root,
-    )
-    with _model_cache_lock:
+        while len(_model_cache) >= _MAX_MODEL_CACHE:
+            evicted_key, evicted = _model_cache.popitem(last=False)
+            if evicted._loaded:
+                evicted.unload_model()
+            logger.info("淘汰旧缓存模型: %s", evicted_key)
+
+        transcriber = Transcriber(
+            model_path=model_path,
+            device=device,
+            compute_type=compute_type,
+            num_workers=num_workers,
+            download_root=download_root,
+        )
         _model_cache[cache_key] = transcriber
     return transcriber
 
@@ -58,13 +67,6 @@ def _logprob_to_confidence(avg_logprob: float) -> float:
     import math
 
     return round(max(0.0, min(100.0, math.exp(avg_logprob) * 100)), 2)
-
-
-def _get_base_dir() -> Path:
-    """获取项目基目录（支持 frozen / 绿色版）。"""
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent
-    return Path(__file__).resolve().parent.parent.parent
 
 
 def _clear_gpu_memory() -> None:
@@ -154,7 +156,7 @@ class Transcriber:
             resolved_path = Path(self.download_root) / model_path
 
         if resolved_path.exists():
-            logger.info(f"使用本地模型: {resolved_path}")
+            logger.debug("使用本地模型: %s", resolved_path)
             missing_files = [f for f in _CORE_FILES if not (resolved_path / f).exists()]
             if missing_files:
                 logger.warning("模型目录不完整，缺少核心文件: %s", missing_files)
@@ -208,8 +210,8 @@ class Transcriber:
         try:
             from faster_whisper import WhisperModel
 
-            logger.info("开始加载模型")
-            logger.info(
+            logger.debug("开始加载模型")
+            logger.debug(
                 f"设备: {self.device}, 计算类型: {self.compute_type}, "
                 f"工作线程: {self.num_workers}"
             )
@@ -224,7 +226,7 @@ class Transcriber:
             )
 
             self._loaded = True
-            logger.info("模型加载成功")
+            logger.debug("模型加载成功")
 
         except ImportError:
             raise TranscriptionError(
@@ -280,7 +282,7 @@ class Transcriber:
                     compute_type=ct,
                     num_workers=self.num_workers,
                     download_root=self.download_root,
-                    local_files_only=False,
+                    local_files_only=True,
                 )
                 self.compute_type = ct
                 self._loaded = True
@@ -358,8 +360,8 @@ class Transcriber:
         if not audio_file.exists():
             raise TranscriptionError(f"音频文件不存在: {audio_path}")
 
-        logger.info(f"开始转写: {audio_path}")
-        logger.info(
+        logger.debug("开始转写: %s", audio_path)
+        logger.debug(
             f"语言: {language}, beam_size: {beam_size}, temperature: {temperature}"
         )
 
@@ -382,7 +384,7 @@ class Transcriber:
             detected_language = info.language
             language_probability = info.language_probability
 
-            logger.info(
+            logger.debug(
                 f"检测到语言: {detected_language} (置信度: {language_probability:.2f})"
             )
 
@@ -403,7 +405,7 @@ class Transcriber:
                         segment.start, segment.end, len(transcript_segments)
                     )
 
-            logger.info(f"转写完成，共 {len(transcript_segments)} 个段落")
+            logger.debug("转写完成，共 %d 个段落", len(transcript_segments))
             return transcript_segments
 
         except Exception as e:
@@ -436,9 +438,13 @@ class Transcriber:
             raise RuntimeError("模型尚未加载，请先调用 load_model()")
 
         try:
-            return self.model.supported_languages
+            with self._model_lock:
+                model = self.model
+                if model is None:
+                    raise RuntimeError("模型未加载或已被卸载")
+            return model.supported_languages
         except Exception as e:
-            logger.warning(f"获取支持语言失败: {e}")
+            logger.warning("获取支持语言失败: %s", e)
             return {}
 
     def detect_language(self, audio_path: str) -> Tuple[str, float]:
@@ -461,9 +467,13 @@ class Transcriber:
             raise TranscriptionError(f"音频文件不存在: {audio_path}")
 
         try:
-            language, probability = self.model.detect_language(audio_path)
+            with self._model_lock:
+                model = self.model
+                if model is None:
+                    raise TranscriptionError("模型未加载或已被卸载")
+            language, probability = model.detect_language(audio_path)
 
-            logger.info(f"检测到语言: {language} (置信度: {probability:.2f})")
+            logger.info("检测到语言: %s (置信度: %.2f)", language, probability)
 
             return language, probability
 
