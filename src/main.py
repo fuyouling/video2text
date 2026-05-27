@@ -1,15 +1,22 @@
 """Video2Text 主程序入口"""
 
-from dotenv import load_dotenv
+from pathlib import Path
 
-load_dotenv()
+from dotenv import load_dotenv
+from src.utils.paths import get_base_dir
+
+load_dotenv(get_base_dir() / ".env", override=True)
 
 import sys
 import traceback
-from pathlib import Path
 
 
 def main():
+    """应用程序主入口。
+
+    打包模式（frozen）下无参数启动时打开 GUI，否则启动 CLI（Typer）。
+    启动异常时在打包模式下将 traceback 写入 logs/error_startup.log。
+    """
     try:
         if getattr(sys, "frozen", False) and len(sys.argv) <= 1:
             from src.ui.gui import main as gui_main

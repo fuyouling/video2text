@@ -8,10 +8,8 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 
-from src.config.settings import (
-    Settings,
-    APP_VERSION,
-)
+from src.config.settings import Settings
+from src.config.version import APP_VERSION
 from src.preprocessing.video_processor import VideoProcessor
 from src.services.transcription_service import TranscriptionService
 from src.services.summarization_service import SummarizationService
@@ -35,10 +33,12 @@ SUPPORTED_TRANSCRIPT_FORMATS = {"txt", "srt", "vtt", "json"}
 
 
 def get_settings() -> Settings:
+    """获取全局配置单例。"""
     return Settings()
 
 
 def get_transcript_output_formats(settings: Settings) -> list[str]:
+    """从配置中读取转写输出格式列表，过滤不支持的格式。"""
     formats = [
         fmt.lower() for fmt in settings.get_list("output.transcript_format", ["txt"])
     ]
@@ -47,6 +47,7 @@ def get_transcript_output_formats(settings: Settings) -> list[str]:
 
 
 def get_model_path(settings: Settings, model_name: Optional[str] = None) -> str:
+    """解析模型路径：优先本地路径，其次 models 目录，最后回退到模型名称（触发下载）。"""
     if model_name is None:
         model_name = settings.get("transcription.model_path", "large-v3")
 
@@ -402,6 +403,7 @@ def run_pipeline(
                 )
                 provider_inst.close()
             else:
+                sum_service = None
                 try:
                     sum_service = SummarizationService(
                         settings=settings,
@@ -427,7 +429,10 @@ def run_pipeline(
                                 f"[yellow]警告: {tx_result.video_name} 总结失败: {e}[/yellow]"
                             )
                 finally:
-                    provider_inst.close()
+                    if sum_service is not None:
+                        sum_service.close()
+                    else:
+                        provider_inst.close()
 
             console.print(Panel.fit("[bold green]处理成功！[/bold green]"))
             console.print(f"输出目录: {output_dir}")

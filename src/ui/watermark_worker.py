@@ -8,7 +8,7 @@ from src.ui.watermark_dialog import Region, apply_watermark_removal, imread, imw
 
 
 class WatermarkWorker(QObject):
-    """批量去水印 Worker 线程"""
+    """批量去水印后台线程 —— 逐个处理图片，通过信号报告进度和结果。"""
 
     progress = Signal(int, int)
     file_done = Signal(str)
@@ -33,9 +33,11 @@ class WatermarkWorker(QObject):
         self._cancelled = False
 
     def cancel(self) -> None:
+        """标记取消，终止后续图片处理。"""
         self._cancelled = True
 
     def run(self) -> None:
+        """执行批量去水印任务：逐个读取图片 → 去水印 → 保存结果。"""
         total = len(self._tasks)
         done = 0
         skipped = 0
@@ -78,6 +80,7 @@ class WatermarkWorker(QObject):
 
     @staticmethod
     def _compute_output_path(src_path: str, output_base: str, use_flat: bool) -> str:
+        """计算输出路径：flat 模式直接输出到 base 目录，否则按源目录结构组织。"""
         if not output_base or not output_base.strip():
             output_base = "nowm"
         src = Path(src_path)

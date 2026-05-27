@@ -23,6 +23,18 @@ class BookmarkItem:
         created_at: str = "",
         note: str = "",
     ):
+        """初始化书签项。
+
+        Args:
+            video_name: 视频名称
+            content_type: 内容类型（'transcript' 或 'summary'）
+            position: 文本位置（字符偏移）
+            text: 书签处的文本片段（自动截取前 100 字符）
+            file_path: 完整文件路径
+            relative_path: 相对路径
+            created_at: 创建时间
+            note: 用户备注
+        """
         self.video_name = video_name
         self.content_type = content_type  # 'transcript' or 'summary'
         self.position = position
@@ -33,6 +45,7 @@ class BookmarkItem:
         self.note = note
 
     def to_dict(self) -> dict:
+        """将书签项序列化为字典。"""
         return {
             "video_name": self.video_name,
             "content_type": self.content_type,
@@ -46,6 +59,7 @@ class BookmarkItem:
 
     @classmethod
     def from_dict(cls, data: dict) -> "BookmarkItem":
+        """从字典反序列化为书签项。"""
         return cls(
             video_name=data.get("video_name", ""),
             content_type=data.get("content_type", "transcript"),
@@ -59,36 +73,45 @@ class BookmarkItem:
 
 
 class BookmarkManager:
-    """书签持久化管理器（非单例，不持有内存状态）"""
+    """书签持久化管理器 —— 使用 JSON 文件存储，线程安全，原子写入。"""
 
     def __init__(self, file_path: Path):
+        """初始化书签管理器。
+
+        Args:
+            file_path: 书签 JSON 文件路径
+        """
         self._file_path = file_path
         self._lock = threading.Lock()
 
     def load(self) -> list[BookmarkItem]:
+        """从 JSON 文件加载全部书签列表。"""
         if not self._file_path.exists():
             return []
         data = safe_read_json(self._file_path)
         if data is None:
-            logger.warning("读取书签文件失败: %s", self._file_path)
+            logger.warning("BookmarkManager: ✗ 读取失败 (%s)", self._file_path)
             return []
         items = data.get("bookmarks", [])
         return [BookmarkItem.from_dict(d) for d in items]
 
     def save(self, bookmarks: list[BookmarkItem]) -> None:
+        """将书签列表原子写入 JSON 文件。"""
         data = {"bookmarks": [b.to_dict() for b in bookmarks]}
         try:
             atomic_write_json(self._file_path, data)
         except OSError as exc:
-            logger.error("写入书签文件失败: %s", exc)
+            logger.error("BookmarkManager: ✗ 写入失败 (%s)", exc)
 
     def add(self, bookmark: BookmarkItem) -> None:
+        """添加一个书签并持久化。"""
         with self._lock:
             bookmarks = self.load()
             bookmarks.append(bookmark)
             self.save(bookmarks)
 
     def remove(self, indices: list[int]) -> None:
+        """按索引列表移除书签（从大到小删除避免偏移）。"""
         with self._lock:
             bookmarks = self.load()
             for idx in sorted(indices, reverse=True):
@@ -97,9 +120,11 @@ class BookmarkManager:
             self.save(bookmarks)
 
     def clear(self) -> None:
+        """清空所有书签。"""
         with self._lock:
             self.save([])
 
     def get_all(self) -> list[BookmarkItem]:
+        """获取全部书签列表。"""
         with self._lock:
             return self.load()

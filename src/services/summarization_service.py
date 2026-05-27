@@ -127,6 +127,7 @@ class SummarizationService:
     def _summarize_batch_serial(
         self, items: List[dict], stream: bool, total: int
     ) -> List[str]:
+        """串行批量总结，逐个调用 summarize() 并支持取消检查。"""
         results = []
         for idx, item in enumerate(items):
             if self.cancel_check and self.cancel_check():
@@ -154,6 +155,7 @@ class SummarizationService:
     def _summarize_batch_concurrent(
         self, items: List[dict], stream: bool, total: int, max_workers: int
     ) -> List[str]:
+        """并发批量总结，每个线程创建独立的 Provider 实例，不支持流式输出。"""
         if stream:
             logger.warning("并发模式不支持流式输出，自动切换为非流式")
 
@@ -225,6 +227,7 @@ class SummarizationService:
         return [results.get(i, "") for i in range(len(items))]
 
     def _log(self, message: str):
+        """记录日志并通过回调通知调用方。"""
         logger.info(message)
         if self.on_progress:
             self.on_progress(message)

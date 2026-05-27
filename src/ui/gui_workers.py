@@ -1,17 +1,16 @@
 """GUI Worker 线程 —— 使用服务层，支持流式输出、断点续传、单文件即时回调"""
 
-import logging
-import sys
+import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import QObject, Signal
 
 from src.config.settings import Settings
+from src.config.transcription_config import _load_tx_config
 from src.preprocessing.video_processor import VideoProcessor
 from src.services.transcription_service import TranscriptionService, TranscribeResult
 from src.services.summarization_service import SummarizationService
@@ -22,11 +21,6 @@ from src.text_processing.segment_merger import SegmentMerger
 from src.text_processing.text_cleaner import TextCleaner
 from src.transcription.transcriber import get_cached_transcriber
 from src.utils.logger import get_logger, setup_logger
-from src.utils.validators import validate_executable_path
-
-from src.utils.subprocess_compat import CREATE_NO_WINDOW
-
-SUPPORTED_TRANSCRIPT_FORMATS = {"txt", "srt", "vtt", "json"}
 
 
 def _setup_worker_logger(settings: Settings):
@@ -39,84 +33,26 @@ def _setup_worker_logger(settings: Settings):
 
 
 class RateLimiter:
-    """简单的速率限制器 —— 确保请求间隔不低于指定秒数"""
+    """简单的速率限制器 —— 确保两次操作之间的间隔不低于指定秒数，用于 API 调用限流。"""
 
     def __init__(self, min_interval: float = 1.5):
+        """初始化速率限制器。
+
+        Args:
+            min_interval: 最小间隔秒数
+        """
         self._lock = threading.Lock()
         self._min_interval = min_interval
         self._last_time = 0.0
 
     def acquire(self) -> None:
+        """获取操作许可，若距上次操作不足最小间隔则阻塞等待。"""
         with self._lock:
             now = time.monotonic()
             elapsed = now - self._last_time
             if elapsed < self._min_interval:
                 time.sleep(self._min_interval - elapsed)
             self._last_time = time.monotonic()
-
-
-def _get_output_formats(settings: Settings) -> list[str]:
-    raw = settings.get_list("output.transcript_format", ["txt"])
-    return [f.lower() for f in raw if f.lower() in SUPPORTED_TRANSCRIPT_FORMATS] or [
-        "txt"
-    ]
-
-
-@dataclass
-class TranscriptionConfig:
-    language: str
-    model_path: str
-    device: str
-    compute_type: str
-    beam_size: int
-    temperature: float
-    max_chunk_duration: int
-    output_formats: list[str]
-    ffmpeg_path: str
-
-
-def _load_tx_config(settings: Settings) -> TranscriptionConfig:
-    """从配置加载转写参数"""
-    language = settings.get("transcription.language", "auto")
-    model_name = settings.get("transcription.model_path", "large-v3")
-    models_dir = settings.get("paths.models_dir", "models")
-    model_path_obj = Path(models_dir) / model_name
-    model_path = str(model_path_obj) if model_path_obj.exists() else model_name
-    device = settings.get("transcription.device", "auto")
-    compute_type = settings.get("transcription.compute_type", "float16")
-    beam_size = settings.get_int("transcription.beam_size", 5)
-    temperature = settings.get_float("transcription.temperature", 0.0)
-    max_chunk_duration = settings.get_int("preprocessing.max_chunk_duration", 300)
-    output_formats = _get_output_formats(settings)
-
-    ffmpeg_path = settings.get("preprocessing.ffmpeg_path", "ffmpeg")
-    ffmpeg_path = validate_executable_path(ffmpeg_path, "FFmpeg")
-
-    return TranscriptionConfig(
-        language=language,
-        model_path=model_path,
-        device=device,
-        compute_type=compute_type,
-        beam_size=beam_size,
-        temperature=temperature,
-        max_chunk_duration=max_chunk_duration,
-        output_formats=output_formats,
-        ffmpeg_path=ffmpeg_path,
-    )
-
-
-class UiLogSignal(QObject):
-    message = Signal(str)
-
-
-class UiLogHandler(logging.Handler):
-    def __init__(self, signal: UiLogSignal) -> None:
-        super().__init__()
-        self._signal = signal
-        self.setFormatter(logging.Formatter("%(message)s"))
-
-    def emit(self, record: logging.LogRecord) -> None:
-        self._signal.message.emit(self.format(record))
 
 
 class TranscribeWorker(QObject):
@@ -145,14 +81,17 @@ class TranscribeWorker(QObject):
         self._service_lock = threading.Lock()
 
     def cancel(self) -> None:
+        """标记取消，终止后续文件转写。"""
         self._cancelled = True
 
     def pause(self) -> None:
+        """暂停当前转写任务。"""
         with self._service_lock:
             if self._service is not None:
                 self._service.pause()
 
     def resume(self) -> None:
+        """恢复被暂停的转写任务。"""
         with self._service_lock:
             if self._service is not None:
                 self._service.resume()
@@ -270,12 +209,15 @@ class SummarizeWorker(QObject):
         self._standalone_text: str = ""
 
     def set_standalone_text(self, text: str) -> None:
+        """设置独立文本模式的内容（仅总结指定文本，不从文件读取）。"""
         self._standalone_text = text
 
     def cancel(self) -> None:
+        """标记取消，终止后续总结任务。"""
         self._cancelled = True
 
     def run(self) -> None:
+        """执行总结任务：根据配置选择单线程或多线程模式。"""
         logger = _setup_worker_logger(self.settings)
 
         try:
@@ -620,14 +562,17 @@ class PipelineWorker(QObject):
         self._tx_service_lock = threading.Lock()
 
     def cancel(self) -> None:
+        """标记取消，终止后续转写和总结。"""
         self._cancelled = True
 
     def pause(self) -> None:
+        """暂停当前转写任务。"""
         with self._tx_service_lock:
             if self._tx_service is not None:
                 self._tx_service.pause()
 
     def resume(self) -> None:
+        """恢复被暂停的转写任务。"""
         with self._tx_service_lock:
             if self._tx_service is not None:
                 self._tx_service.resume()
@@ -640,10 +585,12 @@ class PipelineWorker(QObject):
 
     @property
     def is_paused(self) -> bool:
+        """是否处于暂停状态。"""
         with self._tx_service_lock:
             return self._tx_service.is_paused if self._tx_service else False
 
     def run(self) -> None:
+        """执行管道任务：加载模型 → 逐文件转写 → 文本清理 → 总结。"""
         logger = _setup_worker_logger(self.settings)
 
         transcriber = None
@@ -1004,6 +951,34 @@ class OllamaStartServiceWorker(QObject):
             self.finished.emit()
 
 
+class OllamaStopServiceWorker(QObject):
+    """异步停止 Ollama 服务并确认关闭"""
+
+    result = Signal(bool, str)
+    finished = Signal()
+
+    def __init__(self, url: str, is_external: bool) -> None:
+        super().__init__()
+        self.url = url
+        self.is_external = is_external
+
+    def run(self) -> None:
+        try:
+            if self.is_external:
+                self.result.emit(False, "external")
+                return
+
+            OllamaClient.stop_service()
+            if OllamaClient.is_service_running(self.url):
+                self.result.emit(False, "still_running")
+            else:
+                self.result.emit(True, "stopped")
+        except Exception:
+            self.result.emit(False, "error")
+        finally:
+            self.finished.emit()
+
+
 class OllamaListModelWorker(QObject):
     """异步获取 Ollama 模型列表"""
 
@@ -1043,7 +1018,9 @@ class NvidiaCheckWorker(QObject):
         from src.summarization.nvidia_client import NvidiaClient
 
         try:
-            client = NvidiaClient(api_url=self.api_url)
+            client = NvidiaClient(
+                api_url=self.api_url, api_key=os.environ.get("NVIDIA_API_KEY", "")
+            )
             try:
                 t0 = time.monotonic()
                 ok = client.check_connection()
@@ -1054,5 +1031,43 @@ class NvidiaCheckWorker(QObject):
         except Exception as exc:
             get_logger(__name__).warning("NVIDIA API 连接: ✗ 异常 %s", exc)
             self.result.emit(False, 0.0)
+        finally:
+            self.finished.emit()
+
+
+class ScanFilesWorker(QObject):
+    """异步递归扫描文件夹中的媒体文件"""
+
+    result = Signal(list)
+    finished = Signal()
+
+    def __init__(self, folder: str, media_exts: set[str]) -> None:
+        super().__init__()
+        self.folder = folder
+        self.media_exts = media_exts
+
+    def run(self) -> None:
+        try:
+            folder_path = Path(self.folder)
+            files: list[str] = []
+            seen: set[str] = set()
+            for ext in self.media_exts:
+                try:
+                    for f in folder_path.rglob(f"*{ext}"):
+                        try:
+                            if f.is_file():
+                                normalized = str(f).lower()
+                                if normalized not in seen:
+                                    seen.add(normalized)
+                                    files.append(str(f))
+                        except PermissionError:
+                            get_logger(__name__).warning("无权访问文件，已跳过: %s", f)
+                except PermissionError:
+                    get_logger(__name__).warning(
+                        "无权遍历目录，已跳过: %s", folder_path
+                    )
+            self.result.emit(sorted(files))
+        except Exception:
+            self.result.emit([])
         finally:
             self.finished.emit()

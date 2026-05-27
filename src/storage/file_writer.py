@@ -105,10 +105,10 @@ class FileWriter:
                 validate_output_file(str(output_path))
                 validate_output_content(str(output_path), fmt)
 
-            logger.debug("转写文本写入成功: %s", output_path)
+            logger.debug("FileWriter: ✓ 转写文本 (%s)", output_path)
             return str(output_path)
         except Exception as e:
-            logger.error("写入转写文本失败: %s", e)
+            logger.error("FileWriter: ✗ 转写文本 (%s)", e)
             raise
 
     def write_merged_transcript(
@@ -141,10 +141,10 @@ class FileWriter:
             if validate:
                 validate_output_file(str(output_path))
 
-            logger.debug("合并转写文本写入成功: %s", output_path)
+            logger.debug("FileWriter: ✓ 合并文本 (%s)", output_path)
             return str(output_path)
         except Exception as e:
-            logger.error("写入合并转写文本失败: %s", e)
+            logger.error("FileWriter: ✗ 合并文本 (%s)", e)
             raise
 
     SUPPORTED_SUMMARY_FORMATS = ("txt", "md")
@@ -181,10 +181,10 @@ class FileWriter:
             if validate:
                 validate_output_file(str(output_path))
 
-            logger.debug("摘要写入成功: %s", output_path)
+            logger.debug("FileWriter: ✓ 摘要 (%s)", output_path)
             return str(output_path)
         except Exception as e:
-            logger.error("写入摘要失败: %s", e)
+            logger.error("FileWriter: ✗ 摘要 (%s)", e)
             raise
 
     def find_summary_file(self, filename: str) -> Optional[Path]:
@@ -239,10 +239,10 @@ class FileWriter:
                 validate_output_file(str(output_path))
                 validate_output_content(str(output_path), "json")
 
-            logger.info("JSON文件写入成功: %s", output_path)
+            logger.info("FileWriter: ✓ JSON (%s)", output_path)
             return str(output_path)
         except Exception as e:
-            logger.error("写入JSON文件失败: %s", e)
+            logger.error("FileWriter: ✗ JSON (%s)", e)
             raise
 
     def write_text(self, text: str, filename: str, validate: bool = True) -> str:
@@ -264,10 +264,10 @@ class FileWriter:
             if validate:
                 validate_output_file(str(output_path))
 
-            logger.info("文本写入成功: %s", output_path)
+            logger.info("FileWriter: ✓ 文本 (%s)", output_path)
             return str(output_path)
         except Exception as e:
-            logger.error("写入文本失败: %s", e)
+            logger.error("FileWriter: ✗ 文本 (%s)", e)
             raise
 
     def write_keywords(
@@ -295,8 +295,8 @@ class FileWriter:
             if validate:
                 validate_output_file(str(output_path))
 
-            logger.info("关键词写入成功: %s", output_path)
+            logger.info("FileWriter: ✓ 关键词 (%s)", output_path)
             return str(output_path)
         except Exception as e:
-            logger.error("写入关键词失败: %s", e)
+            logger.error("FileWriter: ✗ 关键词 (%s)", e)
             raise

@@ -195,7 +195,9 @@ class VideoProcessor:
                     else:
                         fps = float(r_frame_rate)
                 except (ValueError, ZeroDivisionError):
-                    logger.warning("无法解析帧率: %s，使用默认值 0", r_frame_rate)
+                    logger.warning(
+                        "VideoProcessor: ⚠ 帧率解析失败 (%s)，默认 0", r_frame_rate
+                    )
                     fps = 0.0
 
             has_audio = audio_stream is not None
@@ -306,15 +308,13 @@ class VideoProcessor:
 
             if result.returncode != 0:
                 error_msg = result.stderr or result.stdout
-                logger.warning(
-                    "pcm_s16le %s失败，尝试自动转码回退: %s", label, error_msg[:200]
-                )
+                logger.warning("VideoProcessor: ⚠ pcm_s16le 失败，回退 libmp3lame")
                 return self._extract_audio_fallback(
                     input_path, str(output_file), sample_rate, channels
                 )
 
             if not output_file.exists():
-                logger.warning("音频文件未生成，尝试自动转码回退")
+                logger.warning("VideoProcessor: ⚠ 音频未生成，回退")
                 return self._extract_audio_fallback(
                     input_path, str(output_file), sample_rate, channels
                 )
@@ -327,7 +327,7 @@ class VideoProcessor:
         except VideoFileError:
             raise
         except Exception as e:
-            logger.warning("音频%s异常，尝试自动转码回退: %s", label, e)
+            logger.warning("VideoProcessor: ⚠ %s异常，回退 (%s)", label, e)
             try:
                 return self._extract_audio_fallback(
                     input_path, str(output_file), sample_rate, channels
@@ -368,7 +368,7 @@ class VideoProcessor:
             str(temp_mp3),
         ]
 
-        logger.info("回退方案: 使用 libmp3lame 提取音频")
+        logger.info("VideoProcessor: ⚠ pcm_s16le 失败，回退 libmp3lame")
         logger.debug("FFmpeg命令: %s", " ".join(cmd))
 
         try:
@@ -415,7 +415,7 @@ class VideoProcessor:
             if convert_result.returncode != 0:
                 raise VideoFileError(f"MP3 转 WAV 失败: {convert_result.stderr}")
 
-            logger.info("回退方案提取成功: %s", output_file)
+            logger.info("VideoProcessor: ✓ 回退成功 (%s)", output_file)
             return str(output_file)
 
         except VideoFileError:
@@ -455,8 +455,7 @@ class VideoProcessor:
         video_info = self.get_video_info(video_path)
         if video_info.duration > 0 and ts_seconds > video_info.duration:
             logger.warning(
-                "时间戳 %s (%.1fs) 超过媒体时长 %.1fs，使用第一帧",
-                timestamp,
+                "VideoProcessor: ⚠ 时间戳 %.1fs 超过时长 %.1fs，使用第一帧",
                 ts_seconds,
                 video_info.duration,
             )
@@ -489,7 +488,7 @@ class VideoProcessor:
                 error_msg = result.stderr or result.stdout
                 raise VideoFileError(f"缩略图生成失败: {error_msg}")
 
-            logger.info("缩略图生成成功: %s", output_file)
+            logger.info("VideoProcessor: ✓ 缩略图 (%s)", output_file)
             return str(output_file)
 
         except VideoFileError:

@@ -11,6 +11,8 @@ if not ASSETS_DIR.exists() and getattr(sys, "frozen", False):
 
 
 class DonateDialog(QDialog):
+    """捐赠对话框 —— 显示捐赠二维码图片，支持自适应缩放。"""
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("捐赠支持")
@@ -24,6 +26,7 @@ class DonateDialog(QDialog):
         self._setup_ui()
 
     def _setup_ui(self):
+        """初始化 UI：创建图片标签并加载捐赠二维码。"""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
@@ -36,6 +39,7 @@ class DonateDialog(QDialog):
         layout.addWidget(self._img_label)
 
     def _update_pixmap(self):
+        """按窗口大小等比缩放捐赠图片并居中显示。"""
         self._img_label.setPixmap(
             self._pixmap.scaled(
                 self._img_label.width(),

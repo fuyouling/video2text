@@ -200,11 +200,11 @@ start "" "%~dp0video2text.exe" %*
         log("[6/6] Skipping ZIP package (--no-zip specified)", "yellow")
     else:
         log("[6/6] Creating ZIP package (excluding models)...", "yellow")
-        # Read version from src/config/settings.py
+        # Read version from src/config/version.py
         version = "unknown"
-        settings_py = root / "src" / "config" / "settings.py"
-        if settings_py.exists():
-            for line in settings_py.read_text(encoding="utf-8").splitlines():
+        version_py = root / "src" / "config" / "version.py"
+        if version_py.exists():
+            for line in version_py.read_text(encoding="utf-8").splitlines():
                 if line.startswith("APP_VERSION"):
                     version = line.split("=", 1)[1].strip().strip('"').strip("'")
                     break
@@ -277,7 +277,7 @@ start "" "%~dp0video2text.exe" %*
     log("  - Incremental build (default) skips unchanged steps", "white")
     print()
 
-    input("Press Enter to exit")
+    # input("Press Enter to exit")
 
 
 if __name__ == "__main__":

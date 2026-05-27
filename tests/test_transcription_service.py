@@ -134,3 +134,162 @@ class TestTranscriptionService:
         records = service._load_history()
         assert len(records) == 1
         assert records[0]["model"] == "large-v3"
+
+    def test_estimate_returns_none_when_no_history(self, service, tmp_path):
+        service._history_file = tmp_path / "history.json"
+        assert service._estimate_transcribe_time(10.0) is None
+
+    def test_estimate_returns_none_when_below_threshold(self, service, tmp_path):
+        import json, time
+
+        service._history_file = tmp_path / "history.json"
+        now = time.time()
+        records = [
+            {
+                "model": "large-v3",
+                "device": "cpu",
+                "compute_type": "int8",
+                "audio_duration": 10.0,
+                "transcribe_time": 5.0,
+                "timestamp": now,
+            },
+            {
+                "model": "large-v3",
+                "device": "cpu",
+                "compute_type": "int8",
+                "audio_duration": 20.0,
+                "transcribe_time": 8.0,
+                "timestamp": now,
+            },
+        ]
+        service._history_file.write_text(
+            json.dumps({"records": records}), encoding="utf-8"
+        )
+        assert service._estimate_transcribe_time(10.0) is None
+
+    def test_estimate_returns_value_when_enough_samples(self, service, tmp_path):
+        import json, time
+
+        service._history_file = tmp_path / "history.json"
+        now = time.time()
+        records = [
+            {
+                "model": "large-v3",
+                "device": "cpu",
+                "compute_type": "int8",
+                "audio_duration": 10.0,
+                "transcribe_time": 5.0,
+                "timestamp": now,
+            },
+            {
+                "model": "large-v3",
+                "device": "cpu",
+                "compute_type": "int8",
+                "audio_duration": 20.0,
+                "transcribe_time": 10.0,
+                "timestamp": now,
+            },
+            {
+                "model": "large-v3",
+                "device": "cpu",
+                "compute_type": "int8",
+                "audio_duration": 30.0,
+                "transcribe_time": 15.0,
+                "timestamp": now,
+            },
+        ]
+        service._history_file.write_text(
+            json.dumps({"records": records}), encoding="utf-8"
+        )
+        result = service._estimate_transcribe_time(10.0)
+        assert result is not None
+        assert result == pytest.approx(5.0, rel=0.1)
+
+    def test_estimate_recent_records_have_higher_weight(self, service, tmp_path):
+        import json, time
+
+        service._history_file = tmp_path / "history.json"
+        now = time.time()
+        old_ts = now - 60 * 86400  # 60 days ago
+        records = [
+            {
+                "model": "large-v3",
+                "device": "cpu",
+                "compute_type": "int8",
+                "audio_duration": 10.0,
+                "transcribe_time": 5.0,
+                "timestamp": old_ts,  # speed 0.5
+            },
+            {
+                "model": "large-v3",
+                "device": "cpu",
+                "compute_type": "int8",
+                "audio_duration": 10.0,
+                "transcribe_time": 5.0,
+                "timestamp": old_ts,  # speed 0.5
+            },
+            {
+                "model": "large-v3",
+                "device": "cpu",
+                "compute_type": "int8",
+                "audio_duration": 10.0,
+                "transcribe_time": 3.0,
+                "timestamp": now,  # speed 0.3
+            },
+        ]
+        service._history_file.write_text(
+            json.dumps({"records": records}), encoding="utf-8"
+        )
+        result = service._estimate_transcribe_time(10.0)
+        assert result is not None
+        # Recent record (speed 0.3) should dominate due to higher weight
+        assert result < 4.0
+
+    def test_estimate_no_timestamp_fallback(self, service, tmp_path):
+        import json
+
+        service._history_file = tmp_path / "history.json"
+        records = [
+            {
+                "model": "large-v3",
+                "device": "cpu",
+                "compute_type": "int8",
+                "audio_duration": 10.0,
+                "transcribe_time": 5.0,  # no timestamp, speed 0.5
+            },
+            {
+                "model": "large-v3",
+                "device": "cpu",
+                "compute_type": "int8",
+                "audio_duration": 20.0,
+                "transcribe_time": 10.0,  # no timestamp, speed 0.5
+            },
+            {
+                "model": "large-v3",
+                "device": "cpu",
+                "compute_type": "int8",
+                "audio_duration": 30.0,
+                "transcribe_time": 15.0,  # no timestamp, speed 0.5
+            },
+        ]
+        service._history_file.write_text(
+            json.dumps({"records": records}), encoding="utf-8"
+        )
+        result = service._estimate_transcribe_time(10.0)
+        assert result is not None
+        assert result == pytest.approx(5.0, rel=0.01)
+
+    def test_save_history_record_includes_timestamp(self, service, tmp_path):
+        import json, time
+
+        service._history_file = tmp_path / "history.json"
+        before = time.time()
+        service._save_history_record(10.0, 5.0)
+        after = time.time()
+
+        data = json.loads(service._history_file.read_text(encoding="utf-8"))
+        records = data["records"]
+        assert len(records) == 1
+        ts = records[0].get("timestamp")
+        assert ts is not None
+        assert before <= ts <= after

@@ -1,8 +1,10 @@
 """Provider 抽象层 —— 统一 Ollama / NVIDIA 等在线总结提供商的调用接口"""
 
+import os
 from typing import Callable, Optional, Protocol
 
-from src.config.settings import PromptManager, Settings
+from src.config.settings import Settings
+from src.summarization.prompt_manager import PromptManager
 from src.summarization.nvidia_client import NvidiaClient
 from src.summarization.ollama_client import OllamaClient
 from src.utils.logger import get_logger
@@ -93,6 +95,7 @@ class NvidiaProvider:
                 "summarization.nvidia_api_url",
                 "https://integrate.api.nvidia.com/v1/chat/completions",
             ),
+            api_key=os.environ.get("NVIDIA_API_KEY", ""),
             timeout=nvidia_timeout,
             model=self._model,
         )

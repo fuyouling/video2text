@@ -37,7 +37,7 @@ MODEL_CONFIG = {
 
 
 class ModelDownloader:
-    """模型下载器"""
+    """模型下载器 —— 从 HuggingFace 下载 faster-whisper 模型文件，支持代理与自动重试。"""
 
     def __init__(self, model_name: str = "large-v3"):
         self.model_name = model_name
@@ -53,7 +53,6 @@ class ModelDownloader:
         self._session = None
 
     def close(self) -> None:
-        """关闭底层 HTTP Session。"""
         if self._session is not None:
             self._session.close()
             self._session = None
@@ -88,7 +87,6 @@ class ModelDownloader:
             return ""
 
     def _get_session(self, proxy: str = ""):
-        """获取或创建 requests Session（带代理支持）。"""
         import requests
 
         if self._session is None:
@@ -117,34 +115,54 @@ class ModelDownloader:
         dest: Path,
         proxy: str = "",
         file_progress_callback=None,
-        max_retries: int = 3,
+        max_retries: int = 5,
     ) -> bool:
-        """下载单个文件，支持自动重试。
-
-        Args:
-            url: 下载地址
-            dest: 目标路径
-            proxy: 代理地址
-            file_progress_callback: 单文件进度回调 (downloaded_bytes, file_total_bytes)
-            max_retries: 最大重试次数
-        """
         import requests
 
         session = self._get_session(proxy)
+        connect_timeout = 30
+        read_timeout = 300
 
         for attempt in range(1, max_retries + 1):
             response = None
             try:
-                response = session.get(url, stream=True, timeout=300)
+                existing_size = dest.stat().st_size if dest.exists() else 0
+                headers = {}
+                if existing_size > 0:
+                    headers["Range"] = f"bytes={existing_size}-"
+                    logger.info("  │  ├─ 续传: 已有 %s", self._fmt_size(existing_size))
+
+                response = session.get(
+                    url,
+                    stream=True,
+                    timeout=(connect_timeout, read_timeout),
+                    headers=headers,
+                )
+
+                if response.status_code == 416:
+                    logger.info("  │  └─ 已完整，跳过")
+                    return True
+
+                is_resume = response.status_code == 206
+                if not is_resume and existing_size > 0:
+                    existing_size = 0
+
                 response.raise_for_status()
 
-                total_size = int(response.headers.get("content-length", 0))
-                downloaded = 0
-                last_reported = 0
+                if is_resume:
+                    total_size = existing_size + int(
+                        response.headers.get("content-length", 0)
+                    )
+                else:
+                    total_size = int(response.headers.get("content-length", 0))
+
+                downloaded = existing_size
+                last_reported = downloaded
                 throttle_step = max(1024 * 1024, 8192)
 
-                with open(dest, "wb") as f:
-                    for chunk in response.iter_content(chunk_size=8192):
+                mode = "ab" if is_resume else "wb"
+                with open(dest, mode) as f:
+                    for chunk in response.iter_content(chunk_size=65536):
                         if chunk:
                             f.write(chunk)
                             downloaded += len(chunk)
@@ -165,51 +183,41 @@ class ModelDownloader:
 
                 if total_size > 0 and downloaded != total_size:
                     logger.warning(
-                        "文件大小不匹配 %s: 期望 %d, 实际 %d",
-                        dest.name,
-                        total_size,
-                        downloaded,
+                        "  │  └─ 大小不匹配: 期望 %s, 实际 %s",
+                        self._fmt_size(total_size),
+                        self._fmt_size(downloaded),
                     )
-                    dest.unlink(missing_ok=True)
                     continue
 
                 return True
 
             except requests.exceptions.Timeout:
-                logger.warning(
-                    "下载超时 %s (尝试 %d/%d)", dest.name, attempt, max_retries
-                )
-                dest.unlink(missing_ok=True)
+                logger.warning("  │  ├─ 超时 (%d/%d)", attempt, max_retries)
             except requests.exceptions.ConnectionError:
-                logger.warning(
-                    "连接失败 %s (尝试 %d/%d)", dest.name, attempt, max_retries
-                )
-                dest.unlink(missing_ok=True)
+                logger.warning("  │  ├─ 连接失败 (%d/%d)", attempt, max_retries)
             except Exception as e:
-                logger.warning(
-                    "下载失败 %s (尝试 %d/%d): %s", dest.name, attempt, max_retries, e
-                )
-                dest.unlink(missing_ok=True)
+                logger.warning("  │  ├─ 失败 (%d/%d): %s", attempt, max_retries, e)
             finally:
                 if response is not None:
                     response.close()
 
             if attempt < max_retries:
-                wait = 2**attempt
-                logger.info("%d 秒后重试...", wait)
+                wait = min(2**attempt, 30)
+                logger.info("  │  ├─ %d 秒后重试...", wait)
                 time.sleep(wait)
 
-        logger.error("下载最终失败: %s (已重试 %d 次)", dest.name, max_retries)
+        logger.error("  │  └─ 下载失败 (已重试 %d 次)", max_retries)
         return False
 
-    def download_model(self, progress_callback=None) -> bool:
-        """下载模型文件。
+    @staticmethod
+    def _fmt_size(size: int) -> str:
+        for unit in ("B", "KB", "MB", "GB"):
+            if size < 1024.0:
+                return f"{size:.2f} {unit}"
+            size /= 1024.0
+        return f"{size:.2f} TB"
 
-        Args:
-            progress_callback: 进度回调，接收 (downloaded_bytes, total_bytes)。
-                downloaded_bytes 为已完成的文件总大小 + 当前文件已下载大小，
-                total_bytes 为所有文件总大小。
-        """
+    def download_model(self, progress_callback=None) -> bool:
         base_url = self.model_config["base_url"]
         files = self.model_config["all_files"]
         core_files = set(self.model_config["core_files"])
@@ -217,25 +225,25 @@ class ModelDownloader:
 
         proxy = self._get_proxy()
 
-        logger.info("检查 HuggingFace 连接...")
+        logger.info("模型下载 (%s)", self.model_name)
+        logger.info("  ├─ 检查网络连接")
+
         if self._check_hf_accessible():
-            logger.info("HuggingFace 可直接访问")
+            logger.info("  │  └─ 直连 HuggingFace ... OK")
             proxy = ""
         elif proxy:
-            logger.info("尝试通过代理 %s 连接 HuggingFace...", proxy)
+            logger.info("  │  ├─ 直连失败，尝试代理 %s", proxy)
             if self._check_hf_accessible(proxy=proxy):
-                logger.info("代理连接 HuggingFace 成功")
+                logger.info("  │  └─ 代理连接 ... OK")
             else:
-                logger.error("通过代理仍无法访问 HuggingFace，请检查网络或代理设置")
+                logger.error("  │  └─ 代理连接失败")
                 return False
         else:
-            logger.warning("无法直接访问 HuggingFace")
-            logger.warning("请在 config.ini 的 [network] 节设置 proxy，例如:")
-            logger.warning("  proxy = http://127.0.0.1:7890")
+            logger.error("  │  └─ 无法访问 HuggingFace")
+            logger.error("请在 config.ini 的 [network] 节设置 proxy")
             return False
 
-        logger.info("开始下载模型文件 (%d 个)", len(files))
-        logger.info("目标目录: %s", self.models_dir)
+        logger.info("  ├─ 下载文件 (%d 个 -> %s)", len(files), self.models_dir)
 
         total_downloaded = 0
 
@@ -247,10 +255,24 @@ class ModelDownloader:
             return _file_cb
 
         failed: list[str] = []
-        for filename in files:
+        for i, filename in enumerate(files):
+            is_last = i == len(files) - 1
+            connector = "  └─" if is_last else "  ├─"
+            branch = "     " if is_last else "  │  "
+
             url = f"{base_url}/{filename}?download=true"
             dest = self.models_dir / filename
-            logger.info("下载: %s", filename)
+
+            if dest.exists() and dest.stat().st_size > 0:
+                logger.info(
+                    "%s %s (%s, 已有)",
+                    connector,
+                    filename,
+                    self._fmt_size(dest.stat().st_size),
+                )
+            else:
+                logger.info("%s %s", connector, filename)
+
             ok = self._download_file(
                 url,
                 dest,
@@ -258,11 +280,9 @@ class ModelDownloader:
                 file_progress_callback=_make_file_cb(filename, total_downloaded),
             )
             if ok:
-                logger.info("完成: %s", filename)
                 if dest.exists():
                     total_downloaded += dest.stat().st_size
             else:
-                logger.error("失败: %s", filename)
                 failed.append(filename)
 
         if failed:
@@ -278,12 +298,12 @@ class ModelDownloader:
                 return False
 
         self.close()
-        logger.info("全部模型文件下载完成: %s", self.models_dir)
+        logger.info("下载完成")
         return True
 
     def ensure_model_available(self, progress_callback=None) -> bool:
         if self.is_model_exists():
-            logger.info("模型文件已就绪: %s", self.models_dir)
+            logger.info("模型已就绪: %s", self.models_dir)
             return True
 
         logger.info("模型文件不完整，开始下载...")

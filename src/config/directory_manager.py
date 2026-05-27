@@ -39,19 +39,19 @@ class DirectoryManager:
             return
         data = safe_read_json(self._file_path)
         if data is None:
-            logger.warning("常用目录加载失败: %s", self._file_path)
+            logger.warning("DirectoryManager: ✗ 加载失败 (%s)", self._file_path)
             return
         input_dirs = data.get("input_dirs", [])
         output_dirs = data.get("output_dirs", [])
         if not isinstance(input_dirs, list):
-            logger.warning("input_dirs 格式异常（非 list），忽略")
+            logger.warning("DirectoryManager: ⚠ input_dirs 格式异常，忽略")
             input_dirs = []
         if not isinstance(output_dirs, list):
-            logger.warning("output_dirs 格式异常（非 list），忽略")
+            logger.warning("DirectoryManager: ⚠ output_dirs 格式异常，忽略")
             output_dirs = []
         self._input_dirs = list(input_dirs)
         self._output_dirs = list(output_dirs)
-        logger.info("常用目录加载成功: %s", self._file_path)
+        logger.info("DirectoryManager: ✓ 加载 (%s)", self._file_path)
 
     def _save(self) -> None:
         """原子写入 JSON 文件"""
@@ -63,7 +63,7 @@ class DirectoryManager:
             self._file_path.parent.mkdir(parents=True, exist_ok=True)
             atomic_write_json(self._file_path, data)
         except OSError as exc:
-            logger.error("常用目录保存失败: %s", exc)
+            logger.error("DirectoryManager: ✗ 保存失败 (%s)", exc)
             raise
 
     def get_input_dirs(self) -> list[str]:

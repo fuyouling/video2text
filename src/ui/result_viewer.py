@@ -1,14 +1,14 @@
 """独立结果查看窗口 —— 支持全屏、Markdown、多标签、搜索、书签、主题切换"""
 
 import logging
-import re
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
 
 from src.storage.bookmark_manager import BookmarkItem, BookmarkManager
 from src.storage.file_writer import FileWriter
+from src.ui.markdown_renderer import MarkdownRenderer
+from src.ui.theme_manager import ThemeManager
 from src.utils.paths import get_base_dir as _get_base_dir
 
 from PySide6.QtCore import Qt, QSettings, QTimer
@@ -51,18 +51,11 @@ from PySide6.QtWidgets import (
 )
 
 try:
-    import markdown
-
-    MARKDOWN_AVAILABLE = True
-except ImportError:
-    MARKDOWN_AVAILABLE = False
-
-try:
     import importlib.util
 
-    PYGMENTS_AVAILABLE = importlib.util.find_spec("pygments") is not None
+    MARKDOWN_AVAILABLE = importlib.util.find_spec("markdown") is not None
 except ImportError:
-    PYGMENTS_AVAILABLE = False
+    MARKDOWN_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -76,324 +69,23 @@ def _get_settings() -> QSettings:
     return QSettings(_INI_PATH, QSettings.Format.IniFormat)
 
 
-class ThemeManager:
-    """主题管理器"""
-
-    THEMES = {
-        "light": {
-            "name": "浅色",
-            "bg_color": "#ffffff",
-            "text_color": "#333333",
-            "secondary_bg": "#f4f4f4",
-            "border_color": "#dddddd",
-            "accent_color": "#3498db",
-            "code_bg": "#f8f8f8",
-            "blockquote_bg": "#f9f9f9",
-            "blockquote_border": "#3498db",
-            "danger_color": "#dc3545",
-            "dock_close_hover": "#e81123",
-            "muted_color": "#888888",
-        },
-        "dark": {
-            "name": "深色",
-            "bg_color": "#1e1e1e",
-            "text_color": "#d4d4d4",
-            "secondary_bg": "#2d2d2d",
-            "border_color": "#404040",
-            "accent_color": "#4a9eff",
-            "code_bg": "#252526",
-            "blockquote_bg": "#2d2d2d",
-            "blockquote_border": "#4a9eff",
-            "danger_color": "#dc3545",
-            "dock_close_hover": "#c42b1c",
-            "muted_color": "#777777",
-        },
-    }
-
-    def __init__(self):
-        self._settings = _get_settings()
-        self._current_theme = self._settings.value("theme", "light")
-
-    @property
-    def current_theme(self) -> str:
-        return self._current_theme
-
-    def set_theme(self, theme: str):
-        if theme in self.THEMES:
-            self._current_theme = theme
-            self._settings.setValue("theme", theme)
-
-    def get_style(self) -> str:
-        """获取当前主题的CSS样式"""
-        theme = self.THEMES.get(self._current_theme, self.THEMES["light"])
-        return f"""
-            QMainWindow {{
-                background-color: {theme["bg_color"]};
-            }}
-            QTabWidget::pane {{
-                border: 1px solid {theme["border_color"]};
-                background-color: {theme["bg_color"]};
-            }}
-            QTabBar::tab {{
-                background-color: {theme["secondary_bg"]};
-                color: {theme["text_color"]};
-                padding: 8px 16px;
-                border: 1px solid {theme["border_color"]};
-                border-bottom: none;
-            }}
-            QTabBar::tab:selected {{
-                background-color: {theme["bg_color"]};
-                border-bottom: 2px solid {theme["accent_color"]};
-            }}
-            QTextEdit, QTextBrowser {{
-                background-color: {theme["bg_color"]};
-                color: {theme["text_color"]};
-                border: 1px solid {theme["border_color"]};
-                selection-background-color: {theme["accent_color"]};
-            }}
-            QLineEdit {{
-                background-color: {theme["secondary_bg"]};
-                color: {theme["text_color"]};
-                border: 1px solid {theme["border_color"]};
-                padding: 4px;
-            }}
-            QPushButton {{
-                background-color: {theme["secondary_bg"]};
-                color: {theme["text_color"]};
-                border: 1px solid {theme["border_color"]};
-                padding: 6px 12px;
-                border-radius: 3px;
-            }}
-            QPushButton:hover {{
-                background-color: {theme["accent_color"]};
-                color: white;
-            }}
-            QPushButton#BookmarkDeleteBtn:hover {{
-                background-color: {theme["danger_color"]};
-                color: white;
-            }}
-            QListWidget {{
-                background-color: {theme["secondary_bg"]};
-                color: {theme["text_color"]};
-                border: 1px solid {theme["border_color"]};
-            }}
-            QListWidget::item {{
-                padding: 6px 8px;
-                border-left: 3px solid transparent;
-            }}
-            QListWidget::item:selected {{
-                background-color: {theme["accent_color"]};
-                color: white;
-                border-left: 3px solid {theme["accent_color"]};
-            }}
-            QDockWidget {{
-                background-color: {theme["secondary_bg"]};
-                color: {theme["text_color"]};
-            }}
-            QDockWidget::title {{
-                background: {theme["secondary_bg"]};
-                color: {theme["text_color"]};
-                padding: 6px 30px 6px 10px;
-                border-bottom: 1px solid {theme["border_color"]};
-                font-weight: 600;
-            }}
-            QDockWidget::close-button {{
-                subcontrol-origin: padding;
-                subcontrol-position: top right;
-                width: 20px;
-                height: 20px;
-            }}
-            QDockWidget::close-button:hover {{
-                background-color: {theme["dock_close_hover"]};
-                border-radius: 3px;
-            }}
-            QDockWidget::float-button {{
-                subcontrol-origin: padding;
-                subcontrol-position: top right;
-                width: 20px;
-                height: 20px;
-            }}
-            QDockWidget::float-button:hover {{
-                background-color: {theme["accent_color"]};
-                border-radius: 3px;
-            }}
-            QWidget#BookmarkDockTitleBar {{
-                background: {theme["secondary_bg"]};
-                border-bottom: 1px solid {theme["border_color"]};
-            }}
-            QLabel#BookmarkCountLabel {{
-                color: {theme["muted_color"]};
-                font-size: 11px;
-            }}
-            QStatusBar {{
-                background-color: {theme["secondary_bg"]};
-                color: {theme["text_color"]};
-            }}
-            QTreeWidget {{
-                background-color: {theme["secondary_bg"]};
-                color: {theme["text_color"]};
-                border: 1px solid {theme["border_color"]};
-            }}
-            QTreeWidget::item {{
-                padding: 4px;
-            }}
-            QTreeWidget::item:selected {{
-                background-color: {theme["accent_color"]};
-                color: white;
-            }}
-            QTreeWidget::item:!selectable {{
-                color: {theme["text_color"]};
-                font-weight: 600;
-            }}
-        """
-
-    def get_markdown_css(self, font_size: int) -> str:
-        """获取Markdown渲染的CSS样式"""
-        theme = self.THEMES.get(self._current_theme, self.THEMES["light"])
-        return f"""
-            body {{
-                font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
-                font-size: {font_size}pt;
-                line-height: 1.6;
-                color: {theme["text_color"]};
-                padding: 10px;
-                background-color: {theme["bg_color"]};
-                margin: 0;
-            }}
-            * {{
-                box-sizing: border-box;
-            }}
-            h1, h2, h3, h4, h5, h6 {{
-                color: {theme["text_color"]};
-                margin-top: 1.2em;
-                margin-bottom: 0.6em;
-                font-weight: 600;
-            }}
-            h1 {{
-                font-size: 1.8em;
-                border-bottom: 2px solid {theme["border_color"]};
-                padding-bottom: 0.3em;
-            }}
-            h2 {{
-                font-size: 1.5em;
-                border-bottom: 1px solid {theme["border_color"]};
-                padding-bottom: 0.3em;
-            }}
-            h3 {{
-                font-size: 1.3em;
-            }}
-            code {{
-                background: {theme["code_bg"]};
-                padding: 2px 6px;
-                border-radius: 3px;
-                font-family: 'Consolas', 'Monaco', monospace;
-                font-size: 0.9em;
-                color: {theme["text_color"]};
-            }}
-            pre {{
-                background: {theme["code_bg"]};
-                padding: 12px;
-                border-radius: 5px;
-                overflow-x: auto;
-                border: 1px solid {theme["border_color"]};
-            }}
-            pre code {{
-                background: none;
-                padding: 0;
-            }}
-            blockquote {{
-                border-left: 4px solid {theme["blockquote_border"]};
-                padding-left: 12px;
-                margin: 1em 0;
-                color: {theme["text_color"]};
-                background: {theme["blockquote_bg"]};
-                padding: 8px 12px;
-            }}
-            table {{
-                border-collapse: collapse;
-                width: 100%;
-                margin: 1em 0;
-            }}
-            th, td {{
-                border: 1px solid {theme["border_color"]};
-                padding: 8px 12px;
-                text-align: left;
-            }}
-            th {{
-                background: {theme["secondary_bg"]};
-                font-weight: 600;
-            }}
-            ul, ol {{
-                padding-left: 2em;
-                margin: 0.8em 0;
-            }}
-            ul {{
-                list-style-type: disc;
-            }}
-            ol {{
-                list-style-type: decimal;
-            }}
-            li {{
-                margin: 0.5em 0;
-                line-height: 1.8;
-                padding-left: 0.5em;
-            }}
-            ul ul, ol ol, ul ol, ol ul {{
-                margin-top: 0.4em;
-                margin-bottom: 0.4em;
-                padding-left: 2em;
-            }}
-            ul ul {{
-                list-style-type: circle;
-            }}
-            ul ul ul {{
-                list-style-type: square;
-            }}
-            ul li, ol li {{
-                margin-left: 0;
-            }}
-            p {{
-                margin: 0.6em 0;
-                line-height: 1.6;
-            }}
-            li > p {{
-                margin: 0.3em 0;
-            }}
-            a {{
-                color: {theme["accent_color"]};
-                text-decoration: none;
-            }}
-            a:hover {{
-                text-decoration: underline;
-            }}
-            .codehilite {{
-                background: {theme["code_bg"]};
-                padding: 12px;
-                border-radius: 5px;
-                overflow-x: auto;
-                border: 1px solid {theme["border_color"]};
-            }}
-            .codehilite code {{
-                background: none;
-                padding: 0;
-            }}
-        """
-
-
 def _find_summary_path(output_dir: str, video_name: str) -> Optional[Path]:
     """查找摘要文件（支持 _summary.txt 和 _summary.md）"""
     return FileWriter(output_dir).find_summary_file(video_name)
 
 
 class ResultViewerWindow(QMainWindow):
-    """独立的结果查看窗口，支持全屏显示、多标签、搜索、书签、主题切换"""
+    """独立的结果查看窗口 —— 支持全屏显示、多标签页、搜索替换、书签管理、主题切换。
+
+    可从主窗口打开，独立浏览转写和总结结果，支持 Markdown 渲染和键盘快捷键。
+    """
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("结果查看 - Video2Text")
         self.resize(1400, 900)
 
-        self._theme_manager = ThemeManager()
+        self._theme_manager = ThemeManager(_get_settings())
         self._output_dir = ""
         self._root_output_dir = ""
         self._flat_video_names: list[str] = []
@@ -404,8 +96,7 @@ class ResultViewerWindow(QMainWindow):
         self._current_match_index: int = -1
         self._folder_mode: bool = False
         self._tree_name_map: dict[str, QTreeWidgetItem] = {}
-        self._cached_md_text: str = ""
-        self._cached_html: str = ""
+        self._md_renderer = MarkdownRenderer()
         self._selected_bookmark_date: str = ""
         self._search_timer = QTimer()
         self._search_timer.setSingleShot(True)
@@ -1043,181 +734,27 @@ class ResultViewerWindow(QMainWindow):
             self.summary_view.setPlainText(markdown_text)
             return
 
-        if markdown_text != self._cached_md_text:
-            safe_text = re.sub(
-                r"<\s*(script|style|iframe|object|embed|form|input|textarea|button)[^>]*>.*?<\s*/\s*\1\s*>",
-                "",
-                markdown_text,
-                flags=re.DOTALL | re.IGNORECASE,
-            )
-            safe_text = re.sub(
-                r"<\s*/?\s*(script|style|iframe|object|embed|form|input|textarea|button)[^>]*>",
-                "",
-                safe_text,
-                flags=re.IGNORECASE,
-            )
-
-            safe_text = self._preprocess_md_tables(safe_text)
-            safe_text = self._preprocess_md_nested_lists(safe_text)
-
-            try:
-                extensions = ["tables", "fenced_code", "extra", "sane_lists"]
-                if PYGMENTS_AVAILABLE:
-                    extensions.append("codehilite")
-
-                self._cached_html = markdown.markdown(safe_text, extensions=extensions)
-                self._cached_md_text = markdown_text
-            except Exception as exc:
-                logger.warning("Markdown 渲染失败: %s", exc)
-                self.summary_view.setPlainText(markdown_text)
-                return
-
         font_size = self.font_size_spin.value()
+        theme = self._theme_manager.THEMES.get(
+            self._theme_manager.current_theme, self._theme_manager.THEMES["light"]
+        )
         css = self._theme_manager.get_markdown_css(font_size)
 
         default_font = QFont()
         default_font.setPointSize(font_size)
         self.summary_view.document().setDefaultFont(default_font)
 
-        final_html = self._fix_tables_for_qt(self._cached_html)
-        final_html = self._fix_nested_lists_for_qt(final_html)
-        styled_html = f"""
-        <style>
-            {css}
-        </style>
-        {final_html}
-        """
-        self.summary_view.setHtml(styled_html)
-
-    def _fix_tables_for_qt(self, html: str) -> str:
-        """为 <table>/<th>/<td> 添加内联属性，确保 QTextBrowser 正确渲染表格边框"""
-        theme = self._theme_manager.THEMES.get(
-            self._theme_manager.current_theme, self._theme_manager.THEMES["light"]
+        html = self._md_renderer.render(
+            markdown_text,
+            font_size=font_size,
+            theme_css=css,
+            border_color=theme["border_color"],
+            secondary_bg=theme["secondary_bg"],
         )
-        border = theme["border_color"]
-        th_bg = theme["secondary_bg"]
-
-        html = re.sub(
-            r"<table>",
-            f'<table border="1" cellspacing="0" cellpadding="6" '
-            f'style="border-collapse:collapse; width:100%;">',
-            html,
-        )
-        html = re.sub(
-            r"<th>",
-            f'<th style="border:1px solid {border}; padding:6px 10px; '
-            f'background:{th_bg}; font-weight:bold; text-align:left;">',
-            html,
-        )
-        html = re.sub(
-            r"<td>",
-            f'<td style="border:1px solid {border}; padding:6px 10px;">',
-            html,
-        )
-        return html
-
-    @staticmethod
-    def _fix_nested_lists_for_qt(html: str) -> str:
-        """为嵌套 <ul>/<ol> 添加内联 margin-left，确保 QTextBrowser 正确渲染列表缩进。
-
-        QTextBrowser 对 CSS 选择器 ``ul ul`` / ``ol ol`` 等嵌套列表的 padding-left
-        支持不完整，需要通过内联 style 强制生效。
-        """
-        html = re.sub(
-            r"(<li[^>]*>(?:(?!</li>).)*?)<(ul|ol)([\s>])",
-            lambda m: (
-                f'{m.group(1)}<{m.group(2)} style="margin-left:1.5em;"{m.group(3)}'
-            ),
-            html,
-            flags=re.DOTALL,
-        )
-        return html
-
-    @staticmethod
-    def _preprocess_md_nested_lists(text: str) -> str:
-        """修复 LLM 生成的 2-space 缩进子列表，使其被 python-markdown 正确识别为嵌套列表。
-
-        python-markdown 要求子列表缩进 >= 父列表标记宽度（``- `` 为 2），
-        即嵌套列表至少需要 4-space 缩进。LLM 常用 2-space，导致被展平为同级列表。
-        此方法将所有缩进的列表标记增加 2-space 偏移。
-        """
-        lines = text.split("\n")
-        result: list[str] = []
-        in_code = False
-
-        for line in lines:
-            if line.lstrip().startswith("```"):
-                in_code = not in_code
-                result.append(line)
-                continue
-
-            if in_code:
-                result.append(line)
-                continue
-
-            if re.match(r"^( +)([-*+]|\d+[.)])\s", line):
-                result.append("  " + line)
-            else:
-                result.append(line)
-
-        return "\n".join(result)
-
-    @staticmethod
-    def _preprocess_md_tables(text: str) -> str:
-        """将缩进在列表项内部的表格块提到顶层，使 markdown tables 扩展能正确识别。
-
-        列表项里缩进的 ``| col | col |`` 行会被 python-markdown 视为列表延续文本，
-        而非表格。此方法在表格块之前插入空行以断开列表上下文，并去除表格行的缩进。
-        """
-        lines = text.split("\n")
-        result: list[str] = []
-        i = 0
-        in_code = False
-
-        while i < len(lines):
-            line = lines[i]
-
-            if line.lstrip().startswith("```"):
-                in_code = not in_code
-                result.append(line)
-                i += 1
-                continue
-
-            if in_code:
-                result.append(line)
-                i += 1
-                continue
-
-            stripped = line.lstrip()
-            indent = len(line) - len(stripped)
-
-            if indent > 0 and stripped.startswith("|") and stripped.count("|") >= 2:
-                table_block: list[str] = []
-                j = i
-                while j < len(lines):
-                    s = lines[j].lstrip()
-                    if s.startswith("|") and s.count("|") >= 2:
-                        table_block.append(s)
-                        j += 1
-                    else:
-                        break
-
-                if len(table_block) >= 3 and re.match(
-                    r"^\|[\s\-:|]+\|$", table_block[1].strip()
-                ):
-                    if result and result[-1].strip():
-                        result.append("")
-                    result.extend(table_block)
-                    i = j
-                    continue
-
-                result.append(line)
-                i += 1
-            else:
-                result.append(line)
-                i += 1
-
-        return "\n".join(result)
+        if html is None:
+            self.summary_view.setPlainText(markdown_text)
+            return
+        self.summary_view.setHtml(html)
 
     # ─── 字体 ─────────────────────────────────────────────────
 

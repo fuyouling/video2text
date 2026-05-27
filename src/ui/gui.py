@@ -1,21 +1,18 @@
 """Video2Text GUI —— 基于 PySide6 的媒体转文本图形界面"""
 
 import logging
-import re
 import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QEvent, Qt, QThread, QTimer
+from PySide6.QtCore import Qt, QThread, QTimer
 from PySide6.QtGui import (
     QAction,
     QCloseEvent,
-    QColor,
     QFont,
     QIcon,
     QKeySequence,
-    QTextCharFormat,
     QTextCursor,
 )
 from PySide6.QtWidgets import (
@@ -26,7 +23,6 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
@@ -43,22 +39,22 @@ from PySide6.QtWidgets import (
 )
 
 from src.config.directory_manager import DirectoryManager
-from src.config.settings import (
-    PromptManager,
-    Settings,
-    APP_VERSION,
-)
+from src.config.settings import Settings
+from src.config.version import APP_VERSION
+from src.summarization.prompt_manager import PromptManager
 from src.storage.file_writer import FileWriter
 from src.summarization.ollama_client import OllamaClient
 from src.ui.gui_dialogs import ConfigEditorDialog, VideoSelectionDialog
 from src.ui.gui_workers import (
     PipelineWorker,
+    ScanFilesWorker,
     SummarizeWorker,
     TranscribeWorker,
-    UiLogHandler,
-    UiLogSignal,
 )
+from src.ui.favorite_dir_helper import FavoriteDirHelper
+from src.ui.log_panel import LogPanel
 from src.ui.result_viewer import ResultViewerWindow, _find_summary_path
+from src.ui.search_controller import SearchController
 from src.transcription.transcriber import _model_cache as _transcriber_cache
 from src.utils.logger import get_logger
 
@@ -72,17 +68,12 @@ _DEFAULT_OUTPUT_DIR = str(_PROJECT_ROOT / "output")
 
 _BTN_MIN_WIDTH = 100
 
-_LOG_COLOR_RULES = [
-    (re.compile(r"失败|错误|异常|✘|✗"), QColor("#F44336")),
-    (re.compile(r"成功|完成|✔|✓"), QColor("#4CAF50")),
-    (re.compile(r"回退|降级|重试|不完整|超时|⚠|⏸|⏳"), QColor("#FF9800")),
-    (re.compile(r"正在|开始|加载|▶"), QColor("#2196F3")),
-    (re.compile(r"\[\d+/\d+\]"), QColor("#00BCD4")),
-]
-
 
 class MainWindow(QMainWindow):
-    """Video2Text 主窗口"""
+    """Video2Text 主窗口 —— 媒体转文本工具的图形界面主入口。
+
+    功能包括：媒体文件选择、转写、总结、结果查看、暂停/继续、历史加载等。
+    """
 
     def __init__(self) -> None:
         super().__init__()
@@ -101,7 +92,6 @@ class MainWindow(QMainWindow):
         self._completed_names: set[str] = set()
         self._worker_thread: Optional[QThread] = None
         self._worker = None
-        self._combined = False
         self._result_viewer: Optional[ResultViewerWindow] = None
         self._current_mode = ""
         self._tx_success = 0
@@ -112,129 +102,28 @@ class MainWindow(QMainWindow):
         self._current_video_name: Optional[str] = None
         self._is_multi_thread = False
         self._history_loaded = False
-
-        self._match_positions: list[tuple[int, int]] = []
-        self._current_match_index: int = -1
+        self._scan_context: Optional[dict] = None
+        self._scan_thread: Optional[QThread] = None
+        self._scan_worker = None
 
         self._dir_manager = DirectoryManager(_PROJECT_ROOT / "favorite_dirs.json")
 
-        self._setup_logging()
         self._init_ui()
-        self._load_favorite_dirs()
+
+        self._fav_helper = FavoriteDirHelper(
+            dir_manager=self._dir_manager,
+            input_combo=self.input_combo,
+            output_combo=self.output_combo,
+            default_output_dir=_DEFAULT_OUTPUT_DIR,
+            status_callback=lambda msg, t: self.status_bar.showMessage(msg, t),
+            parent=self,
+        )
+        self._fav_helper.load()
         self._load_prompt_config()
         self._load_prompt_templates()
 
-    def _setup_logging(self) -> None:
-        self._log_signal = UiLogSignal()
-        self._log_signal.message.connect(self._append_log)
-        self._ui_handler = UiLogHandler(self._log_signal)
-
-        for name in ("video2text", "src"):
-            lg = logging.getLogger(name)
-            lg.setLevel(logging.INFO)
-            if self._ui_handler not in lg.handlers:
-                lg.addHandler(self._ui_handler)
-
-    _MAX_LOG_BLOCKS = 5000
-
-    def _get_log_color(self, msg: str) -> QColor | None:
-        for pattern, color in _LOG_COLOR_RULES:
-            if pattern.search(msg):
-                return color
-        return None
-
-    def _append_log(self, msg: str) -> None:
-        cursor = self.log_text.textCursor()
-        cursor.movePosition(QTextCursor.End)
-
-        m_tag = re.match(r"^(\[[\u4e00-\u9fa5\d/]+\])(.*)$", msg)
-        m_tag_step = re.match(r"^(\[\d+/\d+\])(.*?)( ✓| ✗)(.*)$", msg)
-        m_step = re.match(r"^(  [├└]─ )(.+?)( ✓| ✗)(.*)$", msg)
-        m_prog = re.match(r"^(  [├└]─ )(.+?)( …)(.*)$", msg)
-        m_state = re.match(r"^(  [├└]─ )(⏸|▶)(.*)$", msg)
-
-        if m_tag_step:
-            self._insert_colored(cursor, m_tag_step.group(1), QColor("#00BCD4"))
-            self._insert_colored(cursor, m_tag_step.group(2))
-            ok = "✓" in m_tag_step.group(3)
-            self._insert_colored(
-                cursor,
-                m_tag_step.group(3),
-                QColor("#4CAF50") if ok else QColor("#F44336"),
-            )
-            self._insert_colored(cursor, m_tag_step.group(4), QColor("#757575"))
-        elif m_tag:
-            self._insert_colored(cursor, m_tag.group(1), QColor("#9C27B0"))
-            self._insert_colored(cursor, m_tag.group(2))
-        elif m_step:
-            self._insert_colored(cursor, m_step.group(1), QColor("#9E9E9E"))
-            self._insert_colored(cursor, m_step.group(2))
-            ok = "✓" in m_step.group(3)
-            self._insert_colored(
-                cursor,
-                m_step.group(3),
-                QColor("#4CAF50") if ok else QColor("#F44336"),
-            )
-            self._insert_colored(cursor, m_step.group(4), QColor("#757575"))
-        elif m_state:
-            self._insert_colored(cursor, m_state.group(1), QColor("#9E9E9E"))
-            is_resume = "▶" in m_state.group(2)
-            self._insert_colored(
-                cursor,
-                m_state.group(2),
-                QColor("#2196F3") if is_resume else QColor("#FF9800"),
-            )
-            self._insert_colored(cursor, m_state.group(3))
-        elif m_prog:
-            self._insert_colored(cursor, m_prog.group(1), QColor("#9E9E9E"))
-            self._insert_colored(cursor, m_prog.group(2))
-            self._insert_colored(cursor, m_prog.group(3), QColor("#2196F3"))
-            self._insert_colored(cursor, m_prog.group(4), QColor("#757575"))
-        else:
-            color = self._get_log_color(msg)
-            if color:
-                fmt = QTextCharFormat()
-                fmt.setForeground(color)
-                cursor.setCharFormat(fmt)
-            cursor.insertText(msg + "\n")
-            if color:
-                cursor.setCharFormat(QTextCharFormat())
-            self.log_text.setTextCursor(cursor)
-            self.log_text.ensureCursorVisible()
-            self._trim_log()
-            return
-
-        cursor.insertText("\n")
-        self.log_text.setTextCursor(cursor)
-        self.log_text.ensureCursorVisible()
-        self._trim_log()
-
-    def _insert_colored(
-        self, cursor: QTextCursor, text: str, color: QColor | None = None
-    ) -> None:
-        if not text:
-            return
-        if color:
-            fmt = QTextCharFormat()
-            fmt.setForeground(color)
-            cursor.setCharFormat(fmt)
-        cursor.insertText(text)
-        if color:
-            cursor.setCharFormat(QTextCharFormat())
-
-    def _trim_log(self) -> None:
-        doc = self.log_text.document()
-        if doc.blockCount() > self._MAX_LOG_BLOCKS:
-            trim_cursor = QTextCursor(doc)
-            trim_cursor.movePosition(QTextCursor.Start)
-            trim_cursor.movePosition(
-                QTextCursor.Down,
-                QTextCursor.KeepAnchor,
-                doc.blockCount() - self._MAX_LOG_BLOCKS,
-            )
-            trim_cursor.removeSelectedText()
-
     def _init_ui(self) -> None:
+        """初始化主窗口 UI 布局：菜单栏、输入输出行、进度条、日志面板、结果面板。"""
         self.setWindowTitle("Video2Text - 媒体转文本工具")
         self.resize(1200, 800)
 
@@ -266,13 +155,8 @@ class MainWindow(QMainWindow):
         # ── splitter: logs + right panel ──
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        log_group = QGroupBox("日志输出")
-        log_layout = QVBoxLayout(log_group)
-        self.log_text = QTextEdit()
-        self.log_text.setReadOnly(True)
-        self.log_text.setFont(QFont("Consolas", 9))
-        log_layout.addWidget(self.log_text)
-        splitter.addWidget(log_group)
+        self.log_panel = LogPanel()
+        splitter.addWidget(self.log_panel)
 
         right_splitter = QSplitter(Qt.Orientation.Vertical)
         right_splitter.addWidget(self._create_results_panel())
@@ -296,7 +180,6 @@ class MainWindow(QMainWindow):
         self.input_combo.setEditable(True)
         self.input_combo.setPlaceholderText("请选择视频/音频文件或文件夹…")
         self.input_combo.setMinimumWidth(300)
-        self.input_combo.view().viewport().installEventFilter(self)
         self.input_combo.activated.connect(self._on_input_combo_activated)
         input_row.addWidget(self.input_combo, 1)
 
@@ -324,7 +207,6 @@ class MainWindow(QMainWindow):
         self.output_combo.setEditable(True)
         self.output_combo.setCurrentText(_DEFAULT_OUTPUT_DIR)
         self.output_combo.setMinimumWidth(300)
-        self.output_combo.view().viewport().installEventFilter(self)
         output_row.addWidget(self.output_combo, 1)
         self.output_btn = QPushButton("浏览")
         self.output_btn.setMinimumWidth(_BTN_MIN_WIDTH)
@@ -402,13 +284,16 @@ class MainWindow(QMainWindow):
 
         find_action = QAction("查找替换", self)
         find_action.setShortcut(QKeySequence("Ctrl+F"))
-        find_action.triggered.connect(self._toggle_search_bar)
+        find_action.triggered.connect(self._toggle_search)
         self.addAction(find_action)
 
         results_layout.addLayout(content_layout)
-        self._search_widget = self._create_search_bar()
-        self._search_widget.setVisible(False)
-        results_layout.addWidget(self._search_widget)
+        self._search_controller = SearchController(
+            get_active_edit=self._active_edit,
+            clear_all_highlights=self._clear_all_highlights,
+            on_replace_count=self._on_replace_count,
+        )
+        results_layout.addWidget(self._search_controller)
         return results_group
 
     def _create_prompt_panel(self) -> QWidget:
@@ -636,8 +521,7 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage(
                 "摘要结果 —— 可直接编辑修改，Ctrl+S 保存，Ctrl+F 查找替换"
             )
-        if self._search_widget.isVisible() and self._search_input.text():
-            self._find_all_matches()
+        self._search_controller.refresh_if_active()
 
     def _save_transcript(self) -> None:
         """保存当前活动标签页的内容到文件（根据配置的输出格式自动匹配）"""
@@ -691,385 +575,34 @@ class MainWindow(QMainWindow):
             return self.summary_view
         return self.transcript_view
 
-    # ── 查找替换 ──
+    def _toggle_search(self) -> None:
+        self._search_controller.toggle()
 
-    def _create_search_bar(self) -> QWidget:
-        widget = QWidget()
-        main_layout = QVBoxLayout(widget)
-        main_layout.setContentsMargins(0, 4, 0, 0)
-
-        search_row = QHBoxLayout()
-        search_row.addWidget(QLabel("查找:"))
-        self._search_input = QLineEdit()
-        self._search_input.setPlaceholderText("输入搜索内容…")
-        self._search_input.setClearButtonEnabled(True)
-        self._search_input.returnPressed.connect(self._find_next)
-        self._search_input.textChanged.connect(self._find_all_matches)
-        search_row.addWidget(self._search_input, 1)
-
-        self._search_prev_btn = QPushButton("▲")
-        self._search_prev_btn.setFixedWidth(32)
-        self._search_prev_btn.setToolTip("上一个")
-        self._search_prev_btn.clicked.connect(self._find_prev)
-        search_row.addWidget(self._search_prev_btn)
-
-        self._search_next_btn = QPushButton("▼")
-        self._search_next_btn.setFixedWidth(32)
-        self._search_next_btn.setToolTip("下一个 (Enter)")
-        self._search_next_btn.clicked.connect(self._find_next)
-        search_row.addWidget(self._search_next_btn)
-
-        self._search_count_label = QLabel("")
-        self._search_count_label.setMinimumWidth(90)
-        search_row.addWidget(self._search_count_label)
-
-        close_btn = QPushButton("✕")
-        close_btn.setFixedWidth(28)
-        close_btn.setToolTip("关闭搜索栏")
-        close_btn.clicked.connect(self._close_search_bar)
-        search_row.addWidget(close_btn)
-
-        main_layout.addLayout(search_row)
-
-        replace_row = QHBoxLayout()
-        replace_row.addWidget(QLabel("替换:"))
-        self._replace_input = QLineEdit()
-        self._replace_input.setPlaceholderText("替换为…")
-        replace_row.addWidget(self._replace_input, 1)
-
-        self._replace_btn = QPushButton("替换")
-        self._replace_btn.setMinimumWidth(60)
-        self._replace_btn.clicked.connect(self._replace_current)
-        replace_row.addWidget(self._replace_btn)
-
-        self._replace_all_btn = QPushButton("全部替换")
-        self._replace_all_btn.setMinimumWidth(80)
-        self._replace_all_btn.clicked.connect(self._replace_all)
-        replace_row.addWidget(self._replace_all_btn)
-
-        main_layout.addLayout(replace_row)
-
-        return widget
-
-    def _toggle_search_bar(self) -> None:
-        if self._search_widget.isVisible():
-            self._close_search_bar()
-        else:
-            self._search_widget.setVisible(True)
-            self._search_input.setFocus()
-            cursor = self._active_edit().textCursor()
-            if cursor.hasSelection():
-                self._search_input.setText(cursor.selectedText())
-            elif self._search_input.text():
-                self._find_all_matches()
-
-    def _find_all_matches(self) -> None:
-        self._clear_highlights()
-        self._match_positions = []
-        self._current_match_index = -1
-
-        search_text = self._search_input.text()
-        if not search_text:
-            self._search_count_label.setText("")
-            return
-
-        edit = self._active_edit()
-        document = edit.document()
-        cursor = QTextCursor(document)
-
-        while True:
-            cursor = document.find(search_text, cursor)
-            if cursor.isNull():
-                break
-            start = cursor.selectionStart()
-            end = cursor.selectionEnd()
-            if start == end:
-                cursor.setPosition(end + 1)
-                continue
-            self._match_positions.append((start, end))
-
-        count = len(self._match_positions)
-        if count == 0:
-            self._search_count_label.setText("未找到匹配")
-            return
-
-        current_pos = edit.textCursor().position()
-        idx = 0
-        for i, (start, _) in enumerate(self._match_positions):
-            if start >= current_pos:
-                idx = i
-                break
-
-        self._current_match_index = idx
-        self._goto_match(idx)
-
-    def _highlight_all_matches(self) -> None:
-        normal_color = QColor(255, 255, 100)
-        current_color = QColor(255, 140, 0)
-        edit = self._active_edit()
-        document = edit.document()
-        selections = []
-        for i, (start, end) in enumerate(self._match_positions):
-            sel = QTextEdit.ExtraSelection()
-            sel.format.setBackground(
-                current_color if i == self._current_match_index else normal_color
-            )
-            cur = QTextCursor(document)
-            cur.setPosition(start)
-            cur.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
-            sel.cursor = cur
-            selections.append(sel)
-        edit.setExtraSelections(selections)
-
-    def _clear_highlights(self) -> None:
+    def _clear_all_highlights(self) -> None:
         self.transcript_view.setExtraSelections([])
         self.summary_view.setExtraSelections([])
 
-    def _goto_match(self, index: int) -> None:
-        if (
-            not self._match_positions
-            or index < 0
-            or index >= len(self._match_positions)
-        ):
-            return
-        self._current_match_index = index
-        start, end = self._match_positions[index]
-        edit = self._active_edit()
-        cursor = edit.textCursor()
-        cursor.setPosition(start)
-        edit.setTextCursor(cursor)
-        edit.ensureCursorVisible()
-        self._highlight_all_matches()
-        total = len(self._match_positions)
-        self._search_count_label.setText(f"{index + 1} / {total}")
-
-    def _find_next(self) -> None:
-        if not self._match_positions:
-            self._find_all_matches()
-            return
-        self._current_match_index = (self._current_match_index + 1) % len(
-            self._match_positions
-        )
-        self._goto_match(self._current_match_index)
-
-    def _find_prev(self) -> None:
-        if not self._match_positions:
-            self._find_all_matches()
-            return
-        self._current_match_index = (self._current_match_index - 1) % len(
-            self._match_positions
-        )
-        self._goto_match(self._current_match_index)
-
-    def _replace_current(self) -> None:
-        if not self._match_positions or self._current_match_index < 0:
-            return
-        replace_text = self._replace_input.text()
-        start, end = self._match_positions[self._current_match_index]
-        edit = self._active_edit()
-        cursor = edit.textCursor()
-        cursor.beginEditBlock()
-        cursor.setPosition(start)
-        cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
-        cursor.insertText(replace_text)
-        cursor.endEditBlock()
-        self._find_all_matches()
-
-    def _replace_all(self) -> None:
-        search_text = self._search_input.text()
-        replace_text = self._replace_input.text()
-        if not search_text:
-            return
-        edit = self._active_edit()
-        document = edit.document()
-        edit_cursor = QTextCursor(document)
-        edit_cursor.beginEditBlock()
-        count = 0
-        pos = 0
-        while True:
-            found = document.find(search_text, pos)
-            if found.isNull():
-                break
-            edit_cursor.setPosition(found.selectionStart())
-            edit_cursor.setPosition(
-                found.selectionEnd(), QTextCursor.MoveMode.KeepAnchor
-            )
-            edit_cursor.insertText(replace_text)
-            count += 1
-            pos = edit_cursor.position()
-        edit_cursor.endEditBlock()
-        self._match_positions = []
-        self._current_match_index = -1
-        self._clear_highlights()
-        if count > 0:
-            self._search_count_label.setText(f"已替换 {count} 处")
-            self.status_bar.showMessage(f"已替换 {count} 处文本", 5000)
-        else:
-            self._search_count_label.setText("未找到匹配")
-
-    def _close_search_bar(self) -> None:
-        if not self._search_widget.isVisible():
-            return
-        self._search_widget.setVisible(False)
-        self._clear_highlights()
-        self._match_positions = []
-        self._current_match_index = -1
+    def _on_replace_count(self, count: int) -> None:
+        self.status_bar.showMessage(f"已替换 {count} 处文本", 5000)
 
     # ── 常用目录管理 ──
 
-    def _load_favorite_dirs(self) -> None:
-        """从 DirectoryManager 加载常用目录到两个 QComboBox"""
-        self._refresh_input_combo()
-        self._refresh_output_combo()
-
-    def _refresh_input_combo(self) -> None:
-        """刷新输入下拉框的常用目录列表"""
-        current_text = self.input_combo.currentText()
-        self.input_combo.blockSignals(True)
-        self.input_combo.clear()
-        for d in self._dir_manager.get_input_dirs():
-            self.input_combo.addItem(d)
-        if current_text:
-            self.input_combo.setCurrentText(current_text)
-        self.input_combo.blockSignals(False)
-
-    def _refresh_output_combo(self) -> None:
-        """刷新输出下拉框的常用目录列表"""
-        current_text = self.output_combo.currentText()
-        self.output_combo.blockSignals(True)
-        self.output_combo.clear()
-        for d in self._dir_manager.get_output_dirs():
-            self.output_combo.addItem(d)
-        if current_text:
-            self.output_combo.setCurrentText(current_text)
-        else:
-            self.output_combo.setCurrentText(_DEFAULT_OUTPUT_DIR)
-        self.output_combo.blockSignals(False)
-
-    @staticmethod
-    def _extract_dir_from_input(text: str) -> str:
-        """从输入框文本中提取纯目录路径，去掉 '(已选择 N 个文件)' 等后缀"""
-        m = re.match(r"^(.+?)\s*\(已选择\s+\d+\s*个文件\)\s*$", text)
-        if m:
-            return m.group(1).strip()
-        return text.strip()
-
     def _fav_input_dir(self) -> None:
-        """菜单动作：收藏当前输入框路径为常用输入目录"""
-        raw = self.input_combo.currentText().strip()
-        if not raw:
-            QMessageBox.warning(self, "提示", "输入框为空，无法收藏。")
-            return
-        text = self._extract_dir_from_input(raw)
-        folder = str(Path(text).parent) if Path(text).is_file() else text
-        self._dir_manager.add_input_dir(folder)
-        self._refresh_input_combo()
-        self.status_bar.showMessage(f"已收藏输入目录: {folder}", 5000)
+        self._fav_helper.fav_input_dir(self)
 
     def _fav_output_dir(self) -> None:
-        """菜单动作：收藏当前输出框路径为常用输出目录"""
-        text = self.output_combo.currentText().strip()
-        if not text:
-            QMessageBox.warning(self, "提示", "输出框为空，无法收藏。")
-            return
-        self._dir_manager.add_output_dir(text)
-        self._refresh_output_combo()
-        self.status_bar.showMessage(f"已收藏输出目录: {text}", 5000)
+        self._fav_helper.fav_output_dir(self)
 
     def _fav_both_dirs(self) -> None:
-        """菜单动作：同时收藏当前输入和输出路径"""
-        raw_input = self.input_combo.currentText().strip()
-        output_text = self.output_combo.currentText().strip()
-        if not raw_input and not output_text:
-            QMessageBox.warning(self, "提示", "输入和输出框均为空，无法收藏。")
-            return
-        if raw_input:
-            input_text = self._extract_dir_from_input(raw_input)
-            folder = (
-                str(Path(input_text).parent)
-                if Path(input_text).is_file()
-                else input_text
-            )
-            self._dir_manager.add_input_dir(folder)
-        if output_text:
-            self._dir_manager.add_output_dir(output_text)
-        self._refresh_input_combo()
-        self._refresh_output_combo()
-        self.status_bar.showMessage("已收藏输入和输出目录", 5000)
+        self._fav_helper.fav_both_dirs(self)
 
     def _clear_all_input_dirs(self) -> None:
-        dirs = self._dir_manager.get_input_dirs()
-        if not dirs:
-            self.status_bar.showMessage("输入目录列表已为空", 3000)
-            return
-        reply = QMessageBox.question(
-            self,
-            "确认清空",
-            f"确定要移除所有 {len(dirs)} 个常用输入目录吗？",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-        self._dir_manager.clear_input_dirs()
-        self._refresh_input_combo()
-        self.status_bar.showMessage("已移除所有常用输入目录", 5000)
+        self._fav_helper.clear_all_input_dirs(self)
 
     def _clear_all_output_dirs(self) -> None:
-        dirs = self._dir_manager.get_output_dirs()
-        if not dirs:
-            self.status_bar.showMessage("输出目录列表已为空", 3000)
-            return
-        reply = QMessageBox.question(
-            self,
-            "确认清空",
-            f"确定要移除所有 {len(dirs)} 个常用输出目录吗？",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-        self._dir_manager.clear_output_dirs()
-        self._refresh_output_combo()
-        self.status_bar.showMessage("已移除所有常用输出目录", 5000)
-
-    def _remove_input_favorite(self, path: str) -> None:
-        """从常用输入目录中移除指定路径"""
-        self._dir_manager.remove_input_dir(path)
-        self._refresh_input_combo()
-        self.status_bar.showMessage(f"已移除常用输入目录: {path}", 3000)
-
-    def _remove_output_favorite(self, path: str) -> None:
-        """从常用输出目录中移除指定路径"""
-        self._dir_manager.remove_output_dir(path)
-        self._refresh_output_combo()
-        self.status_bar.showMessage(f"已移除常用输出目录: {path}", 3000)
+        self._fav_helper.clear_all_output_dirs(self)
 
     def eventFilter(self, obj, event):
-        if (
-            event.type() == QEvent.Type.MouseButtonPress
-            and event.button() == Qt.MouseButton.RightButton
-        ):
-            combo = None
-            remove_fn = None
-            if obj is self.input_combo.view().viewport():
-                combo = self.input_combo
-                remove_fn = self._remove_input_favorite
-            elif obj is self.output_combo.view().viewport():
-                combo = self.output_combo
-                remove_fn = self._remove_output_favorite
-
-            if combo is not None:
-                view = combo.view()
-                index = view.indexAt(event.position().toPoint())
-                if index.isValid():
-                    path = index.data(Qt.ItemDataRole.DisplayRole)
-                    if path:
-                        menu = QMenu(self)
-                        delete_action = menu.addAction(f"删除「{path}」")
-                        action = menu.exec(event.globalPosition().toPoint())
-                        if action == delete_action:
-                            remove_fn(path)
-                return True
-
         return super().eventFilter(obj, event)
 
     # ── input selection slots ──
@@ -1100,27 +633,8 @@ class MainWindow(QMainWindow):
     def _select_input_folder(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, "选择媒体文件夹")
         if folder:
-            video_files = self._scan_video_files(folder)
-            if not video_files:
-                QMessageBox.information(
-                    self, "提示", "该文件夹及其子目录中未找到支持的媒体文件"
-                )
-                return
-
-            dialog = VideoSelectionDialog(video_files, self)
-            if dialog.exec() == dialog.DialogCode.Accepted:
-                selected_files = dialog.get_selected_files()
-                if selected_files:
-                    self.input_combo.setCurrentText(
-                        f"{folder} (已选择 {len(selected_files)} 个文件)"
-                    )
-                    self._video_files = selected_files
-                    last_dir = Path(folder).name
-                    self.output_combo.setCurrentText(
-                        str(_PROJECT_ROOT / "output" / last_dir)
-                    )
-                else:
-                    QMessageBox.information(self, "提示", "未选择任何文件")
+            self._scan_context = {"mode": "folder_select", "folder": folder}
+            self._start_scan(folder)
 
     def _on_input_combo_activated(self, index: int) -> None:
         """从下拉框选择常用目录时，自动执行对应的选择文件/文件夹逻辑"""
@@ -1128,7 +642,7 @@ class MainWindow(QMainWindow):
         if not text:
             return
 
-        path = Path(self._extract_dir_from_input(text))
+        path = Path(FavoriteDirHelper._extract_dir_from_input(text))
 
         if path.is_file():
             self._video_files = [str(path)]
@@ -1136,47 +650,85 @@ class MainWindow(QMainWindow):
             last_dir = path.parent.name
             self.output_combo.setCurrentText(str(_PROJECT_ROOT / "output" / last_dir))
         elif path.is_dir():
-            video_files = self._scan_video_files(str(path))
-            if not video_files:
-                QMessageBox.information(
-                    self, "提示", "该文件夹及其子目录中未找到支持的媒体文件"
-                )
-                return
+            self._scan_context = {
+                "mode": "combo_select",
+                "folder": str(path),
+                "index": index,
+            }
+            self._start_scan(str(path))
 
-            dialog = VideoSelectionDialog(video_files, self)
-            if dialog.exec() == dialog.DialogCode.Accepted:
-                selected_files = dialog.get_selected_files()
-                if selected_files:
-                    self.input_combo.setItemText(
-                        index,
-                        f"{path} (已选择 {len(selected_files)} 个文件)",
-                    )
-                    self._video_files = selected_files
-                    last_dir = path.name
-                    self.output_combo.setCurrentText(
-                        str(_PROJECT_ROOT / "output" / last_dir)
-                    )
-                else:
-                    QMessageBox.information(self, "提示", "未选择任何文件")
+    def _wait_async_thread(self, attr_name: str, timeout_ms: int = 3000) -> None:
+        old_thread = getattr(self, attr_name, None)
+        if old_thread is None:
+            return
+        try:
+            if old_thread.isRunning():
+                old_thread.quit()
+                old_thread.wait(timeout_ms)
+        except RuntimeError:
+            setattr(self, attr_name, None)
 
-    def _scan_video_files(self, folder: str) -> list[str]:
-        folder_path = Path(folder)
-        files: list[str] = []
-        seen: set[str] = set()
-        for ext in self._media_exts:
-            try:
-                for f in folder_path.rglob(f"*{ext}"):
-                    try:
-                        if f.is_file():
-                            normalized = str(f).lower()
-                            if normalized not in seen:
-                                seen.add(normalized)
-                                files.append(str(f))
-                    except PermissionError:
-                        logger.warning("无权访问文件，已跳过: %s", f)
-            except PermissionError:
-                logger.warning("无权遍历目录，已跳过: %s", folder_path)
-        return sorted(files)
+    def _start_scan(self, folder: str) -> None:
+        """启动后台线程扫描文件夹中的媒体文件。"""
+        self.status_bar.showMessage("正在扫描文件...")
+        self.input_folder_btn.setEnabled(False)
+        self._wait_async_thread("_scan_thread")
+        thread = QThread()
+        worker = ScanFilesWorker(folder, self._media_exts)
+        worker.moveToThread(thread)
+
+        def _cleanup():
+            self._scan_thread = None
+            self._scan_worker = None
+            self.input_folder_btn.setEnabled(True)
+
+        worker.result.connect(self._on_scan_result)
+        thread.finished.connect(_cleanup)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(worker.deleteLater)
+        thread.started.connect(worker.run)
+        worker.finished.connect(thread.quit)
+        thread.start()
+        self._scan_thread = thread
+        self._scan_worker = worker
+
+    def _on_scan_result(self, video_files: list[str]) -> None:
+        """扫描完成后，根据上下文弹出选择对话框或提示无文件。"""
+        ctx = self._scan_context
+        self._scan_context = None
+        self.status_bar.showMessage("")
+
+        if not video_files:
+            QMessageBox.information(
+                self, "提示", "该文件夹及其子目录中未找到支持的媒体文件"
+            )
+            return
+
+        dialog = VideoSelectionDialog(video_files, self)
+        if dialog.exec() != dialog.DialogCode.Accepted:
+            return
+
+        selected_files = dialog.get_selected_files()
+        if not selected_files:
+            QMessageBox.information(self, "提示", "未选择任何文件")
+            return
+
+        folder = ctx["folder"]
+        if ctx["mode"] == "folder_select":
+            self.input_combo.setCurrentText(
+                f"{folder} (已选择 {len(selected_files)} 个文件)"
+            )
+            last_dir = Path(folder).name
+        else:
+            index = ctx["index"]
+            self.input_combo.setItemText(
+                index,
+                f"{folder} (已选择 {len(selected_files)} 个文件)",
+            )
+            last_dir = Path(folder).name
+
+        self._video_files = selected_files
+        self.output_combo.setCurrentText(str(_PROJECT_ROOT / "output" / last_dir))
 
     def _select_output_dir(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, "选择输出目录")
@@ -1184,6 +736,7 @@ class MainWindow(QMainWindow):
             self.output_combo.setCurrentText(folder)
 
     def _load_history_files(self) -> None:
+        """从输出目录加载历史转写和总结文件，填充文件列表。"""
         output_dir = self.output_combo.currentText().strip() or _DEFAULT_OUTPUT_DIR
         output_path = Path(output_dir)
 
@@ -1240,6 +793,7 @@ class MainWindow(QMainWindow):
     # ── worker 生成 ──
 
     def _get_output_dir(self) -> str:
+        """获取并规范化输出目录路径，不存在时自动创建。"""
         output_dir = self.output_combo.currentText().strip() or _DEFAULT_OUTPUT_DIR
         self.output_combo.setCurrentText(output_dir)
         Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -1286,6 +840,7 @@ class MainWindow(QMainWindow):
         thread.start()
 
     def _set_busy_state(self, busy: bool) -> None:
+        """设置界面忙碌状态：禁用/启用各操作按钮，控制暂停按钮可见性。"""
         self.transcribe_btn.setEnabled(not busy)
         self.summarize_btn.setEnabled(not busy)
         self.combine_btn.setEnabled(not busy)
@@ -1298,6 +853,7 @@ class MainWindow(QMainWindow):
             self.pause_btn.setText("暂停")
 
     def _reset_counters(self) -> None:
+        """重置转写/总结的成功/失败计数器。"""
         self._tx_success = 0
         self._tx_fail = 0
         self._sum_success = 0
@@ -1331,6 +887,7 @@ class MainWindow(QMainWindow):
     # ── 仅转写 ──
 
     def _on_transcribe(self) -> None:
+        """「仅转写」按钮点击处理：校验输入 → 清空结果 → 启动转写线程。"""
         if not self._video_files:
             QMessageBox.warning(self, "提示", "请先选择输入文件或文件夹。")
             return
@@ -1341,7 +898,7 @@ class MainWindow(QMainWindow):
         self.transcript_view.clear()
         self.summary_view.clear()
         self._completed_names.clear()
-        self.log_text.clear()
+        self.log_panel.clear()
 
         self._current_mode = "transcribe"
         self._reset_counters()
@@ -1406,6 +963,7 @@ class MainWindow(QMainWindow):
     # ── 仅总结 ──
 
     def _on_summarize(self) -> None:
+        """「仅总结」按钮点击处理：校验输入 → 启动总结线程（支持独立文本模式）。"""
         output_dir = self._get_output_dir()
 
         standalone_text = self.transcript_view.toPlainText().strip()
@@ -1537,6 +1095,7 @@ class MainWindow(QMainWindow):
     # ── 转写+总结管道 ──
 
     def _on_pipeline(self) -> None:
+        """「转写+总结」按钮点击处理：校验输入 → 启动管道线程（先转写后总结）。"""
         if not self._video_files:
             QMessageBox.warning(self, "提示", "请先选择输入文件或文件夹。")
             return
@@ -1547,7 +1106,7 @@ class MainWindow(QMainWindow):
         self.transcript_view.clear()
         self.summary_view.clear()
         self._completed_names.clear()
-        self.log_text.clear()
+        self.log_panel.clear()
 
         self._current_mode = "pipeline"
         self._reset_counters()
@@ -1750,6 +1309,7 @@ class MainWindow(QMainWindow):
     def _on_file_selected(
         self, current: Optional[QListWidgetItem], _previous: Optional[QListWidgetItem]
     ) -> None:
+        """文件列表选中变更时，延迟加载对应的转写和摘要内容到编辑器。"""
         if current is None:
             return
         video_name = current.data(Qt.ItemDataRole.UserRole)
@@ -1780,8 +1340,7 @@ class MainWindow(QMainWindow):
         else:
             self.summary_view.setPlainText("(未找到摘要文件)")
 
-        if self._search_widget.isVisible() and self._search_input.text():
-            self._find_all_matches()
+        self._search_controller.refresh_if_active()
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if self._worker_thread is not None and self._worker_thread.isRunning():
@@ -1798,10 +1357,7 @@ class MainWindow(QMainWindow):
             self._worker = None
             self._worker_thread = None
 
-        for name in ("video2text", "src"):
-            lg = logging.getLogger(name)
-            if self._ui_handler in lg.handlers:
-                lg.removeHandler(self._ui_handler)
+        self.log_panel.cleanup()
 
         OllamaClient.stop_service()
 
@@ -1818,6 +1374,7 @@ class MainWindow(QMainWindow):
 
 
 def main() -> None:
+    """GUI 主入口：启用 faulthandler、设置线程异常钩子、启动 Qt 事件循环。"""
     import faulthandler
     import threading
 

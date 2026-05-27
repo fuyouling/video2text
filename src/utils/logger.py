@@ -2,8 +2,6 @@
 
 import logging
 import threading
-import time
-from contextlib import contextmanager
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
 
@@ -119,42 +117,6 @@ def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(name)
 
 
-@contextmanager
-def log_step(
-    step_name: str,
-    logger_name: str = "video2text",
-    level: str = "INFO",
-):
-    """步骤级日志上下文管理器，自动记录步骤开始、完成和失败。
-
-    Args:
-        step_name: 步骤名称
-        logger_name: 日志记录器名称
-        level: 日志级别
-
-    Usage:
-        with log_step("音频提取"):
-            do_something()
-    """
-    level_upper = level.upper()
-    level_int = logging.getLevelName(level_upper)
-    if not isinstance(level_int, int):
-        raise ValueError(f"无效的日志级别: {level}")
-
-    log = logging.getLogger(logger_name)
-    start_ts = time.monotonic()
-
-    log.log(level_int, "▶ 步骤开始: %s", step_name)
-    try:
-        yield
-        elapsed = time.monotonic() - start_ts
-        log.log(level_int, "✔ 步骤完成: %s (%.2fs)", step_name, elapsed)
-    except Exception as e:
-        elapsed = time.monotonic() - start_ts
-        log.error("✘ 步骤失败: %s (%.2fs) - %s", step_name, elapsed, e)
-        raise
-
-
 def log_error_with_context(
     logger_name: str,
     step_name: str,
@@ -163,6 +125,8 @@ def log_error_with_context(
 ) -> None:
     """记录带上下文信息的错误日志。
 
+    输出格式与 log_panel.py 的 _RE_STEP 正则兼容，可被正确着色。
+
     Args:
         logger_name: 日志记录器名称
         step_name: 失败步骤名称
@@ -170,8 +134,7 @@ def log_error_with_context(
         video_path: 相关文件路径
     """
     log = logging.getLogger(logger_name)
-    context_parts = [f"步骤: {step_name}"]
+    log.error("  %s ✗ 失败", step_name)
     if video_path:
-        context_parts.append(f"文件: {video_path}")
-    context_parts.append(f"错误: {error}")
-    log.error(" | ".join(context_parts))
+        log.error("  └─ 文件: %s", video_path)
+    log.error("  └─ 错误: %s", error)

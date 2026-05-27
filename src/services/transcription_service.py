@@ -3,7 +3,7 @@
 import hashlib
 import os
 import shutil
-import statistics
+import math
 import subprocess
 import sys
 import tempfile
@@ -254,7 +254,7 @@ class TranscriptionService:
     ) -> List[TranscriptSegment]:
         """长音频切片转写，支持断点续传。"""
         hash_input = f"{video_path}:chunk={self.max_chunk_duration}"
-        path_hash = hashlib.md5(hash_input.encode("utf-8")).hexdigest()[:12]
+        path_hash = hashlib.sha256(hash_input.encode("utf-8")).hexdigest()[:12]
         checkpoint_file = self._checkpoint_dir / f"{video_name}_{path_hash}_chunks.json"
 
         chunk_dir = Path(tempfile.mkdtemp(prefix="audio_chunks_", dir=output_dir))
@@ -521,6 +521,7 @@ class TranscriptionService:
                     pass
 
     def _load_history(self) -> List[dict]:
+        """加载转写历史记录（用于时间估算）。"""
         if not self._history_file.exists():
             return []
         data = safe_read_json(self._history_file)
@@ -532,6 +533,7 @@ class TranscriptionService:
     def _save_history_record(
         self, audio_duration: float, transcribe_time: float
     ) -> None:
+        """保存一条转写历史记录（音频时长、耗时、模型信息），最多保留 1000 条。"""
         model = Path(self.transcriber.model_path).name
         device = self.transcriber.device
         compute_type = self.transcriber.compute_type
@@ -542,6 +544,7 @@ class TranscriptionService:
             "model": model,
             "device": device,
             "compute_type": compute_type,
+            "timestamp": time.time(),
         }
 
         records = self._load_history()
@@ -557,6 +560,14 @@ class TranscriptionService:
             logger.warning("保存转写历史记录失败（不影响主流程）: %s", e)
 
     def _estimate_transcribe_time(self, audio_duration: float) -> Optional[float]:
+        """基于历史记录估算转写耗时。
+
+        使用同模型/设备的历史记录，计算加权中位数速度（时间衰减），
+        样本不足 3 条时返回 None。
+        """
+        MIN_SAMPLE_THRESHOLD = 3
+        HALF_LIFE_DAYS = 30
+
         model = Path(self.transcriber.model_path).name
         device = self.transcriber.device
         compute_type = self.transcriber.compute_type
@@ -571,15 +582,39 @@ class TranscriptionService:
             and r.get("audio_duration", 0) > 0
             and r.get("transcribe_time", 0) > 0
         ]
-        if not matched:
+        if len(matched) < MIN_SAMPLE_THRESHOLD:
             return None
 
-        speeds = [r["transcribe_time"] / r["audio_duration"] for r in matched]
-        median_speed = statistics.median(speeds)
+        now = time.time()
+        half_life_seconds = HALF_LIFE_DAYS * 86400
+        decay_factor = math.log(2) / half_life_seconds
+
+        weighted_speeds = []
+        for r in matched:
+            speed = r["transcribe_time"] / r["audio_duration"]
+            ts = r.get("timestamp", 0)
+            if ts > 0:
+                age = max(0, now - ts)
+                weight = math.exp(-decay_factor * age)
+            else:
+                weight = 0.5
+            weighted_speeds.append((speed, weight))
+
+        weighted_speeds.sort(key=lambda x: x[0])
+        total_weight = sum(w for _, w in weighted_speeds)
+        cumulative = 0.0
+        median_speed = weighted_speeds[0][0]
+        for speed, weight in weighted_speeds:
+            cumulative += weight
+            if cumulative >= total_weight / 2:
+                median_speed = speed
+                break
+
         return audio_duration * median_speed
 
     @staticmethod
     def _format_duration(seconds: float) -> str:
+        """将秒数格式化为 'X分Y秒' 或 'X秒' 的中文描述。"""
         total = int(seconds)
         if total <= 60:
             return f"{total}秒"

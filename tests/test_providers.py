@@ -4,12 +4,19 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.config.settings import PromptManager
+from src.summarization.prompt_manager import PromptManager
 from src.summarization.providers import (
     OllamaProvider,
     NvidiaProvider,
     create_provider,
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_prompt_manager():
+    PromptManager._reset()
+    yield
+    PromptManager._reset()
 
 
 class TestBuildPrompt:

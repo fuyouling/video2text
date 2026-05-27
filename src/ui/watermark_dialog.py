@@ -76,7 +76,7 @@ def imwrite(path: str, img: np.ndarray) -> bool:
 
 
 def _build_region_mask(h: int, w: int, regions: list[Region]) -> np.ndarray:
-    """将 rect + polygon regions 合成为一张 uint8 mask（选区内=255）"""
+    """将 rect + polygon regions 合成为一张 uint8 mask（选区内=255，支持矩形和多边形）。"""
     mask = np.zeros((h, w), dtype=np.uint8)
     for r in regions:
         if _is_rect(r):
@@ -94,6 +94,7 @@ def _build_region_mask(h: int, w: int, regions: list[Region]) -> np.ndarray:
 
 
 def apply_blur(img: np.ndarray, regions: list[Region], ksize: int) -> np.ndarray:
+    """对选区应用高斯模糊，边缘带渐变过渡。"""
     ksize = ksize | 1
     h, w = img.shape[:2]
     img_f = img.astype(np.float32)
@@ -156,6 +157,7 @@ def _sample_outer_color(
 
 
 def apply_fill(img: np.ndarray, regions: list[Region]) -> np.ndarray:
+    """用选区外围的中位色填充选区，覆盖水印。"""
     result = img.copy()
     h, w = img.shape[:2]
     mask_u8 = _build_region_mask(h, w, regions)
@@ -174,6 +176,7 @@ def apply_fill(img: np.ndarray, regions: list[Region]) -> np.ndarray:
 
 
 def apply_inpaint(img: np.ndarray, regions: list[Region], radius: int) -> np.ndarray:
+    """使用 OpenCV 图像修复算法（inpaint）去除选区水印。"""
     h, w = img.shape[:2]
     mask = _build_region_mask(h, w, regions)
     kernel = np.ones((3, 3), np.uint8)
@@ -184,6 +187,7 @@ def apply_inpaint(img: np.ndarray, regions: list[Region], radius: int) -> np.nda
 def apply_watermark_removal(
     img: np.ndarray, regions: list[Region], mode: str, params: dict
 ) -> np.ndarray:
+    """统一的去水印入口：根据 mode 调用 blur/fill/inpaint 算法，自动处理灰度/透明通道。"""
     if img.ndim == 2:
         img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
     elif img.ndim == 3 and img.shape[2] == 1:
@@ -592,6 +596,11 @@ class CanvasWidget(QWidget):
 
 
 class WatermarkRemovalDialog(QDialog):
+    """去水印对话框 —— 支持单图/批量图片水印去除，提供矩形/任意圈选绘制模式。
+
+    处理模式：blur（高斯模糊）、fill（色块填充）、inpaint（图像补全）。
+    """
+
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.settings = Settings()

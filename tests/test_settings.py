@@ -5,7 +5,8 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from src.config.settings import Settings, APP_NAME, APP_VERSION
+from src.config.settings import Settings
+from src.config.version import APP_NAME, APP_VERSION
 
 
 @pytest.fixture(autouse=True)
@@ -19,7 +20,7 @@ def _reset_settings():
 class TestSettings:
     def test_app_constants(self):
         assert APP_NAME == "video2text"
-        assert APP_VERSION == "2.1.1"
+        assert APP_VERSION == "2.2.0"
 
     def test_load_existing_config(self, tmp_path):
         config_file = tmp_path / "config.ini"
