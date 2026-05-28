@@ -531,7 +531,7 @@ class SummarizeWorker(QObject):
 
 
 class PipelineWorker(QObject):
-    """转写+总结管道线程 —— 每完成一个文件的转写就自动开始总结"""
+    """转写总结管道线程 —— 每完成一个文件的转写就自动开始总结"""
 
     transcribe_done = Signal(str, int, list)
     transcribe_error = Signal(str, str)

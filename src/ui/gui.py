@@ -102,6 +102,8 @@ class MainWindow(QMainWindow):
         self._current_video_name: Optional[str] = None
         self._is_multi_thread = False
         self._history_loaded = False
+        self._transcript_dirty = False
+        self._summary_dirty = False
         self._scan_context: Optional[dict] = None
         self._scan_thread: Optional[QThread] = None
         self._scan_worker = None
@@ -242,7 +244,7 @@ class MainWindow(QMainWindow):
         self.summarize_btn.setToolTip("仅对「文本内容」标签页中的文字进行摘要总结")
         self.summarize_btn.clicked.connect(self._on_summarize)
         run_row.addWidget(self.summarize_btn)
-        self.combine_btn = QPushButton("转写+总结")
+        self.combine_btn = QPushButton("转写总结")
         self.combine_btn.setMinimumWidth(_BTN_MIN_WIDTH)
         self.combine_btn.setToolTip("先执行语音转写，完成后自动对转写文本进行摘要总结")
         self.combine_btn.clicked.connect(self._on_pipeline)
@@ -265,7 +267,7 @@ class MainWindow(QMainWindow):
         self.transcript_view = QTextEdit()
         self.transcript_view.setFont(QFont("Consolas", 9))
         self.transcript_view.setPlaceholderText(
-            "转写完成后文本自动填充到此处，可直接编辑修改，修改后点击右键「重新总结」将编辑后的文本进行摘要。"
+            "可直接编辑修改，Ctrl+S 保存，Ctrl+F 查找替换,保存后右键点击文件列表中文件可重新转写和摘要"
         )
         self.result_tabs.addTab(self.transcript_view, "文本内容")
         self.summary_view = QTextEdit()
@@ -275,6 +277,8 @@ class MainWindow(QMainWindow):
         )
         self.result_tabs.addTab(self.summary_view, "摘要")
         self.result_tabs.currentChanged.connect(self._on_tab_changed)
+        self.transcript_view.textChanged.connect(self._on_transcript_changed)
+        self.summary_view.textChanged.connect(self._on_summary_changed)
         content_layout.addWidget(self.result_tabs, 3)
 
         save_transcript_action = QAction("保存文本", self)
@@ -515,7 +519,7 @@ class MainWindow(QMainWindow):
     def _on_tab_changed(self, index: int) -> None:
         if index == 0:
             self.status_bar.showMessage(
-                "文本内容 —— 可直接编辑，编辑后点击右键「重新总结」将文本进行摘要，Ctrl+S 保存，Ctrl+F 查找替换"
+                "文本内容 —— 可直接编辑修改，Ctrl+S 保存，Ctrl+F 查找替换"
             )
         elif index == 1:
             self.status_bar.showMessage(
@@ -540,6 +544,10 @@ class MainWindow(QMainWindow):
             save_path.parent.mkdir(parents=True, exist_ok=True)
             save_path.write_text(text, encoding="utf-8")
             self.status_bar.showMessage(f"已保存: {save_path}", 5000)
+            if current_tab == 0:
+                self._transcript_dirty = False
+            else:
+                self._summary_dirty = False
         except OSError as exc:
             self.status_bar.showMessage(f"保存失败: {exc}", 5000)
 
@@ -584,6 +592,67 @@ class MainWindow(QMainWindow):
 
     def _on_replace_count(self, count: int) -> None:
         self.status_bar.showMessage(f"已替换 {count} 处文本", 5000)
+
+    # ── 脏标记 & 未保存检测 ──
+
+    def _on_transcript_changed(self) -> None:
+        self._transcript_dirty = True
+
+    def _on_summary_changed(self) -> None:
+        self._summary_dirty = True
+
+    def _reset_dirty_flags(self) -> None:
+        self._transcript_dirty = False
+        self._summary_dirty = False
+
+    def _check_unsaved_changes(self) -> bool:
+        """检查是否有未保存的编辑，弹窗提示用户。返回 True 继续，False 取消。"""
+        if not self._transcript_dirty and not self._summary_dirty:
+            return True
+
+        dirty_parts = []
+        if self._transcript_dirty:
+            dirty_parts.append("文本内容")
+        if self._summary_dirty:
+            dirty_parts.append("摘要")
+        msg = f"{'和'.join(dirty_parts)}已修改但未保存，是否保存？"
+
+        reply = QMessageBox.question(
+            self,
+            "未保存的修改",
+            msg,
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel,
+        )
+
+        if reply == QMessageBox.StandardButton.Cancel:
+            return False
+        if reply == QMessageBox.StandardButton.Save:
+            self._save_dirty_content()
+        return True
+
+    def _save_dirty_content(self) -> None:
+        """保存所有标记为脏的内容到磁盘。"""
+        if not self._current_video_name:
+            return
+        output_dir = self.output_combo.currentText().strip() or _DEFAULT_OUTPUT_DIR
+        if self._transcript_dirty:
+            path = self._resolve_transcript_path(output_dir)
+            try:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(self.transcript_view.toPlainText(), encoding="utf-8")
+                self._transcript_dirty = False
+            except OSError as exc:
+                get_logger("video2text").warning("保存文本内容失败: %s", exc)
+        if self._summary_dirty:
+            path = self._resolve_summary_path(output_dir)
+            try:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(self.summary_view.toPlainText(), encoding="utf-8")
+                self._summary_dirty = False
+            except OSError as exc:
+                get_logger("video2text").warning("保存摘要失败: %s", exc)
 
     # ── 常用目录管理 ──
 
@@ -888,6 +957,8 @@ class MainWindow(QMainWindow):
 
     def _on_transcribe(self) -> None:
         """「仅转写」按钮点击处理：校验输入 → 清空结果 → 启动转写线程。"""
+        if not self._check_unsaved_changes():
+            return
         if not self._video_files:
             QMessageBox.warning(self, "提示", "请先选择输入文件或文件夹。")
             return
@@ -946,6 +1017,7 @@ class MainWindow(QMainWindow):
         if transcript_path is None:
             return
         try:
+            self.transcript_view.blockSignals(True)
             self.transcript_view.setPlainText(
                 transcript_path.read_text(encoding="utf-8-sig")
             )
@@ -953,6 +1025,9 @@ class MainWindow(QMainWindow):
             get_logger("video2text").warning(
                 "读取转写文件失败: %s (%s)", transcript_path, exc
             )
+        finally:
+            self.transcript_view.blockSignals(False)
+            self._transcript_dirty = False
 
     def _on_transcribe_error(self, video_name: str, error_msg: str) -> None:
         """单个文件转写失败"""
@@ -964,6 +1039,9 @@ class MainWindow(QMainWindow):
 
     def _on_summarize(self) -> None:
         """「仅总结」按钮点击处理：校验输入 → 启动总结线程（支持独立文本模式）。"""
+        if not self._check_unsaved_changes():
+            return
+
         output_dir = self._get_output_dir()
 
         standalone_text = self.transcript_view.toPlainText().strip()
@@ -985,16 +1063,6 @@ class MainWindow(QMainWindow):
                 "或在「文本内容」标签页中粘贴文本后点击「仅总结」。",
             )
             return
-
-        if self._current_video_name:
-            if standalone_text:
-                transcript_path = Path(output_dir) / f"{self._current_video_name}.txt"
-                try:
-                    transcript_path.write_text(standalone_text, encoding="utf-8")
-                except OSError as exc:
-                    get_logger("video2text").warning(
-                        "保存编辑文本失败: %s (%s)", transcript_path, exc
-                    )
 
         self._current_mode = "summarize"
         self._reset_counters()
@@ -1092,10 +1160,12 @@ class MainWindow(QMainWindow):
         self._fail_records.append((video_name, "总结", error_msg))
         self.status_bar.showMessage(f"总结失败: {video_name} — {error_msg}", 5000)
 
-    # ── 转写+总结管道 ──
+    # ── 转写总结管道 ──
 
     def _on_pipeline(self) -> None:
-        """「转写+总结」按钮点击处理：校验输入 → 启动管道线程（先转写后总结）。"""
+        """「转写总结」按钮点击处理：校验输入 → 启动管道线程（先转写后总结）。"""
+        if not self._check_unsaved_changes():
+            return
         if not self._video_files:
             QMessageBox.warning(self, "提示", "请先选择输入文件或文件夹。")
             return
@@ -1188,7 +1258,7 @@ class MainWindow(QMainWindow):
         mode_map = {
             "transcribe": "仅转写",
             "summarize": "仅总结",
-            "pipeline": "转写+总结",
+            "pipeline": "转写总结",
         }
         mode_label = mode_map.get(self._current_mode, self._current_mode)
         try:
@@ -1242,6 +1312,8 @@ class MainWindow(QMainWindow):
         if self._worker_thread is not None and self._worker_thread.isRunning():
             QMessageBox.warning(self, "提示", "当前有任务正在运行，请等待完成后再试。")
             return
+        if not self._check_unsaved_changes():
+            return
 
         video_path = self._find_video_path_by_name(video_name)
         if video_path is None:
@@ -1271,6 +1343,8 @@ class MainWindow(QMainWindow):
     def _on_resummarize(self, video_name: str) -> None:
         if self._worker_thread is not None and self._worker_thread.isRunning():
             QMessageBox.warning(self, "提示", "当前有任务正在运行，请等待完成后再试。")
+            return
+        if not self._check_unsaved_changes():
             return
 
         output_dir = self._get_output_dir()
@@ -1307,10 +1381,15 @@ class MainWindow(QMainWindow):
         self._start_worker(thread, worker)
 
     def _on_file_selected(
-        self, current: Optional[QListWidgetItem], _previous: Optional[QListWidgetItem]
+        self, current: Optional[QListWidgetItem], previous: Optional[QListWidgetItem]
     ) -> None:
         """文件列表选中变更时，延迟加载对应的转写和摘要内容到编辑器。"""
         if current is None:
+            return
+        if not self._check_unsaved_changes():
+            self.file_list.blockSignals(True)
+            self.file_list.setCurrentItem(previous)
+            self.file_list.blockSignals(False)
             return
         video_name = current.data(Qt.ItemDataRole.UserRole)
         self._current_video_name = video_name
@@ -1320,25 +1399,35 @@ class MainWindow(QMainWindow):
 
     def _load_file_content(self, video_name: str, output_dir: str) -> None:
         """在事件循环空闲时加载文件内容，避免阻塞 GUI 线程。"""
-        transcript_path = FileWriter(output_dir).find_transcript_file(video_name)
-        if transcript_path is not None:
-            try:
-                self.transcript_view.setPlainText(
-                    transcript_path.read_text(encoding="utf-8-sig")
-                )
-            except (OSError, UnicodeDecodeError) as exc:
-                self.transcript_view.setPlainText(f"读取失败: {exc}")
-        else:
-            self.transcript_view.setPlainText("(未找到转写文件)")
+        self.transcript_view.blockSignals(True)
+        self.summary_view.blockSignals(True)
+        try:
+            transcript_path = FileWriter(output_dir).find_transcript_file(video_name)
+            if transcript_path is not None:
+                try:
+                    self.transcript_view.setPlainText(
+                        transcript_path.read_text(encoding="utf-8-sig")
+                    )
+                except (OSError, UnicodeDecodeError) as exc:
+                    self.transcript_view.setPlainText(f"读取失败: {exc}")
+            else:
+                self.transcript_view.setPlainText("(未找到转写文件)")
 
-        summary_path = _find_summary_path(output_dir, video_name)
-        if summary_path:
-            try:
-                self.summary_view.setPlainText(summary_path.read_text(encoding="utf-8"))
-            except (OSError, UnicodeDecodeError) as exc:
-                self.summary_view.setPlainText(f"读取失败: {exc}")
-        else:
-            self.summary_view.setPlainText("(未找到摘要文件)")
+            summary_path = _find_summary_path(output_dir, video_name)
+            if summary_path:
+                try:
+                    self.summary_view.setPlainText(
+                        summary_path.read_text(encoding="utf-8")
+                    )
+                except (OSError, UnicodeDecodeError) as exc:
+                    self.summary_view.setPlainText(f"读取失败: {exc}")
+            else:
+                self.summary_view.setPlainText("(未找到摘要文件)")
+        finally:
+            self.transcript_view.blockSignals(False)
+            self.summary_view.blockSignals(False)
+            self._transcript_dirty = False
+            self._summary_dirty = False
 
         self._search_controller.refresh_if_active()
 

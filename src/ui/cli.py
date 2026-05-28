@@ -495,7 +495,7 @@ def help_command():
         },
         {
             "name": "run-pipeline",
-            "description": "运行完整处理管道（转写+总结）",
+            "description": "运行完整处理管道（转写总结）",
             "usage": "video2text run-pipeline <媒体文件路径> [选项]",
             "options": [
                 ("--output-dir, -o", "输出目录"),

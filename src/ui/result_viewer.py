@@ -11,10 +11,9 @@ from src.ui.markdown_renderer import MarkdownRenderer
 from src.ui.theme_manager import ThemeManager
 from src.utils.paths import get_base_dir as _get_base_dir
 
-from PySide6.QtCore import Qt, QSettings, QTimer
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import (
     QAction,
-    QCloseEvent,
     QColor,
     QFont,
     QKeyEvent,
@@ -59,15 +58,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-_INI_PATH: str = ""
-
-
-def _get_settings() -> QSettings:
-    global _INI_PATH
-    if not _INI_PATH:
-        _INI_PATH = str(_get_base_dir() / "result_viewer.ini")
-    return QSettings(_INI_PATH, QSettings.Format.IniFormat)
-
 
 def _find_summary_path(output_dir: str, video_name: str) -> Optional[Path]:
     """查找摘要文件（支持 _summary.txt 和 _summary.md）"""
@@ -85,7 +75,7 @@ class ResultViewerWindow(QMainWindow):
         self.setWindowTitle("结果查看 - Video2Text")
         self.resize(1400, 900)
 
-        self._theme_manager = ThemeManager(_get_settings())
+        self._theme_manager = ThemeManager()
         self._output_dir = ""
         self._root_output_dir = ""
         self._flat_video_names: list[str] = []
@@ -108,7 +98,6 @@ class ResultViewerWindow(QMainWindow):
         self._load_bookmarks()
 
         self.tabs.currentChanged.connect(self._on_tab_changed)
-        self._restore_window_state()
 
     # ─── UI 初始化 ─────────────────────────────────────────────
 
@@ -1508,29 +1497,6 @@ class ResultViewerWindow(QMainWindow):
     def _on_tab_changed(self, index: int):
         """标签页切换时清除搜索状态"""
         self._clear_search_state()
-
-    # ─── 窗口状态持久化 ───────────────────────────────────────
-
-    def _restore_window_state(self):
-        """恢复窗口大小、位置、工具栏和分割器状态"""
-        settings = _get_settings()
-        geometry = settings.value("geometry")
-        if geometry is not None:
-            self.restoreGeometry(geometry)
-        state = settings.value("windowState")
-        if state is not None:
-            self.restoreState(state)
-        splitter_state = settings.value("splitterState")
-        if splitter_state is not None:
-            self._main_splitter.restoreState(splitter_state)
-
-    def closeEvent(self, event: QCloseEvent) -> None:
-        """关闭时保存窗口状态"""
-        settings = _get_settings()
-        settings.setValue("geometry", self.saveGeometry())
-        settings.setValue("windowState", self.saveState())
-        settings.setValue("splitterState", self._main_splitter.saveState())
-        super().closeEvent(event)
 
     # ─── 键盘快捷键 ───────────────────────────────────────────
 

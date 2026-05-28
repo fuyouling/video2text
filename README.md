@@ -107,7 +107,7 @@ python -m src.main transcribe audio/sample.mp3 --output-dir output
 python -m src.main summarize output/sample.txt --output-dir output
 ```
 
-### 完整管道（转写+总结）
+### 完整管道（转写总结）
 
 ```bash
 python -m src.main run-pipeline video/sample.mp4 --output-dir output
@@ -131,7 +131,7 @@ python -m src.ui.gui
 **任务操作：**
 - **仅转写** — 仅执行语音转写，不进行摘要总结
 - **仅总结** — 对「文本内容」标签页中的文字进行摘要总结（可粘贴任意文本）
-- **转写+总结** — 先转写后自动总结的完整管道
+- **转写总结** — 先转写后自动总结的完整管道
 - 支持暂停/继续转写任务
 - 实时进度条显示处理进度，完成后显示成功/失败统计
 

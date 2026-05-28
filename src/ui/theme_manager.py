@@ -1,10 +1,8 @@
-"""主题管理器 —— 支持浅色/深色主题切换与持久化"""
-
-from PySide6.QtCore import QSettings
+"""主题管理器 —— 支持浅色/深色主题切换"""
 
 
 class ThemeManager:
-    """主题管理器 —— 维护浅色/深色两套配色方案，通过 QSettings 持久化用户选择。"""
+    """主题管理器 —— 维护浅色/深色两套配色方案。"""
 
     THEMES = {
         "light": {
@@ -37,24 +35,17 @@ class ThemeManager:
         },
     }
 
-    def __init__(self, settings: QSettings):
-        """初始化主题管理器。
-
-        Args:
-            settings: QSettings 实例，用于持久化主题选择
-        """
-        self._settings = settings
-        self._current_theme = self._settings.value("theme", "light")
+    def __init__(self):
+        self._current_theme = "light"
 
     @property
     def current_theme(self) -> str:
         return self._current_theme
 
     def set_theme(self, theme: str):
-        """切换主题并持久化到 QSettings。"""
+        """切换主题。"""
         if theme in self.THEMES:
             self._current_theme = theme
-            self._settings.setValue("theme", theme)
 
     def get_style(self) -> str:
         """获取当前主题的CSS样式"""
