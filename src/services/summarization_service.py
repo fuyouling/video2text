@@ -89,6 +89,7 @@ class SummarizationService:
             custom_prompt=self.custom_prompt or "",
             stream=stream,
             on_token=_on_token if stream else None,
+            cancel_check=self.cancel_check,
         )
 
         if not summary or not summary.strip():
@@ -182,6 +183,7 @@ class SummarizationService:
                     custom_prompt=self.custom_prompt or "",
                     stream=False,
                     on_token=None,
+                    cancel_check=self.cancel_check,
                 )
 
                 if summary and summary.strip():

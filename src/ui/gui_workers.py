@@ -24,6 +24,23 @@ from src.utils.exceptions import DownloadCancelledError
 from src.utils.logger import get_logger, setup_logger
 
 
+def _get_online_cfg(settings: Settings, suffix: str, default):
+    """根据当前 provider 动态拼配置键: summarization.{provider}_{suffix}"""
+    provider = settings.get("summarization.provider", "ollama")
+    key = f"summarization.{provider}_{suffix}"
+    if isinstance(default, bool):
+        return settings.get_bool(key, default)
+    if isinstance(default, int):
+        return settings.get_int(key, default)
+    return settings.get(key, default)
+
+
+def _get_provider_label(provider: str) -> str:
+    return {"ollama": "Ollama", "nvidia": "NVIDIA API", "zhipu": "智谱 API"}.get(
+        provider, provider
+    )
+
+
 def _setup_worker_logger(settings: Settings):
     return setup_logger(
         "video2text",
@@ -228,6 +245,7 @@ class SummarizeWorker(QObject):
         self.stream = stream
         self._cancelled = False
         self._standalone_text: str = ""
+        self._active_provider = None
 
     def set_standalone_text(self, text: str) -> None:
         """设置独立文本模式的内容（仅总结指定文本，不从文件读取）。"""
@@ -236,6 +254,12 @@ class SummarizeWorker(QObject):
     def cancel(self) -> None:
         """标记取消，终止后续总结任务。"""
         self._cancelled = True
+        provider = self._active_provider
+        if provider is not None:
+            try:
+                provider.close()
+            except Exception:
+                pass
 
     def run(self) -> None:
         """执行总结任务：根据配置选择单线程或多线程模式。"""
@@ -244,9 +268,9 @@ class SummarizeWorker(QObject):
         try:
             file_writer = FileWriter(self.output_dir)
             provider = self.settings.get("summarization.provider", "ollama")
-            nvidia_mode = self.settings.get("summarization.nvidia_mode", "single")
+            mode = _get_online_cfg(self.settings, "mode", "single")
 
-            if provider == "nvidia" and nvidia_mode == "multi":
+            if provider in ("nvidia", "zhipu") and mode == "multi":
                 self._run_multi_thread(logger, file_writer)
             else:
                 self._run_single_thread(logger, file_writer, provider)
@@ -260,8 +284,8 @@ class SummarizeWorker(QObject):
     def _run_single_thread(
         self, logger, file_writer: FileWriter, provider: str
     ) -> None:
-        """单线程模式（Ollama 或 NVIDIA single）"""
-        provider_label = "Ollama" if provider == "ollama" else "NVIDIA API"
+        """单线程模式（Ollama / NVIDIA single / 智谱 single）"""
+        provider_label = _get_provider_label(provider)
         if provider == "ollama":
             ollama_url = self.settings.get(
                 "summarization.ollama_url", "http://127.0.0.1:11434"
@@ -286,6 +310,7 @@ class SummarizeWorker(QObject):
             return
 
         provider_inst = create_provider(self.settings)
+        self._active_provider = provider_inst
         try:
             service = SummarizationService(
                 settings=self.settings,
@@ -300,10 +325,13 @@ class SummarizeWorker(QObject):
             logger.exception("总结流程异常")
             self.error.emit(str(e))
         finally:
+            self._active_provider = None
             provider_inst.close()
 
     def _run_multi_thread(self, logger, file_writer: FileWriter) -> None:
-        """多线程模式（NVIDIA multi）—— 强制非流式"""
+        """多线程模式（NVIDIA/智谱 multi）—— 强制非流式"""
+        provider = self.settings.get("summarization.provider", "ollama")
+        provider_label = _get_provider_label(provider)
         provider_inst = create_provider(self.settings)
         try:
             sum_available = provider_inst.check_connection()
@@ -311,10 +339,10 @@ class SummarizeWorker(QObject):
             provider_inst.close()
 
         sum_status = "✓" if sum_available else "✗"
-        logger.info("[总结] NVIDIA API: %s", sum_status)
+        logger.info("[总结] %s: %s", provider_label, sum_status)
 
         if not sum_available:
-            msg = "NVIDIA API 服务不可用"
+            msg = f"{provider_label} 服务不可用"
             logger.error(msg)
             self.error.emit(msg)
             self._emit_all_errors(msg)
@@ -366,7 +394,7 @@ class SummarizeWorker(QObject):
 
     def _execute_summarization_multi(self, logger, file_writer: FileWriter) -> None:
         """多线程并发总结"""
-        thread_count = self.settings.get_int("summarization.nvidia_thread_count", 5)
+        thread_count = _get_online_cfg(self.settings, "thread_count", 5)
         total = len(self.video_files)
         progress_lock = threading.Lock()
         done_count = [0]
@@ -586,6 +614,7 @@ class PipelineWorker(QObject):
         self.custom_prompt = custom_prompt
         self.stream = stream
         self._cancelled = False
+        self._active_provider = None
         self._tx_service: Optional[TranscriptionService] = None
         self._tx_service_lock = threading.Lock()
         self._confirm_event = threading.Event()
@@ -595,6 +624,12 @@ class PipelineWorker(QObject):
         """标记取消，终止后续转写和总结。"""
         self._cancelled = True
         self._confirm_event.set()
+        provider = self._active_provider
+        if provider is not None:
+            try:
+                provider.close()
+            except Exception:
+                pass
 
     def pause(self) -> None:
         """暂停当前转写任务。"""
@@ -713,9 +748,9 @@ class PipelineWorker(QObject):
             results = tx_service.run(self.video_files, self.output_dir)
 
             provider_name = self.settings.get("summarization.provider", "ollama")
-            nvidia_mode = self.settings.get("summarization.nvidia_mode", "single")
+            mode = _get_online_cfg(self.settings, "mode", "single")
             sum_available = False
-            provider_label = "Ollama" if provider_name == "ollama" else "NVIDIA API"
+            provider_label = _get_provider_label(provider_name)
 
             if provider_name == "ollama":
                 ollama_url = self.settings.get(
@@ -737,7 +772,11 @@ class PipelineWorker(QObject):
             sum_status = "✓" if sum_available else "✗"
             logger.info("[总结] %s: %s", provider_label, sum_status)
 
-            if sum_available and provider_name == "nvidia" and nvidia_mode == "multi":
+            if (
+                sum_available
+                and provider_name in ("nvidia", "zhipu")
+                and mode == "multi"
+            ):
                 sum_done = self._summarize_results_multi(
                     logger,
                     file_writer,
@@ -801,6 +840,7 @@ class PipelineWorker(QObject):
                     result, segment_merger, text_cleaner
                 )
                 provider_inst = create_provider(self.settings)
+                self._active_provider = provider_inst
                 try:
                     service = SummarizationService(
                         settings=self.settings,
@@ -827,6 +867,7 @@ class PipelineWorker(QObject):
                     logger.exception("总结失败: %s", result.video_name)
                     self.summarize_error.emit(result.video_name, str(e))
                 finally:
+                    self._active_provider = None
                     provider_inst.close()
             else:
                 self.summarize_error.emit(result.video_name, "总结服务不可用，已跳过")
@@ -847,7 +888,7 @@ class PipelineWorker(QObject):
         total,
         total_steps,
     ) -> int:
-        thread_count = self.settings.get_int("summarization.nvidia_thread_count", 5)
+        thread_count = _get_online_cfg(self.settings, "thread_count", 5)
         progress_lock = threading.Lock()
         tasks: list[tuple[str, str]] = []
 
@@ -1077,6 +1118,34 @@ class NvidiaCheckWorker(QObject):
                 client.close()
         except Exception as exc:
             get_logger(__name__).warning("NVIDIA API 连接: ✗ 异常 %s", exc)
+            self.result.emit(False, 0.0)
+        finally:
+            self.finished.emit()
+
+
+class ZhipuCheckWorker(QObject):
+    """异步检查智谱 API 连接状态"""
+
+    result = Signal(bool, float)
+    finished = Signal()
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def run(self) -> None:
+        from src.summarization.zhipu_client import ZhipuClient
+
+        try:
+            client = ZhipuClient(api_key=os.environ.get("ZHIPU_API_KEY", ""))
+            try:
+                t0 = time.monotonic()
+                ok = client.check_connection()
+                latency_ms = (time.monotonic() - t0) * 1000
+                self.result.emit(ok, latency_ms)
+            finally:
+                client.close()
+        except Exception as exc:
+            get_logger(__name__).warning("智谱 API 连接: ✗ 异常 %s", exc)
             self.result.emit(False, 0.0)
         finally:
             self.finished.emit()

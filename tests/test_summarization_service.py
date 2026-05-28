@@ -76,7 +76,9 @@ class TestSummarizationService:
 
         service.on_stream_token = on_token
 
-        def fake_summarize(text, custom_prompt="", stream=False, on_token=None):
+        def fake_summarize(
+            text, custom_prompt="", stream=False, on_token=None, cancel_check=None
+        ):
             if stream and on_token:
                 on_token("token1")
                 on_token("token2")

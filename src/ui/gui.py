@@ -792,16 +792,16 @@ class MainWindow(QMainWindow):
         provider = self.settings.get("summarization.provider", "ollama")
         if provider == "ollama":
             return True
-        nvidia_mode = self.settings.get("summarization.nvidia_mode", "single")
-        if nvidia_mode == "multi":
+        mode = self.settings.get(f"summarization.{provider}_mode", "single")
+        if mode == "multi":
             return False
-        return self.settings.get_bool("summarization.nvidia_stream", True)
+        return self.settings.get_bool(f"summarization.{provider}_stream", True)
 
     def _update_multi_thread_flag(self) -> None:
         """更新多线程标志"""
         provider = self.settings.get("summarization.provider", "ollama")
-        nvidia_mode = self.settings.get("summarization.nvidia_mode", "single")
-        self._is_multi_thread = provider == "nvidia" and nvidia_mode == "multi"
+        mode = self.settings.get(f"summarization.{provider}_mode", "single")
+        self._is_multi_thread = provider in ("nvidia", "zhipu") and mode == "multi"
 
     def _start_worker(self, thread: QThread, worker) -> None:
         """启动 worker 线程并连接通用信号"""

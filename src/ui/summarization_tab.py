@@ -1,4 +1,4 @@
-"""总结配置 Tab —— Ollama / NVIDIA 切换、配置表单、服务管理"""
+"""总结配置 Tab —— Ollama / NVIDIA / 智谱切换、配置表单、服务管理"""
 
 from typing import Optional
 
@@ -25,6 +25,7 @@ from src.ui.gui_workers import (
     OllamaListModelWorker,
     OllamaStartServiceWorker,
     OllamaStopServiceWorker,
+    ZhipuCheckWorker,
 )
 from src.utils.logger import get_logger
 
@@ -44,6 +45,12 @@ _SUMM_KEY_LABELS: dict[str, str] = {
     "summarization.nvidia_mode": "NVIDIA 模式",
     "summarization.nvidia_thread_count": "NVIDIA 线程数",
     "summarization.nvidia_stream": "NVIDIA 流式输出",
+    "summarization.zhipu_model": "智谱模型",
+    "summarization.zhipu_max_tokens": "最大 Token 数",
+    "summarization.zhipu_temperature": "温度",
+    "summarization.zhipu_mode": "智谱模式",
+    "summarization.zhipu_thread_count": "智谱线程数",
+    "summarization.zhipu_stream": "智谱流式输出",
 }
 
 _SUMM_KEY_TOOLTIPS: dict[str, str] = {
@@ -62,11 +69,17 @@ _SUMM_KEY_TOOLTIPS: dict[str, str] = {
     "summarization.nvidia_mode": "NVIDIA 模式: single (单线程，支持流式), multi (多线程并发)",
     "summarization.nvidia_thread_count": "多线程模式下的并发线程数",
     "summarization.nvidia_stream": "是否启用流式输出 (仅单线程模式有效): true / false",
+    "summarization.zhipu_model": "智谱模型标识，如 glm-4.7",
+    "summarization.zhipu_max_tokens": "最大生成 token 数",
+    "summarization.zhipu_temperature": "生成温度 (0~2)",
+    "summarization.zhipu_mode": "智谱模式: single (单线程，支持流式), multi (多线程并发)",
+    "summarization.zhipu_thread_count": "多线程模式下的并发线程数",
+    "summarization.zhipu_stream": "是否启用流式输出 (仅单线程模式有效): true / false",
 }
 
 
 class SummarizationTab(QWidget):
-    """总结配置 Tab —— 封装 Ollama / NVIDIA 切换、参数配置表单、服务连接检测与模型管理。"""
+    """总结配置 Tab —— 封装 Ollama / NVIDIA / 智谱切换、参数配置表单、服务连接检测与模型管理。"""
 
     def __init__(self, settings: Settings, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -79,14 +92,18 @@ class SummarizationTab(QWidget):
         return self._section_edits
 
     def get_provider(self) -> str:
-        """获取当前选择的总结提供商名称（'ollama' 或 'nvidia'）。"""
-        """返回当前选择的 provider: 'ollama' | 'nvidia'"""
-        return "nvidia" if self._radio_nvidia.isChecked() else "ollama"
+        """获取当前选择的总结提供商名称（'ollama'、'nvidia' 或 'zhipu'）。"""
+        if self._radio_nvidia.isChecked():
+            return "nvidia"
+        if self._radio_zhipu.isChecked():
+            return "zhipu"
+        return "ollama"
 
     def set_provider(self, provider: str) -> None:
         """设置 provider 选择（用于 _reset）"""
-        self._radio_ollama.setChecked(provider != "nvidia")
+        self._radio_ollama.setChecked(provider not in ("nvidia", "zhipu"))
         self._radio_nvidia.setChecked(provider == "nvidia")
+        self._radio_zhipu.setChecked(provider == "zhipu")
 
     def cleanup_threads(self) -> None:
         """关闭所有异步线程，供 closeEvent 调用"""
@@ -95,6 +112,7 @@ class SummarizationTab(QWidget):
             "_ollama_list_thread",
             "_ollama_start_thread",
             "_nvidia_check_thread",
+            "_zhipu_check_thread",
         ):
             thread = getattr(self, attr, None)
             if thread is not None:
@@ -116,13 +134,17 @@ class SummarizationTab(QWidget):
         provider_layout = QHBoxLayout(provider_group)
         self._radio_ollama = QRadioButton("本地 Ollama 模型")
         self._radio_nvidia = QRadioButton("在线 NVIDIA 模型")
+        self._radio_zhipu = QRadioButton("在线智谱模型")
         current_provider = self._settings.get("summarization.provider", "ollama")
         if current_provider == "nvidia":
             self._radio_nvidia.setChecked(True)
+        elif current_provider == "zhipu":
+            self._radio_zhipu.setChecked(True)
         else:
             self._radio_ollama.setChecked(True)
         provider_layout.addWidget(self._radio_ollama)
         provider_layout.addWidget(self._radio_nvidia)
+        provider_layout.addWidget(self._radio_zhipu)
         main_layout.addWidget(provider_group)
 
         # ---- Ollama 区域 ----
@@ -241,17 +263,87 @@ class SummarizationTab(QWidget):
         self._add_nvidia_test_button(nvidia_form)
         main_layout.addWidget(self._nvidia_group)
 
+        # ---- 智谱区域 ----
+        self._zhipu_group = QGroupBox("智谱配置")
+        zhipu_form = QFormLayout(self._zhipu_group)
+        zhipu_form.setContentsMargins(8, 8, 8, 8)
+
+        zhipu_items = {
+            "zhipu_model": self._settings.get("summarization.zhipu_model", "glm-4.7"),
+            "zhipu_max_tokens": self._settings.get(
+                "summarization.zhipu_max_tokens", "65536"
+            ),
+            "zhipu_temperature": self._settings.get(
+                "summarization.zhipu_temperature", "1.0"
+            ),
+        }
+
+        for key, value in zhipu_items.items():
+            full_key = f"summarization.{key}"
+            widget = QLineEdit(value)
+            tooltip = _SUMM_KEY_TOOLTIPS.get(full_key)
+            if tooltip:
+                widget.setToolTip(tooltip)
+            label = _SUMM_KEY_LABELS.get(full_key, key)
+            zhipu_form.addRow(f"{label}:", widget)
+            self._section_edits[key] = widget
+
+        zhipu_mode = self._settings.get("summarization.zhipu_mode", "single")
+
+        self._zhipu_mode_combo = QComboBox()
+        self._zhipu_mode_combo.addItem("single", "单线程")
+        self._zhipu_mode_combo.addItem("multi", "多线程")
+        self._zhipu_mode_combo.setCurrentText(zhipu_mode)
+        self._zhipu_mode_combo.setToolTip(
+            _SUMM_KEY_TOOLTIPS.get("summarization.zhipu_mode", "")
+        )
+        zhipu_form.addRow("智谱模式:", self._zhipu_mode_combo)
+        self._section_edits["zhipu_mode"] = self._zhipu_mode_combo
+
+        self._zhipu_stream_combo = QComboBox()
+        self._zhipu_stream_combo.addItem("true", "是")
+        self._zhipu_stream_combo.addItem("false", "否")
+        zhipu_stream_val = self._settings.get("summarization.zhipu_stream", "true")
+        self._zhipu_stream_combo.setCurrentText(zhipu_stream_val)
+        self._zhipu_stream_combo.setToolTip(
+            _SUMM_KEY_TOOLTIPS.get("summarization.zhipu_stream", "")
+        )
+        self._zhipu_stream_row_label = QLabel("智谱流式输出:")
+        self._zhipu_stream_row = zhipu_form.addRow(
+            self._zhipu_stream_row_label, self._zhipu_stream_combo
+        )
+        self._section_edits["zhipu_stream"] = self._zhipu_stream_combo
+
+        zhipu_thread_count = self._settings.get("summarization.zhipu_thread_count", "5")
+        self._zhipu_thread_edit = QLineEdit(zhipu_thread_count)
+        self._zhipu_thread_edit.setToolTip(
+            _SUMM_KEY_TOOLTIPS.get("summarization.zhipu_thread_count", "")
+        )
+        self._zhipu_thread_row_label = QLabel("智谱线程数:")
+        self._zhipu_thread_row = zhipu_form.addRow(
+            self._zhipu_thread_row_label, self._zhipu_thread_edit
+        )
+        self._section_edits["zhipu_thread_count"] = self._zhipu_thread_edit
+
+        self._zhipu_mode_combo.currentIndexChanged.connect(self._on_zhipu_mode_changed)
+        self._on_zhipu_mode_changed()
+
+        self._add_zhipu_test_button(zhipu_form)
+        main_layout.addWidget(self._zhipu_group)
+
         main_layout.addStretch()
 
         # 连接信号
         self._radio_ollama.toggled.connect(self._on_provider_changed)
+        self._radio_nvidia.toggled.connect(self._on_provider_changed)
+        self._radio_zhipu.toggled.connect(self._on_provider_changed)
         self._on_provider_changed()
 
     def _on_provider_changed(self) -> None:
-        """切换 Ollama / NVIDIA 区域的显示"""
-        is_ollama = self._radio_ollama.isChecked()
-        self._ollama_group.setVisible(is_ollama)
-        self._nvidia_group.setVisible(not is_ollama)
+        """切换 Ollama / NVIDIA / 智谱区域的显示"""
+        self._ollama_group.setVisible(self._radio_ollama.isChecked())
+        self._nvidia_group.setVisible(self._radio_nvidia.isChecked())
+        self._zhipu_group.setVisible(self._radio_zhipu.isChecked())
 
     def _on_nvidia_mode_changed(self) -> None:
         """切换 single/multi 模式时联动显隐流式输出和线程数"""
@@ -260,6 +352,14 @@ class SummarizationTab(QWidget):
         self._nvidia_stream_row_label.setVisible(not is_multi)
         self._nvidia_thread_edit.setVisible(is_multi)
         self._nvidia_thread_row_label.setVisible(is_multi)
+
+    def _on_zhipu_mode_changed(self) -> None:
+        """切换智谱 single/multi 模式时联动显隐流式输出和线程数"""
+        is_multi = self._zhipu_mode_combo.currentData() == "多线程"
+        self._zhipu_stream_combo.setVisible(not is_multi)
+        self._zhipu_stream_row_label.setVisible(not is_multi)
+        self._zhipu_thread_edit.setVisible(is_multi)
+        self._zhipu_thread_row_label.setVisible(is_multi)
 
     def _add_nvidia_test_button(self, form: QFormLayout) -> None:
         """添加 NVIDIA 测试连接按钮"""
@@ -325,6 +425,57 @@ class SummarizationTab(QWidget):
         thread.start()
         self._nvidia_check_thread = thread
         self._nvidia_check_worker = worker
+
+    def _add_zhipu_test_button(self, form: QFormLayout) -> None:
+        """添加智谱测试连接按钮"""
+        btn_row = QHBoxLayout()
+        self._zhipu_test_btn = QPushButton("测试连接")
+        self._zhipu_test_btn.clicked.connect(self._test_zhipu)
+        btn_row.addWidget(self._zhipu_test_btn)
+        self._zhipu_status_label = QLabel("")
+        btn_row.addWidget(self._zhipu_status_label, 1)
+        form.addRow(btn_row)
+
+        self._zhipu_check_thread: Optional[QThread] = None
+        self._zhipu_check_worker: Optional[ZhipuCheckWorker] = None
+
+    def _test_zhipu(self) -> None:
+        """测试智谱 API 连接"""
+        self._zhipu_status_label.setText("测试中...")
+        self._zhipu_status_label.setStyleSheet("color: orange")
+        self._zhipu_test_btn.setEnabled(False)
+
+        self._wait_async_thread("_zhipu_check_thread")
+        thread = QThread()
+        worker = ZhipuCheckWorker()
+        worker.moveToThread(thread)
+
+        def _on_result(ok: bool, latency_ms: float):
+            if ok:
+                self._zhipu_status_label.setText(f"连接成功 ({latency_ms:.0f}ms)")
+                self._zhipu_status_label.setStyleSheet("color: green")
+                get_logger("video2text").info(
+                    "智谱 API 连接: ✓ 成功 (%.0fms)", latency_ms
+                )
+            else:
+                self._zhipu_status_label.setText("连接失败，请检查 API Key 和网络")
+                self._zhipu_status_label.setStyleSheet("color: red")
+                get_logger("video2text").warning("智谱 API 连接: ✗ 失败")
+
+        def _cleanup():
+            self._zhipu_check_thread = None
+            self._zhipu_check_worker = None
+            self._zhipu_test_btn.setEnabled(True)
+
+        worker.result.connect(_on_result)
+        thread.finished.connect(_cleanup)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(worker.deleteLater)
+        thread.started.connect(worker.run)
+        worker.finished.connect(thread.quit)
+        thread.start()
+        self._zhipu_check_thread = thread
+        self._zhipu_check_worker = worker
 
     def _create_model_combo(self, current_value: str, form: QFormLayout) -> QComboBox:
         combo = QComboBox()
