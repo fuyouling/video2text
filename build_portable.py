@@ -285,6 +285,7 @@ def main():
     if args.dry_run:
         log("  [dry-run] Would create dirs: logs, output, video, models", "white")
         log("  [dry-run] Would copy: assets/, docs/, config.ini, README.md", "white")
+        log("  [dry-run] Would copy ffmpeg/ (内置 FFmpeg)", "white")
     else:
         for dirname in ["logs", "output", "video", "models"]:
             d = portable_dir / dirname
@@ -337,6 +338,19 @@ start "" "%~dp0video2text.exe" %*
 """
         (portable_dir / "video2text.bat").write_text(bat_content, encoding="ascii")
         log("  Created: video2text.bat", "green")
+
+        ffmpeg_src = root / "ffmpeg"
+        if ffmpeg_src.exists():
+            dst = portable_dir / "ffmpeg"
+            (dst / "bin").mkdir(parents=True, exist_ok=True)
+            for name in ["ffmpeg.exe", "ffprobe.exe"]:
+                src_file = ffmpeg_src / "bin" / name
+                if src_file.exists():
+                    shutil.copy2(src_file, dst / "bin" / name)
+            presets_src = ffmpeg_src / "presets"
+            if presets_src.exists():
+                shutil.copytree(presets_src, dst / "presets", dirs_exist_ok=True)
+            log("  Copied: ffmpeg/ (内置 FFmpeg)", "green")
 
     # Step 6: Create ZIP package
     zip_path = None

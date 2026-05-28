@@ -22,12 +22,7 @@ models/
 https://huggingface.co/Systran/faster-whisper-large-v3/resolve/main/model.bin?download=true
 ```
 
-下载后放入 `models/large-v3/` 目录。国内用户可配置 `config.ini` 中的 `[network]` 段使用镜像加速：
-
-```ini
-[network]
-hf_mirror_url = https://huggingface.co/Systran/faster-whisper-large-v3/resolve/main
-```
+下载后放入 `models/large-v3/` 目录。
 
 ## 说明
 

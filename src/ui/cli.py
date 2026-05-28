@@ -24,7 +24,6 @@ from src.utils.exceptions import (
     SummarizationError,
 )
 from src.utils.logger import setup_logger, get_logger
-from src.utils.validators import validate_executable_path
 
 app = typer.Typer(help="Video2Text - 媒体转文本工具")
 console = Console()
@@ -71,7 +70,7 @@ def get_model_path(settings: Settings, model_name: Optional[str] = None) -> str:
 def _init_common(
     settings: Settings, output_dir: str, verbose: bool = False
 ) -> tuple[VideoProcessor, FileWriter, list[str]]:
-    """CLI 公共初始化：日志、FFmpeg路径、VideoProcessor、FileWriter"""
+    """CLI 公共初始化：日志、VideoProcessor、FileWriter"""
     log_level = "DEBUG" if verbose else settings.get("app.log_level", "INFO")
     setup_logger(
         "video2text",
@@ -79,13 +78,7 @@ def _init_common(
         level=log_level,
     )
 
-    ffmpeg_path = settings.get("preprocessing.ffmpeg_path", "ffmpeg")
-    try:
-        ffmpeg_path = validate_executable_path(ffmpeg_path, "FFmpeg")
-    except Exception as e:
-        raise VideoFileError(str(e)) from e
-
-    video_processor = VideoProcessor(ffmpeg_path=ffmpeg_path)
+    video_processor = VideoProcessor()
     file_writer = FileWriter(output_dir)
     output_formats = get_transcript_output_formats(settings)
 

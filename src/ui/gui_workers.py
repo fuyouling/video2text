@@ -20,6 +20,7 @@ from src.summarization.providers import create_provider
 from src.text_processing.segment_merger import SegmentMerger
 from src.text_processing.text_cleaner import TextCleaner
 from src.transcription.transcriber import get_cached_transcriber
+from src.utils.exceptions import DownloadCancelledError
 from src.utils.logger import get_logger, setup_logger
 
 
@@ -65,6 +66,7 @@ class TranscribeWorker(QObject):
     progress = Signal(int, int)
     error = Signal(str)
     finished = Signal()
+    confirm_download = Signal()
 
     def __init__(
         self,
@@ -79,10 +81,13 @@ class TranscribeWorker(QObject):
         self._cancelled = False
         self._service: Optional[TranscriptionService] = None
         self._service_lock = threading.Lock()
+        self._confirm_event = threading.Event()
+        self._confirm_result = [False]
 
     def cancel(self) -> None:
         """标记取消，终止后续文件转写。"""
         self._cancelled = True
+        self._confirm_event.set()
 
     def pause(self) -> None:
         """暂停当前转写任务。"""
@@ -107,6 +112,19 @@ class TranscribeWorker(QObject):
         with self._service_lock:
             return self._service.is_paused if self._service else False
 
+    def _confirm_download_callback(self) -> bool:
+        self._confirm_event.clear()
+        self._confirm_result[0] = False
+        self.confirm_download.emit()
+        self._confirm_event.wait()
+        if self._cancelled:
+            return False
+        return self._confirm_result[0]
+
+    def set_download_confirmed(self, confirmed: bool) -> None:
+        self._confirm_result[0] = confirmed
+        self._confirm_event.set()
+
     def run(self) -> None:
         logger = _setup_worker_logger(self.settings)
 
@@ -121,6 +139,7 @@ class TranscribeWorker(QObject):
                 compute_type=cfg.compute_type,
                 num_workers=self.settings.get_int("transcription.num_workers", 1),
             )
+            transcriber.confirm_download_callback = self._confirm_download_callback
             transcriber.load_model()
             logger.info("转写模型加载完成")
 
@@ -132,7 +151,7 @@ class TranscribeWorker(QObject):
                 transcriber.compute_type,
             )
 
-            video_processor = VideoProcessor(ffmpeg_path=cfg.ffmpeg_path)
+            video_processor = VideoProcessor()
             file_writer = FileWriter(self.output_dir)
 
             total = len(self.video_files)
@@ -171,6 +190,8 @@ class TranscribeWorker(QObject):
 
             service.run(self.video_files, self.output_dir)
 
+        except DownloadCancelledError:
+            logger.info("用户取消了模型下载")
         except Exception as exc:
             logger.exception("转写线程异常")
             self.error.emit(str(exc))
@@ -542,6 +563,7 @@ class PipelineWorker(QObject):
     progress = Signal(int, int)
     error = Signal(str)
     finished = Signal()
+    confirm_download = Signal()
 
     def __init__(
         self,
@@ -560,10 +582,13 @@ class PipelineWorker(QObject):
         self._cancelled = False
         self._tx_service: Optional[TranscriptionService] = None
         self._tx_service_lock = threading.Lock()
+        self._confirm_event = threading.Event()
+        self._confirm_result = [False]
 
     def cancel(self) -> None:
         """标记取消，终止后续转写和总结。"""
         self._cancelled = True
+        self._confirm_event.set()
 
     def pause(self) -> None:
         """暂停当前转写任务。"""
@@ -589,6 +614,19 @@ class PipelineWorker(QObject):
         with self._tx_service_lock:
             return self._tx_service.is_paused if self._tx_service else False
 
+    def _confirm_download_callback(self) -> bool:
+        self._confirm_event.clear()
+        self._confirm_result[0] = False
+        self.confirm_download.emit()
+        self._confirm_event.wait()
+        if self._cancelled:
+            return False
+        return self._confirm_result[0]
+
+    def set_download_confirmed(self, confirmed: bool) -> None:
+        self._confirm_result[0] = confirmed
+        self._confirm_event.set()
+
     def run(self) -> None:
         """执行管道任务：加载模型 → 逐文件转写 → 文本清理 → 总结。"""
         logger = _setup_worker_logger(self.settings)
@@ -604,10 +642,11 @@ class PipelineWorker(QObject):
                 compute_type=cfg.compute_type,
                 num_workers=self.settings.get_int("transcription.num_workers", 1),
             )
+            transcriber.confirm_download_callback = self._confirm_download_callback
             transcriber.load_model()
             logger.info("转写模型加载完成")
 
-            video_processor = VideoProcessor(ffmpeg_path=cfg.ffmpeg_path)
+            video_processor = VideoProcessor()
             file_writer = FileWriter(self.output_dir)
             segment_merger = SegmentMerger(
                 max_gap=self.settings.get_float("text_processing.max_gap", 2.0),
@@ -716,6 +755,8 @@ class PipelineWorker(QObject):
                     sum_available,
                 )
 
+        except DownloadCancelledError:
+            logger.info("用户取消了模型下载")
         except Exception as exc:
             logger.exception("管道线程异常")
             self.error.emit(str(exc))

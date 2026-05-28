@@ -145,7 +145,7 @@ settings.save()                                           # 持久化到磁盘
 | `[app]` | 应用级设置（日志级别） |
 | `[transcription]` | 转写引擎参数（模型、设备、beam_size 等） |
 | `[summarization]` | 总结引擎参数（provider、模型、温度等） |
-| `[preprocessing]` | 预处理参数（FFmpeg 路径、采样率、分段阈值） |
+| `[preprocessing]` | 预处理参数（采样率、分段阈值） |
 | `[output]` | 输出参数（目录、格式） |
 | `[network]` | 网络参数（代理、镜像、超时） |
 | `[text_processing]` | 文本处理参数（合并间隔、填充词） |
@@ -176,15 +176,13 @@ settings.save()                                           # 持久化到磁盘
 
 ### 5.1 FFmpeg 管理器 (`src/preprocessing/ffmpeg.py`)
 
-**职责**：确保 FFmpeg 和 ffprobe 可用，返回解析后的绝对路径。
+**职责**：返回项目内置 FFmpeg/ffprobe 的绝对路径，不存在则报错。
 
 **实现要点**：
-- **路径缓存**：使用 `_cache` 字典缓存已验证的路径，相同参数只执行一次版本检查
-- **查找策略**：
-  1. 优先使用 `shutil.which()` 解析用户配置的路径
-  2. 回退到系统 PATH 中的 `ffmpeg`
-  3. 最后检查常见安装路径（Windows: `~/ffmpeg/bin/`，Linux: `/usr/local/bin/`）
-- **ffprobe 推导**：从 ffmpeg 路径推导 ffprobe 路径（同一目录）
+- **内置路径**：从项目根目录下的 `ffmpeg/bin/` 查找可执行文件
+- **打包兼容**：PyInstaller 打包模式下基于 `sys.executable` 所在目录查找
+- **路径缓存**：使用全局变量缓存已解析的路径，避免重复文件系统检查
+- **ffprobe 独立**：`ensure_ffprobe()` 与 `ensure_ffmpeg()` 分别查找，路径结构相同
 
 ### 5.2 VideoProcessor (`src/preprocessing/video_processor.py`)
 
@@ -726,13 +724,11 @@ class BookmarkItem:
 def _init_common(settings, output_dir, verbose):
     # 1. 初始化日志系统
     setup_logger("video2text", log_dir=..., level=...)
-    # 2. 验证 FFmpeg 路径
-    ffmpeg_path = validate_executable_path(settings.get("preprocessing.ffmpeg_path"))
-    # 3. 创建 VideoProcessor
-    video_processor = VideoProcessor(ffmpeg_path=ffmpeg_path)
-    # 4. 创建 FileWriter
+    # 2. 创建 VideoProcessor（自动查找内置 FFmpeg）
+    video_processor = VideoProcessor()
+    # 3. 创建 FileWriter
     file_writer = FileWriter(output_dir)
-    # 5. 读取输出格式配置
+    # 4. 读取输出格式配置
     output_formats = get_transcript_output_formats(settings)
     return video_processor, file_writer, output_formats
 ```
@@ -922,8 +918,7 @@ run_pipeline()
     ├─ 2. 公共初始化
     │   └─ _init_common(settings, output_dir, verbose)
     │       ├─ setup_logger()                    # 初始化日志系统
-    │       ├─ validate_executable_path(ffmpeg)  # 验证 FFmpeg
-    │       ├─ VideoProcessor(ffmpeg_path)       # 创建媒体处理器
+    │       ├─ VideoProcessor()                  # 创建媒体处理器（自动查找内置 FFmpeg）
     │       ├─ FileWriter(output_dir)            # 创建文件写入器
     │       └─ get_transcript_output_formats()   # 读取输出格式配置
     │
@@ -1412,7 +1407,7 @@ CLI: run_pipeline(input_path)                    GUI: PipelineWorker.run()
 | 阶段 | 方法 | 文件:行号 | 说明 |
 |------|------|-----------|------|
 | **CLI 入口** | `run_pipeline()` | `cli.py:269` | CLI 命令入口，参数解析与服务编排 |
-| **公共初始化** | `_init_common()` | `cli.py:71` | 日志、FFmpeg、VideoProcessor、FileWriter |
+| **公共初始化** | `_init_common()` | `cli.py:71` | 日志、VideoProcessor、FileWriter |
 | **配置加载** | `_load_tx_config()` | `transcription_config.py:35` | 从 Settings 构建 TranscriptionConfig |
 | **媒体验证** | `VideoProcessor.validate_media()` | `video_processor.py:69` | ffprobe 验证文件完整性 |
 | **媒体信息** | `VideoProcessor.get_video_info()` | `video_processor.py:131` | 提取时长/编码/采样率 |

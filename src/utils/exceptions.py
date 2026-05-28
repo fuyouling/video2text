@@ -19,6 +19,12 @@ class TranscriptionError(Video2TextError):
     pass
 
 
+class DownloadCancelledError(TranscriptionError):
+    """用户取消了模型下载"""
+
+    pass
+
+
 class SummarizationError(Video2TextError):
     """总结错误"""
 

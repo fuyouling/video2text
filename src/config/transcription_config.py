@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from src.config.settings import Settings
-from src.utils.validators import validate_executable_path
 
 SUPPORTED_TRANSCRIPT_FORMATS = {"txt", "srt", "vtt", "json"}
 
@@ -21,7 +20,6 @@ class TranscriptionConfig:
     temperature: float
     max_chunk_duration: int
     output_formats: list[str]
-    ffmpeg_path: str
 
 
 def _get_output_formats(settings: Settings) -> list[str]:
@@ -46,9 +44,6 @@ def _load_tx_config(settings: Settings) -> TranscriptionConfig:
     max_chunk_duration = settings.get_int("preprocessing.max_chunk_duration", 300)
     output_formats = _get_output_formats(settings)
 
-    ffmpeg_path = settings.get("preprocessing.ffmpeg_path", "ffmpeg")
-    ffmpeg_path = validate_executable_path(ffmpeg_path, "FFmpeg")
-
     return TranscriptionConfig(
         language=language,
         model_path=model_path,
@@ -58,5 +53,4 @@ def _load_tx_config(settings: Settings) -> TranscriptionConfig:
         temperature=temperature,
         max_chunk_duration=max_chunk_duration,
         output_formats=output_formats,
-        ffmpeg_path=ffmpeg_path,
     )

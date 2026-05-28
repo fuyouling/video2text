@@ -217,7 +217,7 @@ video/*
 # kilo 
 .kilo/
 
-# 设计问价
+# 设计文件
 plans/
 
 # 输出文件
@@ -225,7 +225,7 @@ output/*
 !output/readme.md
 
 # large-v3模型文件
-models/large-v3/model.bin
+models/large-v3/
 #!models/large-v3
 
 # vscode设置

@@ -34,25 +34,32 @@ conda activate video2text
 pip install -r requirements.txt
 ```
 
-### 3. 安装 FFmpeg
+### 3. 转写模型文件下载
 
-**Windows:**
-```bash
-# 下载 FFmpeg 并添加到 PATH
-# https://ffmpeg.org/download.html
+模型下载地址: [large-v3](https://huggingface.co/Systran/faster-whisper-large-v3/resolve/main)
+
+
+### 4. 总结模型安装
+
+支持两种总结服务，按需选择其一即可。
+
+#### 4.1 NVIDIA 在线（使用在线 NVIDIA 模型总结）
+
+需要先在 [NVIDIA Build](https://build.nvidia.com/) 注册账号并创建 API Key（目前大部分模型免费使用）。获取 Key 后在项目根目录创建 `.env` 文件填入：
+
+```
+NVIDIA_API_KEY=nvapi-你的API密钥
+OLLAMA_API_KEY=你的Ollama密钥（可选，仅用于需要认证的 Ollama 端点）
 ```
 
-**macOS:**
-```bash
-brew install ffmpeg
+然后在 `config.ini` 中将 `provider` 改为 `nvidia`：
+
+```ini
+[summarization]
+provider = nvidia
 ```
 
-**Linux:**
-```bash
-sudo apt-get install ffmpeg
-```
-
-### 4. 启动 Ollama 服务
+#### 4.2 安装 Ollama（使用本地模型总结）
 
 ```bash
 # 安装 Ollama
@@ -63,28 +70,6 @@ ollama serve
 
 # 拉取总结模型
 ollama pull qwen2.5:7b-instruct-q4_K_M
-```
-
-> **使用 NVIDIA API 替代 Ollama**：如果希望使用在线模型进行总结，可跳过 Ollama 安装，在项目根目录创建 `.env` 文件并填入 API Key：
-> ```
-> NVIDIA_API_KEY=nvapi-你的API密钥
-> ```
-> 然后在 `config.ini` 中将 `provider` 改为 `nvidia`：
-> ```ini
-> [summarization]
-> provider = nvidia
-> ```
->
-> **`.env` 文件完整配置示例：**
-> ```
-> NVIDIA_API_KEY=nvapi-你的API密钥
-> OLLAMA_API_KEY=你的Ollama密钥（可选，仅用于需要认证的 Ollama 端点）
-> ```
-
-### 5. 模型文件下载
-```
-models/large-v3/model.bin 文件比较大不好上传github,下载地址
-https://huggingface.co/Systran/faster-whisper-large-v3/resolve/main/model.bin?download=true
 ```
 
 ## 使用方法
@@ -194,11 +179,7 @@ python -m src.ui.gui
 使用 PyInstaller 打包为 Windows 便携版：
 
 ```bash
-# PowerShell
-.\build_portable.ps1
-
-# 或手动执行
-pyinstaller video2text_portable.spec
+python build_portable.py
 ```
 
 ### 命令行参数
@@ -309,7 +290,7 @@ video2text/
 ├── requirements.txt          # 依赖文件
 ├── README.md                 # 说明文档
 ├── LICENSE                   # GPL v3 许可证
-├── build_portable.ps1        # 便携版打包脚本
+├── build_portable.py         # 便携版打包脚本
 ├── video2text_portable.spec  # PyInstaller 打包配置
 ├── src/                      # 源代码
 │   ├── __init__.py
@@ -351,6 +332,19 @@ video2text/
 │       ├── time_format.py
 │       └── validators.py
 ├── models/                   # 模型目录
+│   └── large-v3/             # faster-whisper large-v3 模型
+│       ├── config.json              # 模型配置文件
+│       ├── gitattributes            # Git 属性文件
+│       ├── model.bin                # 模型权重文件
+│       ├── preprocessor_config.json # 预处理器配置
+│       ├── README.md                # 模型说明文档
+│       ├── tokenizer.json           # 分词器配置
+│       └── vocabulary.json          # 词表文件
+├── ffmpeg/                   # 内置 FFmpeg（bin + presets）
+│   ├── bin/
+│   │   ├── ffmpeg.exe
+│   │   └── ffprobe.exe
+│   └── presets/
 ├── logs/                     # 日志目录
 ├── output/                   # 输出目录
 ├── video/                    # 视频目录
@@ -416,7 +410,6 @@ video2text/
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `ffmpeg_path` | `ffmpeg` | FFmpeg 可执行文件路径 |
 | `audio_sample_rate` | `16000` | 音频采样率（Hz） |
 | `audio_channels` | `1` | 音频声道数 |
 | `max_chunk_duration` | `300` | 长音频分段时长阈值（秒），超过此值自动分段 |
@@ -436,9 +429,6 @@ video2text/
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | `proxy` | `http://127.0.0.1:7890` | HTTP 代理地址 |
-| `hf_mirror_url` | HuggingFace 镜像地址 | HuggingFace 模型下载镜像 URL |
-| `download_timeout` | `300` | 下载超时时间（秒） |
-| `download_max_retries` | `3` | 下载最大重试次数 |
 
 ### [text_processing] 文本处理配置
 
@@ -452,7 +442,7 @@ video2text/
 
 ### 1. FFmpeg 未找到
 
-确保 FFmpeg 已安装并添加到系统 PATH 环境变量中。
+确保程序目录下的 `ffmpeg/bin/` 目录存在且包含 `ffmpeg.exe` 和 `ffprobe.exe`。
 
 ### 2. GPU 不可用
 
@@ -468,20 +458,11 @@ video2text/
 
 ### 5. 模型下载缓慢或失败
 
-国内用户可在 `config.ini` 的 `[network]` 段配置 HuggingFace 镜像地址加速下载：
-
-```ini
-[network]
-hf_mirror_url = https://huggingface.co/Systran/faster-whisper-large-v3/resolve/main
-```
-
-也可以配置网络代理：
+可配置网络代理加速下载：
 
 ```ini
 [network]
 proxy = http://127.0.0.1:7890
-download_timeout = 300
-download_max_retries = 3
 ```
 
 ## 许可证

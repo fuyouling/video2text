@@ -51,6 +51,7 @@ class ModelDownloader:
         self.models_dir = self._base_dir / self.model_config["models_dir"]
         self.model_path = self.models_dir / "model.bin"
         self._session = None
+        self.download_cancelled = False
 
     def close(self) -> None:
         if self._session is not None:
@@ -217,11 +218,16 @@ class ModelDownloader:
             size /= 1024.0
         return f"{size:.2f} TB"
 
-    def download_model(self, progress_callback=None) -> bool:
+    def download_model(self, progress_callback=None, confirm_callback=None) -> bool:
         base_url = self.model_config["base_url"]
         files = self.model_config["all_files"]
         core_files = set(self.model_config["core_files"])
         self.models_dir.mkdir(parents=True, exist_ok=True)
+
+        if confirm_callback and not confirm_callback():
+            #logger.info("用户取消了模型下载")
+            self.download_cancelled = True
+            return False
 
         proxy = self._get_proxy()
 
@@ -301,13 +307,15 @@ class ModelDownloader:
         logger.info("下载完成")
         return True
 
-    def ensure_model_available(self, progress_callback=None) -> bool:
+    def ensure_model_available(
+        self, progress_callback=None, confirm_callback=None
+    ) -> bool:
         if self.is_model_exists():
             logger.info("模型已就绪: %s", self.models_dir)
             return True
 
         logger.info("模型文件不完整，开始下载...")
-        return self.download_model(progress_callback)
+        return self.download_model(progress_callback, confirm_callback)
 
     @staticmethod
     def get_model_path(model_name: str = "large-v3") -> Path:

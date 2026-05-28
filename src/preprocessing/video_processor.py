@@ -32,14 +32,10 @@ class VideoInfo:
 class VideoProcessor:
     """媒体处理器"""
 
-    def __init__(self, ffmpeg_path: str = "ffmpeg"):
-        """初始化媒体处理器
-
-        Args:
-            ffmpeg_path: FFmpeg可执行文件路径
-        """
-        self.ffmpeg_path = ensure_ffmpeg(ffmpeg_path)
-        self.ffprobe_path = ensure_ffprobe(ffmpeg_path)
+    def __init__(self):
+        """初始化媒体处理器"""
+        self.ffmpeg_path = ensure_ffmpeg()
+        self.ffprobe_path = ensure_ffprobe()
         self.supported_video_formats = [
             ext.lower()
             for ext in Settings().get_list(
@@ -156,7 +152,7 @@ class VideoProcessor:
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=60,
                 creationflags=CREATE_NO_WINDOW,
                 encoding="utf-8",
                 errors="ignore",

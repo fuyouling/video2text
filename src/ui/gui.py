@@ -102,8 +102,6 @@ class MainWindow(QMainWindow):
         self._current_video_name: Optional[str] = None
         self._is_multi_thread = False
         self._history_loaded = False
-        self._transcript_dirty = False
-        self._summary_dirty = False
         self._scan_context: Optional[dict] = None
         self._scan_thread: Optional[QThread] = None
         self._scan_worker = None
@@ -277,8 +275,6 @@ class MainWindow(QMainWindow):
         )
         self.result_tabs.addTab(self.summary_view, "摘要")
         self.result_tabs.currentChanged.connect(self._on_tab_changed)
-        self.transcript_view.textChanged.connect(self._on_transcript_changed)
-        self.summary_view.textChanged.connect(self._on_summary_changed)
         content_layout.addWidget(self.result_tabs, 3)
 
         save_transcript_action = QAction("保存文本", self)
@@ -356,11 +352,6 @@ class MainWindow(QMainWindow):
         clear_output_action = fav_menu.addAction("移除所有输出目录")
         clear_output_action.triggered.connect(self._clear_all_output_dirs)
 
-        tools_menu = settings_menu.addMenu("工具")
-        watermark_action = tools_menu.addAction("图片去水印")
-        watermark_action.setShortcut(QKeySequence("Ctrl+M"))
-        watermark_action.triggered.connect(self._open_watermark_remover)
-
         help_menu = menu_bar.addMenu("帮助")
         donate_action = help_menu.addAction("捐赠支持")
         donate_action.triggered.connect(self._show_donate)
@@ -375,21 +366,20 @@ class MainWindow(QMainWindow):
             "<h2 style='margin-bottom:4px'>🎬 Video2Text</h2>"
             f"<p style='color:#666;margin-top:0'>版本 {APP_VERSION} · 媒体转文本工具</p>"
             "<hr>"
-            "<p>基于 <b>faster-whisper</b> 的高精度语音转写，支持 <b>Ollama</b> + Qwen2.5 本地总结和 <b>NVIDIA API</b> 在线总结。</p>"
+            "<p>基于 <b>faster-whisper</b> 的高精度语音转和智能总结工具。</p>"
             "<p><b>核心功能：</b></p>"
             "<ul style='margin-top:2px'>"
-            "<li>16 种视频 + 7 种音频格式转写</li>"
-            "<li>长音频自动分段 + 断点续传</li>"
-            "<li>NVIDIA 多线程并发总结</li>"
+            "<li>支持视频和音频格式转写,长音频自动分段</li>"
+            "<li>基于 faster-whisper 转写文字且模型可切换</li>"
+            "<li>ollama 本地总结和 NVIDIA 多线程并发总结</li>"
             "<li>图形化配置编辑器 · 收藏目录管理</li>"
             "</ul>"
             "<hr>"
             "<table style='font-size:13px'>"
             "<tr><td style='padding:2px 12px 2px 0;color:#888'>作者</td><td>喵王龙</td></tr>"
             "<tr><td style='padding:2px 12px 2px 0;color:#888'>许可证</td><td>GNU GPL v3</td></tr>"
-            "<tr><td style='padding:2px 12px 2px 0;color:#888'>技术栈</td><td>faster-whisper · Ollama · NVIDIA API · PySide6 · FFmpeg</td></tr>"
+            "<tr><td style='padding:2px 12px 2px 0;color:#888'>技术栈</td><td>faster-whisper · PySide6</td></tr>"
             "<tr><td style='padding:2px 12px 2px 0;color:#888'>讨论群</td><td>QQ群 296875960</td></tr>"
-            "<tr><td style='padding:2px 12px 2px 0;color:#888'>邮箱</td><td>zhonggh23@163.com</td></tr>"
             "</table>"
             "<hr>"
             "<p>"
@@ -411,12 +401,6 @@ class MainWindow(QMainWindow):
         if dialog.exec() == dialog.DialogCode.Accepted:
             self._load_prompt_config()
             self.status_bar.showMessage("配置已保存", 5000)
-
-    def _open_watermark_remover(self) -> None:
-        from src.ui.watermark_dialog import WatermarkRemovalDialog
-
-        dialog = WatermarkRemovalDialog(self)
-        dialog.exec()
 
     def _load_prompt_config(self) -> None:
         prompt = self.settings.get("summarization.custom_prompt", "")
@@ -544,10 +528,6 @@ class MainWindow(QMainWindow):
             save_path.parent.mkdir(parents=True, exist_ok=True)
             save_path.write_text(text, encoding="utf-8")
             self.status_bar.showMessage(f"已保存: {save_path}", 5000)
-            if current_tab == 0:
-                self._transcript_dirty = False
-            else:
-                self._summary_dirty = False
         except OSError as exc:
             self.status_bar.showMessage(f"保存失败: {exc}", 5000)
 
@@ -592,67 +572,6 @@ class MainWindow(QMainWindow):
 
     def _on_replace_count(self, count: int) -> None:
         self.status_bar.showMessage(f"已替换 {count} 处文本", 5000)
-
-    # ── 脏标记 & 未保存检测 ──
-
-    def _on_transcript_changed(self) -> None:
-        self._transcript_dirty = True
-
-    def _on_summary_changed(self) -> None:
-        self._summary_dirty = True
-
-    def _reset_dirty_flags(self) -> None:
-        self._transcript_dirty = False
-        self._summary_dirty = False
-
-    def _check_unsaved_changes(self) -> bool:
-        """检查是否有未保存的编辑，弹窗提示用户。返回 True 继续，False 取消。"""
-        if not self._transcript_dirty and not self._summary_dirty:
-            return True
-
-        dirty_parts = []
-        if self._transcript_dirty:
-            dirty_parts.append("文本内容")
-        if self._summary_dirty:
-            dirty_parts.append("摘要")
-        msg = f"{'和'.join(dirty_parts)}已修改但未保存，是否保存？"
-
-        reply = QMessageBox.question(
-            self,
-            "未保存的修改",
-            msg,
-            QMessageBox.StandardButton.Save
-            | QMessageBox.StandardButton.Discard
-            | QMessageBox.StandardButton.Cancel,
-        )
-
-        if reply == QMessageBox.StandardButton.Cancel:
-            return False
-        if reply == QMessageBox.StandardButton.Save:
-            self._save_dirty_content()
-        return True
-
-    def _save_dirty_content(self) -> None:
-        """保存所有标记为脏的内容到磁盘。"""
-        if not self._current_video_name:
-            return
-        output_dir = self.output_combo.currentText().strip() or _DEFAULT_OUTPUT_DIR
-        if self._transcript_dirty:
-            path = self._resolve_transcript_path(output_dir)
-            try:
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(self.transcript_view.toPlainText(), encoding="utf-8")
-                self._transcript_dirty = False
-            except OSError as exc:
-                get_logger("video2text").warning("保存文本内容失败: %s", exc)
-        if self._summary_dirty:
-            path = self._resolve_summary_path(output_dir)
-            try:
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(self.summary_view.toPlainText(), encoding="utf-8")
-                self._summary_dirty = False
-            except OSError as exc:
-                get_logger("video2text").warning("保存摘要失败: %s", exc)
 
     # ── 常用目录管理 ──
 
@@ -957,8 +876,6 @@ class MainWindow(QMainWindow):
 
     def _on_transcribe(self) -> None:
         """「仅转写」按钮点击处理：校验输入 → 清空结果 → 启动转写线程。"""
-        if not self._check_unsaved_changes():
-            return
         if not self._video_files:
             QMessageBox.warning(self, "提示", "请先选择输入文件或文件夹。")
             return
@@ -988,6 +905,7 @@ class MainWindow(QMainWindow):
         worker.video_error.connect(self._on_transcribe_error)
         worker.progress.connect(self._on_progress)
         worker.error.connect(self._on_worker_error)
+        worker.confirm_download.connect(self._on_confirm_download)
 
         self._start_worker(thread, worker)
 
@@ -1017,7 +935,6 @@ class MainWindow(QMainWindow):
         if transcript_path is None:
             return
         try:
-            self.transcript_view.blockSignals(True)
             self.transcript_view.setPlainText(
                 transcript_path.read_text(encoding="utf-8-sig")
             )
@@ -1025,9 +942,6 @@ class MainWindow(QMainWindow):
             get_logger("video2text").warning(
                 "读取转写文件失败: %s (%s)", transcript_path, exc
             )
-        finally:
-            self.transcript_view.blockSignals(False)
-            self._transcript_dirty = False
 
     def _on_transcribe_error(self, video_name: str, error_msg: str) -> None:
         """单个文件转写失败"""
@@ -1039,9 +953,6 @@ class MainWindow(QMainWindow):
 
     def _on_summarize(self) -> None:
         """「仅总结」按钮点击处理：校验输入 → 启动总结线程（支持独立文本模式）。"""
-        if not self._check_unsaved_changes():
-            return
-
         output_dir = self._get_output_dir()
 
         standalone_text = self.transcript_view.toPlainText().strip()
@@ -1164,8 +1075,6 @@ class MainWindow(QMainWindow):
 
     def _on_pipeline(self) -> None:
         """「转写总结」按钮点击处理：校验输入 → 启动管道线程（先转写后总结）。"""
-        if not self._check_unsaved_changes():
-            return
         if not self._video_files:
             QMessageBox.warning(self, "提示", "请先选择输入文件或文件夹。")
             return
@@ -1208,6 +1117,7 @@ class MainWindow(QMainWindow):
         worker.summarize_error.connect(self._on_summarize_error)
         worker.progress.connect(self._on_progress)
         worker.error.connect(self._on_worker_error)
+        worker.confirm_download.connect(self._on_confirm_download)
 
         self._start_worker(thread, worker)
 
@@ -1216,6 +1126,21 @@ class MainWindow(QMainWindow):
     def _on_progress(self, completed: int, total: int) -> None:
         self.progress_bar.setValue(completed)
         self.progress_label.setText(f"{completed}/{total}")
+
+    def _on_confirm_download(self) -> None:
+        worker = self._worker
+        if worker is None:
+            return
+        reply = QMessageBox.question(
+            self,
+            "模型下载确认",
+            "建议使用网盘中已下载好的模型，HuggingFace 一般不可直连。\n\n"
+            "如需使用其它模型，请把核心文件复制到 models 目录再到配置中更改模型路径。\n\n"
+            "是否开始下载模型？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        worker.set_download_confirmed(reply == QMessageBox.StandardButton.Yes)
 
     def _on_thread_finished(self) -> None:
         self._set_busy_state(False)
@@ -1312,8 +1237,6 @@ class MainWindow(QMainWindow):
         if self._worker_thread is not None and self._worker_thread.isRunning():
             QMessageBox.warning(self, "提示", "当前有任务正在运行，请等待完成后再试。")
             return
-        if not self._check_unsaved_changes():
-            return
 
         video_path = self._find_video_path_by_name(video_name)
         if video_path is None:
@@ -1338,13 +1261,12 @@ class MainWindow(QMainWindow):
         worker.video_error.connect(self._on_transcribe_error)
         worker.progress.connect(self._on_progress)
         worker.error.connect(self._on_worker_error)
+        worker.confirm_download.connect(self._on_confirm_download)
         self._start_worker(thread, worker)
 
     def _on_resummarize(self, video_name: str) -> None:
         if self._worker_thread is not None and self._worker_thread.isRunning():
             QMessageBox.warning(self, "提示", "当前有任务正在运行，请等待完成后再试。")
-            return
-        if not self._check_unsaved_changes():
             return
 
         output_dir = self._get_output_dir()
@@ -1381,15 +1303,10 @@ class MainWindow(QMainWindow):
         self._start_worker(thread, worker)
 
     def _on_file_selected(
-        self, current: Optional[QListWidgetItem], previous: Optional[QListWidgetItem]
+        self, current: Optional[QListWidgetItem], _previous: Optional[QListWidgetItem]
     ) -> None:
         """文件列表选中变更时，延迟加载对应的转写和摘要内容到编辑器。"""
         if current is None:
-            return
-        if not self._check_unsaved_changes():
-            self.file_list.blockSignals(True)
-            self.file_list.setCurrentItem(previous)
-            self.file_list.blockSignals(False)
             return
         video_name = current.data(Qt.ItemDataRole.UserRole)
         self._current_video_name = video_name
@@ -1399,35 +1316,25 @@ class MainWindow(QMainWindow):
 
     def _load_file_content(self, video_name: str, output_dir: str) -> None:
         """在事件循环空闲时加载文件内容，避免阻塞 GUI 线程。"""
-        self.transcript_view.blockSignals(True)
-        self.summary_view.blockSignals(True)
-        try:
-            transcript_path = FileWriter(output_dir).find_transcript_file(video_name)
-            if transcript_path is not None:
-                try:
-                    self.transcript_view.setPlainText(
-                        transcript_path.read_text(encoding="utf-8-sig")
-                    )
-                except (OSError, UnicodeDecodeError) as exc:
-                    self.transcript_view.setPlainText(f"读取失败: {exc}")
-            else:
-                self.transcript_view.setPlainText("(未找到转写文件)")
+        transcript_path = FileWriter(output_dir).find_transcript_file(video_name)
+        if transcript_path is not None:
+            try:
+                self.transcript_view.setPlainText(
+                    transcript_path.read_text(encoding="utf-8-sig")
+                )
+            except (OSError, UnicodeDecodeError) as exc:
+                self.transcript_view.setPlainText(f"读取失败: {exc}")
+        else:
+            self.transcript_view.setPlainText("(未找到转写文件)")
 
-            summary_path = _find_summary_path(output_dir, video_name)
-            if summary_path:
-                try:
-                    self.summary_view.setPlainText(
-                        summary_path.read_text(encoding="utf-8")
-                    )
-                except (OSError, UnicodeDecodeError) as exc:
-                    self.summary_view.setPlainText(f"读取失败: {exc}")
-            else:
-                self.summary_view.setPlainText("(未找到摘要文件)")
-        finally:
-            self.transcript_view.blockSignals(False)
-            self.summary_view.blockSignals(False)
-            self._transcript_dirty = False
-            self._summary_dirty = False
+        summary_path = _find_summary_path(output_dir, video_name)
+        if summary_path:
+            try:
+                self.summary_view.setPlainText(summary_path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError) as exc:
+                self.summary_view.setPlainText(f"读取失败: {exc}")
+        else:
+            self.summary_view.setPlainText("(未找到摘要文件)")
 
         self._search_controller.refresh_if_active()
 

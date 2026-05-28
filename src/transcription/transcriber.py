@@ -131,6 +131,7 @@ class Transcriber:
         self.model = None
         self._loaded = False
         self._model_lock = threading.Lock()
+        self.confirm_download_callback = None
 
     @staticmethod
     def _normalize_download_root(download_root: Optional[str] = None) -> str:
@@ -194,12 +195,26 @@ class Transcriber:
         model_path_obj = Path(self.model_path)
         has_core_files = all((model_path_obj / f).exists() for f in _CORE_FILES)
         if not has_core_files:
-            logger.info("Transcriber: ⚠ 文件不完整，将下载 (%s)", self.model_path)
+            logger.info("Transcriber: ⚠ 文件不完整，将下载到 (%s)", self.model_path)
             try:
-                from src.utils.model_downloader import ModelDownloader
+                from src.utils.model_downloader import ModelDownloader, MODEL_CONFIG
 
-                downloader = ModelDownloader()
-                if not downloader.download_model(progress_callback):
+                model_name = Path(self.model_path).name
+                if model_name not in MODEL_CONFIG:
+                    raise TranscriptionError(
+                        f"模型 {model_name} 不支持自动下载。\n"
+                        f"请手动下载模型核心文件后复制到 models/{model_name}/ 目录，\n"
+                        f"然后在配置中更改模型名称。"
+                    )
+
+                downloader = ModelDownloader(model_name)
+                if not downloader.download_model(
+                    progress_callback, self.confirm_download_callback
+                ):
+                    if downloader.download_cancelled:
+                        from src.utils.exceptions import DownloadCancelledError
+
+                        raise DownloadCancelledError("用户取消了模型下载")
                     raise TranscriptionError(
                         "模型下载失败，请检查网络连接或配置代理。\n"
                         "可在 config.ini 的 [network] 节设置 proxy。"

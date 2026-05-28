@@ -51,7 +51,6 @@ video2text 本地视频转文字工具的安装包体积较大，已上传至 12
 |------|------|
 | `large-v3` 语音模型 | ~3 GB |
 | Ollama 总结模型（`qwen2.5:7b`） | ~4.7 GB |
-| FFmpeg | ~200 MB |
 | video2text 程序 | ~3 GB |
 | 运行时缓存及输出空间 | 预留若干 GB |
 
@@ -66,7 +65,7 @@ video2text 本地视频转文字工具的安装包体积较大，已上传至 12
 
 ---
 
-## 二、详细安装步骤（分4步完成）
+## 二、详细安装步骤（分3步完成）
 
 以下按顺序介绍 video2text 本地视频转文字工具的完整安装流程。
 
@@ -83,6 +82,10 @@ D:\video2text\
 ├── config.ini              ← 配置文件
 ├── .env                    ← 环境变量配置（存放 API Key，需手动创建）
 ├── assets\                 ← 图标资源
+├── ffmpeg\                 ← 内置 FFmpeg
+│   └── bin\
+│       ├── ffmpeg.exe
+│       └── ffprobe.exe
 ├── models\                 ← 模型目录（需要放入模型文件）
 │   └── readme.md
 ├── output\                 ← 输出目录（转写和总结结果保存在此）
@@ -95,21 +98,7 @@ D:\video2text\
 └── README_PORTABLE.txt
 ```
 
-**第二步：创建 `.env` 文件（可选，使用 NVIDIA 在线总结服务时需要）**
-
-在程序目录下新建一个名为 `.env` 的文本文件（注意文件名以点开头，无扩展名）。用记事本打开，按需添加以下内容：
-
-```
-# NVIDIA API Key（使用在线 NVIDIA 模型总结时需要）
-NVIDIA_API_KEY=nvapi-你的API密钥
-
-# Ollama API Key（使用带认证的 Ollama 服务时可选配置）
-# OLLAMA_API_KEY=你的API密钥
-```
-
-保存文件。程序启动时会自动读取该文件中的环境变量。如果仅使用本地 Ollama 进行总结，则**无需创建**此文件。API Key 也可以通过系统环境变量设置，效果相同（系统环境变量优先级高于 `.env` 文件）。NVIDIA 提供有很多免费的模型，如果网络访问有问题需要自行解决。
-
-**第三步：放入语音识别模型**
+**第二步：放入语音识别模型**
 
 将下载的 `large-v3.zip` 解压到程序目录下的 `models` 文件夹中。确保解压后模型文件位于 `models\large-v3\` 子目录下，且包含以下核心文件：
 
@@ -134,51 +123,25 @@ D:\video2text\models\
 ---
 
 
-### 2.2 安装 FFmpeg（用于视频音频提取）
+### 2.2 总结模型安装
 
-FFmpeg 是一个音视频处理工具，video2text 使用它从视频文件中提取音频。
+video2text 支持两种总结服务：NVIDIA 在线模型和本地 Ollama 模型，按需选择其一即可。
 
-**第一步：解压安装包**
+#### 2.2.1 NVIDIA 在线（使用在线 NVIDIA 模型总结）
 
-将下载的 `ffmpeg-*-win64-gpl.zip` 解压到一个固定目录，例如 `C:\ffmpeg`。解压后的目录结构如下：
+需要先在 [NVIDIA Build](https://build.nvidia.com/) 注册账号并创建 API Key（目前大部分模型免费使用）。获取 Key 后在程序目录下新建一个名为 `.env` 的文本文件（注意文件名以点开头，无扩展名）。用记事本打开，按需添加以下内容：
 
 ```
-C:\ffmpeg\
-└── bin\
-    ├── ffmpeg.exe
-    ├── ffplay.exe
-    └── ffprobe.exe
+# NVIDIA API Key（使用在线 NVIDIA 模型总结时需要）
+NVIDIA_API_KEY=nvapi-你的API密钥
+
+# Ollama API Key（使用带认证的 Ollama 服务时可选配置）
+# OLLAMA_API_KEY=你的API密钥
 ```
 
-**第二步：添加到系统 PATH 环境变量**
+保存文件。程序启动时会自动读取该文件中的环境变量。API Key 也可以通过系统环境变量设置，效果相同（系统环境变量优先级高于 `.env` 文件）。NVIDIA 提供有很多免费的模型，如果网络访问有问题需要自行解决。
 
-1. 右键点击「此电脑」→「属性」→「高级系统设置」→「环境变量」
-2. 在「系统变量」区域找到 `Path` 变量，双击打开
-3. 点击「新建」，输入 FFmpeg 的 `bin` 目录路径：`C:\ffmpeg\bin`
-4. 依次点击「确定」关闭所有对话框
-
-> **快捷方法**（Windows 10/11）：按 `Win+S` 搜索「环境变量」→ 选择「编辑系统环境变量」→ 点击「环境变量」按钮。
-
-**第三步：验证安装**
-
-**重新打开**一个命令提示符或 PowerShell 窗口（必须重新打开，旧窗口不会加载新的 PATH），运行：
-
-```powershell
-ffmpeg -version
-```
-
-如果显示 FFmpeg 版本信息（如 `ffmpeg version 7.x`），说明安装成功。如果提示「不是内部或外部命令」，请检查 PATH 设置是否正确，或尝试重启电脑后再试。
-
-> **替代方案**：如果不想修改系统 PATH，也可以在 video2text 的配置文件 `config.ini` 中指定 FFmpeg 的完整路径：
-> ```ini
-> [preprocessing]
-> ffmpeg_path = C:\ffmpeg\bin\ffmpeg.exe
-> ```
-
----
-
-
-### 2.3 安装 Ollama（用于AI总结）
+#### 2.2.2 安装 Ollama（使用本地模型总结）
 
 Ollama 是一个本地大语言模型运行框架，video2text 使用它来生成文本摘要。
 
@@ -222,28 +185,24 @@ ollama list
 ---
 
 
-### 2.4 验证安装是否成功
+### 2.3 验证安装是否成功
 
 完成以上所有步骤后，按顺序验证各组件是否正常工作：
 
-1. **验证 FFmpeg**：
-   ```powershell
-   ffmpeg -version
-   ```
-   应显示版本信息。
 
+
+1. **启动 video2text**：
+   - 双击 `video2text.exe` 或 `video2text.bat` 启动程序。
+   - 程序主窗口应正常显示，标题为「Video2Text - 视频转文本工具」。
+   - 底部状态栏会显示当前使用的配置文件路径。
+  
 2. **验证 Ollama**：
    ```powershell
    ollama list
    ```
    应显示已安装的模型列表。
 
-3. **启动 video2text**：
-   - 双击 `video2text.exe` 或 `video2text.bat` 启动程序。
-   - 程序主窗口应正常显示，标题为「Video2Text - 视频转文本工具」。
-   - 底部状态栏会显示当前使用的配置文件路径。
-
-4. **快速测试**（可选）：
+3. **快速测试**（可选）：
    - 选择一个短小的视频文件（1-2 分钟即可）。
    - 点击「仅转写」按钮，观察日志面板是否有输出、进度条是否推进。
    - 转写完成后，右侧面板应显示转写文本。
@@ -440,14 +399,10 @@ video2text 支持 CPU 模式运行，但转写速度会明显较慢。
 
 ### 4.2 双击 video2text.exe 无反应或闪退
 
-- **原因**：通常是 FFmpeg 未正确安装或未添加到 PATH。
+- **原因**：通常是内置 FFmpeg 文件缺失或程序目录不完整。
 - **解决**：
-  1. 打开命令提示符，运行 `ffmpeg -version` 确认 FFmpeg 可用。
-  2. 如果 FFmpeg 未添加到 PATH，在 `config.ini` 中手动指定路径：
-     ```ini
-     [preprocessing]
-     ffmpeg_path = C:\ffmpeg\bin\ffmpeg.exe
-     ```
+  1. 检查程序目录下 `ffmpeg\bin\` 是否包含 `ffmpeg.exe` 和 `ffprobe.exe`。
+  2. 如果文件缺失，重新解压完整程序包。
   3. 或者通过 `video2text.bat` 启动，它会自动设置工作目录。
 
 ### 4.3 Ollama连接失败
@@ -553,7 +508,6 @@ nvidia_thread_count = 5       # 多线程模式下的并发线程数
 nvidia_stream = true          # 是否启用流式输出（仅单线程模式有效）
 
 [preprocessing]
-ffmpeg_path = ffmpeg          # FFmpeg 路径
 audio_sample_rate = 16000     # 音频采样率
 audio_channels = 1            # 音频声道数
 max_chunk_duration = 300      # 最大切片时长（秒）
@@ -719,7 +673,6 @@ watermark_max_batch = 200     # 批量处理最大数量
 - **Ollama 服务**：使用总结功能前需确保 Ollama 已启动。程序可自动启动 Ollama 服务（在配置对话框中点击「启动服务」），也可手动运行 `ollama serve`。关闭程序时会自动停止由本程序启动的 Ollama 服务。如果使用 Ollama，需先拉取模型：`ollama pull qwen2.5:7b-instruct-q4_K_M`。Ollama 官网（https://docs.ollama.com/）注册账号后可免费使用在线大模型，如 `deepseek-v3.1:671b-cloud`、`gpt-oss:120b-cloud`。
 - **GPU 加速**：如无 NVIDIA 显卡，请在配置中将「设备」改为 `cpu`，转写速度会明显较慢。设备设置为 `auto` 时程序会自动检测可用设备。
 - **模型文件**：`large-v3` 模型约 3GB，必须放置在 `models/large-v3/` 目录下。首次运行时如未找到模型会自动下载（需联网）。确保模型文件不被杀毒软件误删。
-- **ffmpeg 路径**：确保 `ffmpeg` 已添加到系统 `PATH`，或在配置中设置 FFmpeg 路径为完整路径（如 `C:\ffmpeg\bin\ffmpeg.exe`）。
 - **代理设置**：如果网络环境需要代理才能访问 HuggingFace，请在网络标签页中配置代理地址。
 - **关闭程序**：关闭程序时会自动取消运行中的任务、恢复暂停状态、停止本程序启动的 Ollama 服务、卸载模型并释放 GPU 显存。
 - **API Key**：使用 NVIDIA 总结服务需设置环境变量 `NVIDIA_API_KEY`；使用带认证的 Ollama 服务需设置 `OLLAMA_API_KEY`。可通过系统环境变量或程序目录下的 `.env` 文件配置（系统环境变量优先级更高）。
