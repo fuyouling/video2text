@@ -39,7 +39,7 @@ class DirectoryManager:
             return
         data = safe_read_json(self._file_path)
         if data is None:
-            logger.warning("DirectoryManager: ✗ 加载失败 (%s)", self._file_path)
+            logger.warning("DirectoryManager: ✗ 加载失败 (%s)", self._file_path.name)
             return
         input_dirs = data.get("input_dirs", [])
         output_dirs = data.get("output_dirs", [])
@@ -51,7 +51,7 @@ class DirectoryManager:
             output_dirs = []
         self._input_dirs = list(input_dirs)
         self._output_dirs = list(output_dirs)
-        logger.info("DirectoryManager: ✓ 加载 (%s)", self._file_path)
+        logger.info("DirectoryManager: ✓ 加载 (%s)", self._file_path.name)
 
     def _save(self) -> None:
         """原子写入 JSON 文件"""

@@ -397,7 +397,9 @@ class ResultViewerWindow(QMainWindow):
                     summary_text = summary_path.read_text(encoding="utf-8")
                     self._display_markdown(summary_text)
                 except Exception:
-                    logger.warning("重新渲染摘要失败（主题切换）: %s", summary_path)
+                    logger.warning(
+                        "重新渲染摘要失败（主题切换）: %s", summary_path.name
+                    )
 
     # ─── 文件加载与过滤 ────────────────────────────────────────
 
@@ -763,7 +765,7 @@ class ResultViewerWindow(QMainWindow):
                     summary_text = summary_path.read_text(encoding="utf-8")
                     self._display_markdown(summary_text)
                 except Exception:
-                    logger.warning("重新渲染摘要失败: %s", summary_path)
+                    logger.warning("重新渲染摘要失败: %s", summary_path.name)
 
     # ─── 全屏 ─────────────────────────────────────────────────
 

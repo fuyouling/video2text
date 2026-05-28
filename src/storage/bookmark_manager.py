@@ -90,7 +90,7 @@ class BookmarkManager:
             return []
         data = safe_read_json(self._file_path)
         if data is None:
-            logger.warning("BookmarkManager: ✗ 读取失败 (%s)", self._file_path)
+            logger.warning("BookmarkManager: ✗ 读取失败 (%s)", self._file_path.name)
             return []
         items = data.get("bookmarks", [])
         return [BookmarkItem.from_dict(d) for d in items]

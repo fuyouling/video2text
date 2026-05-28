@@ -105,7 +105,7 @@ class FileWriter:
                 validate_output_file(str(output_path))
                 validate_output_content(str(output_path), fmt)
 
-            logger.debug("FileWriter: ✓ 转写文本 (%s)", output_path)
+            logger.debug("FileWriter: ✓ 转写文本 (%s)", output_path.name)
             return str(output_path)
         except Exception as e:
             logger.error("FileWriter: ✗ 转写文本 (%s)", e)
@@ -141,7 +141,7 @@ class FileWriter:
             if validate:
                 validate_output_file(str(output_path))
 
-            logger.debug("FileWriter: ✓ 合并文本 (%s)", output_path)
+            logger.debug("FileWriter: ✓ 合并文本 (%s)", output_path.name)
             return str(output_path)
         except Exception as e:
             logger.error("FileWriter: ✗ 合并文本 (%s)", e)
@@ -181,7 +181,7 @@ class FileWriter:
             if validate:
                 validate_output_file(str(output_path))
 
-            logger.debug("FileWriter: ✓ 摘要 (%s)", output_path)
+            logger.debug("FileWriter: ✓ 摘要 (%s)", output_path.name)
             return str(output_path)
         except Exception as e:
             logger.error("FileWriter: ✗ 摘要 (%s)", e)
@@ -239,7 +239,7 @@ class FileWriter:
                 validate_output_file(str(output_path))
                 validate_output_content(str(output_path), "json")
 
-            logger.info("FileWriter: ✓ JSON (%s)", output_path)
+            logger.info("FileWriter: ✓ JSON (%s)", output_path.name)
             return str(output_path)
         except Exception as e:
             logger.error("FileWriter: ✗ JSON (%s)", e)
@@ -264,7 +264,7 @@ class FileWriter:
             if validate:
                 validate_output_file(str(output_path))
 
-            logger.info("FileWriter: ✓ 文本 (%s)", output_path)
+            logger.info("FileWriter: ✓ 文本 (%s)", output_path.name)
             return str(output_path)
         except Exception as e:
             logger.error("FileWriter: ✗ 文本 (%s)", e)
@@ -295,7 +295,7 @@ class FileWriter:
             if validate:
                 validate_output_file(str(output_path))
 
-            logger.info("FileWriter: ✓ 关键词 (%s)", output_path)
+            logger.info("FileWriter: ✓ 关键词 (%s)", output_path.name)
             return str(output_path)
         except Exception as e:
             logger.error("FileWriter: ✗ 关键词 (%s)", e)

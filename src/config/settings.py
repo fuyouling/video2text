@@ -74,7 +74,10 @@ class Settings:
             if Path(self.config_path).exists():
                 self._load()
             else:
-                logger.info("Settings: ⚠ 配置不存在 (%s)，使用默认值", self.config_path)
+                logger.info(
+                    "Settings: ⚠ 配置不存在 (%s)，使用默认值",
+                    Path(self.config_path).name,
+                )
 
             self._initialized = True
 
@@ -112,7 +115,7 @@ class Settings:
         """内部加载，首次初始化时调用，输出日志"""
         try:
             self.config.read(self.config_path, encoding="utf-8")
-            logger.info("Settings: ✓ 配置加载 (%s)", self.config_path)
+            logger.info("Settings: ✓ 配置加载 (%s)", Path(self.config_path).name)
         except Exception as e:
             raise ConfigurationError(f"加载配置文件失败: {e}")
 
@@ -145,7 +148,7 @@ class Settings:
                         pass
                     raise
 
-            logger.info("Settings: ✓ 配置保存 (%s)", self.config_path)
+            logger.info("Settings: ✓ 配置保存 (%s)", Path(self.config_path).name)
         except ConfigurationError:
             raise
         except Exception as e:

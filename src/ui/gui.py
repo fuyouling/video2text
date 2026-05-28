@@ -940,7 +940,7 @@ class MainWindow(QMainWindow):
             )
         except (OSError, UnicodeDecodeError) as exc:
             get_logger("video2text").warning(
-                "读取转写文件失败: %s (%s)", transcript_path, exc
+                "读取转写文件失败: %s (%s)", transcript_path.name, exc
             )
 
     def _on_transcribe_error(self, video_name: str, error_msg: str) -> None:

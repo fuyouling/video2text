@@ -40,7 +40,7 @@ def get_cached_transcriber(
             cached = _model_cache[cache_key]
             if cached._loaded:
                 _model_cache.move_to_end(cache_key)
-                logger.info("Transcriber: ✓ 复用缓存 (%s)", cache_key)
+                logger.info("Transcriber: ✓ 复用缓存")
                 return cached
             else:
                 del _model_cache[cache_key]
@@ -386,7 +386,7 @@ class Transcriber:
         if not audio_file.exists():
             raise TranscriptionError(f"音频文件不存在: {audio_path}")
 
-        logger.debug("开始转写: %s", audio_path)
+        logger.debug("开始转写: %s", audio_file.name)
         logger.debug(
             "语言: %s, beam_size: %d, temperature: %s",
             language,

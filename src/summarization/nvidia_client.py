@@ -77,7 +77,7 @@ class NvidiaClient:
             }
             resp = self._session.post(self.api_url, json=payload, timeout=10)
             ok = resp.status_code == 200
-            logger.info(
+            logger.debug(
                 "NvidiaClient: 连接检查 %s",
                 "成功" if ok else f"状态码 {resp.status_code}",
             )

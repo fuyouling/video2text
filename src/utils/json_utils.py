@@ -29,7 +29,7 @@ def safe_read_json(file_path: Path, default: T = None) -> T:
     except FileNotFoundError:
         return default
     except (json.JSONDecodeError, OSError) as exc:
-        logger.warning("读取 JSON 文件失败 %s: %s", file_path, exc)
+        logger.warning("读取 JSON 文件失败 %s: %s", file_path.name, exc)
         return default
 
 

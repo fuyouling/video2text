@@ -78,7 +78,7 @@ class SummarizationService:
         label = video_name or "(未命名)"
 
         if total > 0:
-            self._log(f"  ├─ 语音总结开始")
+            self._log(f"  ├─ 文本总结开始")
 
         def _on_token(token: str):
             if self.on_stream_token:
@@ -98,7 +98,7 @@ class SummarizationService:
             self.file_writer.write_summary(summary, video_name, fmt=self.summary_format)
 
         if total > 0:
-            self._log(f"  └─ 语音总结完成 ✓ (.{self.summary_format})")
+            self._log(f"  └─ 文本总结完成 ✓ (.{self.summary_format})")
         return summary
 
     def summarize_batch(

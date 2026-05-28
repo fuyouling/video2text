@@ -114,7 +114,7 @@ class VideoProcessor:
                 error_msg = result.stderr or result.stdout
                 raise VideoFileError(f"媒体文件损坏: {error_msg}")
 
-            logger.debug("媒体文件验证通过: %s", video_path)
+            logger.debug("媒体文件验证通过: %s", path.name)
             return True
 
         except subprocess.TimeoutExpired:
@@ -259,7 +259,7 @@ class VideoProcessor:
                 raise VideoFileError(f"媒体文件没有音轨，无法提取音频: {video_path}")
 
         label = "转换音频" if self.is_audio_file(video_path) else "提取音频"
-        logger.debug("开始%s: %s", label, video_path)
+        logger.debug("开始%s: %s", label, Path(video_path).name)
 
         return self._run_ffmpeg_pcm_extract(
             video_path, str(output_file), sample_rate, channels, label
@@ -315,7 +315,7 @@ class VideoProcessor:
                     input_path, str(output_file), sample_rate, channels
                 )
 
-            logger.debug("音频%s成功: %s", label, output_file)
+            logger.debug("音频%s成功: %s", label, output_file.name)
             return str(output_file)
 
         except subprocess.TimeoutExpired:
@@ -411,7 +411,7 @@ class VideoProcessor:
             if convert_result.returncode != 0:
                 raise VideoFileError(f"MP3 转 WAV 失败: {convert_result.stderr}")
 
-            logger.info("VideoProcessor: ✓ 回退成功 (%s)", output_file)
+            logger.info("VideoProcessor: ✓ 回退成功 (%s)", output_file.name)
             return str(output_file)
 
         except VideoFileError:
@@ -484,7 +484,7 @@ class VideoProcessor:
                 error_msg = result.stderr or result.stdout
                 raise VideoFileError(f"缩略图生成失败: {error_msg}")
 
-            logger.info("VideoProcessor: ✓ 缩略图 (%s)", output_file)
+            logger.info("VideoProcessor: ✓ 缩略图 (%s)", output_file.name)
             return str(output_file)
 
         except VideoFileError:

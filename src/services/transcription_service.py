@@ -155,12 +155,12 @@ class TranscriptionService:
                     self.on_video_done(result)
 
             except Video2TextError as e:
-                logger.error("转写失败 %s: %s", video_path, e)
+                logger.error("转写失败 %s: %s", Path(video_path).name, e)
                 self._log(f"[{idx + 1}/{total}] 转写失败: {video_name} - {e}")
                 if self.on_video_error:
                     self.on_video_error(video_name, str(e))
             except Exception as e:
-                logger.exception("未知错误 %s", video_path)
+                logger.exception("未知错误 %s", Path(video_path).name)
                 self._log(f"[{idx + 1}/{total}] 未知错误: {video_name}")
                 if self.on_video_error:
                     self.on_video_error(video_name, str(e))

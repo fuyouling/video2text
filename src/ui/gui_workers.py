@@ -145,7 +145,7 @@ class TranscribeWorker(QObject):
 
             model_name = Path(cfg.model_path).name
             logger.info(
-                "[初始化] 模型: %s | 设备: %s (%s) | FFmpeg: ✓",
+                "[转写] 模型: %s | 设备: %s (%s) ✓ ",
                 model_name,
                 transcriber.device,
                 transcriber.compute_type,
@@ -261,28 +261,29 @@ class SummarizeWorker(QObject):
         self, logger, file_writer: FileWriter, provider: str
     ) -> None:
         """单线程模式（Ollama 或 NVIDIA single）"""
+        provider_label = "Ollama" if provider == "ollama" else "NVIDIA API"
         if provider == "ollama":
             ollama_url = self.settings.get(
                 "summarization.ollama_url", "http://127.0.0.1:11434"
             )
             ollama_model = self.settings.get("summarization.ollama_model", "")
-            if not OllamaClient.full_check(ollama_url, ollama_model or ""):
-                msg = "Ollama 服务不可用"
-                logger.error(msg)
-                self.error.emit(msg)
-                self._emit_all_errors(msg)
-                return
+            sum_available = OllamaClient.full_check(ollama_url, ollama_model or "")
         else:
             provider_inst = create_provider(self.settings)
             try:
-                if not provider_inst.check_connection():
-                    msg = "NVIDIA API 连接: ✗ 失败"
-                    logger.error(msg)
-                    self.error.emit(msg)
-                    self._emit_all_errors(msg)
-                    return
+                sum_available = provider_inst.check_connection()
             finally:
                 provider_inst.close()
+
+        sum_status = "✓" if sum_available else "✗"
+        logger.info("[总结] %s: %s", provider_label, sum_status)
+
+        if not sum_available:
+            msg = f"{provider_label} 服务不可用"
+            logger.error(msg)
+            self.error.emit(msg)
+            self._emit_all_errors(msg)
+            return
 
         provider_inst = create_provider(self.settings)
         try:
@@ -305,14 +306,19 @@ class SummarizeWorker(QObject):
         """多线程模式（NVIDIA multi）—— 强制非流式"""
         provider_inst = create_provider(self.settings)
         try:
-            if not provider_inst.check_connection():
-                msg = "NVIDIA API 连接: ✗ 失败"
-                logger.error(msg)
-                self.error.emit(msg)
-                self._emit_all_errors(msg)
-                return
+            sum_available = provider_inst.check_connection()
         finally:
             provider_inst.close()
+
+        sum_status = "✓" if sum_available else "✗"
+        logger.info("[总结] NVIDIA API: %s", sum_status)
+
+        if not sum_available:
+            msg = "NVIDIA API 服务不可用"
+            logger.error(msg)
+            self.error.emit(msg)
+            self._emit_all_errors(msg)
+            return
 
         if self._standalone_text and not self.video_files:
             self._execute_summarization_single_fallback(logger, file_writer)
@@ -455,19 +461,19 @@ class SummarizeWorker(QObject):
 
                     if summary:
                         logger.info("[%d/%d] %s", idx + 1, task_total, video_name)
-                        logger.info("  └─ 语音总结完成 ✓ (.%s)", summary_format)
+                        logger.info("  └─ 文本总结完成 ✓ (.%s)", summary_format)
                         self.video_done.emit(video_name, summary)
                     else:
                         err_msg = err if err else "总结结果为空"
                         logger.info("[%d/%d] %s", idx + 1, task_total, video_name)
-                        logger.info("  └─ 语音总结失败 ✗ %s", err_msg)
+                        logger.info("  └─ 文本总结失败 ✗ %s", err_msg)
                         self.video_error.emit(video_name, err_msg)
                 except Exception as e:
                     video_name, idx = futures[future]
                     with progress_lock:
                         done_count[0] += 1
                     logger.info("[%d/%d] %s", idx + 1, task_total, video_name)
-                    logger.info("  └─ 语音总结失败 ✗ %s", e)
+                    logger.info("  └─ 文本总结失败 ✗ %s", e)
                     self.video_error.emit(video_name, str(e))
 
                 self.progress.emit(done_count[0], total)
@@ -660,37 +666,12 @@ class PipelineWorker(QObject):
                 }
             )
 
-            provider_name = self.settings.get("summarization.provider", "ollama")
-            nvidia_mode = self.settings.get("summarization.nvidia_mode", "single")
-            sum_available = False
-            provider_label = "Ollama" if provider_name == "ollama" else "NVIDIA API"
-
-            if provider_name == "ollama":
-                ollama_url = self.settings.get(
-                    "summarization.ollama_url", "http://127.0.0.1:11434"
-                )
-                ollama_model = self.settings.get("summarization.ollama_model", "")
-                sum_available = OllamaClient.full_check(ollama_url, ollama_model or "")
-                if not sum_available:
-                    logger.warning("Ollama 服务不可用，将只执行转写")
-            else:
-                check_provider = create_provider(self.settings)
-                try:
-                    sum_available = check_provider.check_connection()
-                    if not sum_available:
-                        logger.warning("%s 连接: ✗ 失败，将只执行转写", provider_label)
-                finally:
-                    check_provider.close()
-
             model_name = Path(cfg.model_path).name
-            sum_status = "✓" if sum_available else "✗"
             logger.info(
-                "[初始化] 模型: %s | 设备: %s (%s) | FFmpeg: ✓ | %s: %s",
+                "[转写] 模型: %s | 设备: %s (%s) ✓ ",
                 model_name,
                 transcriber.device,
                 transcriber.compute_type,
-                provider_label,
-                sum_status,
             )
 
             total = len(self.video_files)
@@ -730,6 +711,31 @@ class PipelineWorker(QObject):
                 self._tx_service = tx_service
 
             results = tx_service.run(self.video_files, self.output_dir)
+
+            provider_name = self.settings.get("summarization.provider", "ollama")
+            nvidia_mode = self.settings.get("summarization.nvidia_mode", "single")
+            sum_available = False
+            provider_label = "Ollama" if provider_name == "ollama" else "NVIDIA API"
+
+            if provider_name == "ollama":
+                ollama_url = self.settings.get(
+                    "summarization.ollama_url", "http://127.0.0.1:11434"
+                )
+                ollama_model = self.settings.get("summarization.ollama_model", "")
+                sum_available = OllamaClient.full_check(ollama_url, ollama_model or "")
+                if not sum_available:
+                    logger.warning("Ollama 服务不可用，将只执行转写")
+            else:
+                check_provider = create_provider(self.settings)
+                try:
+                    sum_available = check_provider.check_connection()
+                    if not sum_available:
+                        logger.warning("%s 连接: ✗ 失败，将只执行转写", provider_label)
+                finally:
+                    check_provider.close()
+
+            sum_status = "✓" if sum_available else "✗"
+            logger.info("[总结] %s: %s", provider_label, sum_status)
 
             if sum_available and provider_name == "nvidia" and nvidia_mode == "multi":
                 sum_done = self._summarize_results_multi(
@@ -901,17 +907,17 @@ class PipelineWorker(QObject):
                     _, idx = futures[future]
                     if summary:
                         logger.info("[%d/%d] %s", idx + 1, task_total, video_name)
-                        logger.info("  └─ 语音总结完成 ✓ (.%s)", summary_format)
+                        logger.info("  └─ 文本总结完成 ✓ (.%s)", summary_format)
                         self.summarize_done.emit(video_name, summary)
                     else:
                         err_msg = err if err else "总结结果为空"
                         logger.info("[%d/%d] %s", idx + 1, task_total, video_name)
-                        logger.info("  └─ 语音总结失败 ✗ %s", err_msg)
+                        logger.info("  └─ 文本总结失败 ✗ %s", err_msg)
                         self.summarize_error.emit(video_name, err_msg)
                 except Exception as e:
                     video_name, idx = futures[future]
                     logger.info("[%d/%d] %s", idx + 1, task_total, video_name)
-                    logger.info("  └─ 语音总结失败 ✗ %s", e)
+                    logger.info("  └─ 文本总结失败 ✗ %s", e)
                     self.summarize_error.emit(video_name, str(e))
 
                 with progress_lock:

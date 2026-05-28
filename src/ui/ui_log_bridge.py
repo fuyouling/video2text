@@ -3,6 +3,7 @@
 import logging
 
 from PySide6.QtCore import QObject, Signal
+from src.utils.logger import _ShortPathFormatter
 
 
 class UiLogSignal(QObject):
@@ -17,7 +18,7 @@ class UiLogHandler(logging.Handler):
     def __init__(self, signal: UiLogSignal) -> None:
         super().__init__()
         self._signal = signal
-        self.setFormatter(logging.Formatter("%(message)s"))
+        self.setFormatter(_ShortPathFormatter("%(message)s"))
 
     def emit(self, record: logging.LogRecord) -> None:
         """将日志记录格式化后通过 Qt 信号发送到 UI 线程。"""

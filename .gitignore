@@ -232,10 +232,7 @@ models/large-v3/
 .vscode/
 
 # 用户提示词
-# prompts.json
-
-#同步本地工作目录
-sync_to_tools.ps1
+prompts.json
 
 # 结果查看器窗口布局
 result_viewer.ini

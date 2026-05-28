@@ -1,12 +1,36 @@
 """日志工具"""
 
 import logging
+import os
 import threading
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
 
 _CONFIGURED_LOGGERS: set[str] = set()
 _CONFIGURE_LOCK = threading.Lock()
+
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
+
+
+class _ShortPathFormatter(logging.Formatter):
+    """自动缩短日志中的文件路径和 logger 名称。"""
+
+    def format(self, record):
+        if record.name:
+            parts = record.name.split(".")
+            if len(parts) > 1 and parts[0] == "src":
+                record = logging.makeLogRecord(record.__dict__)
+                record.name = parts[-1]
+
+        msg = super().format(record)
+
+        if _PROJECT_ROOT:
+            for sep in (os.sep, "/", "\\"):
+                prefix = _PROJECT_ROOT + sep
+                if prefix in msg:
+                    msg = msg.replace(prefix, "")
+                    break
+        return msg
 
 
 def setup_logger(
@@ -56,7 +80,7 @@ def setup_logger(
         for h in external_handlers:
             logger.addHandler(h)
 
-        formatter = logging.Formatter(
+        formatter = _ShortPathFormatter(
             "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )
@@ -136,5 +160,5 @@ def log_error_with_context(
     log = logging.getLogger(logger_name)
     log.error("  %s ✗ 失败", step_name)
     if video_path:
-        log.error("  └─ 文件: %s", video_path)
+        log.error("  └─ 文件: %s", Path(video_path).name)
     log.error("  └─ 错误: %s", error)

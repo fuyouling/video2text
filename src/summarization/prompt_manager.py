@@ -67,13 +67,13 @@ class PromptManager:
             return
         data = safe_read_json(self._file_path)
         if data is None:
-            logger.warning("PromptManager: ✗ 加载失败 (%s)", self._file_path)
+            logger.warning("PromptManager: ✗ 加载失败 (%s)", self._file_path.name)
             return
         self._templates = data.get("templates", {})
         self._last_used = data.get("last_used", "")
         self._markdown_prompt = data.get("markdown_prompt", _DEFAULT_MARKDOWN_PROMPT)
         self._markdown_enabled = data.get("markdown_enabled", True)
-        logger.info("PromptManager: ✓ 加载 (%s)", self._file_path)
+        logger.info("PromptManager: ✓ 加载 (%s)", self._file_path.name)
 
     def save(self) -> None:
         try:
