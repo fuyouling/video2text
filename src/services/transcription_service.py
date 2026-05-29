@@ -464,6 +464,8 @@ class TranscriptionService:
         Returns:
             切片时长（秒）
         """
+        if segments is not None and not segments:
+            return 0.0
         try:
             result = subprocess.run(
                 [

@@ -46,6 +46,19 @@ def _format_file_size(size_bytes: int) -> str:
         return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
 
 
+class _SortTreeWidgetItem(QTreeWidgetItem):
+    """支持按数值排序的树节点（大小列按字节数排序）"""
+
+    def __lt__(self, other: QTreeWidgetItem) -> bool:
+        col = self.treeWidget().sortColumn()
+        if col == 2:
+            a = self.data(0, Qt.ItemDataRole.UserRole + 1)
+            b = other.data(0, Qt.ItemDataRole.UserRole + 1)
+            if a is not None and b is not None:
+                return int(a) < int(b)
+        return self.text(col) < other.text(col)
+
+
 class VideoSelectionDialog(QDialog):
     """媒体文件选择对话框 —— 树形视图展示文件，支持按类型/后缀/大小组合筛选和勾选。"""
 
@@ -128,10 +141,10 @@ class VideoSelectionDialog(QDialog):
         self._tree.setHeaderLabels(["文件名", "类型", "大小", "输出目录拼接"])
         self._tree.setSelectionMode(QTreeWidget.SelectionMode.NoSelection)
         self._tree.setAnimated(True)
-        self._tree.setSortingEnabled(True)
+        self._tree.setSortingEnabled(False)
         self._tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._tree.customContextMenuRequested.connect(self._show_context_menu)
-        self._build_tree()
+        self._tree.header().setMinimumSectionSize(50)
         self._tree.header().setStretchLastSection(False)
         self._tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self._tree.header().setSectionResizeMode(
@@ -140,30 +153,23 @@ class VideoSelectionDialog(QDialog):
         self._tree.header().setSectionResizeMode(
             2, QHeaderView.ResizeMode.ResizeToContents
         )
-        self._tree.header().setSectionResizeMode(
-            3, QHeaderView.ResizeMode.ResizeToContents
-        )
+        self._tree.header().setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        self._tree.header().resizeSection(3, 500)
+        self._build_tree()
         model = self._tree.model()
-        _ALIGN_RIGHT = int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        model.setHeaderData(
-            1,
-            Qt.Orientation.Horizontal,
-            _ALIGN_RIGHT,
-            Qt.ItemDataRole.TextAlignmentRole,
-        )
-        model.setHeaderData(
-            2,
-            Qt.Orientation.Horizontal,
-            _ALIGN_RIGHT,
-            Qt.ItemDataRole.TextAlignmentRole,
-        )
-        model.setHeaderData(
-            3,
-            Qt.Orientation.Horizontal,
-            _ALIGN_RIGHT,
-            Qt.ItemDataRole.TextAlignmentRole,
-        )
+        _ALIGN_LEFT = int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        for _col in range(4):
+            model.setHeaderData(
+                _col,
+                Qt.Orientation.Horizontal,
+                _ALIGN_LEFT,
+                Qt.ItemDataRole.TextAlignmentRole,
+            )
         self._tree.expandAll()
+        self._tree.header().setSortIndicatorShown(True)
+        self._tree.header().setSectionsClickable(True)
+        self._sort_order: dict[int, Qt.SortOrder] = {}
+        self._tree.header().sectionClicked.connect(self._on_header_clicked)
         self._tree.itemChanged.connect(self._update_info_label)
         self._update_info_label()
         layout.addWidget(self._tree)
@@ -273,22 +279,17 @@ class VideoSelectionDialog(QDialog):
                     size_bytes = -1
                     size_str = "-"
                 rel_parts: tuple[str, ...] = ()
-                item = QTreeWidgetItem(
+                item = _SortTreeWidgetItem(
                     [f"{icon} {abs_p.name}", media_type, size_str, ""]
                 )
                 item.setData(0, Qt.ItemDataRole.UserRole, str(abs_p))
                 item.setData(0, Qt.ItemDataRole.UserRole + 1, size_bytes)
                 item.setData(0, Qt.ItemDataRole.UserRole + 2, rel_parts)
                 item.setCheckState(0, Qt.CheckState.Checked)
-                item.setTextAlignment(
-                    1, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-                )
-                item.setTextAlignment(
-                    2, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-                )
-                item.setTextAlignment(
-                    3, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-                )
+                for _col in range(1, 4):
+                    item.setTextAlignment(
+                        _col, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+                    )
                 self._tree.addTopLevelItem(item)
                 self._leaf_items.append(item)
         else:
@@ -312,22 +313,18 @@ class VideoSelectionDialog(QDialog):
                         size_bytes = -1
                         size_str = "-"
                     rel_parts = ()
-                    item = QTreeWidgetItem(
+                    item = _SortTreeWidgetItem(
                         [f"{icon} {abs_p.name}", media_type, size_str, ""]
                     )
                     item.setData(0, Qt.ItemDataRole.UserRole, str(abs_p))
                     item.setData(0, Qt.ItemDataRole.UserRole + 1, size_bytes)
                     item.setData(0, Qt.ItemDataRole.UserRole + 2, rel_parts)
                     item.setCheckState(0, Qt.CheckState.Checked)
-                    item.setTextAlignment(
-                        1, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-                    )
-                    item.setTextAlignment(
-                        2, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-                    )
-                    item.setTextAlignment(
-                        3, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-                    )
+                    for _col in range(1, 4):
+                        item.setTextAlignment(
+                            _col,
+                            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                        )
                     self._tree.addTopLevelItem(item)
                     self._leaf_items.append(item)
                     continue
@@ -371,25 +368,29 @@ class VideoSelectionDialog(QDialog):
         except OSError:
             size_bytes = -1
             size_str = "-"
-        item = QTreeWidgetItem([f"{icon} {abs_p.name}", media_type, size_str, ""])
+        item = _SortTreeWidgetItem([f"{icon} {abs_p.name}", media_type, size_str, ""])
         item.setData(0, Qt.ItemDataRole.UserRole, str(abs_p))
         item.setData(0, Qt.ItemDataRole.UserRole + 1, size_bytes)
         item.setData(0, Qt.ItemDataRole.UserRole + 2, rel_parts)
         item.setCheckState(0, Qt.CheckState.Checked)
-        item.setTextAlignment(
-            1, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-        )
-        item.setTextAlignment(
-            2, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-        )
-        item.setTextAlignment(
-            3, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-        )
+        for _col in range(1, 4):
+            item.setTextAlignment(
+                _col, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+            )
         parent.addChild(item)
         self._leaf_items.append(item)
 
     def _iter_leaves(self):
         yield from self._leaf_items
+
+    def _on_header_clicked(self, logical_index: int) -> None:
+        cur_order = self._sort_order.get(logical_index, Qt.SortOrder.AscendingOrder)
+        self._tree.sortByColumn(logical_index, cur_order)
+        self._sort_order[logical_index] = (
+            Qt.SortOrder.DescendingOrder
+            if cur_order == Qt.SortOrder.AscendingOrder
+            else Qt.SortOrder.AscendingOrder
+        )
 
     def _update_info_label(self) -> None:
         total = len(self._leaf_items)
@@ -516,8 +517,9 @@ class VideoSelectionDialog(QDialog):
             for item in self._iter_leaves():
                 item.setText(3, "—")
         else:
+            saved_enabled = settings.get_bool("output.mirror_enabled", True)
             self._mirror_checkbox.blockSignals(True)
-            self._mirror_checkbox.setChecked(True)
+            self._mirror_checkbox.setChecked(saved_enabled)
             self._mirror_checkbox.blockSignals(False)
             default_depth = settings.get_int("output.mirror_depth", 1)
             clamped = min(default_depth, self._max_depth)
@@ -525,10 +527,18 @@ class VideoSelectionDialog(QDialog):
             self._depth_spin.setRange(1, self._max_depth)
             self._depth_spin.setValue(clamped)
             self._depth_spin.blockSignals(False)
-            self._depth_spin.setEnabled(True)
-            self._update_mirror_column(clamped)
+            if saved_enabled:
+                self._depth_spin.setEnabled(True)
+                self._update_mirror_column(clamped)
+            else:
+                self._depth_spin.setEnabled(False)
+                for item in self._iter_leaves():
+                    item.setText(3, "—")
 
     def _on_mirror_changed(self, checked: bool) -> None:
+        settings = Settings()
+        settings.set("output.mirror_enabled", str(checked))
+        settings.save()
         if checked:
             depth = self._depth_spin.value()
             self._depth_spin.setEnabled(True)
@@ -552,9 +562,12 @@ class VideoSelectionDialog(QDialog):
             rel_parts = item.data(0, Qt.ItemDataRole.UserRole + 2)
             if rel_parts and len(rel_parts) > 0:
                 truncated = rel_parts[:depth]
-                item.setText(3, str(Path(*truncated)))
+                text = str(Path(*truncated))
+                item.setText(3, text)
+                item.setToolTip(3, text)
             else:
                 item.setText(3, "（根目录）")
+                item.setToolTip(3, "（根目录）")
         self._tree.blockSignals(False)
 
     def get_mirror_subdirs(self) -> bool:
@@ -602,6 +615,7 @@ _KEY_LABELS: dict[str, str] = {
     "output.output_dir": "输出目录",
     "output.transcript_format": "转写格式",
     "output.summary_format": "摘要格式",
+    "output.mirror_enabled": "目录拼接开关",
     "output.mirror_depth": "目录拼接层级",
     "network.proxy": "代理地址",
     "paths.models_dir": "模型目录",
@@ -633,6 +647,7 @@ _KEY_TOOLTIPS: dict[str, str] = {
     "output.output_dir": "输出目录，支持相对路径 (相对程序目录) 和绝对路径",
     "output.transcript_format": "转写输出格式: txt, srt, vtt, json (可选多种，逗号分隔)",
     "output.summary_format": "摘要输出格式: txt (纯文本), md (Markdown)",
+    "output.mirror_enabled": "是否启用输出目录拼接: True / False",
     "output.mirror_depth": "输出目录拼接的默认层级深度 (1~10)，控制取输入目录的前几层子目录",
     "network.proxy": "HTTP 代理地址 (如 http://127.0.0.1:7890)，用于访问外部 API，留空不使用",
     "paths.models_dir": "模型文件存储目录，支持相对路径和绝对路径",
@@ -749,13 +764,15 @@ class ConfigEditorDialog(QDialog):
     def _widget_text(widget: QWidget) -> str:
         if isinstance(widget, QComboBox):
             return widget.currentText()
-        return widget.text()  # type: ignore[union-attr]
+        if hasattr(widget, "text"):
+            return widget.text()  # type: ignore[union-attr]
+        return ""
 
     @staticmethod
     def _set_widget_text(widget: QWidget, value: str) -> None:
         if isinstance(widget, QComboBox):
             widget.setCurrentText(value)
-        else:
+        elif hasattr(widget, "setText"):
             widget.setText(value)  # type: ignore[union-attr]
 
     def _save(self) -> None:

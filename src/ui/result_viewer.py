@@ -514,19 +514,21 @@ class ResultViewerWindow(QMainWindow):
         dir_nodes: dict[str, QTreeWidgetItem] = {"": root}
         video_names: set[str] = set()
 
+        _TRANSCRIPT_EXTS = (".txt", ".srt", ".vtt", ".json")
+        _SKIP_SUFFIXES = ("_summary.txt", "_summary.md", "_keywords.txt")
+
         try:
-            txt_files = sorted(output_path.rglob("*.txt"))
+            all_files: list[Path] = []
+            for ext in _TRANSCRIPT_EXTS:
+                all_files.extend(output_path.rglob(f"*{ext}"))
+            all_files.sort()
         except OSError as exc:
             logger.warning("扫描目录失败: %s", exc)
             self._folder_tree.blockSignals(False)
             return
 
-        for txt_file in txt_files:
-            if txt_file.name.endswith("_summary.txt") or txt_file.name.endswith(
-                "_summary.md"
-            ):
-                continue
-            if txt_file.name.endswith("_keywords.txt"):
+        for txt_file in all_files:
+            if any(txt_file.name.endswith(s) for s in _SKIP_SUFFIXES):
                 continue
             video_name = txt_file.stem
             if not video_name:

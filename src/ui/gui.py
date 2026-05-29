@@ -866,10 +866,17 @@ class MainWindow(QMainWindow):
     def _start_worker(self, thread: QThread, worker) -> None:
         """启动 worker 线程并连接通用信号"""
         if self._worker_thread is not None and self._worker_thread.isRunning():
-            if self._worker is not None and hasattr(self._worker, "cancel"):
-                self._worker.cancel()
+            try:
+                self._worker_thread.finished.disconnect(self._on_thread_finished)
+            except (RuntimeError, TypeError):
+                pass
+            if self._worker is not None:
+                if hasattr(self._worker, "cancel"):
+                    self._worker.cancel()
+                if hasattr(self._worker, "unpause"):
+                    self._worker.unpause()
             self._worker_thread.quit()
-            self._worker_thread.wait(3000)
+            self._worker_thread.wait(5000)
             if self._worker_thread.isRunning():
                 self._worker_thread.terminate()
                 self._worker_thread.wait(1000)
@@ -1221,6 +1228,10 @@ class MainWindow(QMainWindow):
         worker.set_download_confirmed(reply == QMessageBox.StandardButton.Yes)
 
     def _on_thread_finished(self) -> None:
+        sender = self.sender()
+        if sender is not None and sender is not self._worker_thread:
+            return
+
         self._set_busy_state(False)
 
         worker = self._worker
@@ -1229,6 +1240,10 @@ class MainWindow(QMainWindow):
         self._worker_thread = None
 
         if thread is not None:
+            try:
+                thread.finished.disconnect(self._on_thread_finished)
+            except (RuntimeError, TypeError):
+                pass
             thread.wait(3000)
         if worker is not None:
             worker.deleteLater()
@@ -1373,9 +1388,15 @@ class MainWindow(QMainWindow):
 
         custom_prompt = self.ollama_prompt_edit.toPlainText().strip()
 
+        video_path = video_name
+        for vf in self._video_files:
+            if Path(vf).stem == video_name:
+                video_path = vf
+                break
+
         thread = QThread()
         worker = SummarizeWorker(
-            [video_name],
+            [video_path],
             output_dir,
             self.settings,
             custom_prompt,
@@ -1428,6 +1449,10 @@ class MainWindow(QMainWindow):
         self._search_controller.refresh_if_active()
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        if self._scan_thread is not None and self._scan_thread.isRunning():
+            self._scan_thread.quit()
+            self._scan_thread.wait(3000)
+
         if self._worker_thread is not None and self._worker_thread.isRunning():
             if self._worker is not None and hasattr(self._worker, "cancel"):
                 self._worker.cancel()

@@ -134,6 +134,8 @@ class TranscribeWorker(QObject):
             return self._service.is_paused if self._service else False
 
     def _confirm_download_callback(self) -> bool:
+        if self._cancelled:
+            return False
         self._confirm_event.clear()
         self._confirm_result[0] = False
         self.confirm_download.emit()
@@ -706,6 +708,8 @@ class PipelineWorker(QObject):
             return self._tx_service.is_paused if self._tx_service else False
 
     def _confirm_download_callback(self) -> bool:
+        if self._cancelled:
+            return False
         self._confirm_event.clear()
         self._confirm_result[0] = False
         self.confirm_download.emit()

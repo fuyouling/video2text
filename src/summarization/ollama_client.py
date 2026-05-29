@@ -429,6 +429,7 @@ class OllamaClient:
         max_tokens: Optional[int] = None,
         stream: bool = False,
         on_token: Optional[Callable[[str], None]] = None,
+        cancel_check: Optional[Callable[[], bool]] = None,
     ) -> str:
         """生成文本
 
@@ -440,6 +441,7 @@ class OllamaClient:
             max_tokens: 最大token数
             stream: 是否流式输出
             on_token: 流式输出时的 token 回调函数
+            cancel_check: 取消检查回调，返回 True 时中断生成
 
         Returns:
             生成的文本
@@ -483,6 +485,8 @@ class OllamaClient:
                 if stream:
                     result = ""
                     for line in response.iter_lines():
+                        if cancel_check and cancel_check():
+                            raise SummarizationError("用户取消了摘要")
                         if line:
                             try:
                                 data = _json.loads(line)

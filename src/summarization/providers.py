@@ -71,6 +71,7 @@ class OllamaProvider:
             max_tokens=self._max_length,
             stream=stream,
             on_token=on_token,
+            cancel_check=cancel_check,
         )
 
     def close(self) -> None:
@@ -125,6 +126,7 @@ class NvidiaProvider:
             presence_penalty=self._presence_penalty,
             stream=stream,
             on_token=on_token,
+            cancel_check=cancel_check,
         )
 
     def close(self) -> None:

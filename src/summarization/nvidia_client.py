@@ -112,6 +112,7 @@ class NvidiaClient:
         presence_penalty: float = 0.0,
         stream: bool = False,
         on_token: Optional[Callable[[str], None]] = None,
+        cancel_check: Optional[Callable[[], bool]] = None,
     ) -> str:
         """调用 NVIDIA chat/completions 生成文本
 
@@ -190,7 +191,7 @@ class NvidiaClient:
                         raise SummarizationError(error_msg)
 
                     if stream:
-                        return self._handle_streaming(response, on_token)
+                        return self._handle_streaming(response, on_token, cancel_check)
                     else:
                         data = response.json()
                         choices = data.get("choices", [])
@@ -222,12 +223,17 @@ class NvidiaClient:
         raise last_exc or SummarizationError("NVIDIA API 请求失败（未知错误）")
 
     def _handle_streaming(
-        self, response: requests.Response, on_token: Optional[Callable[[str], None]]
+        self,
+        response: requests.Response,
+        on_token: Optional[Callable[[str], None]],
+        cancel_check: Optional[Callable[[], bool]] = None,
     ) -> str:
         """处理流式响应"""
         full_text = ""
         try:
             for line in response.iter_lines():
+                if cancel_check and cancel_check():
+                    raise SummarizationError("用户取消了摘要")
                 if not line:
                     continue
                 decoded = line.decode("utf-8")
