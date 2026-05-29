@@ -147,7 +147,6 @@ class SummarizationService:
                 )
                 results.append(summary)
             except Exception as e:
-                logger.error("总结失败 %s: %s", video_name, e)
                 self._log(f"[{idx + 1}/{total}] 总结失败: {video_name} - {e}")
                 results.append("")
 
@@ -200,7 +199,6 @@ class SummarizationService:
 
                 return idx, summary if summary else ""
             except Exception as e:
-                logger.error("总结失败 %s: %s", video_name, e)
                 with progress_lock:
                     done_count[0] += 1
                     current = done_count[0]

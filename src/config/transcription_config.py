@@ -17,7 +17,10 @@ class TranscriptionConfig:
     device: str
     compute_type: str
     beam_size: int
+    best_of: int
     temperature: float
+    condition_on_previous_text: bool
+    word_timestamps: bool
     max_chunk_duration: int
     output_formats: list[str]
 
@@ -40,7 +43,12 @@ def _load_tx_config(settings: Settings) -> TranscriptionConfig:
     device = settings.get("transcription.device", "auto")
     compute_type = settings.get("transcription.compute_type", "float16")
     beam_size = settings.get_int("transcription.beam_size", 5)
+    best_of = settings.get_int("transcription.best_of", 5)
     temperature = settings.get_float("transcription.temperature", 0.0)
+    condition_on_previous_text = settings.get_bool(
+        "transcription.condition_on_previous_text", True
+    )
+    word_timestamps = settings.get_bool("transcription.word_timestamps", False)
     max_chunk_duration = settings.get_int("preprocessing.max_chunk_duration", 300)
     output_formats = _get_output_formats(settings)
 
@@ -50,7 +58,10 @@ def _load_tx_config(settings: Settings) -> TranscriptionConfig:
         device=device,
         compute_type=compute_type,
         beam_size=beam_size,
+        best_of=best_of,
         temperature=temperature,
+        condition_on_previous_text=condition_on_previous_text,
+        word_timestamps=word_timestamps,
         max_chunk_duration=max_chunk_duration,
         output_formats=output_formats,
     )

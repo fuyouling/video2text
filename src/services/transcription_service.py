@@ -54,10 +54,15 @@ class TranscriptionService:
         *,
         language: str = "auto",
         beam_size: int = 5,
+        best_of: int = 5,
         temperature: float = 0.0,
+        condition_on_previous_text: bool = True,
+        word_timestamps: bool = False,
         vad_filter: bool = True,
         max_chunk_duration: int = 300,
         output_formats: Optional[List[str]] = None,
+        input_folder: Optional[str] = None,
+        mirror_depth: int = 1,
         # 回调
         on_video_done: Optional[Callable[[TranscribeResult], None]] = None,
         on_video_error: Optional[Callable[[str, str], None]] = None,
@@ -70,10 +75,15 @@ class TranscriptionService:
 
         self.language = language
         self.beam_size = beam_size
+        self.best_of = best_of
         self.temperature = temperature
+        self.condition_on_previous_text = condition_on_previous_text
+        self.word_timestamps = word_timestamps
         self.vad_filter = vad_filter
         self.max_chunk_duration = max_chunk_duration
         self.output_formats = output_formats or ["txt"]
+        self.input_folder = input_folder
+        self.mirror_depth = mirror_depth
 
         self.on_video_done = on_video_done
         self.on_video_error = on_video_error
@@ -145,10 +155,13 @@ class TranscriptionService:
                 break
 
             video_name = Path(video_path).stem
-            self._log(f"[{idx + 1}/{total}] 开始处理: {video_name}")
+            self._log(f"[{idx + 1}/{total}] {video_name}")
 
             try:
-                result = self._transcribe_single(video_path, output_dir)
+                file_output_dir = self.get_file_output_dir(
+                    video_path, output_dir, self.input_folder, self.mirror_depth
+                )
+                result = self._transcribe_single(video_path, file_output_dir)
                 results.append(result)
 
                 if self.on_video_done:
@@ -156,12 +169,10 @@ class TranscriptionService:
 
             except Video2TextError as e:
                 logger.error("转写失败 %s: %s", Path(video_path).name, e)
-                self._log(f"[{idx + 1}/{total}] 转写失败: {video_name} - {e}")
                 if self.on_video_error:
                     self.on_video_error(video_name, str(e))
             except Exception as e:
                 logger.exception("未知错误 %s", Path(video_path).name)
-                self._log(f"[{idx + 1}/{total}] 未知错误: {video_name}")
                 if self.on_video_error:
                     self.on_video_error(video_name, str(e))
 
@@ -215,8 +226,11 @@ class TranscriptionService:
                     str(temp_audio),
                     language=self.language,
                     beam_size=self.beam_size,
+                    best_of=self.best_of,
                     temperature=self.temperature,
                     vad_filter=self.vad_filter,
+                    word_timestamps=self.word_timestamps,
+                    condition_on_previous_text=self.condition_on_previous_text,
                     progress_callback=_on_progress,
                 )
             elapsed = time.monotonic() - t0
@@ -227,8 +241,9 @@ class TranscriptionService:
             self._save_history_record(video_info.duration, elapsed)
 
             output_paths = []
+            file_fw = FileWriter(output_dir) if self.input_folder else self.file_writer
             for fmt in self.output_formats:
-                p = self.file_writer.write_transcript(segments, video_name, fmt=fmt)
+                p = file_fw.write_transcript(segments, video_name, fmt=fmt)
                 output_paths.append(p)
             formats = ", ".join(f".{fmt}" for fmt in self.output_formats)
             self._log(f"  └─ 保存完成 ✓ ({formats})")
@@ -369,13 +384,13 @@ class TranscriptionService:
                         str(chunk_path),
                         language=self.language,
                         beam_size=self.beam_size,
+                        best_of=self.best_of,
                         temperature=self.temperature,
                         vad_filter=self.vad_filter,
+                        word_timestamps=self.word_timestamps,
+                        condition_on_previous_text=self.condition_on_previous_text,
                     )
                 except Exception as chunk_err:
-                    logger.error(
-                        "切片 %d/%d 转写失败: %s", idx + 1, total_chunks, chunk_err
-                    )
                     self._log(
                         f"  ├─ 切片 {idx + 1}/{total_chunks} ✗ 转写失败: {chunk_err}"
                     )
@@ -635,3 +650,22 @@ class TranscriptionService:
             return f"{m}分{s}秒"
         h, m = divmod(m, 60)
         return f"{h}时{m}分{s}秒"
+
+    @staticmethod
+    def get_file_output_dir(
+        video_path: str,
+        base_output_dir: str,
+        input_folder: Optional[str],
+        mirror_depth: int = 1,
+    ) -> str:
+        if not input_folder:
+            return base_output_dir
+        try:
+            rel = Path(video_path).relative_to(input_folder)
+            parts = rel.parent.parts
+            if not parts:
+                return base_output_dir
+            truncated = Path(*parts[:mirror_depth])
+            return str(Path(base_output_dir) / truncated)
+        except ValueError:
+            return base_output_dir

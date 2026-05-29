@@ -41,6 +41,7 @@ from PySide6.QtWidgets import (
 from src.config.directory_manager import DirectoryManager
 from src.config.settings import Settings
 from src.config.version import APP_VERSION
+from src.services.transcription_service import TranscriptionService
 from src.summarization.prompt_manager import PromptManager
 from src.storage.file_writer import FileWriter
 from src.summarization.ollama_client import OllamaClient
@@ -105,6 +106,10 @@ class MainWindow(QMainWindow):
         self._scan_context: Optional[dict] = None
         self._scan_thread: Optional[QThread] = None
         self._scan_worker = None
+        self._input_folder: Optional[str] = None
+        self._mirror_subdirs: bool = False
+        self._mirror_depth: int = 1
+        self._name_to_output_dir: dict[str, str] = {}
 
         self._dir_manager = DirectoryManager(_PROJECT_ROOT / "favorite_dirs.json")
 
@@ -610,6 +615,10 @@ class MainWindow(QMainWindow):
             self._get_media_filter_str(),
         )
         if paths:
+            self._input_folder = None
+            self._mirror_subdirs = False
+            self._mirror_depth = 1
+            self._name_to_output_dir = {}
             if len(paths) == 1:
                 self.input_combo.setCurrentText(paths[0])
             else:
@@ -633,6 +642,10 @@ class MainWindow(QMainWindow):
         path = Path(FavoriteDirHelper._extract_dir_from_input(text))
 
         if path.is_file():
+            self._input_folder = None
+            self._mirror_subdirs = False
+            self._mirror_depth = 1
+            self._name_to_output_dir = {}
             self._video_files = [str(path)]
             self.input_combo.setCurrentText(str(path))
             last_dir = path.parent.name
@@ -692,7 +705,8 @@ class MainWindow(QMainWindow):
             )
             return
 
-        dialog = VideoSelectionDialog(video_files, self)
+        folder = ctx["folder"]
+        dialog = VideoSelectionDialog(video_files, self, folder=folder)
         if dialog.exec() != dialog.DialogCode.Accepted:
             return
 
@@ -701,7 +715,11 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "提示", "未选择任何文件")
             return
 
-        folder = ctx["folder"]
+        self._mirror_subdirs = dialog.get_mirror_subdirs()
+        self._mirror_depth = dialog.get_mirror_depth()
+        self._input_folder = dialog.get_input_folder() if self._mirror_subdirs else None
+        self._name_to_output_dir = {}
+
         if ctx["mode"] == "folder_select":
             self.input_combo.setCurrentText(
                 f"{folder} (已选择 {len(selected_files)} 个文件)"
@@ -733,10 +751,18 @@ class MainWindow(QMainWindow):
             return
 
         self._history_loaded = True
+        self._name_to_output_dir = {}
 
         transcript_files: list[Path] = []
-        for ext in ("txt", "srt", "vtt", "json"):
-            transcript_files.extend(output_path.glob(f"*.{ext}"))
+        if self._mirror_subdirs:
+            for ext in ("txt", "srt", "vtt", "json"):
+                try:
+                    transcript_files.extend(output_path.rglob(f"*.{ext}"))
+                except OSError:
+                    pass
+        else:
+            for ext in ("txt", "srt", "vtt", "json"):
+                transcript_files.extend(output_path.glob(f"*.{ext}"))
         transcript_files.sort(key=lambda p: p.name.lower())
 
         found_names: set[str] = set()
@@ -748,13 +774,33 @@ class MainWindow(QMainWindow):
             if txt_file.name.endswith("_keywords.txt"):
                 continue
             found_names.add(txt_file.stem)
+            if self._mirror_subdirs:
+                self._name_to_output_dir[txt_file.stem] = str(txt_file.parent)
 
-        for summary_file in output_path.glob("*_summary.*"):
+        summary_files: list[Path] = []
+        if self._mirror_subdirs:
+            try:
+                summary_files.extend(
+                    p
+                    for p in output_path.rglob("*_summary.*")
+                    if p.suffix in (".txt", ".md")
+                )
+            except OSError:
+                pass
+        else:
+            summary_files.extend(
+                p
+                for p in output_path.glob("*_summary.*")
+                if p.suffix in (".txt", ".md")
+            )
+        for summary_file in summary_files:
             if summary_file.suffix not in (".txt", ".md"):
                 continue
             video_name = summary_file.stem.removesuffix("_summary")
             if video_name:
                 found_names.add(video_name)
+                if self._mirror_subdirs and video_name not in self._name_to_output_dir:
+                    self._name_to_output_dir[video_name] = str(summary_file.parent)
 
         if not found_names:
             QMessageBox.warning(
@@ -796,6 +842,20 @@ class MainWindow(QMainWindow):
         if mode == "multi":
             return False
         return self.settings.get_bool(f"summarization.{provider}_stream", True)
+
+    def _resolve_video_output_dir(self, video_name: str) -> str:
+        base_dir = self.output_combo.currentText().strip() or _DEFAULT_OUTPUT_DIR
+        if not self._mirror_subdirs:
+            return base_dir
+        if video_name in self._name_to_output_dir:
+            return self._name_to_output_dir[video_name]
+        if self._input_folder:
+            for vf in self._video_files:
+                if Path(vf).stem == video_name:
+                    return TranscriptionService.get_file_output_dir(
+                        vf, base_dir, self._input_folder, self._mirror_depth
+                    )
+        return base_dir
 
     def _update_multi_thread_flag(self) -> None:
         """更新多线程标志"""
@@ -899,7 +959,13 @@ class MainWindow(QMainWindow):
         self._set_busy_state(True)
 
         thread = QThread()
-        worker = TranscribeWorker(self._video_files, output_dir, self.settings)
+        worker = TranscribeWorker(
+            self._video_files,
+            output_dir,
+            self.settings,
+            input_folder=self._input_folder,
+            mirror_depth=self._mirror_depth,
+        )
 
         worker.video_done.connect(self._on_single_video_transcribed)
         worker.video_error.connect(self._on_transcribe_error)
@@ -922,7 +988,15 @@ class MainWindow(QMainWindow):
             self.file_list.addItem(item)
 
         self.file_list.setCurrentItem(self.file_list.item(self.file_list.count() - 1))
-        self._load_transcript_content(video_name)
+        if output_paths:
+            try:
+                self.transcript_view.setPlainText(
+                    Path(output_paths[0]).read_text(encoding="utf-8-sig")
+                )
+            except Exception:
+                self._load_transcript_content(video_name)
+        else:
+            self._load_transcript_content(video_name)
 
         self.status_bar.showMessage(
             f"转写完成: {video_name} ({segments_count} 段)", 5000
@@ -930,7 +1004,7 @@ class MainWindow(QMainWindow):
 
     def _load_transcript_content(self, video_name: str) -> None:
         """加载指定文件的转写文本到编辑区"""
-        output_dir = self.output_combo.currentText().strip() or _DEFAULT_OUTPUT_DIR
+        output_dir = self._resolve_video_output_dir(video_name)
         transcript_path = FileWriter(output_dir).find_transcript_file(video_name)
         if transcript_path is None:
             return
@@ -995,6 +1069,8 @@ class MainWindow(QMainWindow):
             self.settings,
             custom_prompt,
             stream=self._get_stream_setting(),
+            input_folder=self._input_folder,
+            mirror_depth=self._mirror_depth,
         )
 
         worker.stream_token.connect(self._on_stream_token)
@@ -1107,6 +1183,8 @@ class MainWindow(QMainWindow):
             self.settings,
             custom_prompt,
             stream=self._get_stream_setting(),
+            input_folder=self._input_folder,
+            mirror_depth=self._mirror_depth,
         )
 
         worker.transcribe_done.connect(self._on_single_video_transcribed)
@@ -1208,7 +1286,9 @@ class MainWindow(QMainWindow):
         if self._result_viewer is None or not self._result_viewer.isVisible():
             self._result_viewer = ResultViewerWindow(self)
 
-        self._result_viewer.load_files(video_names, output_dir)
+        self._result_viewer.load_files(
+            video_names, output_dir, folder_mode=self._mirror_subdirs
+        )
         self._result_viewer.show()
         self._result_viewer.raise_()
         self._result_viewer.activateWindow()
@@ -1256,7 +1336,13 @@ class MainWindow(QMainWindow):
         self._set_busy_state(True)
 
         thread = QThread()
-        worker = TranscribeWorker([video_path], output_dir, self.settings)
+        worker = TranscribeWorker(
+            [video_path],
+            output_dir,
+            self.settings,
+            input_folder=self._input_folder,
+            mirror_depth=self._mirror_depth,
+        )
         worker.video_done.connect(self._on_single_video_transcribed)
         worker.video_error.connect(self._on_transcribe_error)
         worker.progress.connect(self._on_progress)
@@ -1270,7 +1356,8 @@ class MainWindow(QMainWindow):
             return
 
         output_dir = self._get_output_dir()
-        transcript_path = FileWriter(output_dir).find_transcript_file(video_name)
+        resolved_dir = self._resolve_video_output_dir(video_name)
+        transcript_path = FileWriter(resolved_dir).find_transcript_file(video_name)
         if transcript_path is None:
             QMessageBox.warning(self, "提示", f"未找到转写文件: {video_name}")
             return
@@ -1293,6 +1380,8 @@ class MainWindow(QMainWindow):
             self.settings,
             custom_prompt,
             stream=self._get_stream_setting(),
+            input_folder=self._input_folder,
+            mirror_depth=self._mirror_depth,
         )
         worker.stream_token.connect(self._on_stream_token)
         worker.summarize_started.connect(self._on_summarize_started)
@@ -1310,7 +1399,7 @@ class MainWindow(QMainWindow):
             return
         video_name = current.data(Qt.ItemDataRole.UserRole)
         self._current_video_name = video_name
-        output_dir = self.output_combo.currentText().strip() or _DEFAULT_OUTPUT_DIR
+        output_dir = self._resolve_video_output_dir(video_name)
 
         QTimer.singleShot(0, lambda: self._load_file_content(video_name, output_dir))
 

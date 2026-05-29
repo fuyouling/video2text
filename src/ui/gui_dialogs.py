@@ -10,6 +10,7 @@ from PySide6.QtGui import QClipboard, QCursor
 from PySide6.QtWidgets import (
     QAbstractButton,
     QApplication,
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -21,6 +22,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMenu,
     QPushButton,
+    QSpinBox,
     QTabWidget,
     QTreeWidget,
     QTreeWidgetItem,
@@ -47,9 +49,12 @@ def _format_file_size(size_bytes: int) -> str:
 class VideoSelectionDialog(QDialog):
     """媒体文件选择对话框 —— 树形视图展示文件，支持按类型/后缀/大小组合筛选和勾选。"""
 
-    def __init__(self, video_files: list[str], parent=None) -> None:
+    def __init__(
+        self, video_files: list[str], parent=None, folder: Optional[str] = None
+    ) -> None:
         super().__init__(parent)
         self.video_files = video_files
+        self._input_folder = folder
 
         settings = Settings()
         self._video_exts: set[str] = set(
@@ -60,6 +65,8 @@ class VideoSelectionDialog(QDialog):
             ext.lower()
             for ext in settings.get_list("preprocessing.supported_audio_formats")
         )
+        self._common_path: Optional[str] = None
+        self._max_depth: int = 0
 
         self._init_ui()
 
@@ -118,7 +125,7 @@ class VideoSelectionDialog(QDialog):
         layout.addLayout(toolbar)
 
         self._tree = QTreeWidget()
-        self._tree.setHeaderLabels(["文件名", "类型", "大小"])
+        self._tree.setHeaderLabels(["文件名", "类型", "大小", "输出目录拼接"])
         self._tree.setSelectionMode(QTreeWidget.SelectionMode.NoSelection)
         self._tree.setAnimated(True)
         self._tree.setSortingEnabled(True)
@@ -133,6 +140,9 @@ class VideoSelectionDialog(QDialog):
         self._tree.header().setSectionResizeMode(
             2, QHeaderView.ResizeMode.ResizeToContents
         )
+        self._tree.header().setSectionResizeMode(
+            3, QHeaderView.ResizeMode.ResizeToContents
+        )
         model = self._tree.model()
         _ALIGN_RIGHT = int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         model.setHeaderData(
@@ -143,6 +153,12 @@ class VideoSelectionDialog(QDialog):
         )
         model.setHeaderData(
             2,
+            Qt.Orientation.Horizontal,
+            _ALIGN_RIGHT,
+            Qt.ItemDataRole.TextAlignmentRole,
+        )
+        model.setHeaderData(
+            3,
             Qt.Orientation.Horizontal,
             _ALIGN_RIGHT,
             Qt.ItemDataRole.TextAlignmentRole,
@@ -162,13 +178,30 @@ class VideoSelectionDialog(QDialog):
         invert_btn = QPushButton("反选")
         invert_btn.clicked.connect(self._invert_selection)
         bottom_layout.addWidget(invert_btn)
-        expand_all_btn = QPushButton("展开所有文件夹")
+        expand_all_btn = QPushButton("展开文件夹")
         expand_all_btn.clicked.connect(self._tree.expandAll)
         bottom_layout.addWidget(expand_all_btn)
-        collapse_all_btn = QPushButton("收缩所有文件夹")
+        collapse_all_btn = QPushButton("收缩文件夹")
         collapse_all_btn.clicked.connect(self._tree.collapseAll)
         bottom_layout.addWidget(collapse_all_btn)
         bottom_layout.addStretch()
+
+        self._mirror_checkbox = QCheckBox("输出目录拼接")
+        self._mirror_checkbox.setToolTip(
+            "启用后，输出文件将按照输入目录的子目录结构组织"
+        )
+        self._mirror_checkbox.toggled.connect(self._on_mirror_changed)
+        bottom_layout.addWidget(self._mirror_checkbox)
+
+        bottom_layout.addWidget(QLabel("层级:"))
+        self._depth_spin = QSpinBox()
+        self._depth_spin.setRange(1, 10)
+        default_depth = Settings().get_int("output.mirror_depth", 1)
+        self._depth_spin.setValue(default_depth)
+        self._depth_spin.setEnabled(False)
+        self._depth_spin.valueChanged.connect(self._on_depth_changed)
+        bottom_layout.addWidget(self._depth_spin)
+
         ok_btn = QPushButton("确定")
         ok_btn.setDefault(True)
         ok_btn.clicked.connect(self.accept)
@@ -177,6 +210,8 @@ class VideoSelectionDialog(QDialog):
         cancel_btn.clicked.connect(self.reject)
         bottom_layout.addWidget(cancel_btn)
         layout.addLayout(bottom_layout)
+
+        self._apply_mirror_defaults()
 
     def _build_tree(self) -> None:
         self._leaf_items: list[QTreeWidgetItem] = []
@@ -188,6 +223,7 @@ class VideoSelectionDialog(QDialog):
             common = Path(os.path.commonpath(paths))
         except ValueError:
             common = None
+        self._common_path = str(common) if common else None
 
         suffix_map: dict[str, str] = {}
         for p in paths:
@@ -212,6 +248,13 @@ class VideoSelectionDialog(QDialog):
 
         need_folder = any(rel.parent != Path(".") for rel, _ in rel_pairs)
 
+        max_depth = 0
+        for rel, _ in rel_pairs:
+            depth = len(rel.parent.parts)
+            if depth > max_depth:
+                max_depth = depth
+        self._max_depth = max_depth
+
         if not need_folder:
             for _, abs_p in sorted(rel_pairs, key=lambda x: x[0].name.lower()):
                 ext = abs_p.suffix.lower()
@@ -229,15 +272,22 @@ class VideoSelectionDialog(QDialog):
                 except OSError:
                     size_bytes = -1
                     size_str = "-"
-                item = QTreeWidgetItem([f"{icon} {abs_p.name}", media_type, size_str])
+                rel_parts: tuple[str, ...] = ()
+                item = QTreeWidgetItem(
+                    [f"{icon} {abs_p.name}", media_type, size_str, ""]
+                )
                 item.setData(0, Qt.ItemDataRole.UserRole, str(abs_p))
                 item.setData(0, Qt.ItemDataRole.UserRole + 1, size_bytes)
+                item.setData(0, Qt.ItemDataRole.UserRole + 2, rel_parts)
                 item.setCheckState(0, Qt.CheckState.Checked)
                 item.setTextAlignment(
                     1, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
                 )
                 item.setTextAlignment(
                     2, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                )
+                item.setTextAlignment(
+                    3, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
                 )
                 self._tree.addTopLevelItem(item)
                 self._leaf_items.append(item)
@@ -261,11 +311,13 @@ class VideoSelectionDialog(QDialog):
                     except OSError:
                         size_bytes = -1
                         size_str = "-"
+                    rel_parts = ()
                     item = QTreeWidgetItem(
-                        [f"{icon} {abs_p.name}", media_type, size_str]
+                        [f"{icon} {abs_p.name}", media_type, size_str, ""]
                     )
                     item.setData(0, Qt.ItemDataRole.UserRole, str(abs_p))
                     item.setData(0, Qt.ItemDataRole.UserRole + 1, size_bytes)
+                    item.setData(0, Qt.ItemDataRole.UserRole + 2, rel_parts)
                     item.setCheckState(0, Qt.CheckState.Checked)
                     item.setTextAlignment(
                         1, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
@@ -273,25 +325,29 @@ class VideoSelectionDialog(QDialog):
                     item.setTextAlignment(
                         2, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
                     )
+                    item.setTextAlignment(
+                        3, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                    )
                     self._tree.addTopLevelItem(item)
                     self._leaf_items.append(item)
                     continue
                 for i in range(len(parts)):
                     sub_key = parts[: i + 1]
                     if sub_key not in folder_nodes:
-                        fi = QTreeWidgetItem([f"📁 {parts[i]}", "", ""])
+                        fi = QTreeWidgetItem([f"📁 {parts[i]}", "", "", ""])
                         fi.setFlags(
                             fi.flags()
                             | Qt.ItemFlag.ItemIsAutoTristate
                             | Qt.ItemFlag.ItemIsUserCheckable
                         )
                         fi.setCheckState(0, Qt.CheckState.Checked)
+                        fi.setData(0, Qt.ItemDataRole.UserRole + 2, sub_key)
                         if i == 0:
                             self._tree.addTopLevelItem(fi)
                         else:
                             folder_nodes[parts[:i]].addChild(fi)
                         folder_nodes[sub_key] = fi
-                self._add_file_item(folder_nodes[parts], abs_p, suffix_map)
+                self._add_file_item(folder_nodes[parts], abs_p, suffix_map, parts)
 
         present_suffixes = {p.suffix.lower() for p in paths}
         self._suffix_combo.clear()
@@ -300,7 +356,11 @@ class VideoSelectionDialog(QDialog):
             self._suffix_combo.addItem(ext)
 
     def _add_file_item(
-        self, parent: QTreeWidgetItem, abs_p: Path, suffix_map: dict
+        self,
+        parent: QTreeWidgetItem,
+        abs_p: Path,
+        suffix_map: dict,
+        rel_parts: tuple[str, ...] = (),
     ) -> None:
         ext = abs_p.suffix.lower()
         media_type = suffix_map.get(ext, "媒体")
@@ -311,15 +371,19 @@ class VideoSelectionDialog(QDialog):
         except OSError:
             size_bytes = -1
             size_str = "-"
-        item = QTreeWidgetItem([f"{icon} {abs_p.name}", media_type, size_str])
+        item = QTreeWidgetItem([f"{icon} {abs_p.name}", media_type, size_str, ""])
         item.setData(0, Qt.ItemDataRole.UserRole, str(abs_p))
         item.setData(0, Qt.ItemDataRole.UserRole + 1, size_bytes)
+        item.setData(0, Qt.ItemDataRole.UserRole + 2, rel_parts)
         item.setCheckState(0, Qt.CheckState.Checked)
         item.setTextAlignment(
             1, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
         item.setTextAlignment(
             2, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        item.setTextAlignment(
+            3, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
         parent.addChild(item)
         self._leaf_items.append(item)
@@ -443,6 +507,65 @@ class VideoSelectionDialog(QDialog):
                 selected.append(item.data(0, Qt.ItemDataRole.UserRole))
         return selected
 
+    def _apply_mirror_defaults(self) -> None:
+        settings = Settings()
+        if self._max_depth == 0:
+            self._mirror_checkbox.setChecked(False)
+            self._mirror_checkbox.setEnabled(False)
+            self._depth_spin.setEnabled(False)
+            for item in self._iter_leaves():
+                item.setText(3, "—")
+        else:
+            self._mirror_checkbox.blockSignals(True)
+            self._mirror_checkbox.setChecked(True)
+            self._mirror_checkbox.blockSignals(False)
+            default_depth = settings.get_int("output.mirror_depth", 1)
+            clamped = min(default_depth, self._max_depth)
+            self._depth_spin.blockSignals(True)
+            self._depth_spin.setRange(1, self._max_depth)
+            self._depth_spin.setValue(clamped)
+            self._depth_spin.blockSignals(False)
+            self._depth_spin.setEnabled(True)
+            self._update_mirror_column(clamped)
+
+    def _on_mirror_changed(self, checked: bool) -> None:
+        if checked:
+            depth = self._depth_spin.value()
+            self._depth_spin.setEnabled(True)
+            self._update_mirror_column(depth)
+        else:
+            self._depth_spin.setEnabled(False)
+            self._tree.blockSignals(True)
+            for item in self._iter_leaves():
+                item.setText(3, "—")
+            self._tree.blockSignals(False)
+
+    def _on_depth_changed(self, value: int) -> None:
+        self._update_mirror_column(value)
+        settings = Settings()
+        settings.set("output.mirror_depth", str(value))
+        settings.save()
+
+    def _update_mirror_column(self, depth: int) -> None:
+        self._tree.blockSignals(True)
+        for item in self._iter_leaves():
+            rel_parts = item.data(0, Qt.ItemDataRole.UserRole + 2)
+            if rel_parts and len(rel_parts) > 0:
+                truncated = rel_parts[:depth]
+                item.setText(3, str(Path(*truncated)))
+            else:
+                item.setText(3, "（根目录）")
+        self._tree.blockSignals(False)
+
+    def get_mirror_subdirs(self) -> bool:
+        return self._mirror_checkbox.isChecked()
+
+    def get_mirror_depth(self) -> int:
+        return self._depth_spin.value()
+
+    def get_input_folder(self) -> Optional[str]:
+        return self._common_path
+
 
 _SECTION_LABELS: dict[str, str] = {
     "app": "应用",
@@ -467,7 +590,7 @@ _KEY_LABELS: dict[str, str] = {
     "transcription.best_of": "候选数量",
     "transcription.temperature": "温度",
     "transcription.compute_type": "计算类型",
-    "transcription.num_workers": "工作线程数",
+    "transcription.num_workers": "推理线程数",
     "transcription.vad_filter": "VAD过滤",
     "transcription.condition_on_previous_text": "基于前文条件",
     "transcription.word_timestamps": "词级时间戳",
@@ -479,6 +602,7 @@ _KEY_LABELS: dict[str, str] = {
     "output.output_dir": "输出目录",
     "output.transcript_format": "转写格式",
     "output.summary_format": "摘要格式",
+    "output.mirror_depth": "目录拼接层级",
     "network.proxy": "代理地址",
     "paths.models_dir": "模型目录",
     "paths.logs_dir": "日志目录",
@@ -497,7 +621,7 @@ _KEY_TOOLTIPS: dict[str, str] = {
     "transcription.best_of": "采样候选数量，从 N 个候选中选最优结果",
     "transcription.temperature": "采样温度: 0 为贪心解码 (最确定)，值越高结果越随机",
     "transcription.compute_type": "计算精度: float16, int8, float32。int8 显存占用最少，float16 精度最佳",
-    "transcription.num_workers": "并行转写工作线程数，多文件转写时的并发度",
+    "transcription.num_workers": "CTranslate2 推理引擎线程数 (1~CPU核心数)，增大可加速单次转写推理",
     "transcription.vad_filter": "是否启用 VAD 语音活动检测，过滤静音段可减少幻觉: True / False",
     "transcription.condition_on_previous_text": "是否基于前文上下文条件生成，可提高连贯性但可能传播错误: True / False",
     "transcription.word_timestamps": "是否生成词级时间戳，启用后可精确定位每个词的时间: True / False",
@@ -509,6 +633,7 @@ _KEY_TOOLTIPS: dict[str, str] = {
     "output.output_dir": "输出目录，支持相对路径 (相对程序目录) 和绝对路径",
     "output.transcript_format": "转写输出格式: txt, srt, vtt, json (可选多种，逗号分隔)",
     "output.summary_format": "摘要输出格式: txt (纯文本), md (Markdown)",
+    "output.mirror_depth": "输出目录拼接的默认层级深度 (1~10)，控制取输入目录的前几层子目录",
     "network.proxy": "HTTP 代理地址 (如 http://127.0.0.1:7890)，用于访问外部 API，留空不使用",
     "paths.models_dir": "模型文件存储目录，支持相对路径和绝对路径",
     "paths.logs_dir": "日志文件存储目录",

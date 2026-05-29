@@ -144,7 +144,12 @@ def transcribe(
             file_writer=file_writer,
             language=language,
             beam_size=beam_size,
+            best_of=settings.get_int("transcription.best_of", 5),
             temperature=temperature,
+            condition_on_previous_text=settings.get_bool(
+                "transcription.condition_on_previous_text", True
+            ),
+            word_timestamps=settings.get_bool("transcription.word_timestamps", False),
             vad_filter=settings.get_bool("transcription.vad_filter", True),
             max_chunk_duration=settings.get_int(
                 "preprocessing.max_chunk_duration", 300
@@ -345,7 +350,12 @@ def run_pipeline(
             file_writer=file_writer,
             language=language,
             beam_size=beam_size,
+            best_of=settings.get_int("transcription.best_of", 5),
             temperature=temperature,
+            condition_on_previous_text=settings.get_bool(
+                "transcription.condition_on_previous_text", True
+            ),
+            word_timestamps=settings.get_bool("transcription.word_timestamps", False),
             vad_filter=settings.get_bool("transcription.vad_filter", True),
             max_chunk_duration=settings.get_int(
                 "preprocessing.max_chunk_duration", 300

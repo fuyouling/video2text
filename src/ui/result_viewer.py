@@ -407,20 +407,32 @@ class ResultViewerWindow(QMainWindow):
 
     # ─── 文件加载与过滤 ────────────────────────────────────────
 
-    def load_files(self, video_names: list[str], output_dir: str):
+    def load_files(
+        self, video_names: list[str], output_dir: str, folder_mode: bool = False
+    ):
         """加载多个文件"""
         self._output_dir = output_dir
         self._root_output_dir = output_dir
         self._flat_video_names = sorted(video_names, key=lambda x: x.lower())
         self._all_video_names = list(self._flat_video_names)
         self._file_filter.clear()
-        self._populate_file_list(self._all_video_names)
 
-        if self._folder_mode:
+        if folder_mode:
+            self._folder_mode_action.setChecked(True)
+            self._folder_mode = True
+            self.file_list.setVisible(False)
+            self._file_filter.setVisible(False)
+            self._folder_tree.setVisible(True)
+            self._populate_file_list(self._all_video_names)
             self._scan_and_build_tree()
             self._folder_tree.setFocus()
         else:
-            self.file_list.setFocus()
+            self._populate_file_list(self._all_video_names)
+            if self._folder_mode:
+                self._scan_and_build_tree()
+                self._folder_tree.setFocus()
+            else:
+                self.file_list.setFocus()
 
     def _populate_file_list(self, names: list[str]):
         """填充文件列表（blockSignals 防止逐项触发选择事件）"""

@@ -90,11 +90,15 @@ class TranscribeWorker(QObject):
         video_files: list[str],
         output_dir: str,
         settings: Settings,
+        input_folder: Optional[str] = None,
+        mirror_depth: int = 1,
     ) -> None:
         super().__init__()
         self.video_files = video_files
         self.output_dir = output_dir
         self.settings = settings
+        self.input_folder = input_folder
+        self.mirror_depth = mirror_depth
         self._cancelled = False
         self._service: Optional[TranscriptionService] = None
         self._service_lock = threading.Lock()
@@ -194,10 +198,15 @@ class TranscribeWorker(QObject):
                 file_writer=file_writer,
                 language=cfg.language,
                 beam_size=cfg.beam_size,
+                best_of=cfg.best_of,
                 temperature=cfg.temperature,
+                condition_on_previous_text=cfg.condition_on_previous_text,
+                word_timestamps=cfg.word_timestamps,
                 vad_filter=self.settings.get_bool("transcription.vad_filter", True),
                 max_chunk_duration=cfg.max_chunk_duration,
                 output_formats=cfg.output_formats,
+                input_folder=self.input_folder,
+                mirror_depth=self.mirror_depth,
                 on_video_done=on_video_done,
                 on_video_error=on_video_error,
                 cancel_check=lambda: self._cancelled,
@@ -236,6 +245,8 @@ class SummarizeWorker(QObject):
         settings: Settings,
         custom_prompt: str = "",
         stream: bool = True,
+        input_folder: Optional[str] = None,
+        mirror_depth: int = 1,
     ) -> None:
         super().__init__()
         self.video_files = video_files
@@ -243,6 +254,8 @@ class SummarizeWorker(QObject):
         self.settings = settings
         self.custom_prompt = custom_prompt
         self.stream = stream
+        self.input_folder = input_folder
+        self.mirror_depth = mirror_depth
         self._cancelled = False
         self._standalone_text: str = ""
         self._active_provider = None
@@ -399,10 +412,16 @@ class SummarizeWorker(QObject):
         progress_lock = threading.Lock()
         done_count = [0]
 
-        tasks: list[tuple[str, str]] = []
+        tasks: list[tuple[str, str, FileWriter]] = []
         for video_path in self.video_files:
             video_name = Path(video_path).stem
-            transcript_path = file_writer.find_transcript_file(video_name)
+            file_output_dir = TranscriptionService.get_file_output_dir(
+                video_path, self.output_dir, self.input_folder, self.mirror_depth
+            )
+            per_file_writer = (
+                FileWriter(file_output_dir) if self.input_folder else file_writer
+            )
+            transcript_path = per_file_writer.find_transcript_file(video_name)
 
             if transcript_path is None:
                 logger.warning("未找到转写文件: %s", video_name)
@@ -421,7 +440,7 @@ class SummarizeWorker(QObject):
                         done_count[0] += 1
                     self.progress.emit(done_count[0], total)
                     continue
-                tasks.append((video_name, text))
+                tasks.append((video_name, text, per_file_writer))
             except Exception as e:
                 logger.exception("读取转写文件失败: %s", video_name)
                 self.video_error.emit(video_name, str(e))
@@ -439,7 +458,7 @@ class SummarizeWorker(QObject):
         )
 
         def _process_video(
-            idx: int, video_name: str, text: str
+            idx: int, video_name: str, text: str, fw: FileWriter
         ) -> tuple[str, str, str]:
             if self._cancelled:
                 return video_name, "", "cancelled"
@@ -449,7 +468,7 @@ class SummarizeWorker(QObject):
             try:
                 service = SummarizationService(
                     settings=self.settings,
-                    file_writer=file_writer,
+                    file_writer=fw,
                     provider=provider,
                     custom_prompt=self.custom_prompt,
                     cancel_check=lambda: self._cancelled,
@@ -470,11 +489,11 @@ class SummarizeWorker(QObject):
 
         with ThreadPoolExecutor(max_workers=thread_count) as executor:
             futures = {}
-            for idx, (video_name, text) in enumerate(tasks):
+            for idx, (video_name, text, fw) in enumerate(tasks):
                 if self._cancelled:
                     break
                 self.summarize_started.emit(video_name)
-                future = executor.submit(_process_video, idx, video_name, text)
+                future = executor.submit(_process_video, idx, video_name, text, fw)
                 futures[future] = (video_name, idx)
 
             for future in as_completed(futures):
@@ -539,7 +558,13 @@ class SummarizeWorker(QObject):
                 break
 
             video_name = Path(video_path).stem
-            transcript_path = file_writer.find_transcript_file(video_name)
+            file_output_dir = TranscriptionService.get_file_output_dir(
+                video_path, self.output_dir, self.input_folder, self.mirror_depth
+            )
+            per_file_writer = (
+                FileWriter(file_output_dir) if self.input_folder else file_writer
+            )
+            transcript_path = per_file_writer.find_transcript_file(video_name)
 
             if transcript_path is None:
                 logger.warning("未找到转写文件: %s", video_name)
@@ -557,13 +582,34 @@ class SummarizeWorker(QObject):
 
                 self.summarize_started.emit(video_name)
                 logger.info("[%d/%d] %s", idx + 1, total, video_name)
-                summary = service.summarize(
-                    text,
-                    video_name=video_name,
-                    stream=self.stream,
-                    index=idx + 1,
-                    total=total,
-                )
+                if self.input_folder:
+                    per_provider = create_provider(self.settings)
+                    try:
+                        per_service = SummarizationService(
+                            settings=self.settings,
+                            file_writer=per_file_writer,
+                            provider=per_provider,
+                            custom_prompt=self.custom_prompt,
+                            on_stream_token=lambda token: self.stream_token.emit(token),
+                            cancel_check=lambda: self._cancelled,
+                        )
+                        summary = per_service.summarize(
+                            text,
+                            video_name=video_name,
+                            stream=self.stream,
+                            index=idx + 1,
+                            total=total,
+                        )
+                    finally:
+                        per_provider.close()
+                else:
+                    summary = service.summarize(
+                        text,
+                        video_name=video_name,
+                        stream=self.stream,
+                        index=idx + 1,
+                        total=total,
+                    )
                 if summary:
                     self.video_done.emit(video_name, summary)
                 else:
@@ -606,6 +652,8 @@ class PipelineWorker(QObject):
         settings: Settings,
         custom_prompt: str = "",
         stream: bool = True,
+        input_folder: Optional[str] = None,
+        mirror_depth: int = 1,
     ) -> None:
         super().__init__()
         self.video_files = video_files
@@ -613,6 +661,8 @@ class PipelineWorker(QObject):
         self.settings = settings
         self.custom_prompt = custom_prompt
         self.stream = stream
+        self.input_folder = input_folder
+        self.mirror_depth = mirror_depth
         self._cancelled = False
         self._active_provider = None
         self._tx_service: Optional[TranscriptionService] = None
@@ -734,10 +784,15 @@ class PipelineWorker(QObject):
                 file_writer=file_writer,
                 language=cfg.language,
                 beam_size=cfg.beam_size,
+                best_of=cfg.best_of,
                 temperature=cfg.temperature,
+                condition_on_previous_text=cfg.condition_on_previous_text,
+                word_timestamps=cfg.word_timestamps,
                 vad_filter=self.settings.get_bool("transcription.vad_filter", True),
                 max_chunk_duration=cfg.max_chunk_duration,
                 output_formats=cfg.output_formats,
+                input_folder=self.input_folder,
+                mirror_depth=self.mirror_depth,
                 on_video_done=on_tx_done,
                 on_video_error=on_tx_error,
                 cancel_check=lambda: self._cancelled,
@@ -839,12 +894,18 @@ class PipelineWorker(QObject):
                 processed_text = self._prepare_text(
                     result, segment_merger, text_cleaner
                 )
+                per_file_dir = (
+                    str(Path(result.output_paths[0]).parent)
+                    if result.output_paths and self.input_folder
+                    else self.output_dir
+                )
+                per_fw = FileWriter(per_file_dir)
                 provider_inst = create_provider(self.settings)
                 self._active_provider = provider_inst
                 try:
                     service = SummarizationService(
                         settings=self.settings,
-                        file_writer=file_writer,
+                        file_writer=per_fw,
                         provider=provider_inst,
                         custom_prompt=self.custom_prompt,
                         on_stream_token=lambda token: self.stream_token.emit(token),
@@ -890,13 +951,19 @@ class PipelineWorker(QObject):
     ) -> int:
         thread_count = _get_online_cfg(self.settings, "thread_count", 5)
         progress_lock = threading.Lock()
-        tasks: list[tuple[str, str]] = []
+        tasks: list[tuple[str, str, FileWriter]] = []
 
         for result in results:
             if self._cancelled:
                 break
             processed_text = self._prepare_text(result, segment_merger, text_cleaner)
-            tasks.append((result.video_name, processed_text))
+            per_file_dir = (
+                str(Path(result.output_paths[0]).parent)
+                if result.output_paths and self.input_folder
+                else self.output_dir
+            )
+            per_fw = FileWriter(per_file_dir)
+            tasks.append((result.video_name, processed_text, per_fw))
 
         if not tasks:
             return sum_done
@@ -907,7 +974,9 @@ class PipelineWorker(QObject):
             self.settings.get("output.summary_format", "txt").lower().strip()
         )
 
-        def _process(idx: int, video_name: str, text: str) -> tuple[str, str, str]:
+        def _process(
+            idx: int, video_name: str, text: str, fw: FileWriter
+        ) -> tuple[str, str, str]:
             if self._cancelled:
                 return video_name, "", "cancelled"
             rate_limiter.acquire()
@@ -915,7 +984,7 @@ class PipelineWorker(QObject):
             try:
                 service = SummarizationService(
                     settings=self.settings,
-                    file_writer=file_writer,
+                    file_writer=fw,
                     provider=provider,
                     custom_prompt=self.custom_prompt,
                     cancel_check=lambda: self._cancelled,
@@ -933,11 +1002,11 @@ class PipelineWorker(QObject):
 
         with ThreadPoolExecutor(max_workers=thread_count) as executor:
             futures = {}
-            for idx, (video_name, text) in enumerate(tasks):
+            for idx, (video_name, text, fw) in enumerate(tasks):
                 if self._cancelled:
                     break
                 self.summarize_started.emit(video_name)
-                future = executor.submit(_process, idx, video_name, text)
+                future = executor.submit(_process, idx, video_name, text, fw)
                 futures[future] = (video_name, idx)
 
             for future in as_completed(futures):
