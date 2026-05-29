@@ -448,16 +448,11 @@ video_dir = video             # 视频目录
 | 选项 | 缩写 | 说明 | 默认值 |
 |------|------|------|--------|
 | `--output-dir` | `-o` | 输出目录 | `output` |
-| `--language` | `-l` | 语言代码（`auto`/`zh`/`en`/`ja`/...） | `auto` |
-| `--model` | `-m` | 转写模型 | `large-v3` |
-| `--device` | `-d` | 设备类型（`auto`/`cpu`/`cuda`） | `auto` |
-| `--beam-size` | - | beam search 大小 | `5` |
-| `--temperature` | - | 温度参数 | `0.0` |
 | `--verbose` | `-v` | 启用 DEBUG 级别详细日志 | 关闭 |
 
 示例：
 ```powershell
-.\video2text.exe transcribe "D:\videos\lecture.mp4" -o output -l zh -d cuda
+.\video2text.exe transcribe "D:\videos\lecture.mp4" -o output
 ```
 
 **总结命令：**
@@ -469,9 +464,6 @@ video_dir = video             # 视频目录
 | 选项 | 缩写 | 说明 | 默认值 |
 |------|------|------|--------|
 | `--output-dir` | `-o` | 输出目录 | `output` |
-| `--model` | `-m` | 总结模型 | `qwen2.5:7b-instruct-q4_K_M` |
-| `--max-length` | - | 最大生成长度 | `5000` |
-| `--temperature` | - | 温度参数 | `0.7` |
 | `--verbose` | `-v` | 启用 DEBUG 级别详细日志 | 关闭 |
 
 示例：
@@ -488,20 +480,14 @@ video_dir = video             # 视频目录
 | 选项 | 缩写 | 说明 | 默认值 |
 |------|------|------|--------|
 | `--output-dir` | `-o` | 输出目录 | `output` |
-| `--language` | `-l` | 语言代码 | `auto` |
-| `--transcription-model` | - | 转写模型 | `large-v3` |
-| `--summarization-model` | - | 总结模型 | `qwen2.5:7b-instruct-q4_K_M` |
-| `--device` | `-d` | 设备类型 | `auto` |
-| `--beam-size` | - | beam search 大小 | `5` |
-| `--temperature` | - | 转写温度 | `0.0` |
-| `--summary-temperature` | - | 总结温度 | `0.7` |
-| `--max-length` | - | 最大生成长度 | `5000` |
 | `--verbose` | `-v` | 启用 DEBUG 级别详细日志 | 关闭 |
 
 示例：
 ```powershell
-.\video2text.exe run-pipeline "D:\videos\meeting.mp4" -o output -l zh
+.\video2text.exe run-pipeline "D:\videos\meeting.mp4" -o output
 ```
+
+> 所有转写参数（模型、语言、设备、温度等）和总结参数（模型、温度、最大长度等）均通过程序目录下的 `config.ini` 配置文件设置，详见 [4.2 配置文件详解](#42-配置文件详解configini)。命令行不再支持直接指定这些参数。
 
 **其他命令：**
 

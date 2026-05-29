@@ -186,40 +186,23 @@ python build_portable.py
 
 #### 转写命令 (transcribe)
 
-- `--input, -i`: 视频/音频文件路径（必需）
+- `input_path`: 视频/音频文件路径（必需，位置参数）
 - `--output-dir, -o`: 输出目录（默认: output）
-- `--language, -l`: 语言代码（默认: auto）
-- `--model, -m`: 转写模型（默认: large-v3）
-- `--device, -d`: 设备类型（默认: auto）
-- `--beam-size`: beam search大小（默认: 5）
-- `--best-of`: 候选数量（默认: 5）
-- `--compute-type`: 计算精度类型（默认: float16）
-- `--temperature`: 温度参数（默认: 0.0）
-- `--condition-on-previous-text`: 基于前文条件转写（默认: true）
-- `--word-timestamps`: 词级时间戳（默认: false）
 - `--verbose, -v`: 详细输出
 
 #### 总结命令 (summarize)
 
-- `--input, -i`: 转写文本文件路径（必需）
+- `input_path`: 转写文本文件路径（必需，位置参数）
 - `--output-dir, -o`: 输出目录（默认: output）
-- `--model, -m`: 总结模型（默认: qwen2.5:7b-instruct-q4_K_M）
-- `--max-length`: 最大长度（默认: 5000）
-- `--temperature`: 温度参数（默认: 0.7）
 - `--verbose, -v`: 详细输出
 
 #### 完整管道命令 (run-pipeline)
 
+- `input_path`: 视频/音频文件路径（必需，位置参数）
 - `--output-dir, -o`: 输出目录（默认: output）
-- `--language, -l`: 语言代码（默认: auto）
-- `--transcription-model`: 转写模型（默认: large-v3）
-- `--summarization-model`: 总结模型（默认: qwen2.5:7b-instruct-q4_K_M）
-- `--device, -d`: 设备类型（默认: auto）
-- `--beam-size`: beam search大小（默认: 5）
-- `--temperature`: 转写温度参数（默认: 0.0）
-- `--summary-temperature`: 总结温度参数（默认: 0.7）
-- `--max-length`: 最大长度（默认: 5000）
 - `--verbose, -v`: 详细输出
+
+> 所有转写和总结参数（模型、语言、设备、温度等）均通过 `config.ini` 配置，详见下方配置参考章节。
 
 #### 其他命令
 
@@ -358,7 +341,7 @@ video2text/
 - **CLI框架**: Typer + Rich
 - **GUI框架**: PySide6
 - **转写引擎**: faster-whisper
-- **总结引擎**: Ollama + Qwen2.5-7B / NVIDIA API
+- **总结引擎**: Ollama / NVIDIA API
 - **视频处理**: FFmpeg
 - **日志系统**: Python logging
 - **配置管理**: Python configparser
@@ -438,32 +421,6 @@ video2text/
 | `min_length` | `50` | 分段最小字符长度 |
 | `filler_words` | `嗯,啊,呃,...` | 填充词列表（逗号分隔），自动清理 |
 
-## 常见问题
-
-### 1. FFmpeg 未找到
-
-确保程序目录下的 `ffmpeg/bin/` 目录存在且包含 `ffmpeg.exe` 和 `ffprobe.exe`。
-
-### 2. GPU 不可用
-
-检查 CUDA 是否正确安装，或使用 `--device cpu` 参数强制使用 CPU。
-
-### 3. Ollama 连接失败
-
-确保 Ollama 服务正在运行：`ollama serve`
-
-### 4. NVIDIA API 连接失败
-
-检查 `.env` 文件中是否正确配置了 `NVIDIA_API_KEY`，或在 `config.ini` 的 `[summarization]` 中确认 `provider = nvidia`。
-
-### 5. 模型下载缓慢或失败
-
-可配置网络代理加速下载：
-
-```ini
-[network]
-proxy = http://127.0.0.1:7890
-```
 
 ## 许可证
 

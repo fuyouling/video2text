@@ -9,6 +9,7 @@ from rich.console import Console
 from rich.panel import Panel
 
 from src.config.settings import Settings
+from src.config.transcription_config import _load_tx_config
 from src.config.version import APP_VERSION
 from src.preprocessing.video_processor import VideoProcessor
 from src.services.transcription_service import TranscriptionService
@@ -23,12 +24,10 @@ from src.utils.exceptions import (
     VideoFileError,
     SummarizationError,
 )
-from src.utils.logger import setup_logger, get_logger
+from src.utils.logger import setup_logger
 
 app = typer.Typer(help="Video2Text - 媒体转文本工具")
 console = Console()
-
-SUPPORTED_TRANSCRIPT_FORMATS = {"txt", "srt", "vtt", "json"}
 
 
 def get_settings() -> Settings:
@@ -36,40 +35,9 @@ def get_settings() -> Settings:
     return Settings()
 
 
-def get_transcript_output_formats(settings: Settings) -> list[str]:
-    """从配置中读取转写输出格式列表，过滤不支持的格式。"""
-    formats = [
-        fmt.lower() for fmt in settings.get_list("output.transcript_format", ["txt"])
-    ]
-    formats = [fmt for fmt in formats if fmt in SUPPORTED_TRANSCRIPT_FORMATS]
-    return formats if formats else ["txt"]
-
-
-def get_model_path(settings: Settings, model_name: Optional[str] = None) -> str:
-    """解析模型路径：优先本地路径，其次 models 目录，最后回退到模型名称（触发下载）。"""
-    if model_name is None:
-        model_name = settings.get("transcription.model_path", "large-v3")
-
-    models_dir = settings.get("paths.models_dir", "models")
-
-    if Path(model_name).is_absolute():
-        return model_name
-
-    if Path(model_name).exists():
-        return str(Path(model_name).resolve())
-
-    model_path = Path(models_dir) / model_name
-    if model_path.exists():
-        return str(model_path)
-
-    logger = get_logger(__name__)
-    logger.warning("本地模型不存在: %s，将尝试从Hugging Face下载", model_path)
-    return model_name
-
-
 def _init_common(
     settings: Settings, output_dir: str, verbose: bool = False
-) -> tuple[VideoProcessor, FileWriter, list[str]]:
+) -> tuple[VideoProcessor, FileWriter]:
     """CLI 公共初始化：日志、VideoProcessor、FileWriter"""
     log_level = "DEBUG" if verbose else settings.get("app.log_level", "INFO")
     setup_logger(
@@ -80,9 +48,8 @@ def _init_common(
 
     video_processor = VideoProcessor()
     file_writer = FileWriter(output_dir)
-    output_formats = get_transcript_output_formats(settings)
 
-    return video_processor, file_writer, output_formats
+    return video_processor, file_writer
 
 
 @app.command()
@@ -91,13 +58,6 @@ def transcribe(
     output_dir: Optional[str] = typer.Option(
         None, "--output-dir", "-o", help="输出目录"
     ),
-    language: Optional[str] = typer.Option(None, "--language", "-l", help="语言代码"),
-    model: Optional[str] = typer.Option(None, "--model", "-m", help="转写模型"),
-    device: Optional[str] = typer.Option(None, "--device", "-d", help="设备类型"),
-    beam_size: Optional[int] = typer.Option(
-        None, "--beam-size", help="beam search大小"
-    ),
-    temperature: Optional[float] = typer.Option(None, "--temperature", help="温度参数"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="详细输出"),
 ):
     """转写媒体为文本"""
@@ -105,56 +65,39 @@ def transcribe(
         settings = get_settings()
 
         output_dir = output_dir or settings.get("output.output_dir", "output")
-        language = language or settings.get("transcription.language", "auto")
-        model = model or settings.get("transcription.model_path", "large-v3")
-        device = device or settings.get("transcription.device", "auto")
-        beam_size = (
-            beam_size
-            if beam_size is not None
-            else settings.get_int("transcription.beam_size", 5)
-        )
-        temperature = (
-            temperature
-            if temperature is not None
-            else settings.get_float("transcription.temperature", 0.0)
-        )
 
-        model_path = get_model_path(settings, model)
+        video_processor, file_writer = _init_common(settings, output_dir, verbose)
 
-        video_processor, file_writer, output_formats = _init_common(
-            settings, output_dir, verbose
-        )
+        cfg = _load_tx_config(settings)
+        num_workers = settings.get_int("transcription.num_workers", 1)
+        vad_filter = settings.get_bool("transcription.vad_filter", True)
 
         console.print(Panel.fit("[bold blue]Video2Text 转写模式[/bold blue]"))
         console.print(f"输入文件: {input_path}")
         console.print(f"输出目录: {output_dir}")
-        console.print(f"模型: {model_path}")
-        console.print(f"设备: {device}")
+        console.print(f"模型: {cfg.model_path}")
+        console.print(f"设备: {cfg.device}")
 
         transcriber = Transcriber(
-            model_path=model_path,
-            device=device,
-            compute_type=settings.get("transcription.compute_type", "float16"),
-            num_workers=settings.get_int("transcription.num_workers", 1),
+            model_path=cfg.model_path,
+            device=cfg.device,
+            compute_type=cfg.compute_type,
+            num_workers=num_workers,
         )
 
         service = TranscriptionService(
             transcriber=transcriber,
             video_processor=video_processor,
             file_writer=file_writer,
-            language=language,
-            beam_size=beam_size,
-            best_of=settings.get_int("transcription.best_of", 5),
-            temperature=temperature,
-            condition_on_previous_text=settings.get_bool(
-                "transcription.condition_on_previous_text", True
-            ),
-            word_timestamps=settings.get_bool("transcription.word_timestamps", False),
-            vad_filter=settings.get_bool("transcription.vad_filter", True),
-            max_chunk_duration=settings.get_int(
-                "preprocessing.max_chunk_duration", 300
-            ),
-            output_formats=output_formats,
+            language=cfg.language,
+            beam_size=cfg.beam_size,
+            best_of=cfg.best_of,
+            temperature=cfg.temperature,
+            condition_on_previous_text=cfg.condition_on_previous_text,
+            word_timestamps=cfg.word_timestamps,
+            vad_filter=vad_filter,
+            max_chunk_duration=cfg.max_chunk_duration,
+            output_formats=cfg.output_formats,
             on_progress=lambda msg: console.print(f"  {msg}"),
         )
 
@@ -168,7 +111,7 @@ def transcribe(
             console.print(Panel.fit("[bold green]转写成功！[/bold green]"))
             console.print(f"输出目录: {output_dir}")
             for r in results:
-                for fmt in output_formats:
+                for fmt in cfg.output_formats:
                     console.print(f"  - {r.video_name}.{fmt}")
         else:
             console.print("[bold red]转写失败[/bold red]")
@@ -188,9 +131,6 @@ def summarize(
     output_dir: Optional[str] = typer.Option(
         None, "--output-dir", "-o", help="输出目录"
     ),
-    model: Optional[str] = typer.Option(None, "--model", "-m", help="总结模型"),
-    max_length: Optional[int] = typer.Option(None, "--max-length", help="最大长度"),
-    temperature: Optional[float] = typer.Option(None, "--temperature", help="温度参数"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="详细输出"),
 ):
     """总结转写文本"""
@@ -219,13 +159,6 @@ def summarize(
 
         file_writer = FileWriter(output_dir)
         video_name = text_path.stem
-
-        if temperature is not None:
-            settings.set("summarization.temperature", str(temperature))
-        if max_length is not None:
-            settings.set("summarization.max_length", str(max_length))
-        if model is not None:
-            settings.set("summarization.model_name", model)
 
         provider_inst = create_provider(settings)
         service = None
@@ -269,24 +202,6 @@ def run_pipeline(
     output_dir: Optional[str] = typer.Option(
         None, "--output-dir", "-o", help="输出目录"
     ),
-    language: Optional[str] = typer.Option(None, "--language", "-l", help="语言代码"),
-    transcription_model: Optional[str] = typer.Option(
-        None, "--transcription-model", help="转写模型"
-    ),
-    summarization_model: Optional[str] = typer.Option(
-        None, "--summarization-model", help="总结模型"
-    ),
-    device: Optional[str] = typer.Option(None, "--device", "-d", help="设备类型"),
-    beam_size: Optional[int] = typer.Option(
-        None, "--beam-size", help="beam search大小"
-    ),
-    temperature: Optional[float] = typer.Option(
-        None, "--temperature", help="转写温度参数"
-    ),
-    summary_temperature: Optional[float] = typer.Option(
-        None, "--summary-temperature", help="总结温度参数"
-    ),
-    max_length: Optional[int] = typer.Option(None, "--max-length", help="最大长度"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="详细输出"),
 ):
     """运行完整处理管道"""
@@ -294,73 +209,39 @@ def run_pipeline(
         settings = get_settings()
 
         output_dir = output_dir or settings.get("output.output_dir", "output")
-        language = language or settings.get("transcription.language", "auto")
-        transcription_model = transcription_model or settings.get(
-            "transcription.model_path", "large-v3"
-        )
-        summarization_model = summarization_model or settings.get(
-            "summarization.model_name", "qwen2.5:7b-instruct-q4_K_M"
-        )
-        settings.set("summarization.model_name", summarization_model)
-        device = device or settings.get("transcription.device", "auto")
-        beam_size = (
-            beam_size
-            if beam_size is not None
-            else settings.get_int("transcription.beam_size", 5)
-        )
-        temperature = (
-            temperature
-            if temperature is not None
-            else settings.get_float("transcription.temperature", 0.0)
-        )
-        summary_temperature = (
-            summary_temperature
-            if summary_temperature is not None
-            else settings.get_float("summarization.temperature", 0.7)
-        )
-        max_length = (
-            max_length
-            if max_length is not None
-            else settings.get_int("summarization.max_length", 10000)
-        )
 
-        model_path = get_model_path(settings, transcription_model)
+        video_processor, file_writer = _init_common(settings, output_dir, verbose)
 
-        video_processor, file_writer, output_formats = _init_common(
-            settings, output_dir, verbose
-        )
+        cfg = _load_tx_config(settings)
+        num_workers = settings.get_int("transcription.num_workers", 1)
+        vad_filter = settings.get_bool("transcription.vad_filter", True)
 
         console.print(Panel.fit("[bold blue]Video2Text 完整管道模式[/bold blue]"))
         console.print(f"输入文件: {input_path}")
         console.print(f"输出目录: {output_dir}")
-        console.print(f"转写模型: {model_path}")
-        console.print(f"总结模型: {summarization_model}")
+        console.print(f"转写模型: {cfg.model_path}")
+        console.print(f"设备: {cfg.device}")
 
         transcriber = Transcriber(
-            model_path=model_path,
-            device=device,
-            compute_type=settings.get("transcription.compute_type", "float16"),
-            num_workers=settings.get_int("transcription.num_workers", 1),
+            model_path=cfg.model_path,
+            device=cfg.device,
+            compute_type=cfg.compute_type,
+            num_workers=num_workers,
         )
 
-        # 转写阶段
         tx_service = TranscriptionService(
             transcriber=transcriber,
             video_processor=video_processor,
             file_writer=file_writer,
-            language=language,
-            beam_size=beam_size,
-            best_of=settings.get_int("transcription.best_of", 5),
-            temperature=temperature,
-            condition_on_previous_text=settings.get_bool(
-                "transcription.condition_on_previous_text", True
-            ),
-            word_timestamps=settings.get_bool("transcription.word_timestamps", False),
-            vad_filter=settings.get_bool("transcription.vad_filter", True),
-            max_chunk_duration=settings.get_int(
-                "preprocessing.max_chunk_duration", 300
-            ),
-            output_formats=output_formats,
+            language=cfg.language,
+            beam_size=cfg.beam_size,
+            best_of=cfg.best_of,
+            temperature=cfg.temperature,
+            condition_on_previous_text=cfg.condition_on_previous_text,
+            word_timestamps=cfg.word_timestamps,
+            vad_filter=vad_filter,
+            max_chunk_duration=cfg.max_chunk_duration,
+            output_formats=cfg.output_formats,
             on_progress=lambda msg: console.print(f"  {msg}"),
         )
 
@@ -372,7 +253,6 @@ def run_pipeline(
                 console.print("[bold red]转写失败，无法继续[/bold red]")
                 sys.exit(2)
 
-            # 总结阶段
             segment_merger = SegmentMerger(
                 max_gap=settings.get_float("text_processing.max_gap", 2.0),
                 min_length=settings.get_int("text_processing.min_length", 50),
@@ -391,11 +271,6 @@ def run_pipeline(
                 )
                 processed_text = text_cleaner.clean(processed_text)
                 summary_map[tx_result.video_name] = (processed_text, "总结不可用")
-
-            if summary_temperature is not None:
-                settings.set("summarization.temperature", str(summary_temperature))
-            if max_length is not None:
-                settings.set("summarization.max_length", str(max_length))
 
             provider_inst = create_provider(settings)
             sum_available = provider_inst.check_connection()
@@ -441,7 +316,7 @@ def run_pipeline(
             console.print(f"输出目录: {output_dir}")
             summary_fmt = settings.get("output.summary_format", "txt").lower().strip()
             for tx_result in tx_results:
-                for fmt in output_formats:
+                for fmt in cfg.output_formats:
                     console.print(f"  - {tx_result.video_name}.{fmt} (转写结果)")
                 console.print(
                     f"  - {tx_result.video_name}_summary.{summary_fmt} (摘要)"
@@ -476,11 +351,6 @@ def help_command():
             "usage": "video2text transcribe <媒体文件路径> [选项]",
             "options": [
                 ("--output-dir, -o", "输出目录"),
-                ("--language, -l", "语言代码 (如: zh, en, auto)"),
-                ("--model, -m", "转写模型 (如: large-v3, base)"),
-                ("--device, -d", "设备类型 (如: auto, cpu, cuda)"),
-                ("--beam-size", "beam search大小"),
-                ("--temperature", "温度参数"),
                 ("--verbose, -v", "详细输出"),
             ],
         },
@@ -490,9 +360,6 @@ def help_command():
             "usage": "video2text summarize <转写文本文件路径> [选项]",
             "options": [
                 ("--output-dir, -o", "输出目录"),
-                ("--model, -m", "总结模型 (如: qwen2.5:7b-instruct-q4_K_M)"),
-                ("--max-length", "最大长度"),
-                ("--temperature", "温度参数"),
                 ("--verbose, -v", "详细输出"),
             ],
         },
@@ -502,14 +369,6 @@ def help_command():
             "usage": "video2text run-pipeline <媒体文件路径> [选项]",
             "options": [
                 ("--output-dir, -o", "输出目录"),
-                ("--language, -l", "语言代码"),
-                ("--transcription-model", "转写模型"),
-                ("--summarization-model", "总结模型"),
-                ("--device, -d", "设备类型"),
-                ("--beam-size", "beam search大小"),
-                ("--temperature", "转写温度参数"),
-                ("--summary-temperature", "总结温度参数"),
-                ("--max-length", "最大长度"),
                 ("--verbose, -v", "详细输出"),
             ],
         },
@@ -537,12 +396,15 @@ def help_command():
         console.print()
 
     console.print("[bold]示例:[/bold]")
-    console.print("  video2text transcribe video.mp4 -o output -l zh")
+    console.print("  video2text transcribe video.mp4 -o output")
     console.print("  video2text summarize transcript.txt -o output")
     console.print("  video2text run-pipeline video.mp4 -o output")
     console.print("\n[bold]提示:[/bold] 1. 使用 --help 查看单个命令的详细选项")
     console.print(
-        "      2. powershell使用全路径调用可执行文件，如: .\\video2text.exe transcribe video.mp4 -o output -l zh   "
+        "      2. 所有转写和总结参数（模型、语言、设备、温度等）均通过 config.ini 配置"
+    )
+    console.print(
+        "      3. powershell使用全路径调用可执行文件，如: .\\video2text.exe transcribe video.mp4 -o output"
     )
 
 
