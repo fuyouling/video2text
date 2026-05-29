@@ -65,6 +65,21 @@ class NvidiaClient:
         """
         if not self._api_key:
             logger.error("NvidiaClient: ✗ API Key 未配置")
+            env_path = get_base_dir() / ".env"
+            if env_path.exists():
+                try:
+                    with open(env_path, "r", encoding="utf-8") as f:
+                        content = f.read()
+                    if "NVIDIA_API_KEY" not in content:
+                        logger.warning(
+                            "NvidiaClient: .env 文件中未找到 NVIDIA_API_KEY，请添加: NVIDIA_API_KEY=your_api_key"
+                        )
+                except Exception as e:
+                    logger.debug("NvidiaClient: 读取 .env 文件失败: %s", e)
+            else:
+                logger.warning(
+                    "NvidiaClient: .env 文件不存在，请创建并配置 NVIDIA_API_KEY"
+                )
             return False
 
         try:

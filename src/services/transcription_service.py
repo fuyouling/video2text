@@ -136,12 +136,12 @@ class TranscriptionService:
 
         for idx, video_path in enumerate(video_files):
             if self.cancel_check and self.cancel_check():
-                logger.info("用户取消转写")
+                self._log("  ├─ 用户取消转写")
                 break
 
             self._wait_if_paused()
             if self.cancel_check and self.cancel_check():
-                logger.info("用户取消转写")
+                self._log("  ├─ 用户取消转写")
                 break
 
             video_name = Path(video_path).stem
@@ -222,7 +222,7 @@ class TranscriptionService:
             elapsed = time.monotonic() - t0
             lang = segments[0].language if segments else self.language
             self._log(
-                f"  ├─ 语音转写 ✓ ({len(segments)} 段, 语言: {lang}, 耗时 {elapsed:.1f}s)"
+                f"  ├─ 语音转写 ✓ ({len(segments)} 段, 语言: {lang}, 耗时 {self._format_duration(elapsed)})"
             )
             self._save_history_record(video_info.duration, elapsed)
 
@@ -295,6 +295,10 @@ class TranscriptionService:
                     f"FFmpeg 音频切片失败，未生成任何切片文件: {audio_path}"
                 )
 
+            self._log(
+                f"  ├─ 音频切片: {total_chunks} 个切片 (每段 ≤ {self._format_duration(self.max_chunk_duration)})"
+            )
+
             # 加载已完成的切片结果（断点续传）
             done_chunks: dict = {}
             if checkpoint_file.exists():
@@ -354,11 +358,12 @@ class TranscriptionService:
                             )
                             all_segments.append(seg)
                         cumulative_offset += cached["duration"]
-                        self._log(f"跳过已完成切片 {idx + 1}/{total_chunks}")
+                        self._log(f"  ├─ 切片 {idx + 1}/{total_chunks} ✓ 跳过")
                         continue
 
-                self._log(f"转写切片 {idx + 1}/{total_chunks}")
+                self._log(f"  ├─ 切片 {idx + 1}/{total_chunks} 转写中 …")
 
+                chunk_t0 = time.monotonic()
                 try:
                     chunk_segments = self.transcriber.transcribe(
                         str(chunk_path),
@@ -371,7 +376,9 @@ class TranscriptionService:
                     logger.error(
                         "切片 %d/%d 转写失败: %s", idx + 1, total_chunks, chunk_err
                     )
-                    self._log(f"切片 {idx + 1}/{total_chunks} 转写失败: {chunk_err}")
+                    self._log(
+                        f"  ├─ 切片 {idx + 1}/{total_chunks} ✗ 转写失败: {chunk_err}"
+                    )
                     failed_duration = self._get_chunk_duration(chunk_path)
                     done_chunks[chunk_key] = {
                         "duration": failed_duration,
@@ -381,6 +388,11 @@ class TranscriptionService:
                     self._write_checkpoint(checkpoint_file, done_chunks)
                     cumulative_offset += failed_duration
                     continue
+
+                chunk_elapsed = time.monotonic() - chunk_t0
+                self._log(
+                    f"  ├─ 切片 {idx + 1}/{total_chunks} ✓ ({chunk_elapsed:.1f}s)"
+                )
 
                 # 计算切片实际时长（用 FFmpeg 获取更精确的值）
                 chunk_duration = self._get_chunk_duration(chunk_path, chunk_segments)
@@ -614,9 +626,12 @@ class TranscriptionService:
 
     @staticmethod
     def _format_duration(seconds: float) -> str:
-        """将秒数格式化为 'X分Y秒' 或 'X秒' 的中文描述。"""
+        """将秒数格式化为 'X时X分X秒'、'X分X秒' 或 'X秒' 的中文描述。"""
         total = int(seconds)
-        if total <= 60:
+        if total < 60:
             return f"{total}秒"
         m, s = divmod(total, 60)
-        return f"{m}分{s}秒"
+        if m < 60:
+            return f"{m}分{s}秒"
+        h, m = divmod(m, 60)
+        return f"{h}时{m}分{s}秒"

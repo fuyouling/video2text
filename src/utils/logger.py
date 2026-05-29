@@ -158,7 +158,7 @@ def log_error_with_context(
         video_path: 相关文件路径
     """
     log = logging.getLogger(logger_name)
-    log.error("  %s ✗ 失败", step_name)
+    log.error("  ├─ %s ✗ 失败", step_name)
     if video_path:
-        log.error("  └─ 文件: %s", Path(video_path).name)
+        log.error("  ├─ 文件: %s", Path(video_path).name)
     log.error("  └─ 错误: %s", error)

@@ -15,11 +15,12 @@ _RE_TAG_STEP = re.compile(r"^(\[\d+/\d+\])(.*?)( ✓| ✗)(.*)$")
 _RE_STEP = re.compile(r"^(  [├└]─ )(.+?)( ✓| ✗)(.*)$")
 _RE_PROG = re.compile(r"^(  [├└]─ )(.+?)( …)(.*)$")
 _RE_STATE = re.compile(r"^(  [├└]─ )(⏸|▶)(.*)$")
+_RE_TREE = re.compile(r"^(  [├└]─ )(.*)$")
 
 _LOG_COLOR_RULES = [
     (re.compile(r"失败|错误|异常|✘|✗"), QColor("#F44336")),
     (re.compile(r"成功|完成|✔|✓"), QColor("#4CAF50")),
-    (re.compile(r"回退|降级|重试|不完整|超时|⚠|⏸|⏳"), QColor("#FF9800")),
+    (re.compile(r"回退|降级|重试|取消|不完整|超时|⚠|⏸|⏳"), QColor("#FF9800")),
     (re.compile(r"正在|开始|加载|▶"), QColor("#2196F3")),
     (re.compile(r"\[\d+/\d+\]"), QColor("#00BCD4")),
 ]
@@ -103,6 +104,11 @@ class LogPanel(QWidget):
         m_step = _RE_STEP.match(msg) if not m_tag_step else None
         m_prog = _RE_PROG.match(msg) if not (m_tag_step or m_step) else None
         m_state = _RE_STATE.match(msg) if not (m_tag_step or m_step or m_prog) else None
+        m_tree = (
+            _RE_TREE.match(msg)
+            if not (m_tag_step or m_tag or m_step or m_prog or m_state)
+            else None
+        )
 
         if m_tag_step:
             self._insert_colored(cursor, m_tag_step.group(1), QColor("#00BCD4"))
@@ -141,6 +147,16 @@ class LogPanel(QWidget):
             self._insert_colored(cursor, m_prog.group(2))
             self._insert_colored(cursor, m_prog.group(3), QColor("#2196F3"))
             self._insert_colored(cursor, m_prog.group(4), QColor("#757575"))
+        elif m_tree:
+            self._insert_colored(cursor, m_tree.group(1), QColor("#9E9E9E"))
+            color = self._get_log_color(m_tree.group(2))
+            if color:
+                fmt = QTextCharFormat()
+                fmt.setForeground(color)
+                cursor.setCharFormat(fmt)
+            cursor.insertText(m_tree.group(2))
+            if color:
+                cursor.setCharFormat(QTextCharFormat())
         else:
             color = self._get_log_color(msg)
             if color:

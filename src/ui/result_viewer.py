@@ -295,7 +295,9 @@ class ResultViewerWindow(QMainWindow):
         self._bookmark_count_label.setObjectName("BookmarkCountLabel")
         bookmark_layout.addWidget(self._bookmark_count_label)
 
-        filter_row = QHBoxLayout()
+        self._bookmark_filter_row = QWidget()
+        filter_row = QHBoxLayout(self._bookmark_filter_row)
+        filter_row.setContentsMargins(0, 0, 0, 0)
         filter_row.setSpacing(4)
 
         self._bookmark_filter = QLineEdit()
@@ -323,7 +325,7 @@ class ResultViewerWindow(QMainWindow):
         )
         filter_row.addWidget(self._bookmark_sort_combo)
 
-        bookmark_layout.addLayout(filter_row)
+        bookmark_layout.addWidget(self._bookmark_filter_row)
 
         self.bookmark_list = QListWidget()
         self.bookmark_list.setSpacing(2)
@@ -345,7 +347,9 @@ class ResultViewerWindow(QMainWindow):
         self._bookmark_empty_label.setVisible(True)
         bookmark_layout.addWidget(self._bookmark_empty_label)
 
-        bookmark_btn_layout = QHBoxLayout()
+        self._bookmark_btn_row = QWidget()
+        bookmark_btn_layout = QHBoxLayout(self._bookmark_btn_row)
+        bookmark_btn_layout.setContentsMargins(0, 0, 0, 0)
         bookmark_btn_layout.setSpacing(4)
 
         delete_bookmark_btn = QPushButton("删除")
@@ -366,7 +370,7 @@ class ResultViewerWindow(QMainWindow):
         clear_bookmarks_btn.clicked.connect(self._clear_bookmarks)
         bookmark_btn_layout.addWidget(clear_bookmarks_btn)
 
-        bookmark_layout.addLayout(bookmark_btn_layout)
+        bookmark_layout.addWidget(self._bookmark_btn_row)
 
         self.bookmark_dock.setWidget(bookmark_widget)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.bookmark_dock)
@@ -1112,6 +1116,9 @@ class ResultViewerWindow(QMainWindow):
             self._bookmark_count_label.setText(f"共 {total} 个书签")
         self._bookmark_empty_label.setVisible(total == 0)
         self.bookmark_list.setVisible(total > 0)
+        self._bookmark_count_label.setVisible(total > 0)
+        self._bookmark_filter_row.setVisible(total > 0)
+        self._bookmark_btn_row.setVisible(total > 0)
 
         index_map = {
             (b.file_path, b.position, b.created_at): i
