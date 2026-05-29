@@ -16,10 +16,10 @@ models/
 
 ## 默认模型下载
 
-`large-v3` 模型的 `model.bin` 文件体积较大，需手动下载：
+`large-v3` 模型：
 
 ```
-https://huggingface.co/Systran/faster-whisper-large-v3/resolve/main/model.bin?download=true
+https://huggingface.co/Systran/faster-whisper-large-v3/resolve/main
 ```
 
 下载后放入 `models/large-v3/` 目录。

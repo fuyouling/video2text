@@ -59,10 +59,6 @@ a = Analysis(
     datas=[
         ('config.ini', '.'),
         ('prompts.json', '.'),
-        ('logs/readme.md', 'logs'),
-        ('models/readme.md', 'models'),
-        ('output/readme.md', 'output'),
-        ('video/readme.md', 'video'),
         ('ffmpeg/bin/ffmpeg.exe', 'ffmpeg/bin'),
         ('ffmpeg/bin/ffprobe.exe', 'ffmpeg/bin'),
         ('ffmpeg/presets', 'ffmpeg/presets'),

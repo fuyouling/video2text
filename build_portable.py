@@ -283,22 +283,10 @@ def main():
     # Step 5: Create directory structure and copy files
     step_log(5, "Creating portable directory structure...")
     if args.dry_run:
-        log("  [dry-run] Would create dirs: logs, output, video, models", "white")
+        log("  [dry-run] Would create portable directory structure", "white")
         log("  [dry-run] Would copy: assets/, docs/, config.ini, README.md", "white")
         log("  [dry-run] Would copy ffmpeg/ (内置 FFmpeg)", "white")
     else:
-        for dirname in ["logs", "output", "video", "models"]:
-            d = portable_dir / dirname
-            d.mkdir(parents=True, exist_ok=True)
-            log(f"  Created: {dirname}", "green")
-            src_readme = root / dirname / "readme.md"
-            if src_readme.exists():
-                try:
-                    shutil.copy2(src_readme, d / "readme.md")
-                    log(f"  Copied: {dirname}/readme.md", "green")
-                except Exception as e:
-                    log(f"  Warning: Failed to copy {dirname}/readme.md: {e}", "yellow")
-
         assets_src = root / "assets"
         if assets_src.exists():
             try:
