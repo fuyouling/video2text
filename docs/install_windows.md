@@ -49,12 +49,11 @@
 
 video2text 本地视频转文字工具的安装包体积较大，已上传至 123 云盘，内含以下组件：
 
-| 组件 | 大小 |
-|------|------|
-| `large-v3` 语音模型 | ~3 GB |
-| Ollama 总结模型（`qwen2.5:7b`） | ~4.7 GB |
-| video2text 程序 | ~3 GB |
-| 运行时缓存及输出空间 | 预留若干 GB |
+| 组件 | 大小 | 是否下载 |
+|------|------|------|
+| `large-v3` 语音模型 | ~3 GB | 可选,建议下载,自己有其它模型也行 |
+| Ollama 总结模型（`qwen2.5:7b`） | ~4.7 GB | 可选,看总结用不用Ollama |
+| video2text 程序 | ~3 GB | 必须 |
 
 > 请使用支持保留目录结构的解压工具（如 **7-Zip** 或 **Bandizip**）解压压缩包，确保文件夹结构完整。
 
@@ -83,21 +82,13 @@ D:\video2text\
 ├── video2text.bat          ← 启动脚本（自动设置工作目录）
 ├── config.ini              ← 配置文件
 ├── .env                    ← 环境变量配置（存放 API Key，需手动创建）
+├── docs                    ← 文档
 ├── assets\                 ← 图标资源
 ├── ffmpeg\                 ← 内置 FFmpeg
-│   └── bin\
-│       ├── ffmpeg.exe
-│       └── ffprobe.exe
 ├── models\                 ← 模型目录（需要放入模型文件）
-│   └── readme.md
-├── output\                 ← 输出目录（转写和总结结果保存在此）
-│   └── readme.md
-├── video\                  ← 视频存放目录（可选使用）
-│   └── readme.md
+├── output\                 ← 输出目录（可选）
 ├── logs\                   ← 日志目录
-│   └── readme.md
-├── README.md
-└── README_PORTABLE.txt
+└── README.md               ← 说明文档
 ```
 
 **第二步：放入语音识别模型**
@@ -128,9 +119,6 @@ video2text 支持两种总结服务：NVIDIA 在线模型和本地 Ollama 模型
 ```
 # NVIDIA API Key（使用在线 NVIDIA 模型总结时需要）
 NVIDIA_API_KEY=nvapi-你的API密钥
-
-# Ollama API Key（使用带认证的 Ollama 服务时可选配置）
-# OLLAMA_API_KEY=你的API密钥
 ```
 
 保存文件。程序启动时会自动读取该文件中的环境变量。API Key 也可以通过系统环境变量设置，效果相同（系统环境变量优先级高于 `.env` 文件）。NVIDIA 提供有很多免费的模型，如果网络访问有问题需要自行解决。
@@ -138,6 +126,12 @@ NVIDIA_API_KEY=nvapi-你的API密钥
 #### 2.2.2 安装 Ollama（使用本地模型总结）
 
 Ollama 是一个本地大语言模型运行框架，video2text 使用它来生成文本摘要。
+
+**注意事项**
+- 目前测试下来发现,qwen2.5:7b-instruct-q4_K_M模型的总结能力较差,建议还是使用在线免费的模型
+- Ollama也提供一些模型可免费使用,有一定额度限定,模型比如有:deepseek-v3.1:671b-cloud、gpt-oss:120b-cloud
+- 官网地址：[Ollama](https://docs.ollama.com/)
+- 如果你显卡比较好一些,可以考虑拉取一些比较好的模型本地运行,这边使用qwen2.5:7b-instruct-q4_K_M进行安装说明
 
 **第一步：运行安装程序**
 
@@ -154,27 +148,13 @@ C:\Users\你的用户名\.ollama\
     └── manifests\      ← 模型清单文件
 ```
 
-> **提示**：`%USERPROFILE%` 环境变量会自动指向当前用户的主目录。在文件资源管理器地址栏输入 `%USERPROFILE%\.ollama` 可直接跳转。
-
 **第三步：启动 Ollama 服务**
 
-安装完成后，从开始菜单或桌面找到 **Ollama** 程序并运行。Ollama 会以后台服务形式运行，默认监听 `http://127.0.0.1:11434`。系统托盘区会出现 Ollama 图标，表示服务已启动。
-
-**第四步：验证安装**
-
-打开命令提示符（`Win+R` → 输入 `cmd` → 回车），运行：
-
-```powershell
-ollama list
+直接找到图标启动,或者ollama serve,其它模型安装直接参考官方文档,用命令拉取下就行,如果注册了账号使用ollama的在线模型,需要添加在文件`.env`中添加OLLAMA_API_KEY
 ```
-
-如果显示已安装的模型列表（如 `qwen2.5:7b-instruct-q4_K_M`），说明安装和模型解压均成功。如果提示找不到命令，尝试重新打开一个命令提示符窗口（安装后需要新的终端窗口才能刷新 PATH）。
-
-> **如果没有预下载模型文件**：可以在线拉取模型，在命令提示符中运行：
-> ```powershell
-> ollama pull qwen2.5:7b-instruct-q4_K_M
-> ```
-> 模型文件约 4.7 GB，下载时间取决于网络速度。最好注册 Ollama 的账号，官网地址：https://docs.ollama.com/，提供免费的在线模型可使用，包括 deepseek-v3.1:671b-cloud、gpt-oss:120b-cloud。
+# Ollama API Key（使用带认证的 Ollama 服务时可选配置）
+# OLLAMA_API_KEY=你的API密钥
+```
 
 ---
 
@@ -194,7 +174,7 @@ ollama list
    - 选择一个短小的视频文件（1-2 分钟即可）。
    - 点击「仅转写」按钮，观察日志面板是否有输出、进度条是否推进。
    - 转写完成后，右侧面板应显示转写文本。
-   - 点击「仅总结」按钮，确认 Ollama 能正常生成摘要。
+   - 点击「仅总结」按钮，确认能正常生成摘要。
 
 ---
 

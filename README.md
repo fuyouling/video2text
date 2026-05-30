@@ -48,11 +48,11 @@ pip install -r requirements.txt
 需要先在 [NVIDIA Build](https://build.nvidia.com/) 注册账号并创建 API Key（目前大部分模型免费使用）。获取 Key 后在项目根目录创建 `.env` 文件填入：
 
 ```
+# NVIDIA API Key（使用在线 NVIDIA 模型总结时需要）
 NVIDIA_API_KEY=nvapi-你的API密钥
-OLLAMA_API_KEY=你的Ollama密钥（可选，仅用于需要认证的 Ollama 端点）
 ```
 
-然后在 `config.ini` 中将 `provider` 改为 `nvidia`：
+然后在GUI界面或者 `config.ini` 中将 `provider` 改为 `nvidia`：
 
 ```ini
 [summarization]
