@@ -57,7 +57,7 @@ from src.ui.log_panel import LogPanel
 from src.ui.result_viewer import ResultViewerWindow, _find_summary_path
 from src.ui.search_controller import SearchController
 from src.transcription.transcriber import _model_cache as _transcriber_cache
-from src.utils.logger import get_logger
+from src.utils.logger import get_logger, setup_logger
 
 logger = get_logger(__name__)
 
@@ -110,6 +110,7 @@ class MainWindow(QMainWindow):
         self._mirror_subdirs: bool = False
         self._mirror_depth: int = 1
         self._name_to_output_dir: dict[str, str] = {}
+        self._current_phase = "transcribe"  # 管道当前阶段
 
         self._dir_manager = DirectoryManager(_PROJECT_ROOT / "favorite_dirs.json")
 
@@ -902,10 +903,36 @@ class MainWindow(QMainWindow):
         self.input_file_btn.setEnabled(not busy)
         self.input_folder_btn.setEnabled(not busy)
         self.output_btn.setEnabled(not busy)
-        can_pause = busy and self._current_mode in ("transcribe", "pipeline")
-        self.pause_btn.setEnabled(can_pause)
+        self._update_pause_button(busy)
         if not busy:
             self.pause_btn.setText("暂停")
+
+    def _update_pause_button(self, busy: bool) -> None:
+        """根据当前模式和阶段决定暂停按钮的启用状态。"""
+        if not busy:
+            self.pause_btn.setEnabled(False)
+            return
+
+        if self._current_mode == "transcribe":
+            self.pause_btn.setEnabled(True)
+            return
+
+        if self._current_mode == "summarize":
+            # 仅总结模式：仅 Ollama 可暂停
+            provider = self.settings.get("summarization.provider", "ollama")
+            self.pause_btn.setEnabled(provider == "ollama")
+            return
+
+        if self._current_mode == "pipeline":
+            if self._current_phase == "transcribe":
+                self.pause_btn.setEnabled(True)
+            else:
+                # 总结阶段：仅 Ollama 可暂停
+                provider = self.settings.get("summarization.provider", "ollama")
+                self.pause_btn.setEnabled(provider == "ollama")
+            return
+
+        self.pause_btn.setEnabled(False)
 
     def _reset_counters(self) -> None:
         """重置转写/总结的成功/失败计数器。"""
@@ -927,7 +954,56 @@ class MainWindow(QMainWindow):
     def _on_pause_resume(self) -> None:
         if self._worker is None:
             return
-        if not hasattr(self._worker, "pause") or not hasattr(self._worker, "resume"):
+
+        # ── 管道模式：根据阶段分别处理 ──
+        if self._current_mode == "pipeline" and hasattr(
+            self._worker, "sum_pause"
+        ):
+            if self._current_phase == "summarize":
+                # 总结阶段暂停/继续
+                if self._worker.is_sum_paused:
+                    self._worker.sum_resume()
+                    self.pause_btn.setText("暂停")
+                    self.status_bar.showMessage("总结已继续")
+                else:
+                    self._worker.sum_pause()
+                    self.pause_btn.setText("继续")
+                    self.status_bar.showMessage("总结已暂停")
+                return
+            else:
+                # 转写阶段暂停/继续
+                if not hasattr(self._worker, "pause") or not hasattr(
+                    self._worker, "resume"
+                ):
+                    return
+                if self._worker.is_paused:
+                    self._worker.resume()
+                    self.pause_btn.setText("暂停")
+                    self.status_bar.showMessage("转写已继续")
+                else:
+                    self._worker.pause()
+                    self.pause_btn.setText("继续")
+                    self.status_bar.showMessage(
+                        "正在等待当前音频/切片转写完成后暂停…"
+                    )
+                return
+
+        # ── 仅总结模式 ──
+        if self._current_mode == "summarize" and hasattr(self._worker, "pause"):
+            if self._worker.is_paused:
+                self._worker.resume()
+                self.pause_btn.setText("暂停")
+                self.status_bar.showMessage("总结已继续")
+            else:
+                self._worker.pause()
+                self.pause_btn.setText("继续")
+                self.status_bar.showMessage("总结已暂停")
+            return
+
+        # ── 仅转写模式（原有逻辑） ──
+        if not hasattr(self._worker, "pause") or not hasattr(
+            self._worker, "resume"
+        ):
             return
 
         if self._worker.is_paused:
@@ -937,7 +1013,9 @@ class MainWindow(QMainWindow):
         else:
             self._worker.pause()
             self.pause_btn.setText("继续")
-            self.status_bar.showMessage("转写已暂停")
+            self.status_bar.showMessage(
+                "正在等待当前音频/切片转写完成后暂停…"
+            )
 
     # ── 仅转写 ──
 
@@ -1171,6 +1249,7 @@ class MainWindow(QMainWindow):
         self.log_panel.clear()
 
         self._current_mode = "pipeline"
+        self._current_phase = "transcribe"
         self._reset_counters()
         self._update_multi_thread_flag()
 
@@ -1196,6 +1275,7 @@ class MainWindow(QMainWindow):
 
         worker.transcribe_done.connect(self._on_single_video_transcribed)
         worker.transcribe_error.connect(self._on_transcribe_error)
+        worker.phase_changed.connect(self._on_phase_changed)
         worker.summarize_started.connect(self._on_summarize_started)
         worker.stream_token.connect(self._on_stream_token)
         worker.summarize_done.connect(self._on_single_video_summarized)
@@ -1211,6 +1291,16 @@ class MainWindow(QMainWindow):
     def _on_progress(self, completed: int, total: int) -> None:
         self.progress_bar.setValue(completed)
         self.progress_label.setText(f"{completed}/{total}")
+
+    def _on_phase_changed(self, phase: str) -> None:
+        """管道阶段变更回调：更新暂停按钮状态。"""
+        self._current_phase = phase
+        if self._worker is not None:
+            self._update_pause_button(True)
+        if phase == "summarize":
+            self.status_bar.showMessage("正在切换到总结阶段...")
+        elif phase == "transcribe":
+            self.status_bar.showMessage("正在转写阶段...")
 
     def _on_confirm_download(self) -> None:
         worker = self._worker
@@ -1487,6 +1577,14 @@ def main() -> None:
     """GUI 主入口：启用 faulthandler、设置线程异常钩子、启动 Qt 事件循环。"""
     import faulthandler
     import threading
+
+    _settings = Settings()
+    setup_logger(
+        "video2text",
+        log_dir=_settings.get("paths.logs_dir", "logs"),
+        level=_settings.get("app.log_level", "INFO"),
+        log_to_console=False,
+    )
 
     _log_dir = Path("logs")
     _log_dir.mkdir(parents=True, exist_ok=True)

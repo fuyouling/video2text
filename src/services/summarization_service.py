@@ -20,6 +20,7 @@ class SummarizationService:
     1. 统一 CLI / GUI 的总结逻辑
     2. 支持流式输出（streaming）—— GUI 实时显示生成过程
     3. 支持多后端（Ollama / NVIDIA）via Provider 抽象层
+    4. 支持暂停/继续（仅 Ollama 本地模型）
     """
 
     def __init__(
@@ -31,6 +32,7 @@ class SummarizationService:
         custom_prompt: str = "",
         on_stream_token: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
+        pause_event: Optional[threading.Event] = None,
     ):
         self.settings = settings
         self.file_writer = file_writer
@@ -43,6 +45,12 @@ class SummarizationService:
             settings.get("output.summary_format", "txt").lower().strip()
         )
 
+        if pause_event is not None:
+            self._pause_event = pause_event
+        else:
+            self._pause_event = threading.Event()
+            self._pause_event.set()  # 初始状态：非暂停
+
     # ------------------------------------------------------------------
     # 公开 API
     # ------------------------------------------------------------------
@@ -50,6 +58,35 @@ class SummarizationService:
     def close(self) -> None:
         """关闭底层 Provider 连接。"""
         self.provider.close()
+
+    # ------------------------------------------------------------------
+    # 暂停 / 继续
+    # ------------------------------------------------------------------
+
+    def pause(self) -> None:
+        """暂停总结。当前文件完成后会阻塞，直到调用 resume()。"""
+        self._pause_event.clear()
+        logger.info("  ├─ ⏸ 总结暂停请求已接收，等待当前任务完成…")
+
+    def resume(self) -> None:
+        """继续被暂停的总结。"""
+        self._pause_event.set()
+
+    def _wait_if_paused(self) -> None:
+        """如果处于暂停状态，则阻塞直到恢复。"""
+        if self._pause_event.is_set():
+            return
+        logger.info("  ├─ ✅ 总结已暂停 — 等待恢复…")
+        while not self._pause_event.wait(timeout=0.5):
+            if self.cancel_check and self.cancel_check():
+                break
+        if not (self.cancel_check and self.cancel_check()):
+            logger.info("  └─ ▶ 总结已继续")
+
+    @property
+    def is_paused(self) -> bool:
+        """是否处于暂停状态。"""
+        return not self._pause_event.is_set()
 
     def summarize(
         self,
@@ -88,6 +125,7 @@ class SummarizationService:
             stream=stream,
             on_token=_on_token if stream else None,
             cancel_check=self.cancel_check,
+            pause_event=self._pause_event,
         )
 
         if not summary or not summary.strip():

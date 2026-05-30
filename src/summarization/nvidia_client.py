@@ -2,6 +2,7 @@
 
 import json as _json
 import os
+import threading
 import time
 from typing import Callable, Optional
 
@@ -92,10 +93,22 @@ class NvidiaClient:
             }
             resp = self._session.post(self.api_url, json=payload, timeout=10)
             ok = resp.status_code == 200
-            logger.debug(
-                "NvidiaClient: 连接检查 %s",
-                "成功" if ok else f"状态码 {resp.status_code}",
-            )
+            if ok:
+                logger.debug("NvidiaClient: 连接检查成功")
+            else:
+                try:
+                    error_detail = resp.json()
+                    logger.error(
+                        "NvidiaClient: ✗ 连接检查失败 (状态码 %d): %s",
+                        resp.status_code,
+                        error_detail,
+                    )
+                except Exception:
+                    logger.error(
+                        "NvidiaClient: ✗ 连接检查失败 (状态码 %d): %s",
+                        resp.status_code,
+                        resp.text[:500] if resp.text else "(空响应)",
+                    )
             return ok
         except Exception as e:
             logger.error("NvidiaClient: ✗ 连接失败 (%s)", e)
@@ -113,6 +126,7 @@ class NvidiaClient:
         stream: bool = False,
         on_token: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
+        pause_event: Optional[threading.Event] = None,
     ) -> str:
         """调用 NVIDIA chat/completions 生成文本
 
@@ -187,11 +201,13 @@ class NvidiaClient:
                             error_msg += f", 详情: {error_detail}"
                         except Exception:
                             error_msg += f", 响应: {response.text[:500]}"
-                        logger.error(error_msg)
+                        logger.error("%s", error_msg)
                         raise SummarizationError(error_msg)
 
                     if stream:
-                        return self._handle_streaming(response, on_token, cancel_check)
+                        return self._handle_streaming(
+                            response, on_token, cancel_check, pause_event
+                        )
                     else:
                         data = response.json()
                         choices = data.get("choices", [])
@@ -227,6 +243,7 @@ class NvidiaClient:
         response: requests.Response,
         on_token: Optional[Callable[[str], None]],
         cancel_check: Optional[Callable[[], bool]] = None,
+        pause_event: Optional[threading.Event] = None,
     ) -> str:
         """处理流式响应"""
         full_text = ""

@@ -103,12 +103,11 @@ class TranscriptionService:
     def pause(self) -> None:
         """暂停转写。当前切片完成后会阻塞，直到调用 resume()。"""
         self._pause_event.clear()
-        logger.info("  ├─ ⏸ 转写已暂停")
+        logger.info("  ├─ ⏸ 转写暂停请求已接收，等待当前任务完成…")
 
     def resume(self) -> None:
         """继续被暂停的转写。"""
         self._pause_event.set()
-        logger.info("  └─ ▶ 转写已继续")
 
     @property
     def is_paused(self) -> bool:
@@ -117,9 +116,14 @@ class TranscriptionService:
 
     def _wait_if_paused(self) -> None:
         """如果处于暂停状态，则阻塞直到恢复。"""
+        if self._pause_event.is_set():
+            return
+        logger.info("  ├─ ✅ 转写已暂停 — 等待恢复…")
         while not self._pause_event.wait(timeout=0.5):
             if self.cancel_check and self.cancel_check():
                 break
+        if not (self.cancel_check and self.cancel_check()):
+            logger.info("  └─ ▶ 转写已继续")
 
     # ------------------------------------------------------------------
     # 公开 API

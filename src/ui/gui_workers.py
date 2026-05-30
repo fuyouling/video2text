@@ -21,7 +21,7 @@ from src.text_processing.segment_merger import SegmentMerger
 from src.text_processing.text_cleaner import TextCleaner
 from src.transcription.transcriber import get_cached_transcriber
 from src.utils.exceptions import DownloadCancelledError
-from src.utils.logger import get_logger, setup_logger
+from src.utils.logger import get_logger
 
 
 def _get_online_cfg(settings: Settings, suffix: str, default):
@@ -38,15 +38,6 @@ def _get_online_cfg(settings: Settings, suffix: str, default):
 def _get_provider_label(provider: str) -> str:
     return {"ollama": "Ollama", "nvidia": "NVIDIA API", "zhipu": "智谱 API"}.get(
         provider, provider
-    )
-
-
-def _setup_worker_logger(settings: Settings):
-    return setup_logger(
-        "video2text",
-        log_dir=settings.get("paths.logs_dir", "logs"),
-        level=settings.get("app.log_level", "INFO"),
-        log_to_console=False,
     )
 
 
@@ -149,7 +140,7 @@ class TranscribeWorker(QObject):
         self._confirm_event.set()
 
     def run(self) -> None:
-        logger = _setup_worker_logger(self.settings)
+        logger = get_logger("video2text")
 
         transcriber = None
         try:
@@ -261,6 +252,8 @@ class SummarizeWorker(QObject):
         self._cancelled = False
         self._standalone_text: str = ""
         self._active_provider = None
+        self._pause_event = threading.Event()
+        self._pause_event.set()  # 初始状态：非暂停
 
     def set_standalone_text(self, text: str) -> None:
         """设置独立文本模式的内容（仅总结指定文本，不从文件读取）。"""
@@ -276,9 +269,39 @@ class SummarizeWorker(QObject):
             except Exception:
                 pass
 
+    def pause(self) -> None:
+        """暂停当前总结任务（仅 Ollama 本地模型有效）。"""
+        self._pause_event.clear()
+        get_logger("video2text").info("  ├─ ⏸ 总结暂停请求已接收，等待当前任务完成…")
+
+    def resume(self) -> None:
+        """恢复被暂停的总结任务。"""
+        self._pause_event.set()
+
+    def unpause(self) -> None:
+        """强制解除暂停状态（用于关闭窗口时确保线程不阻塞）。"""
+        self._pause_event.set()
+
+    def _wait_if_paused(self) -> None:
+        """如果处于暂停状态，则阻塞直到恢复。"""
+        if self._pause_event.is_set():
+            return
+        _logger = get_logger("video2text")
+        _logger.info("  ├─ ✅ 总结已暂停 — 等待恢复…")
+        while not self._pause_event.wait(timeout=0.5):
+            if self._cancelled:
+                break
+        if not self._cancelled:
+            _logger.info("  └─ ▶ 总结已继续")
+
+    @property
+    def is_paused(self) -> bool:
+        """是否处于暂停状态。"""
+        return not self._pause_event.is_set()
+
     def run(self) -> None:
         """执行总结任务：根据配置选择单线程或多线程模式。"""
-        logger = _setup_worker_logger(self.settings)
+        logger = get_logger("video2text")
 
         try:
             file_writer = FileWriter(self.output_dir)
@@ -334,6 +357,7 @@ class SummarizeWorker(QObject):
                 custom_prompt=self.custom_prompt,
                 on_stream_token=lambda token: self.stream_token.emit(token),
                 cancel_check=lambda: self._cancelled,
+                pause_event=self._pause_event,
             )
             self._execute_summarization(logger, service, file_writer)
         except Exception as e:
@@ -381,6 +405,7 @@ class SummarizeWorker(QObject):
                 provider=provider_inst,
                 custom_prompt=self.custom_prompt,
                 cancel_check=lambda: self._cancelled,
+                pause_event=self._pause_event,
             )
             try:
                 self.summarize_started.emit("(粘贴文本)")
@@ -559,6 +584,10 @@ class SummarizeWorker(QObject):
             if self._cancelled:
                 break
 
+            self._wait_if_paused()
+            if self._cancelled:
+                break
+
             video_name = Path(video_path).stem
             file_output_dir = TranscriptionService.get_file_output_dir(
                 video_path, self.output_dir, self.input_folder, self.mirror_depth
@@ -594,6 +623,7 @@ class SummarizeWorker(QObject):
                             custom_prompt=self.custom_prompt,
                             on_stream_token=lambda token: self.stream_token.emit(token),
                             cancel_check=lambda: self._cancelled,
+                            pause_event=self._pause_event,
                         )
                         summary = per_service.summarize(
                             text,
@@ -646,6 +676,8 @@ class PipelineWorker(QObject):
     error = Signal(str)
     finished = Signal()
     confirm_download = Signal()
+    # 阶段变更信号: "transcribe" 或 "summarize"
+    phase_changed = Signal(str)
 
     def __init__(
         self,
@@ -671,11 +703,14 @@ class PipelineWorker(QObject):
         self._tx_service_lock = threading.Lock()
         self._confirm_event = threading.Event()
         self._confirm_result = [False]
+        self._sum_pause_event = threading.Event()
+        self._sum_pause_event.set()  # 初始状态：非暂停
 
     def cancel(self) -> None:
         """标记取消，终止后续转写和总结。"""
         self._cancelled = True
         self._confirm_event.set()
+        self._sum_pause_event.set()  # 确保不阻塞
         provider = self._active_provider
         if provider is not None:
             try:
@@ -700,12 +735,43 @@ class PipelineWorker(QObject):
         with self._tx_service_lock:
             if self._tx_service is not None:
                 self._tx_service.resume()
+        self._sum_pause_event.set()
+
+    def sum_pause(self) -> None:
+        """暂停当前总结任务（仅 Ollama 本地模型有效）。"""
+        self._sum_pause_event.clear()
+        get_logger("video2text").info("  ├─ ⏸ 总结暂停请求已接收，等待当前任务完成…")
+
+    def sum_resume(self) -> None:
+        """恢复被暂停的总结任务。"""
+        self._sum_pause_event.set()
+
+    def sum_unpause(self) -> None:
+        """强制解除总结暂停状态。"""
+        self._sum_pause_event.set()
+
+    def _sum_wait_if_paused(self) -> None:
+        """如果总结处于暂停状态，则阻塞直到恢复。"""
+        if self._sum_pause_event.is_set():
+            return
+        _logger = get_logger("video2text")
+        _logger.info("  ├─ ✅ 总结已暂停 — 等待恢复…")
+        while not self._sum_pause_event.wait(timeout=0.5):
+            if self._cancelled:
+                break
+        if not self._cancelled:
+            _logger.info("  └─ ▶ 总结已继续")
 
     @property
     def is_paused(self) -> bool:
-        """是否处于暂停状态。"""
+        """是否处于暂停状态（转写）。"""
         with self._tx_service_lock:
             return self._tx_service.is_paused if self._tx_service else False
+
+    @property
+    def is_sum_paused(self) -> bool:
+        """总结是否处于暂停状态。"""
+        return not self._sum_pause_event.is_set()
 
     def _confirm_download_callback(self) -> bool:
         if self._cancelled:
@@ -724,7 +790,7 @@ class PipelineWorker(QObject):
 
     def run(self) -> None:
         """执行管道任务：加载模型 → 逐文件转写 → 文本清理 → 总结。"""
-        logger = _setup_worker_logger(self.settings)
+        logger = get_logger("video2text")
 
         transcriber = None
         try:
@@ -831,6 +897,9 @@ class PipelineWorker(QObject):
             sum_status = "✓" if sum_available else "✗"
             logger.info("[总结] %s: %s", provider_label, sum_status)
 
+            # 通知 GUI 进入总结阶段
+            self.phase_changed.emit("summarize")
+
             if (
                 sum_available
                 and provider_name in ("nvidia", "zhipu")
@@ -894,6 +963,10 @@ class PipelineWorker(QObject):
             if self._cancelled:
                 break
 
+            self._sum_wait_if_paused()
+            if self._cancelled:
+                break
+
             if sum_available:
                 processed_text = self._prepare_text(
                     result, segment_merger, text_cleaner
@@ -914,6 +987,7 @@ class PipelineWorker(QObject):
                         custom_prompt=self.custom_prompt,
                         on_stream_token=lambda token: self.stream_token.emit(token),
                         cancel_check=lambda: self._cancelled,
+                        pause_event=self._sum_pause_event,
                     )
                     self.summarize_started.emit(result.video_name)
                     logger.info("[%d/%d] %s", idx + 1, len(results), result.video_name)
@@ -1044,7 +1118,7 @@ class PipelineWorker(QObject):
 class OllamaCheckWorker(QObject):
     """异步检查 Ollama 连接状态"""
 
-    result = Signal(bool, float)
+    result = Signal(bool, float, str)
     finished = Signal()
 
     def __init__(self, url: str, model: str = "") -> None:
@@ -1057,17 +1131,24 @@ class OllamaCheckWorker(QObject):
             client = OllamaClient(base_url=self.url)
             try:
                 t0 = time.monotonic()
+                ok = client.check_connection(quiet=True)
+                if not ok:
+                    latency_ms = (time.monotonic() - t0) * 1000
+                    self.result.emit(False, latency_ms, "connection_failed")
+                    return
                 if self.model:
-                    ok = client.check_model(self.model)
-                else:
-                    ok = client.check_connection()
+                    ok = client.check_model(self.model, quiet=True)
+                    latency_ms = (time.monotonic() - t0) * 1000
+                    if not ok:
+                        self.result.emit(False, latency_ms, "model_not_found")
+                        return
                 latency_ms = (time.monotonic() - t0) * 1000
-                self.result.emit(ok, latency_ms)
+                self.result.emit(True, latency_ms, "")
             finally:
                 client.close()
         except Exception as exc:
             get_logger(__name__).warning("Ollama 连接: ✗ 异常 %s", exc)
-            self.result.emit(False, 0.0)
+            self.result.emit(False, 0.0, "error")
         finally:
             self.finished.emit()
 
@@ -1171,16 +1252,19 @@ class NvidiaCheckWorker(QObject):
     result = Signal(bool, float)
     finished = Signal()
 
-    def __init__(self, api_url: str) -> None:
+    def __init__(self, api_url: str, model: str = "") -> None:
         super().__init__()
         self.api_url = api_url
+        self.model = model
 
     def run(self) -> None:
         from src.summarization.nvidia_client import NvidiaClient
 
         try:
             client = NvidiaClient(
-                api_url=self.api_url, api_key=os.environ.get("NVIDIA_API_KEY", "")
+                api_url=self.api_url,
+                api_key=os.environ.get("NVIDIA_API_KEY", ""),
+                model=self.model,
             )
             try:
                 t0 = time.monotonic()
@@ -1202,14 +1286,18 @@ class ZhipuCheckWorker(QObject):
     result = Signal(bool, float)
     finished = Signal()
 
-    def __init__(self) -> None:
+    def __init__(self, model: str = "") -> None:
         super().__init__()
+        self.model = model
 
     def run(self) -> None:
         from src.summarization.zhipu_client import ZhipuClient
 
         try:
-            client = ZhipuClient(api_key=os.environ.get("ZHIPU_API_KEY", ""))
+            client = ZhipuClient(
+                api_key=os.environ.get("ZHIPU_API_KEY", ""),
+                model=self.model,
+            )
             try:
                 t0 = time.monotonic()
                 ok = client.check_connection()

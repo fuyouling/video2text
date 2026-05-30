@@ -391,7 +391,7 @@ class SummarizationTab(QWidget):
 
         self._wait_async_thread("_nvidia_check_thread")
         thread = QThread()
-        worker = NvidiaCheckWorker(url)
+        worker = NvidiaCheckWorker(url, model=model)
         worker.moveToThread(thread)
 
         def _on_result(ok: bool, latency_ms: float):
@@ -441,13 +441,16 @@ class SummarizationTab(QWidget):
 
     def _test_zhipu(self) -> None:
         """测试智谱 API 连接"""
+        model_edit = self._section_edits.get("zhipu_model")
+        model = model_edit.text().strip() if model_edit else ""
+
         self._zhipu_status_label.setText("测试中...")
         self._zhipu_status_label.setStyleSheet("color: orange")
         self._zhipu_test_btn.setEnabled(False)
 
         self._wait_async_thread("_zhipu_check_thread")
         thread = QThread()
-        worker = ZhipuCheckWorker()
+        worker = ZhipuCheckWorker(model=model)
         worker.moveToThread(thread)
 
         def _on_result(ok: bool, latency_ms: float):
@@ -455,12 +458,16 @@ class SummarizationTab(QWidget):
                 self._zhipu_status_label.setText(f"连接成功 ({latency_ms:.0f}ms)")
                 self._zhipu_status_label.setStyleSheet("color: green")
                 get_logger("video2text").info(
-                    "智谱 API 连接: ✓ 成功 (%.0fms)", latency_ms
+                    "智谱 API 连接: ✓ 成功 (%.0fms) | model=%s",
+                    latency_ms,
+                    model,
                 )
             else:
                 self._zhipu_status_label.setText("连接失败，请检查 API Key 和网络")
                 self._zhipu_status_label.setStyleSheet("color: red")
-                get_logger("video2text").warning("智谱 API 连接: ✗ 失败")
+                get_logger("video2text").warning(
+                    "智谱 API 连接: ✗ 失败 | model=%s", model
+                )
 
         def _cleanup():
             self._zhipu_check_thread = None
@@ -584,7 +591,7 @@ class SummarizationTab(QWidget):
         self._ollama_check_thread = thread
         self._ollama_check_worker = worker
 
-    def _on_check_result(self, ok: bool, latency_ms: float) -> None:
+    def _on_check_result(self, ok: bool, latency_ms: float, reason: str = "") -> None:
         url = self._get_ollama_url()
         model = self._model_combo.currentText().strip() if self._model_combo else ""
         if ok:
@@ -596,9 +603,17 @@ class SummarizationTab(QWidget):
                 model,
             )
         else:
+            if reason == "connection_failed":
+                status_text = "连接失败，请检查 Ollama 服务是否已启动"
+            elif reason == "model_not_found":
+                status_text = f"连接成功，但模型 '{model}' 不存在"
+            elif reason == "error":
+                status_text = "检测异常，请查看日志"
+            else:
+                status_text = "连接失败"
             self._set_ollama_status("连接失败", "red")
             get_logger("video2text").warning(
-                "Ollama 连接: ✗ 失败 | url=%s model=%s", url, model
+                "Ollama 连接: ✗ 失败 | reason=%s url=%s model=%s", status_text, url, model
             )
 
     def _start_ollama_service(self) -> None:

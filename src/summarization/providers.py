@@ -1,6 +1,7 @@
 """Provider 抽象层 —— 统一 Ollama / NVIDIA / 智谱等在线总结提供商的调用接口"""
 
 import os
+import threading
 from typing import Callable, Optional, Protocol
 
 from src.config.settings import Settings
@@ -27,6 +28,7 @@ class SummarizationProvider(Protocol):
         stream: bool = False,
         on_token: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
+        pause_event: Optional[threading.Event] = None,
     ) -> str:
         """将文本转为总结"""
         ...
@@ -62,6 +64,7 @@ class OllamaProvider:
         stream: bool = False,
         on_token: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
+        pause_event: Optional[threading.Event] = None,
     ) -> str:
         prompt = PromptManager().build_prompt(text, custom_prompt)
         return self._client.generate(
@@ -72,6 +75,7 @@ class OllamaProvider:
             stream=stream,
             on_token=on_token,
             cancel_check=cancel_check,
+            pause_event=pause_event,
         )
 
     def close(self) -> None:
@@ -114,6 +118,7 @@ class NvidiaProvider:
         stream: bool = False,
         on_token: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
+        pause_event: Optional[threading.Event] = None,
     ) -> str:
         prompt = PromptManager().build_prompt(text, custom_prompt)
         return self._client.generate(
@@ -127,6 +132,7 @@ class NvidiaProvider:
             stream=stream,
             on_token=on_token,
             cancel_check=cancel_check,
+            pause_event=pause_event,
         )
 
     def close(self) -> None:
@@ -158,6 +164,7 @@ class ZhipuProvider:
         stream: bool = False,
         on_token: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
+        pause_event: Optional[threading.Event] = None,
     ) -> str:
         prompt = PromptManager().build_prompt(text, custom_prompt)
         return self._client.generate(
@@ -168,6 +175,7 @@ class ZhipuProvider:
             stream=stream,
             on_token=on_token,
             cancel_check=cancel_check,
+            pause_event=pause_event,
         )
 
     def close(self) -> None:

@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import requests
 import json as _json
 import time
@@ -366,7 +367,22 @@ class OllamaClient:
             response = self._session.get(f"{self.base_url}/api/tags", timeout=10)
             success = response.status_code == 200
             if not quiet:
-                logger.info("Ollama连接检查: %s", "成功" if success else "失败")
+                if success:
+                    logger.info("Ollama连接检查: 成功")
+                else:
+                    try:
+                        error_detail = response.json()
+                        logger.error(
+                            "Ollama连接检查: 失败 (状态码 %d): %s",
+                            response.status_code,
+                            error_detail,
+                        )
+                    except Exception:
+                        logger.error(
+                            "Ollama连接检查: 失败 (状态码 %d): %s",
+                            response.status_code,
+                            response.text[:500] if response.text else "(空响应)",
+                        )
             return success
         except Exception as e:
             if not quiet:
@@ -411,7 +427,7 @@ class OllamaClient:
             models = self.list_models(quiet=True)
             exists = model_name in models
             if not quiet:
-                logger.info("模型 %s %s", model_name, "存在" if exists else "不存在")
+                logger.error("模型 %s %s", model_name, "存在" if exists else "不存在")
                 if not exists:
                     logger.warning("可用模型: %s", models)
             return exists
@@ -430,6 +446,7 @@ class OllamaClient:
         stream: bool = False,
         on_token: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
+        pause_event: Optional[threading.Event] = None,
     ) -> str:
         """生成文本
 
@@ -442,6 +459,7 @@ class OllamaClient:
             stream: 是否流式输出
             on_token: 流式输出时的 token 回调函数
             cancel_check: 取消检查回调，返回 True 时中断生成
+            pause_event: 暂停控制事件，set() 为继续，clear() 为暂停
 
         Returns:
             生成的文本
@@ -479,7 +497,7 @@ class OllamaClient:
                         error_msg += f", 详情: {error_detail}"
                     except Exception:
                         error_msg += f", 响应: {response.text[:200]}"
-                    logger.error(error_msg)
+                    logger.error("%s", error_msg)
                     raise SummarizationError(error_msg)
 
                 if stream:

@@ -1,6 +1,7 @@
 """智谱 API 客户端 —— 使用 zai-sdk 调用 GLM 模型"""
 
 import os
+import threading
 import time
 from typing import Callable, Optional
 
@@ -133,6 +134,7 @@ class ZhipuClient:
         stream: bool = False,
         on_token: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
+        pause_event: Optional[threading.Event] = None,
     ) -> str:
         logger.debug(
             "智谱 API 请求参数: model=%s, temperature=%s, max_tokens=%s, stream=%s",
@@ -150,7 +152,7 @@ class ZhipuClient:
             try:
                 if stream:
                     return self._generate_stream(
-                        model, prompt, temperature, max_tokens, on_token, cancel_check
+                        model, prompt, temperature, max_tokens, on_token, cancel_check, pause_event
                     )
                 else:
                     return self._generate_non_stream(
@@ -226,6 +228,7 @@ class ZhipuClient:
         max_tokens: int,
         on_token: Optional[Callable[[str], None]],
         cancel_check: Optional[Callable[[], bool]] = None,
+        pause_event: Optional[threading.Event] = None,
     ) -> str:
         full_text = ""
         try:
