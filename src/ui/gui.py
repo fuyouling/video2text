@@ -903,6 +903,7 @@ class MainWindow(QMainWindow):
         self.input_file_btn.setEnabled(not busy)
         self.input_folder_btn.setEnabled(not busy)
         self.output_btn.setEnabled(not busy)
+        self.load_history_btn.setEnabled(not busy)
         self._update_pause_button(busy)
         if not busy:
             self.pause_btn.setText("暂停")
@@ -956,9 +957,7 @@ class MainWindow(QMainWindow):
             return
 
         # ── 管道模式：根据阶段分别处理 ──
-        if self._current_mode == "pipeline" and hasattr(
-            self._worker, "sum_pause"
-        ):
+        if self._current_mode == "pipeline" and hasattr(self._worker, "sum_pause"):
             if self._current_phase == "summarize":
                 # 总结阶段暂停/继续
                 if self._worker.is_sum_paused:
@@ -983,9 +982,7 @@ class MainWindow(QMainWindow):
                 else:
                     self._worker.pause()
                     self.pause_btn.setText("继续")
-                    self.status_bar.showMessage(
-                        "正在等待当前音频/切片转写完成后暂停…"
-                    )
+                    self.status_bar.showMessage("正在等待当前音频/切片转写完成后暂停…")
                 return
 
         # ── 仅总结模式 ──
@@ -1001,9 +998,7 @@ class MainWindow(QMainWindow):
             return
 
         # ── 仅转写模式（原有逻辑） ──
-        if not hasattr(self._worker, "pause") or not hasattr(
-            self._worker, "resume"
-        ):
+        if not hasattr(self._worker, "pause") or not hasattr(self._worker, "resume"):
             return
 
         if self._worker.is_paused:
@@ -1013,9 +1008,7 @@ class MainWindow(QMainWindow):
         else:
             self._worker.pause()
             self.pause_btn.setText("继续")
-            self.status_bar.showMessage(
-                "正在等待当前音频/切片转写完成后暂停…"
-            )
+            self.status_bar.showMessage("正在等待当前音频/切片转写完成后暂停…")
 
     # ── 仅转写 ──
 

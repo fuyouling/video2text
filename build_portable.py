@@ -11,7 +11,8 @@ Usage:
   python build_portable.py --dry-run        # Preview build steps without executing
   python build_portable.py --verbose        # Show detailed output
   python build_portable.py --fast-zip       # ZIP with fastest compression
-  python build_portable.py --best-zip       # ZIP with best compression
+   python build_portable.py --best-zip       # ZIP with best compression
+   python build_portable.py --only-zip       # Only repackage existing build into ZIP
 """
 
 import argparse
@@ -169,16 +170,53 @@ def main():
     parser.add_argument(
         "--best-zip", action="store_true", help="Use best ZIP compression (level 9)"
     )
+    parser.add_argument(
+        "--only-zip", action="store_true", help="Only repackage existing build into ZIP"
+    )
     args = parser.parse_args()
 
     compress_level = 1 if args.fast_zip else (9 if args.best_zip else 6)
-
     build_start = time.time()
     root = Path(__file__).parent
     portable_dir = root / "dist" / "video2text_portable"
     cache_file = root / ".build_cache"
     spec_file = root / "video2text_portable.spec"
     main_py = root / "src" / "main.py"
+
+    if args.only_zip:
+        log("=" * 52, "cyan")
+        log("Video2Text --only-zip Mode: repackaging existing build", "cyan")
+        log("=" * 52, "cyan")
+        print()
+
+        version = read_version(root)
+        plat = platform.system().lower()
+        zip_name = f"video2text_portable_{plat}_v{version}.zip"
+        zip_path = root / "dist" / zip_name
+
+        if not portable_dir.exists():
+            log(f"[ERROR] Portable directory not found: {portable_dir}", "red")
+            log("Run a full build first before using --only-zip.", "red")
+            sys.exit(1)
+
+        step_log(6, f"Creating ZIP package ({zip_name})...")
+        if zip_path.exists():
+            zip_path.unlink()
+        try:
+            create_zip_with_progress(zip_path, portable_dir, compress_level)
+            log(f"  Created: {zip_path}", "green")
+        except Exception as e:
+            log(f"  [ERROR] ZIP creation failed: {e}", "red")
+            sys.exit(1)
+
+        print()
+        log("=" * 52, "cyan")
+        log("Repackage Complete!", "green")
+        log("=" * 52, "cyan")
+        print()
+        log(f"  - ZIP package: {zip_path}", "white")
+        print()
+        return
 
     log("=" * 52, "cyan")
     log("Video2Text Green Version Build Tool", "cyan")
@@ -399,6 +437,7 @@ start "" "%~dp0video2text.exe" %*
     log("  - Incremental build (default) skips unchanged steps", "white")
     log("  - Use --dry-run to preview without executing", "white")
     log("  - Use --verbose for detailed PyInstaller output", "white")
+    log("  - Use --only-zip to repackage existing build into ZIP", "white")
     print()
 
 
