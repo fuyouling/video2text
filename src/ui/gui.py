@@ -196,13 +196,12 @@ class MainWindow(QMainWindow):
         self.input_folder_btn.setMinimumWidth(_BTN_MIN_WIDTH)
         self.input_folder_btn.clicked.connect(self._select_input_folder)
         input_row.addWidget(self.input_folder_btn)
-        self.open_viewer_btn = QPushButton("全屏查看")
-        self.open_viewer_btn.setMinimumWidth(_BTN_MIN_WIDTH)
-        self.open_viewer_btn.setToolTip(
-            "在独立窗口中查看所有结果，支持全屏、搜索、导出、书签等功能"
-        )
-        self.open_viewer_btn.clicked.connect(self._open_result_viewer)
-        input_row.addWidget(self.open_viewer_btn)
+        self.pause_btn = QPushButton("暂停")
+        self.pause_btn.setMinimumWidth(_BTN_MIN_WIDTH)
+        self.pause_btn.setToolTip("暂停当前转写任务，再次点击可继续")
+        self.pause_btn.setEnabled(False)
+        self.pause_btn.clicked.connect(self._on_pause_resume)
+        input_row.addWidget(self.pause_btn)
         return input_row
 
     def _create_output_row(self) -> QHBoxLayout:
@@ -222,12 +221,13 @@ class MainWindow(QMainWindow):
         self.load_history_btn.setToolTip("加载输出目录中的历史转写和总结文件")
         self.load_history_btn.clicked.connect(self._load_history_files)
         output_row.addWidget(self.load_history_btn)
-        self.pause_btn = QPushButton("暂停")
-        self.pause_btn.setMinimumWidth(_BTN_MIN_WIDTH)
-        self.pause_btn.setToolTip("暂停当前转写任务，再次点击可继续")
-        self.pause_btn.setEnabled(False)
-        self.pause_btn.clicked.connect(self._on_pause_resume)
-        output_row.addWidget(self.pause_btn)
+        self.open_viewer_btn = QPushButton("全屏查看")
+        self.open_viewer_btn.setMinimumWidth(_BTN_MIN_WIDTH)
+        self.open_viewer_btn.setToolTip(
+            "在独立窗口中查看所有结果，支持全屏、搜索、导出、书签等功能"
+        )
+        self.open_viewer_btn.clicked.connect(self._open_result_viewer)
+        output_row.addWidget(self.open_viewer_btn)
         return output_row
 
     def _create_run_row(self) -> QHBoxLayout:

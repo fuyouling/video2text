@@ -98,7 +98,6 @@ def transcribe(
             vad_filter=vad_filter,
             max_chunk_duration=cfg.max_chunk_duration,
             output_formats=cfg.output_formats,
-            on_progress=lambda msg: console.print(f"  {msg}"),
         )
 
         service.transcriber.load_model()
@@ -174,7 +173,6 @@ def summarize(
                 settings=settings,
                 file_writer=file_writer,
                 provider=provider_inst,
-                on_progress=lambda msg: console.print(f"  {msg}"),
             )
 
             service.summarize(text, video_name=video_name, index=1, total=1)
@@ -242,7 +240,6 @@ def run_pipeline(
             vad_filter=vad_filter,
             max_chunk_duration=cfg.max_chunk_duration,
             output_formats=cfg.output_formats,
-            on_progress=lambda msg: console.print(f"  {msg}"),
         )
 
         tx_service.transcriber.load_model()
@@ -287,7 +284,6 @@ def run_pipeline(
                         settings=settings,
                         file_writer=file_writer,
                         provider=provider_inst,
-                        on_progress=lambda msg: console.print(f"  {msg}"),
                     )
                     for idx, tx_result in enumerate(tx_results):
                         processed_text = summary_map[tx_result.video_name][0]

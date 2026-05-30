@@ -58,7 +58,6 @@ a = Analysis(
     binaries=pyside6_bins + ctranslate2_bins,
     datas=[
         ('config.ini', '.'),
-        ('prompts.json', '.'),
         ('ffmpeg/bin/ffmpeg.exe', 'ffmpeg/bin'),
         ('ffmpeg/bin/ffprobe.exe', 'ffmpeg/bin'),
         ('ffmpeg/presets', 'ffmpeg/presets'),

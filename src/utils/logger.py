@@ -141,24 +141,24 @@ def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(name)
 
 
-def log_error_with_context(
-    logger_name: str,
-    step_name: str,
-    error: Exception,
-    video_path: str = "",
-) -> None:
-    """记录带上下文信息的错误日志。
+# def log_error_with_context(
+#     logger_name: str,
+#     step_name: str,
+#     error: Exception,
+#     video_path: str = "",
+# ) -> None:
+#     """记录带上下文信息的错误日志。
 
-    输出格式与 log_panel.py 的 _RE_STEP 正则兼容，可被正确着色。
+#     输出格式与 log_panel.py 的 _RE_STEP 正则兼容，可被正确着色。
 
-    Args:
-        logger_name: 日志记录器名称
-        step_name: 失败步骤名称
-        error: 异常对象
-        video_path: 相关文件路径
-    """
-    log = logging.getLogger(logger_name)
-    log.error("  └─ %s ✗ 失败", step_name)
-    # if video_path:
-    #     log.error("  ├─ 文件: %s", Path(video_path).name)
-    # log.error("  └─ 错误: %s", error)
+#     Args:
+#         logger_name: 日志记录器名称
+#         step_name: 失败步骤名称
+#         error: 异常对象
+#         video_path: 相关文件路径
+#     """
+#     log = logging.getLogger(logger_name)
+#     log.error("  ├─ %s ✗ 失败", step_name)
+#     if video_path:
+#         log.error("  ├─ 文件: %s", Path(video_path).name)
+#     log.error("  └─ 错误: %s", error)

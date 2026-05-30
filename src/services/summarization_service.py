@@ -30,7 +30,6 @@ class SummarizationService:
         *,
         custom_prompt: str = "",
         on_stream_token: Optional[Callable[[str], None]] = None,
-        on_progress: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
     ):
         self.settings = settings
@@ -39,7 +38,6 @@ class SummarizationService:
         self.custom_prompt = custom_prompt
 
         self.on_stream_token = on_stream_token
-        self.on_progress = on_progress
         self.cancel_check = cancel_check
         self.summary_format = (
             settings.get("output.summary_format", "txt").lower().strip()
@@ -78,7 +76,7 @@ class SummarizationService:
         label = video_name or "(未命名)"
 
         if total > 0:
-            self._log(f"  ├─ 文本总结开始")
+            logger.info("  ├─ 文本总结开始")
 
         def _on_token(token: str):
             if self.on_stream_token:
@@ -99,7 +97,7 @@ class SummarizationService:
             self.file_writer.write_summary(summary, video_name, fmt=self.summary_format)
 
         if total > 0:
-            self._log(f"  └─ 文本总结完成 ✓ (.{self.summary_format})")
+            logger.info("  └─ 文本总结完成 ✓ (.%s)", self.summary_format)
         return summary
 
     def summarize_batch(
@@ -147,7 +145,7 @@ class SummarizationService:
                 )
                 results.append(summary)
             except Exception as e:
-                self._log(f"[{idx + 1}/{total}] 总结失败: {video_name} - {e}")
+                logger.info("[%d/%d] 总结失败: %s - %s", idx + 1, total, video_name, e)
                 results.append("")
 
         return results
@@ -193,8 +191,8 @@ class SummarizationService:
                 with progress_lock:
                     done_count[0] += 1
                     current = done_count[0]
-                self._log(
-                    f"[{current}/{total}] 总结完成: {video_name} (.{self.summary_format})"
+                logger.info(
+                    "[%d/%d] 总结完成: %s (.%s)", current, total, video_name, self.summary_format,
                 )
 
                 return idx, summary if summary else ""
@@ -202,7 +200,7 @@ class SummarizationService:
                 with progress_lock:
                     done_count[0] += 1
                     current = done_count[0]
-                self._log(f"[{current}/{total}] 总结失败: {video_name} - {e}")
+                logger.info("[%d/%d] 总结失败: %s - %s", current, total, video_name, e)
                 return idx, ""
             finally:
                 provider.close()
@@ -226,8 +224,3 @@ class SummarizationService:
 
         return [results.get(i, "") for i in range(len(items))]
 
-    def _log(self, message: str):
-        """记录日志并通过回调通知调用方。"""
-        logger.info(message)
-        if self.on_progress:
-            self.on_progress(message)
