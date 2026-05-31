@@ -1,5 +1,6 @@
 """GUI Worker 线程 —— 使用服务层，支持流式输出、断点续传、单文件即时回调"""
 
+import os
 import threading
 import time
 from pathlib import Path
@@ -916,12 +917,12 @@ class OllamaListModelWorker(QObject):
 
 
 # ---------------------------------------------------------------------------
-# ScanFilesWorker (保持不变)
+# ScanFilesWorker — single-pass os.scandir() traversal
 # ---------------------------------------------------------------------------
 
 
 class ScanFilesWorker(QObject):
-    """异步递归扫描文件夹中的媒体文件"""
+    """异步递归扫描文件夹中的媒体文件——单次 os.scandir() 遍历，返回 (path, size_bytes) 元组列表"""
 
     result = Signal(list)
     finished = Signal()
@@ -933,26 +934,25 @@ class ScanFilesWorker(QObject):
 
     def run(self) -> None:
         try:
-            folder_path = Path(self.folder)
-            files: list[str] = []
-            seen: set[str] = set()
-            for ext in self.media_exts:
-                try:
-                    for f in folder_path.rglob(f"*{ext}"):
-                        try:
-                            if f.is_file():
-                                normalized = str(f).lower()
-                                if normalized not in seen:
-                                    seen.add(normalized)
-                                    files.append(str(f))
-                        except PermissionError:
-                            get_logger(__name__).warning("无权访问文件，已跳过: %s", f)
-                except PermissionError:
-                    get_logger(__name__).warning(
-                        "无权遍历目录，已跳过: %s", folder_path
-                    )
-            self.result.emit(sorted(files))
+            files: list[tuple[str, int]] = []
+            self._scan_recursive(self.folder, files)
+            self.result.emit(files)
         except Exception:
             self.result.emit([])
         finally:
             self.finished.emit()
+
+    def _scan_recursive(self, dir_path: str, files: list) -> None:
+        try:
+            for entry in os.scandir(dir_path):
+                try:
+                    if entry.is_dir(follow_symlinks=False):
+                        self._scan_recursive(entry.path, files)
+                    elif entry.is_file(follow_symlinks=False):
+                        ext = Path(entry.name).suffix.lower()
+                        if ext in self.media_exts:
+                            files.append((entry.path, entry.stat().st_size))
+                except PermissionError:
+                    continue
+        except PermissionError:
+            pass

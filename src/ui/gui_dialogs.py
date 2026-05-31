@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QClipboard, QCursor
 from PySide6.QtWidgets import (
     QAbstractButton,
@@ -63,10 +63,15 @@ class VideoSelectionDialog(QDialog):
     """媒体文件选择对话框 —— 树形视图展示文件，支持按类型/后缀/大小组合筛选和勾选。"""
 
     def __init__(
-        self, video_files: list[str], parent=None, folder: Optional[str] = None
+        self,
+        file_metas: list[tuple[str, int]],
+        parent=None,
+        folder: Optional[str] = None,
     ) -> None:
         super().__init__(parent)
-        self.video_files = video_files
+        self._file_metas = file_metas
+        self._paths = [Path(p) for p, _ in file_metas]
+        self._path_to_size: dict[str, int] = dict(file_metas)
         self._input_folder = folder
 
         settings = Settings()
@@ -80,6 +85,7 @@ class VideoSelectionDialog(QDialog):
         )
         self._common_path: Optional[str] = None
         self._max_depth: int = 0
+        self._leaf_items: list[QTreeWidgetItem] = []
 
         self._init_ui()
 
@@ -95,7 +101,7 @@ class VideoSelectionDialog(QDialog):
         layout = QVBoxLayout(self)
 
         self._info_label = QLabel(
-            f"共找到 {len(self.video_files)} 个媒体文件，请选择需要处理的文件："
+            f"共找到 {len(self._file_metas)} 个媒体文件，请选择需要处理的文件："
         )
         layout.addWidget(self._info_label)
 
@@ -132,6 +138,9 @@ class VideoSelectionDialog(QDialog):
         self._search_edit = QLineEdit()
         self._search_edit.setPlaceholderText("输入文件名关键字...")
         self._search_edit.setClearButtonEnabled(True)
+        self._search_timer = QTimer()
+        self._search_timer.setSingleShot(True)
+        self._search_timer.timeout.connect(self._apply_filters)
         self._search_edit.textChanged.connect(self._on_search_changed)
         toolbar.addWidget(self._search_edit)
         toolbar.addStretch()
@@ -155,23 +164,11 @@ class VideoSelectionDialog(QDialog):
         )
         self._tree.header().setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
         self._tree.header().resizeSection(3, 500)
-        self._build_tree()
-        model = self._tree.model()
-        _ALIGN_LEFT = int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        for _col in range(4):
-            model.setHeaderData(
-                _col,
-                Qt.Orientation.Horizontal,
-                _ALIGN_LEFT,
-                Qt.ItemDataRole.TextAlignmentRole,
-            )
-        self._tree.expandAll()
         self._tree.header().setSortIndicatorShown(True)
         self._tree.header().setSectionsClickable(True)
         self._sort_order: dict[int, Qt.SortOrder] = {}
         self._tree.header().sectionClicked.connect(self._on_header_clicked)
         self._tree.itemChanged.connect(self._update_info_label)
-        self._update_info_label()
         layout.addWidget(self._tree)
 
         bottom_layout = QHBoxLayout()
@@ -217,11 +214,28 @@ class VideoSelectionDialog(QDialog):
         bottom_layout.addWidget(cancel_btn)
         layout.addLayout(bottom_layout)
 
+        QTimer.singleShot(0, self._deferred_populate)
+
+    def _deferred_populate(self) -> None:
+        self._tree.setSortingEnabled(False)
+        self._tree.setUpdatesEnabled(False)
+        self._build_tree()
+        model = self._tree.model()
+        _ALIGN_LEFT = int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        for _col in range(4):
+            model.setHeaderData(
+                _col,
+                Qt.Orientation.Horizontal,
+                _ALIGN_LEFT,
+                Qt.ItemDataRole.TextAlignmentRole,
+            )
+        self._tree.setUpdatesEnabled(True)
+        self._tree.expandAll()
+        self._update_info_label()
         self._apply_mirror_defaults()
 
     def _build_tree(self) -> None:
-        self._leaf_items: list[QTreeWidgetItem] = []
-        paths = [Path(f) for f in self.video_files]
+        paths = self._paths
         if not paths:
             return
 
@@ -262,69 +276,18 @@ class VideoSelectionDialog(QDialog):
         self._max_depth = max_depth
 
         if not need_folder:
+            batch: list[QTreeWidgetItem] = []
             for _, abs_p in sorted(rel_pairs, key=lambda x: x[0].name.lower()):
-                ext = abs_p.suffix.lower()
-                media_type = suffix_map.get(ext, "媒体")
-                icon = (
-                    "🎬"
-                    if media_type == "视频"
-                    else "🎵"
-                    if media_type == "音频"
-                    else "📄"
-                )
-                try:
-                    size_bytes = abs_p.stat().st_size
-                    size_str = _format_file_size(size_bytes)
-                except OSError:
-                    size_bytes = -1
-                    size_str = "-"
-                rel_parts: tuple[str, ...] = ()
-                item = _SortTreeWidgetItem(
-                    [f"{icon} {abs_p.name}", media_type, size_str, ""]
-                )
-                item.setData(0, Qt.ItemDataRole.UserRole, str(abs_p))
-                item.setData(0, Qt.ItemDataRole.UserRole + 1, size_bytes)
-                item.setData(0, Qt.ItemDataRole.UserRole + 2, rel_parts)
-                item.setCheckState(0, Qt.CheckState.Checked)
-                for _col in range(1, 4):
-                    item.setTextAlignment(
-                        _col, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-                    )
-                self._tree.addTopLevelItem(item)
+                item = self._make_file_item(abs_p, suffix_map, ())
+                batch.append(item)
                 self._leaf_items.append(item)
+            self._tree.addTopLevelItems(batch)
         else:
             folder_nodes: dict[tuple[str, ...], QTreeWidgetItem] = {}
             for rel, abs_p in rel_pairs:
                 parts = rel.parent.parts
                 if not parts:
-                    ext = abs_p.suffix.lower()
-                    media_type = suffix_map.get(ext, "媒体")
-                    icon = (
-                        "🎬"
-                        if media_type == "视频"
-                        else "🎵"
-                        if media_type == "音频"
-                        else "📄"
-                    )
-                    try:
-                        size_bytes = abs_p.stat().st_size
-                        size_str = _format_file_size(size_bytes)
-                    except OSError:
-                        size_bytes = -1
-                        size_str = "-"
-                    rel_parts = ()
-                    item = _SortTreeWidgetItem(
-                        [f"{icon} {abs_p.name}", media_type, size_str, ""]
-                    )
-                    item.setData(0, Qt.ItemDataRole.UserRole, str(abs_p))
-                    item.setData(0, Qt.ItemDataRole.UserRole + 1, size_bytes)
-                    item.setData(0, Qt.ItemDataRole.UserRole + 2, rel_parts)
-                    item.setCheckState(0, Qt.CheckState.Checked)
-                    for _col in range(1, 4):
-                        item.setTextAlignment(
-                            _col,
-                            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                        )
+                    item = self._make_file_item(abs_p, suffix_map, ())
                     self._tree.addTopLevelItem(item)
                     self._leaf_items.append(item)
                     continue
@@ -352,6 +315,33 @@ class VideoSelectionDialog(QDialog):
         for ext in sorted(present_suffixes):
             self._suffix_combo.addItem(ext)
 
+    def _make_file_item(
+        self,
+        abs_p: Path,
+        suffix_map: dict,
+        rel_parts: tuple[str, ...] = (),
+    ) -> _SortTreeWidgetItem:
+        abs_path_str = str(abs_p)
+        ext = abs_p.suffix.lower()
+        media_type = suffix_map.get(ext, "媒体")
+        icon = "🎬" if media_type == "视频" else "🎵" if media_type == "音频" else "📄"
+        size_bytes = self._path_to_size.get(abs_path_str, -1)
+        size_str = _format_file_size(size_bytes) if size_bytes >= 0 else "-"
+        name_stem = abs_p.stem.lower()
+
+        item = _SortTreeWidgetItem([f"{icon} {abs_p.name}", media_type, size_str, ""])
+        item.setData(0, Qt.ItemDataRole.UserRole, abs_path_str)
+        item.setData(0, Qt.ItemDataRole.UserRole + 1, size_bytes)
+        item.setData(0, Qt.ItemDataRole.UserRole + 2, rel_parts)
+        item.setData(0, Qt.ItemDataRole.UserRole + 3, ext)
+        item.setData(0, Qt.ItemDataRole.UserRole + 4, name_stem)
+        item.setCheckState(0, Qt.CheckState.Checked)
+        for _col in range(1, 4):
+            item.setTextAlignment(
+                _col, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+            )
+        return item
+
     def _add_file_item(
         self,
         parent: QTreeWidgetItem,
@@ -359,24 +349,7 @@ class VideoSelectionDialog(QDialog):
         suffix_map: dict,
         rel_parts: tuple[str, ...] = (),
     ) -> None:
-        ext = abs_p.suffix.lower()
-        media_type = suffix_map.get(ext, "媒体")
-        icon = "🎬" if media_type == "视频" else "🎵" if media_type == "音频" else "📄"
-        try:
-            size_bytes = abs_p.stat().st_size
-            size_str = _format_file_size(size_bytes)
-        except OSError:
-            size_bytes = -1
-            size_str = "-"
-        item = _SortTreeWidgetItem([f"{icon} {abs_p.name}", media_type, size_str, ""])
-        item.setData(0, Qt.ItemDataRole.UserRole, str(abs_p))
-        item.setData(0, Qt.ItemDataRole.UserRole + 1, size_bytes)
-        item.setData(0, Qt.ItemDataRole.UserRole + 2, rel_parts)
-        item.setCheckState(0, Qt.CheckState.Checked)
-        for _col in range(1, 4):
-            item.setTextAlignment(
-                _col, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-            )
+        item = self._make_file_item(abs_p, suffix_map, rel_parts)
         parent.addChild(item)
         self._leaf_items.append(item)
 
@@ -408,6 +381,9 @@ class VideoSelectionDialog(QDialog):
         )
 
     def _apply_filters(self) -> None:
+        if not self._leaf_items:
+            return
+
         media_idx = self._media_type_combo.currentIndex()
         media_exts: Optional[set[str]] = None
         if media_idx == 1:
@@ -426,9 +402,8 @@ class VideoSelectionDialog(QDialog):
 
         self._tree.blockSignals(True)
         for item in self._iter_leaves():
-            path = item.data(0, Qt.ItemDataRole.UserRole)
-            ext = Path(path).suffix.lower()
-            name = Path(path).stem.lower()
+            ext = item.data(0, Qt.ItemDataRole.UserRole + 3)
+            name = item.data(0, Qt.ItemDataRole.UserRole + 4)
             size_bytes: int = item.data(0, Qt.ItemDataRole.UserRole + 1)
 
             match = True
@@ -454,7 +429,7 @@ class VideoSelectionDialog(QDialog):
         self._update_info_label()
 
     def _on_search_changed(self, _text: str) -> None:
-        self._apply_filters()
+        self._search_timer.start(150)
 
     def _select_all(self) -> None:
         self._tree.blockSignals(True)

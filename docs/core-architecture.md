@@ -24,7 +24,7 @@
 Video2Text 是一个视频/音频转文本工具，核心功能包括：
 
 - **语音转写**：基于 `faster_whisper`（OpenAI Whisper 的 CTranslate2 优化实现）将视频/音频中的语音转换为文本
-- **智能总结**：通过本地 Ollama（Qwen2.5）或在线 NVIDIA API 对转写文本进行摘要总结
+- **智能总结**：通过本地 Ollama（Qwen2.5）、在线 NVIDIA API 或智谱 API 对转写文本进行摘要总结
 - **多格式输出**：支持 TXT、SRT、VTT、JSON 四种转写输出格式，以及 TXT/MD 两种摘要格式
 - **双界面**：CLI（Typer + Rich）和 GUI（PySide6）两种使用方式
 
@@ -35,7 +35,7 @@ Video2Text 是一个视频/音频转文本工具，核心功能包括：
 | CLI 框架 | Typer + Rich |
 | GUI 框架 | PySide6 (Qt for Python) |
 | 语音转写 | faster_whisper (CTranslate2) |
-| 文本总结 | Ollama HTTP API / NVIDIA OpenAI 兼容 API |
+| 文本总结 | Ollama HTTP API / NVIDIA OpenAI 兼容 API / 智谱 zai-sdk |
 | 视频处理 | FFmpeg / ffprobe（子进程调用） |
 | 配置管理 | Python configparser |
 | 日志系统 | Python logging + RotatingFileHandler |
@@ -70,15 +70,15 @@ Video2Text 是一个视频/音频转文本工具，核心功能包括：
 
 | 模块 | 路径 | 职责 |
 |------|------|------|
-| 配置管理 | `src/config/` | 读写 config.ini，路径解析，收藏目录管理 |
+| 配置管理 | `src/config/` | 读写 config.ini，路径解析，转写配置加载，版本信息，收藏目录管理 |
 | 预处理 | `src/preprocessing/` | FFmpeg 路径管理，媒体验证，音频提取 |
 | 转写引擎 | `src/transcription/` | faster_whisper 模型加载、转写、OOM 降级 |
 | 文本处理 | `src/text_processing/` | 段落合并、文本清理（去填充词、标点修复） |
-| 总结引擎 | `src/summarization/` | Ollama/NVIDIA 客户端，Provider 抽象层，提示词管理 |
+| 总结引擎 | `src/summarization/` | Ollama/NVIDIA/智谱客户端，Provider 抽象层，提示词管理 |
 | 业务服务 | `src/services/` | 编排预处理→转写→总结的完整流程，断点续传 |
-| 存储输出 | `src/storage/` | 文件写入（原子写入）、格式化、书签管理 |
-| 用户界面 | `src/ui/` | CLI 命令定义、GUI 主窗口、结果查看器 |
-| 工具 | `src/utils/` | 异常体系、日志、模型下载、校验器、时间格式化 |
+| 存储输出 | `src/storage/` | 文件写入（原子写入）、格式化（OutputFormatter）、书签管理 |
+| 用户界面 | `src/ui/` | CLI 命令定义、GUI 主窗口、Worker 线程、结果查看器、主题管理 |
+| 工具 | `src/utils/` | 异常体系、日志、模型下载、校验器、时间格式化、路径、JSON 读写、限流、环境变量、子进程兼容 |
 
 ---
 
@@ -130,12 +130,15 @@ load_dotenv(get_base_dir() / ".env", override=True)
 
 ```python
 settings = Settings()
-value = settings.get("section.key", default="默认值")     # 获取字符串
-num = settings.get_int("section.key", default=0)          # 获取整数
-flag = settings.get_bool("section.key", default=False)    # 获取布尔值
-items = settings.get_list("section.key", default=[])      # 获取逗号分隔列表
-settings.set("section.key", "new_value")                  # 设置值
-settings.save()                                           # 持久化到磁盘
+value = settings.get("section.key", default="默认值")         # 获取字符串
+num = settings.get_int("section.key", default=0)              # 获取整数
+flag = settings.get_bool("section.key", default=False)        # 获取布尔值
+float_val = settings.get_float("section.key", default=0.0)    # 获取浮点数
+items = settings.get_list("section.key", default=[])          # 获取逗号分隔列表
+section = settings.get_section("section")                     # 获取整个配置节
+settings.set("section.key", "new_value")                      # 设置值
+settings.save()                                               # 持久化到磁盘
+settings.reload()                                             # 从磁盘重新加载
 ```
 
 **配置文件结构** (`config.ini`)：
@@ -150,9 +153,38 @@ settings.save()                                           # 持久化到磁盘
 | `[network]` | 网络参数（代理、镜像、超时） |
 | `[text_processing]` | 文本处理参数（合并间隔、填充词） |
 | `[paths]` | 路径配置（模型、日志、视频目录） |
-| `[tools]` | 工具配置（去水印参数） |
+| `[tools]` | 预留 |
 
-### 4.2 DirectoryManager (`src/config/directory_manager.py`)
+### 4.2 TranscriptionConfig (`src/config/transcription_config.py`)
+
+**职责**：从 Settings 加载转写参数，返回 `TranscriptionConfig` dataclass。
+
+```python
+@dataclass
+class TranscriptionConfig:
+    language: str
+    model_path: str
+    device: str
+    compute_type: str
+    beam_size: int
+    best_of: int
+    temperature: float
+    condition_on_previous_text: bool
+    word_timestamps: bool
+    max_chunk_duration: int
+    output_formats: list[str]
+```
+
+工厂函数 `_load_tx_config(settings)` 从 config.ini 读取并构造 `TranscriptionConfig`，供 `TranscriptionService` 和 CLI/GUI 使用。
+
+### 4.3 版本信息 (`src/config/version.py`)
+
+```python
+APP_NAME = "video2text"
+APP_VERSION = "2.3.6"
+```
+
+### 4.4 DirectoryManager (`src/config/directory_manager.py`)
 
 管理用户收藏的常用输入/输出目录，数据存储在 `favorite_dirs.json` 中：
 
@@ -231,9 +263,9 @@ ffmpeg -i input.mp4 -vn -acodec libmp3lame -ar 16000 -ac 1 -q:a 2 -y temp.mp3
 ffmpeg -i temp.mp3 -acodec pcm_s16le -ar 16000 -ac 1 -y output.wav
 ```
 
-**支持的格式**：
-- 视频：16 种（mp4, avi, mov, mkv, flv, wmv, webm, ts, mts, m4v, 3gp, mpeg, mpg, vob, ogv, rm, rmvb）
-- 音频：7 种（mp3, wav, flac, aac, ogg, m4a, wma）
+**支持的格式**（从 `config.ini` 的 `[preprocessing]` 节读取，可自定义）：
+- 视频默认：17 种（mp4, avi, mov, mkv, flv, wmv, webm, ts, mts, m4v, 3gp, mpeg, mpg, vob, ogv, rm, rmvb）
+- 音频默认：7 种（mp3, wav, flac, aac, ogg, m4a, wma）
 
 ---
 
@@ -263,8 +295,8 @@ def get_cached_transcriber(model_path, device, compute_type, num_workers, downlo
    └─ 不完整 → 触发自动下载（ModelDownloader）
 3. 使用用户配置的 device/compute_type 加载
 4. 若 CUDA OOM：
-   ├─ 尝试 float16 → int8 → float32（同 device）
-   └─ 仍失败 → 回退到 CPU + int8（最终兜底）
+    ├─ 尝试 int8 → float32 → int8_float16（同 device）
+    └─ 仍失败 → 回退到 CPU + int8 → float32（最终兜底）
 5. 每次失败后调用 torch.cuda.empty_cache() 释放显存
 ```
 
@@ -349,6 +381,15 @@ def _merge(segments, should_merge, label):
 
 **职责**：清理转写文本中的噪声，提升可读性和总结质量。
 
+**构造参数**：
+
+```python
+TextCleaner(config={
+    "filler_words": ["嗯", "啊", "呃", "嗯嗯", "啊啊"],  # 填充词列表
+    "normalize_punctuation": False,  # 是否将中文标点转换为英文标点
+})
+```
+
 **处理流程**：
 
 ```
@@ -359,7 +400,7 @@ def _merge(segments, should_merge, label):
     ├─ 2. remove_fillers()             # 移除填充词（嗯、啊、呃 等）
     │
     ├─ 3. fix_punctuation()            # 修复标点符号
-    │   ├─ 可选：中文标点 → 英文标点
+    │   ├─ normalize_punctuation=True → 中文标点转为英文标点
     │   ├─ 移除标点前的空格
     │   ├─ 规范化连续标点（。。。→ 。。。）
     │   └─ 移除重复标点
@@ -372,7 +413,7 @@ def _merge(segments, should_merge, label):
 ```
 
 **填充词处理**：
-- 填充词列表从配置读取，默认：`嗯, 啊, 嗯嗯, 啊啊`
+- 填充词列表从配置读取，默认：`嗯, 啊, 呃, 嗯嗯, 啊啊`
 - 英文填充词使用 `\b` 词边界匹配，中文直接正则匹配
 - 按长度降序排列，避免短词误匹配长词的前缀
 
@@ -388,7 +429,8 @@ def _merge(segments, should_merge, label):
 class SummarizationProvider(Protocol):
     """总结提供商协议 —— 所有 Provider 必须实现这三个方法"""
     def check_connection(self) -> bool: ...
-    def summarize(self, text, custom_prompt="", stream=False, on_token=None) -> str: ...
+    def summarize(self, text, custom_prompt="", stream=False,
+                  on_token=None, cancel_check=None, pause_event=None) -> str: ...
     def close(self) -> None: ...
 
 class OllamaProvider:
@@ -399,11 +441,19 @@ class NvidiaProvider:
     """在线 NVIDIA API 总结"""
     ...
 
+class ZhipuProvider:
+    """在线智谱 API 总结"""
+    ...
+
 def create_provider(settings: Settings) -> SummarizationProvider:
     """工厂函数 —— 根据配置创建对应的 Provider 实例"""
     provider_name = settings.get("summarization.provider", "ollama")
     if provider_name == "nvidia":
         return NvidiaProvider(settings)
+    if provider_name == "zhipu":
+        return ZhipuProvider(settings)
+    if provider_name != "ollama":
+        logger.warning("未知的总结提供商 '%s'，回退到 Ollama", provider_name)
     return OllamaProvider(settings)
 ```
 
@@ -467,7 +517,20 @@ stop_service()
 - **流式输出**：解析 SSE（Server-Sent Events）格式，逐 token 回调
 - **API Key 来源**：优先环境变量 `NVIDIA_API_KEY`，其次 `.env` 文件
 
-### 8.4 PromptManager (`src/summarization/prompt_manager.py`)
+### 8.4 ZhipuClient (`src/summarization/zhipu_client.py`)
+
+**职责**：通过智谱 zai-sdk 调用 GLM 模型。
+
+**依赖**：基于 `zai` SDK（`ZhipuAiClient`），支持 `glm-4.7`、`glm-4.7-flash` 等模型。
+
+**特性**：
+- **429 限流处理**：自动读取 `Retry-After` 响应头，指数退避重试（最多 5 次）
+- **流式输出**：逐 chunk 解析，逐 token 回调
+- **API Key 来源**：优先环境变量 `ZHIPU_API_KEY`，其次 `.env` 文件
+- **思考模型支持**：`glm-4.7-flash` 自动启用 `thinking` 参数
+- **多轮对话**：思考模型使用 3 轮对话提示格式
+
+### 8.5 PromptManager (`src/summarization/prompt_manager.py`)
 
 **职责**：管理用户自定义提示词模板，支持持久化。
 
@@ -489,13 +552,15 @@ stop_service()
 
 ```python
 def build_prompt(self, text: str, custom_prompt: str = "") -> str:
-    if custom_prompt:
-        base = custom_prompt  # 用户自定义 system prompt
+    if custom_prompt and custom_prompt.strip():
+        base = custom_prompt.strip()
     else:
-        base = "你是一个专业的文本总结助手，擅长提取关键信息并生成简洁准确的总结。"
+        base = "你是一个专业的文本总结助手，擅长提取关键信息并生成简洁准确的总结，只输出总结正文，**禁止添加任何开头语、结尾说明、解释性语句、备注**，**不要额外修饰、补充话术，纯输出总结内容**。"
 
     if self._markdown_enabled:
-        return f"{base}\n\n{markdown_prompt}\n\n文本内容：\n{text}"
+        md_prompt = self._markdown_prompt
+        if md_prompt.strip():
+            return f"{base}\n\n{md_prompt}\n\n文本内容：\n{text}"
     return f"{base}\n\n文本内容：\n{text}"
 ```
 
@@ -507,12 +572,30 @@ def build_prompt(self, text: str, custom_prompt: str = "") -> str:
 
 **职责**：统一 CLI / GUI 的转写逻辑，编排 验证→提取音频→转写→保存 的完整流程。
 
+**构造函数参数**：
+
+```python
+TranscriptionService(
+    transcriber, video_processor, file_writer,
+    language="auto", beam_size=5, best_of=5, temperature=0.0,
+    condition_on_previous_text=True, word_timestamps=False,
+    vad_filter=True, max_chunk_duration=300,
+    output_formats=["txt"],
+    input_folder=None,                # 镜像目录输入文件夹
+    mirror_depth=1,                   # 镜像目录深度
+    on_video_done=None,               # 单文件完成回调
+    on_video_error=None,              # 单文件错误回调
+    cancel_check=None,                # 取消检查
+)
+```
+
 **核心流程**：
 
 ```
 video_files: List[str]
     │
     ├─ 初始化断点目录 (.checkpoint/)
+    ├─ 清理过期断点文件
     │
     └─ 遍历每个视频文件：
         │
@@ -529,7 +612,7 @@ video_files: List[str]
         │
         ├─ file_writer.write_transcript()  # 保存结果
         │
-        └─ on_video_done 回调通知调用方
+        └─ on_video_done 回调通知调用方（支持镜像目录: input_folder + mirror_depth）
 ```
 
 **长音频切片转写（断点续传）**：
@@ -605,26 +688,41 @@ def _wait_if_paused(self):
 
 ### 9.2 SummarizationService (`src/services/summarization_service.py`)
 
-**职责**：统一 CLI / GUI 的总结逻辑，支持流式输出与并发总结。
+**职责**：统一 CLI / GUI 的总结逻辑，支持流式输出、并发总结、暂停/继续与回调通知。
 
-**单文件总结流程**：
+**构造函数参数**：
 
+```python
+SummarizationService(
+    settings, file_writer, provider,
+    custom_prompt="",
+    on_stream_token=None,          # 流式 token → GUI
+    on_item_started=None,           # 每个文件开始总结
+    on_item_done=None,              # 每个文件总结完成
+    on_item_error=None,             # 每个文件总结失败
+    cancel_check=None,              # 取消检查
+    pause_event=None,               # 暂停控制
+    rate_limiter=None,              # 限速器（并发模式）
+)
 ```
-text → Provider.summarize(text, custom_prompt, stream, on_token)
-    │
-    ├─ 流式模式 → on_token 回调实时通知 GUI
-    │
-    └─ 生成完成 → file_writer.write_summary() 保存结果
-```
+
+**方法**：
+
+| 方法 | 说明 |
+|------|------|
+| `summarize(text, video_name, stream, index, total)` | 单文件总结 |
+| `summarize_batch(items, stream, max_workers)` | 批量总结（串行或并发） |
+| `close()` | 释放 Provider 资源 |
+| `pause()` / `resume()` | 暂停/继续总结 |
 
 **批量总结（并发模式）**：
 
-当 `nvidia_mode=multi` 时，使用线程池并发处理：
+当 provider 为 `nvidia` 或 `zhipu` 且对应 `_mode=multi` 时，使用线程池并发处理：
 
 ```python
 def _summarize_batch_concurrent(self, items, stream, total, max_workers):
     # 每个线程创建独立的 Provider 实例（避免共享连接）
-    # 使用 ThreadPoolExecutor 管理线程池
+    # 使用 RateLimiter 控制请求频率（默认间隔 1.5 秒）
     # 不支持流式输出（并发模式下流式输出无意义）
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -655,22 +753,30 @@ def _atomic_write(file_path, content, encoding="utf-8"):
     try:
         with os.fdopen(fd, "w", encoding=encoding) as f:
             f.write(content)
-        os.replace(tmp_path, str(file_path))  # 原子替换
+        try:
+            os.replace(tmp_path, str(file_path))  # 原子替换
+        except OSError:
+            import shutil
+            shutil.move(tmp_path, str(file_path))  # 跨设备 fallback
     except BaseException:
-        os.unlink(tmp_path)  # 失败时清理临时文件
+        try:
+            os.unlink(tmp_path)  # 失败时清理临时文件
+        except OSError:
+            pass
         raise
 ```
 
-**输出格式化**：
+**格式化委派**：FileWriter 内部持有 `OutputFormatter` 实例（`src/storage/output_formatter.py`），调用其格式化方法：
 
 | 格式 | 方法 | 说明 |
 |------|------|------|
-| TXT | `format_transcript()` | `[HH:MM:SS - HH:MM:SS] 文本` 每行一段 |
-| SRT | `format_srt()` | 标准 SRT 字幕格式（序号 + 时间戳 + 文本） |
-| VTT | `format_vtt()` | WebVTT 格式（WEBVTT 头 + 时间戳 + 文本） |
+| TXT | `OutputFormatter.format_transcript()` | `[HH:MM:SS - HH:MM:SS] 文本` 每行一段 |
+| SRT | `OutputFormatter.format_srt()` | 标准 SRT 字幕格式（序号 + 时间戳 + 文本） |
+| VTT | `OutputFormatter.format_vtt()` | WebVTT 格式（WEBVTT 头 + 时间戳 + 文本） |
 | JSON | `json.dumps()` | TranscriptSegment 的 dataclass 字典列表 |
-| Summary TXT | `format_summary()` | 纯文本 |
-| Summary MD | `format_summary()` | 原样保留 Markdown 格式 |
+| Summary TXT/MD | `OutputFormatter.format_summary()` | 原样返回（不做额外处理） |
+
+**FileWriter 其他方法**：`write_merged_transcript()`（合并后段落）、`write_json()`、`write_text()`、`write_keywords()`、`find_transcript_file()`、`find_summary_file()`。
 
 **输出校验**（`src/utils/output_validator.py`）：
 
@@ -712,11 +818,13 @@ class BookmarkItem:
 
 | 命令 | 功能 | 关键参数 |
 |------|------|----------|
-| `transcribe` | 仅转写 | input_path, --output-dir, --language, --model, --device |
-| `summarize` | 仅总结 | input_path, --output-dir, --model, --temperature |
-| `run-pipeline` | 转写总结 | input_path, 所有转写和总结参数 |
+| `transcribe` | 仅转写 | input_path, --output-dir, -o, --verbose, -v |
+| `summarize` | 仅总结 | input_path, --output-dir, -o, --verbose, -v |
+| `run-pipeline` | 转写总结 | input_path, --output-dir, -o, --verbose, -v |
 | `version` | 版本信息 | 无 |
 | `help` | 命令帮助 | 无 |
+
+> 所有模型、语言、设备、温度等参数均通过 `config.ini` 的 `[transcription]` 和 `[summarization]` 配置，CLI 命令行不暴露这些参数。
 
 **公共初始化流程** (`_init_common`)：
 
@@ -728,10 +836,10 @@ def _init_common(settings, output_dir, verbose):
     video_processor = VideoProcessor()
     # 3. 创建 FileWriter
     file_writer = FileWriter(output_dir)
-    # 4. 读取输出格式配置
-    output_formats = get_transcript_output_formats(settings)
-    return video_processor, file_writer, output_formats
+    return video_processor, file_writer
 ```
+
+> 输出格式、模型路径等参数通过 `_load_tx_config(settings)` 从 `config.ini` 加载，在创建 `TranscriptionService` 时传入。
 
 ### 11.2 GUI (`src/ui/gui.py`)
 
@@ -762,21 +870,31 @@ def _init_common(settings, output_dir, verbose):
 
 **后台任务** (`src/ui/gui_workers.py`)：
 
-GUI 使用 QThread 后台线程执行耗时操作，避免阻塞 UI：
+GUI 使用 QObject 子类 + QThread 后台线程执行耗时操作，避免阻塞 UI：
 
 ```python
-class TranscribeWorker(QThread):
+class TranscribeWorker(QObject):
     """转写后台线程"""
-    progress = Signal(str)      # 进度消息
-    finished = Signal(list)     # 完成信号（结果列表）
-    error = Signal(str)         # 错误信号
-
-class SummarizeWorker(QThread):
-    """总结后台线程"""
-    progress = Signal(str)
-    stream_token = Signal(str)  # 流式 token 信号
-    finished = Signal(str)      # 完成信号（总结文本）
+    video_done = Signal(str, int, list)     # (video_name, segment_count, output_paths)
+    video_error = Signal(str, str)          # (video_name, error_msg)
+    progress = Signal(int, int)             # (current, total)
     error = Signal(str)
+    finished = Signal()
+    confirm_download = Signal()
+
+class PipelineWorker(QObject):
+    """完整管道线程（转写 + 总结）"""
+    transcribe_done = Signal(str, int, list)
+    transcribe_error = Signal(str, str)
+    summarize_started = Signal(str)
+    summarize_done = Signal(str, str)
+    summarize_error = Signal(str, str)
+    stream_token = Signal(str)              # 流式 token
+    progress = Signal(int, int)
+    error = Signal(str)
+    finished = Signal()
+    confirm_download = Signal()
+    phase_changed = Signal(str)             # "transcribe" | "summarize"
 ```
 
 ### 11.3 结果查看器 (`src/ui/result_viewer.py`)
@@ -800,6 +918,7 @@ class SummarizeWorker(QThread):
 Video2TextError (基础异常)
     ├─ VideoFileError        # 媒体文件错误
     ├─ TranscriptionError    # 转写错误
+    │   └─ DownloadCancelledError  # 用户取消模型下载
     ├─ SummarizationError    # 总结错误
     ├─ ConfigurationError    # 配置错误
     └─ OutputError           # 输出文件错误
@@ -830,7 +949,44 @@ format_time_vtt(1234.5)   # → "00:20:34.500"   (HH:MM:SS.mmm)
 
 所有函数都会将输入钳位到 `[0, 99:59:59]` 范围，处理 inf/NaN/负数。
 
-### 12.4 验证器 (`src/utils/validators.py`)
+### 12.4 路径工具 (`src/utils/paths.py`)
+
+```python
+get_base_dir()  # 获取项目基目录（frozen → sys.executable 所在目录，源码 → 项目根目录）
+```
+
+### 12.5 环境变量加载 (`src/utils/env_loader.py`)
+
+自动从 `.env` 文件加载 API Key（无需手动 export）：
+```python
+ensure_env_loaded()   # 加载 .env 到 os.environ
+get_api_key("NVIDIA_API_KEY")  # 获取指定 key
+```
+
+### 12.6 JSON 工具 (`src/utils/json_utils.py`)
+
+提供统一的 JSON 安全读写：
+```python
+safe_read_json(file_path, default=None)     # 安全读取，失败返回默认值
+atomic_write_json(file_path, data)          # 原子写入
+```
+
+### 12.7 速率限制 (`src/utils/rate_limit.py`)
+
+```python
+RateLimiter(min_interval=1.5)  # 限速器，确保两次操作间隔不低于 min_interval 秒
+is_rate_limit(response)        # 判断 HTTP 429
+get_retry_after(headers)       # 解析 Retry-After 头
+exponential_backoff(attempt)   # 指数退避
+```
+
+### 12.8 子进程兼容 (`src/utils/subprocess_compat.py`)
+
+```python
+CREATE_NO_WINDOW  # Windows 下隐藏控制台窗口，非 Windows 为 0
+```
+
+### 12.9 验证器 (`src/utils/validators.py`)
 
 提供参数验证函数：
 - `validate_file_path()` — 文件存在性和格式验证
@@ -848,8 +1004,8 @@ format_time_vtt(1234.5)   # → "00:20:34.500"   (HH:MM:SS.mmm)
 | 模式 | 应用位置 | 说明 |
 |------|----------|------|
 | **单例模式** | Settings, PromptManager | 全局配置和提示词管理器，进程内唯一实例 |
-| **策略模式** | SummarizationProvider | Ollama/NVIDIA 可互换的总结后端 |
-| **工厂模式** | `create_provider()` | 根据配置动态创建 Provider 实例 |
+| **策略模式** | SummarizationProvider | Ollama/NVIDIA/智谱可互换的总结后端 |
+| **工厂模式** | `create_provider()` | 根据配置（ollama/nvidia/zhipu）动态创建 Provider 实例 |
 | **观察者模式** | 回调函数（on_progress, on_token） | 服务层通过回调通知 UI 层 |
 | **LRU 缓存** | Transcriber 模型缓存 | 最多缓存 2 个模型实例，淘汰最久未使用的 |
 | **原子写入** | Settings, FileWriter, 所有 JSON 写入 | 先写临时文件再原子替换，防止崩溃损坏 |
@@ -894,18 +1050,13 @@ format_time_vtt(1234.5)   # → "00:20:34.500"   (HH:MM:SS.mmm)
 ```python
 @app.command()
 def run_pipeline(
-    input_path: str,                    # 媒体文件路径
-    output_dir: str = "output",         # 输出目录
-    language: str = "auto",             # 语言代码
-    transcription_model: str = "large-v3",
-    summarization_model: str = "qwen2.5:7b-instruct-q4_K_M",
-    device: str = "auto",
-    beam_size: int = 5,
-    temperature: float = 0.0,           # 转写温度
-    summary_temperature: float = 0.7,   # 总结温度
-    max_length: int = 10000,
-    verbose: bool = False,
+    input_path: str = typer.Argument(..., help="媒体文件路径（视频或音频）"),
+    output_dir: Optional[str] = typer.Option(None, "--output-dir", "-o", help="输出目录"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="详细输出"),
 ):
+    """运行完整处理管道"""
+    # 所有转写/总结参数均通过 config.ini 配置
+    # 包括：model_path、device、language、beam_size、temperature 等
 ```
 
 **CLI 执行流程**：
@@ -913,24 +1064,27 @@ def run_pipeline(
 ```
 run_pipeline()
     │
-    ├─ 1. 参数解析：命令行参数 > config.ini > 默认值
+    ├─ 1. 参数解析：命令行参数（仅 input_path, output_dir, verbose）> config.ini > 默认值
+    │     转写/总结参数全部通过 _load_tx_config(settings) 从 config.ini 加载
     │
     ├─ 2. 公共初始化
     │   └─ _init_common(settings, output_dir, verbose)
     │       ├─ setup_logger()                    # 初始化日志系统
     │       ├─ VideoProcessor()                  # 创建媒体处理器（自动查找内置 FFmpeg）
-    │       ├─ FileWriter(output_dir)            # 创建文件写入器
-    │       └─ get_transcript_output_formats()   # 读取输出格式配置
+    │       └─ FileWriter(output_dir)            # 创建文件写入器
     │
-    ├─ 3. 创建 Transcriber
-    │   └─ Transcriber(model_path, device, compute_type, num_workers)
+    ├─ 3. 加载配置并创建 Transcriber
+    │   ├─ cfg = _load_tx_config(settings)       # 从 config.ini 加载转写参数
+    │   └─ Transcriber(cfg.model_path, cfg.device, cfg.compute_type, num_workers)
     │
     ├─ 4. 转写阶段
-    │   ├─ tx_service = TranscriptionService(transcriber, ...)
+    │   ├─ tx_service = TranscriptionService(transcriber, ..., language=cfg.language, ...)
     │   ├─ tx_service.transcriber.load_model()
     │   └─ tx_results = tx_service.run([input_path], output_dir)
     │
     ├─ 5. 文本处理阶段
+    │   ├─ segment_merger = SegmentMerger(max_gap=..., min_length=...)
+    │   ├─ text_cleaner = TextCleaner(filler_words=...)
     │   ├─ segment_merger.merge_segments(result.segments)
     │   ├─ segment_merger.format_segments_as_text(merged, include_timestamps=False)
     │   └─ text_cleaner.clean(processed_text)
@@ -1084,7 +1238,8 @@ audio_path: Path, video_name: str
     │           ├─ chunk_duration = _get_chunk_duration(chunk_path)
     │           │   ├─ 优先: ffprobe 获取精确时长
     │           │   ├─ 回退: max(seg.end for seg in segments)
-    │           │   └─ 最终: 文件大小 / byte_rate 估算
+    │           │   ├─ 回退: 文件大小 / byte_rate 估算
+    │           │   └─ 最终兜底: max_chunk_duration 默认值
     │           ├─ 保存到断点: done_chunks[chunk_key] = {duration, segments}
     │           ├─ atomic_write_json(checkpoint_file, done_chunks)
     │           └─ cumulative_offset += chunk_duration
@@ -1098,7 +1253,7 @@ audio_path: Path, video_name: str
 
 #### 14.1.4 阶段三：文本处理
 
-**入口**：CLI `run_pipeline()` 中的文本处理代码 (`cli.py:373`)，GUI `PipelineWorker._prepare_text()` (`gui_workers.py:727`)
+**入口**：CLI `run_pipeline()` 中的文本处理代码 (`cli.py:263`)，GUI `prepare_transcript_text()` (`gui_workers.py:183`)
 
 ```
 segments: List[TranscriptSegment]  (转写引擎输出)
@@ -1144,16 +1299,25 @@ for tx_result in tx_results:
     summary_map[tx_result.video_name] = (processed_text, "总结不可用")
 ```
 
-**GUI 中的文本处理代码**（`PipelineWorker._prepare_text`）：
+**GUI 中的文本处理代码**（`prepare_transcript_text`）：
 
 ```python
-# gui_workers.py:727-734
-def _prepare_text(self, result: TranscribeResult, segment_merger, text_cleaner) -> str:
-    merged = segment_merger.merge_segments(result.segments)
-    processed_text = segment_merger.format_segments_as_text(
-        merged, include_timestamps=False
-    )
-    return text_cleaner.clean(processed_text)
+# gui_workers.py:183-198
+def prepare_transcript_text(
+    transcript_path_or_result, segment_merger=None, text_cleaner=None
+) -> str:
+    if isinstance(transcript_path_or_result, Path):
+        text = transcript_path_or_result.read_text(encoding="utf-8-sig")
+        return text
+    else:
+        result = transcript_path_or_result
+        if segment_merger and text_cleaner:
+            merged = segment_merger.merge_segments(result.segments)
+            processed = segment_merger.format_segments_as_text(
+                merged, include_timestamps=False
+            )
+            return text_cleaner.clean(processed)
+        return result.text
 ```
 
 #### 14.1.5 阶段四：文本总结
@@ -1221,68 +1385,60 @@ processed_text: str  (文本处理后的干净文本)
 **CLI 总结代码**：
 
 ```python
-# cli.py:406-433
+# cli.py:281-307
 sum_service = SummarizationService(
-    settings=settings, file_writer=file_writer,
+    settings=settings,
+    file_writer=file_writer,
     provider=provider_inst,
-    on_progress=lambda msg: console.print(f"  {msg}"),
 )
 for idx, tx_result in enumerate(tx_results):
     processed_text = summary_map[tx_result.video_name][0]
-    summary = sum_service.summarize(
-        processed_text,
-        video_name=tx_result.video_name,
-        index=idx + 1,
-        total=len(tx_results),
-    )
+    try:
+        summary = sum_service.summarize(
+            processed_text,
+            video_name=tx_result.video_name,
+            index=idx + 1,
+            total=len(tx_results),
+        )
+        summary_map[tx_result.video_name] = (
+            processed_text,
+            summary or "总结不可用",
+        )
+    except Exception as e:
+        console.print(f"[yellow]警告: {tx_result.video_name} 总结失败: {e}[/yellow]")
 ```
 
-**GUI 总结代码**（串行模式 `PipelineWorker._summarize_results_serial`）：
+**GUI 总结代码**（`PipelineWorker.run` 使用 `SummarizationService.summarize_batch`）：
 
 ```python
-# gui_workers.py:736-790
-for idx, result in enumerate(results):
-    processed_text = self._prepare_text(result, segment_merger, text_cleaner)
-    provider_inst = create_provider(self.settings)
-    service = SummarizationService(
-        settings=self.settings, file_writer=file_writer,
-        provider=provider_inst, custom_prompt=self.custom_prompt,
-        on_stream_token=lambda token: self.stream_token.emit(token),  # 流式 token → GUI
-        cancel_check=lambda: self._cancelled,
-    )
-    self.summarize_started.emit(result.video_name)  # 通知 GUI 清空摘要区
-    summary = service.summarize(
-        processed_text, video_name=result.video_name,
-        stream=self.stream, index=idx+1, total=len(results),
-    )
-    self.summarize_done.emit(result.video_name, summary)  # 通知 GUI 更新摘要
+# gui_workers.py:688-730
+mode = _get_online_cfg(self.settings, "mode", "single")
+max_workers = (
+    _get_online_cfg(self.settings, "thread_count", 5)
+    if provider_name in ("nvidia", "zhipu") and mode == "multi"
+    else 1
+)
+stream = self.stream and max_workers <= 1
+rate_limiter = RateLimiter(1.5) if max_workers > 1 else None
+
+provider_inst = create_provider(self.settings)
+sum_service = SummarizationService(
+    settings=self.settings,
+    file_writer=file_writer,
+    provider=provider_inst,
+    custom_prompt=self.custom_prompt,
+    on_stream_token=lambda token: self.stream_token.emit(token) if stream else None,
+    cancel_check=lambda: self._cancelled,
+    pause_event=self._sum_pause_ctrl.get_event(),
+    rate_limiter=rate_limiter,
+    on_item_started=lambda name: self.summarize_started.emit(name),
+    on_item_done=lambda name, summary: self.summarize_done.emit(name, summary),
+    on_item_error=lambda name, err: self.summarize_error.emit(name, err),
+)
+sum_service.summarize_batch(items, stream=stream, max_workers=max_workers)
 ```
 
-**GUI 总结代码**（多线程模式 `PipelineWorker._summarize_results_multi`）：
-
-```python
-# gui_workers.py:792-880
-thread_count = settings.get_int("summarization.nvidia_thread_count", 5)
-rate_limiter = RateLimiter(min_interval=1.5)  # 全局速率限制
-
-def _process(idx, video_name, text):
-    rate_limiter.acquire()                      # 等待间隔
-    provider = create_provider(self.settings)   # 每线程独立实例
-    service = SummarizationService(provider=provider, ...)
-    summary = service.summarize(text, video_name=video_name, stream=False)
-    provider.close()
-    return video_name, summary, ""
-
-with ThreadPoolExecutor(max_workers=thread_count) as executor:
-    for idx, (video_name, text) in enumerate(tasks):
-        self.summarize_started.emit(video_name)
-        future = executor.submit(_process, idx, video_name, text)
-
-    for future in as_completed(futures):
-        video_name, summary, err = future.result()
-        self.summarize_done.emit(video_name, summary)
-        self.progress.emit(total + sum_done, total_steps)
-```
+串行模式（`max_workers=1`）下逐文件调用 `provider.summarize()`，每个文件完成后立即保存；并发模式（`max_workers > 1`）使用 `ThreadPoolExecutor` 并行处理，每线程创建独立 Provider 实例以避免共享连接。并发模式下流式输出自动关闭。
 
 #### 14.1.6 阶段五：输出文件
 
@@ -1825,6 +1981,7 @@ _on_file_selected(current, _previous) (gui.py:1309)
 | | `progress` | `(int, int)` | `_on_progress` | 进度更新 |
 | | `error` | `(str,)` | `_on_worker_error` | 线程级异常 |
 | | `finished` | `()` | `thread.quit` | 线程结束 |
+| | `confirm_download` | `()` | `_on_confirm_download` | 下载确认请求 |
 | **SummarizeWorker** | `summarize_started` | `(str,)` | `_on_summarize_started` | 开始总结新文件 |
 | | `stream_token` | `(str,)` | `_on_stream_token` | 流式 token（逐字显示） |
 | | `video_done` | `(str, str)` | `_on_single_video_summarized` | 单文件总结完成 |
@@ -1841,10 +1998,11 @@ _on_file_selected(current, _previous) (gui.py:1309)
 | | `progress` | `(int, int)` | `_on_progress` | 进度更新 |
 | | `error` | `(str,)` | `_on_worker_error` | 线程级异常 |
 | | `finished` | `()` | `thread.quit` | 线程结束 |
+| | `confirm_download` | `()` | `_on_confirm_download` | 下载确认请求 |
+| | `phase_changed` | `(str,)` | `_on_phase_changed` | 阶段切换通知 |
 | **ScanFilesWorker** | `result` | `(list,)` | `_on_scan_result` | 扫描结果 |
 | | `finished` | `()` | `thread.quit` | 线程结束 |
-| **OllamaCheckWorker** | `result` | `(bool, float)` | 配置面板槽函数 | 连接状态 + 延迟 |
-| **NvidiaCheckWorker** | `result` | `(bool, float)` | 配置面板槽函数 | 连接状态 + 延迟 |
+| **CheckWorker** | `result` | `(bool, float, str)` | 配置面板槽函数 | 连接状态 + 延迟 + 详情 |
 
 #### 14.2.9 RateLimiter 速率限制器
 

@@ -694,20 +694,20 @@ class MainWindow(QMainWindow):
         self._scan_thread = thread
         self._scan_worker = worker
 
-    def _on_scan_result(self, video_files: list[str]) -> None:
+    def _on_scan_result(self, file_metas: list[tuple[str, int]]) -> None:
         """扫描完成后，根据上下文弹出选择对话框或提示无文件。"""
         ctx = self._scan_context
         self._scan_context = None
         self.status_bar.showMessage("")
 
-        if not video_files:
+        if not file_metas:
             QMessageBox.information(
                 self, "提示", "该文件夹及其子目录中未找到支持的媒体文件"
             )
             return
 
         folder = ctx["folder"]
-        dialog = VideoSelectionDialog(video_files, self, folder=folder)
+        dialog = VideoSelectionDialog(file_metas, self, folder=folder)
         if dialog.exec() != dialog.DialogCode.Accepted:
             return
 
