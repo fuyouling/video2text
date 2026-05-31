@@ -59,6 +59,8 @@ class SummarizationService:
             settings.get("output.summary_format", "txt").lower().strip()
         )
 
+        self._summarize_log_lock = threading.Lock()
+
         if pause_event is not None:
             self._pause_event = pause_event
         else:
@@ -109,12 +111,14 @@ class SummarizationService:
         label = video_name or "(未命名)"
 
         if total > 0:
-            logger.info("  ├─ 文本总结开始")
+            logger.info("[%d/%d] %s\n", index, total, label)
+            # logger.info("  ├─ 文本总结开始")
 
         def _on_token(token: str):
             if self.on_stream_token:
                 self.on_stream_token(token)
 
+        self._wait_if_paused()
         summary = self.provider.summarize(
             text,
             custom_prompt=self.custom_prompt or "",
@@ -225,13 +229,9 @@ class SummarizationService:
                 if summary and summary.strip():
                     fw.write_summary(summary, video_name, fmt=self.summary_format)
 
-                logger.info(
-                    "[%d/%d] 总结完成: %s (.%s)",
-                    idx + 1,
-                    total,
-                    video_name,
-                    self.summary_format,
-                )
+                with self._summarize_log_lock:
+                    logger.info("[%d/%d] %s", idx + 1, total, video_name)
+                    logger.info("  └─ 文本总结完成 ✓ (.%s)", self.summary_format)
 
                 if self.on_item_done:
                     self.on_item_done(video_name, summary if summary else "")
