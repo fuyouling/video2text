@@ -5,9 +5,9 @@ import threading
 import time
 from typing import Callable, Optional
 
+from src.utils.env_loader import ensure_env_loaded
 from src.utils.exceptions import SummarizationError
 from src.utils.logger import get_logger
-from src.utils.paths import get_base_dir
 
 logger = get_logger(__name__)
 
@@ -16,17 +16,6 @@ class CancelledError(SummarizationError):
     """用户取消操作"""
 
     pass
-
-
-def _ensure_env_loaded() -> None:
-    if os.environ.get("ZHIPU_API_KEY"):
-        return
-    try:
-        from dotenv import load_dotenv
-
-        load_dotenv(get_base_dir() / ".env", override=False)
-    except Exception:
-        pass
 
 
 class ZhipuClient:
@@ -45,7 +34,7 @@ class ZhipuClient:
         self.max_retries = 5
 
         if not api_key:
-            _ensure_env_loaded()
+            ensure_env_loaded()
         self._api_key = api_key or os.environ.get("ZHIPU_API_KEY") or ""
 
         self._client = ZhipuAiClient(api_key=self._api_key, timeout=timeout)
@@ -152,7 +141,13 @@ class ZhipuClient:
             try:
                 if stream:
                     return self._generate_stream(
-                        model, prompt, temperature, max_tokens, on_token, cancel_check, pause_event
+                        model,
+                        prompt,
+                        temperature,
+                        max_tokens,
+                        on_token,
+                        cancel_check,
+                        pause_event,
                     )
                 else:
                     return self._generate_non_stream(
@@ -161,6 +156,8 @@ class ZhipuClient:
             except CancelledError:
                 raise
             except Exception as e:
+                from src.utils.rate_limit import exponential_backoff
+
                 if self._is_rate_limit(e):
                     wait = self._get_retry_after(e) or 2 ** (attempt + 1)
                     last_exc = SummarizationError(

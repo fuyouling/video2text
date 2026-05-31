@@ -20,12 +20,10 @@ from PySide6.QtWidgets import (
 from src.config.settings import Settings
 from src.summarization.ollama_client import OllamaClient
 from src.ui.gui_workers import (
-    NvidiaCheckWorker,
-    OllamaCheckWorker,
+    CheckWorker,
     OllamaListModelWorker,
     OllamaStartServiceWorker,
     OllamaStopServiceWorker,
-    ZhipuCheckWorker,
 )
 from src.utils.logger import get_logger
 
@@ -42,12 +40,14 @@ _SUMM_KEY_LABELS: dict[str, str] = {
     "summarization.nvidia_top_p": "Top P",
     "summarization.nvidia_frequency_penalty": "频率惩罚",
     "summarization.nvidia_presence_penalty": "存在惩罚",
+    "summarization.nvidia_timeout": "NVIDIA 超时时间",
     "summarization.nvidia_mode": "NVIDIA 模式",
     "summarization.nvidia_thread_count": "NVIDIA 线程数",
     "summarization.nvidia_stream": "NVIDIA 流式输出",
     "summarization.zhipu_model": "智谱模型",
     "summarization.zhipu_max_tokens": "最大 Token 数",
     "summarization.zhipu_temperature": "温度",
+    "summarization.zhipu_timeout": "智谱超时时间",
     "summarization.zhipu_mode": "智谱模式",
     "summarization.zhipu_thread_count": "智谱线程数",
     "summarization.zhipu_stream": "智谱流式输出",
@@ -66,12 +66,14 @@ _SUMM_KEY_TOOLTIPS: dict[str, str] = {
     "summarization.nvidia_top_p": "核采样概率阈值 (0~1)，控制输出多样性",
     "summarization.nvidia_frequency_penalty": "频率惩罚 (-2.0~2.0)，降低重复用词概率",
     "summarization.nvidia_presence_penalty": "存在惩罚 (-2.0~2.0)，鼓励谈论新话题",
+    "summarization.nvidia_timeout": "NVIDIA 请求超时时间 (秒)，长文本建议 600+",
     "summarization.nvidia_mode": "NVIDIA 模式: single (单线程，支持流式), multi (多线程并发)",
     "summarization.nvidia_thread_count": "多线程模式下的并发线程数",
     "summarization.nvidia_stream": "是否启用流式输出 (仅单线程模式有效): true / false",
     "summarization.zhipu_model": "智谱模型标识，如 glm-4.7",
     "summarization.zhipu_max_tokens": "最大生成 token 数",
     "summarization.zhipu_temperature": "生成温度 (0~2)",
+    "summarization.zhipu_timeout": "智谱请求超时时间 (秒)，长文本建议 600+",
     "summarization.zhipu_mode": "智谱模式: single (单线程，支持流式), multi (多线程并发)",
     "summarization.zhipu_thread_count": "多线程模式下的并发线程数",
     "summarization.zhipu_stream": "是否启用流式输出 (仅单线程模式有效): true / false",
@@ -204,6 +206,7 @@ class SummarizationTab(QWidget):
             "nvidia_presence_penalty": self._settings.get(
                 "summarization.nvidia_presence_penalty", "0.0"
             ),
+            "nvidia_timeout": self._settings.get("summarization.nvidia_timeout", "600"),
         }
 
         for key, value in nvidia_items.items():
@@ -276,6 +279,7 @@ class SummarizationTab(QWidget):
             "zhipu_temperature": self._settings.get(
                 "summarization.zhipu_temperature", "1.0"
             ),
+            "zhipu_timeout": self._settings.get("summarization.zhipu_timeout", "600"),
         }
 
         for key, value in zhipu_items.items():
@@ -372,7 +376,7 @@ class SummarizationTab(QWidget):
         form.addRow(btn_row)
 
         self._nvidia_check_thread: Optional[QThread] = None
-        self._nvidia_check_worker: Optional[NvidiaCheckWorker] = None
+        self._nvidia_check_worker: Optional[CheckWorker] = None
 
     def _test_nvidia(self) -> None:
         """测试 NVIDIA API 连接"""
@@ -391,10 +395,10 @@ class SummarizationTab(QWidget):
 
         self._wait_async_thread("_nvidia_check_thread")
         thread = QThread()
-        worker = NvidiaCheckWorker(url, model=model)
+        worker = CheckWorker("nvidia", api_url=url, model=model)
         worker.moveToThread(thread)
 
-        def _on_result(ok: bool, latency_ms: float):
+        def _on_result(ok: bool, latency_ms: float, _detail: str = ""):
             if ok:
                 self._nvidia_status_label.setText(f"连接成功 ({latency_ms:.0f}ms)")
                 self._nvidia_status_label.setStyleSheet("color: green")
@@ -437,7 +441,7 @@ class SummarizationTab(QWidget):
         form.addRow(btn_row)
 
         self._zhipu_check_thread: Optional[QThread] = None
-        self._zhipu_check_worker: Optional[ZhipuCheckWorker] = None
+        self._zhipu_check_worker: Optional[CheckWorker] = None
 
     def _test_zhipu(self) -> None:
         """测试智谱 API 连接"""
@@ -450,10 +454,10 @@ class SummarizationTab(QWidget):
 
         self._wait_async_thread("_zhipu_check_thread")
         thread = QThread()
-        worker = ZhipuCheckWorker(model=model)
+        worker = CheckWorker("zhipu", model=model)
         worker.moveToThread(thread)
 
-        def _on_result(ok: bool, latency_ms: float):
+        def _on_result(ok: bool, latency_ms: float, _detail: str = ""):
             if ok:
                 self._zhipu_status_label.setText(f"连接成功 ({latency_ms:.0f}ms)")
                 self._zhipu_status_label.setStyleSheet("color: green")
@@ -555,7 +559,7 @@ class SummarizationTab(QWidget):
         form.addRow(btn_row)
 
         self._ollama_check_thread: Optional[QThread] = None
-        self._ollama_check_worker: Optional[OllamaCheckWorker] = None
+        self._ollama_check_worker: Optional[CheckWorker] = None
         self._ollama_list_thread: Optional[QThread] = None
         self._ollama_list_worker: Optional[OllamaListModelWorker] = None
 
@@ -579,7 +583,7 @@ class SummarizationTab(QWidget):
         self._set_ollama_status("测试中...", "orange")
         self._wait_async_thread("_ollama_check_thread")
         thread = QThread()
-        worker = OllamaCheckWorker(url, model)
+        worker = CheckWorker("ollama", url=url, model=model)
         worker.moveToThread(thread)
         worker.result.connect(self._on_check_result)
         thread.finished.connect(self._cleanup_check_thread)
@@ -613,7 +617,10 @@ class SummarizationTab(QWidget):
                 status_text = "连接失败"
             self._set_ollama_status("连接失败", "red")
             get_logger("video2text").warning(
-                "Ollama 连接: ✗ 失败 | reason=%s url=%s model=%s", status_text, url, model
+                "Ollama 连接: ✗ 失败 | reason=%s url=%s model=%s",
+                status_text,
+                url,
+                model,
             )
 
     def _start_ollama_service(self) -> None:

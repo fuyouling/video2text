@@ -86,7 +86,7 @@ class NvidiaProvider:
     """NVIDIA 提供商 —— 在线 API 总结"""
 
     def __init__(self, settings: Settings) -> None:
-        nvidia_timeout = settings.get_int("summarization.timeout", 600)
+        nvidia_timeout = settings.get_int("summarization.nvidia_timeout", 600)
         self._model = settings.get("summarization.nvidia_model", "openai/gpt-oss-120b")
         self._max_tokens = settings.get_int("summarization.nvidia_max_tokens", 100000)
         self._temperature = settings.get_float("summarization.nvidia_temperature", 1.0)
@@ -143,7 +143,7 @@ class ZhipuProvider:
     """智谱提供商 —— 在线 API 总结"""
 
     def __init__(self, settings: Settings) -> None:
-        zhipu_timeout = settings.get_int("summarization.timeout", 600)
+        zhipu_timeout = settings.get_int("summarization.zhipu_timeout", 600)
         self._model = settings.get("summarization.zhipu_model", "glm-4.7")
         self._max_tokens = settings.get_int("summarization.zhipu_max_tokens", 65536)
         self._temperature = settings.get_float("summarization.zhipu_temperature", 1.0)

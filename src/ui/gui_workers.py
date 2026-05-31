@@ -1,11 +1,9 @@
 """GUI Worker 线程 —— 使用服务层，支持流式输出、断点续传、单文件即时回调"""
 
-import os
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from PySide6.QtCore import QObject, Signal
 
@@ -20,8 +18,70 @@ from src.summarization.providers import create_provider
 from src.text_processing.segment_merger import SegmentMerger
 from src.text_processing.text_cleaner import TextCleaner
 from src.transcription.transcriber import get_cached_transcriber
+from src.utils.env_loader import get_api_key
 from src.utils.exceptions import DownloadCancelledError
 from src.utils.logger import get_logger
+from src.utils.rate_limit import RateLimiter
+
+# ---------------------------------------------------------------------------
+# 模块级辅助类与函数
+# ---------------------------------------------------------------------------
+
+
+class _ProgressTracker:
+    """线程安全的进度跟踪器，支持偏移量（Phase 2 从 Phase 1 末尾开始）。"""
+
+    def __init__(
+        self, total: int, emit_fn: Callable[[int, int], None], offset: int = 0
+    ):
+        self._lock = threading.Lock()
+        self._current = offset
+        self._total = total
+        self._emit = emit_fn
+
+    def tick(self) -> None:
+        with self._lock:
+            self._current += 1
+            self._emit(self._current, self._total)
+
+    @property
+    def current(self) -> int:
+        return self._current
+
+
+class PauseController:
+    """暂停控制逻辑，可嵌入任何 Worker。"""
+
+    def __init__(self):
+        self._event = threading.Event()
+        self._event.set()
+
+    def pause(self) -> None:
+        self._event.clear()
+
+    def resume(self) -> None:
+        self._event.set()
+
+    def unpause(self) -> None:
+        self._event.set()
+
+    def wait_if_paused(self, cancel_check=None) -> None:
+        if self._event.is_set():
+            return
+        _logger = get_logger("video2text")
+        _logger.info("  ├─ ✅ 已暂停 — 等待恢复…")
+        while not self._event.wait(timeout=0.5):
+            if cancel_check and cancel_check():
+                break
+        if not (cancel_check and cancel_check()):
+            _logger.info("  └─ ▶ 已继续")
+
+    @property
+    def is_paused(self) -> bool:
+        return not self._event.is_set()
+
+    def get_event(self) -> threading.Event:
+        return self._event
 
 
 def _get_online_cfg(settings: Settings, suffix: str, default):
@@ -41,35 +101,111 @@ def _get_provider_label(provider: str) -> str:
     )
 
 
-class RateLimiter:
-    """简单的速率限制器 —— 确保两次操作之间的间隔不低于指定秒数，用于 API 调用限流。"""
+def _check_summarization_connection(
+    settings: Settings, logger, provider_name: str
+) -> bool:
+    """检查总结提供商连接状态。返回 True 表示可用。"""
+    provider_label = _get_provider_label(provider_name)
+    if provider_name == "ollama":
+        ollama_url = settings.get("summarization.ollama_url", "http://127.0.0.1:11434")
+        ollama_model = settings.get("summarization.ollama_model", "")
+        ok = OllamaClient.full_check(ollama_url, ollama_model or "")
+        if not ok:
+            logger.warning("Ollama 服务不可用")
+    else:
+        provider = create_provider(settings)
+        try:
+            ok = provider.check_connection()
+            if not ok:
+                logger.warning("%s 连接: ✗ 失败", provider_label)
+        finally:
+            provider.close()
+    status = "✓" if ok else "✗"
+    logger.info("[总结] %s: %s", provider_label, status)
+    return ok
 
-    def __init__(self, min_interval: float = 1.5):
-        """初始化速率限制器。
 
-        Args:
-            min_interval: 最小间隔秒数
-        """
-        self._lock = threading.Lock()
-        self._min_interval = min_interval
-        self._last_time = 0.0
+def _build_transcription_service(
+    settings: Settings,
+    output_dir: str,
+    input_folder: Optional[str],
+    mirror_depth: int,
+    on_video_done: Callable[[TranscribeResult], None],
+    on_video_error: Callable[[str, str], None],
+    cancel_check: Callable[[], bool],
+    confirm_download_callback: Callable[[], bool],
+) -> TranscriptionService:
+    """创建配置完整的 TranscriptionService 并加载模型。"""
+    logger = get_logger("video2text")
+    cfg = _load_tx_config(settings)
 
-    def acquire(self) -> None:
-        """获取操作许可，若距上次操作不足最小间隔则阻塞等待。"""
-        with self._lock:
-            now = time.monotonic()
-            elapsed = now - self._last_time
-            if elapsed < self._min_interval:
-                time.sleep(self._min_interval - elapsed)
-            self._last_time = time.monotonic()
+    logger.info("正在加载转写模型...")
+    transcriber = get_cached_transcriber(
+        model_path=cfg.model_path,
+        device=cfg.device,
+        compute_type=cfg.compute_type,
+        num_workers=settings.get_int("transcription.num_workers", 1),
+    )
+    transcriber.confirm_download_callback = confirm_download_callback
+    transcriber.load_model()
+    logger.info("转写模型加载完成")
+
+    model_name = Path(cfg.model_path).name
+    logger.info(
+        "[转写] 模型: %s | 设备: %s (%s) ✓ ",
+        model_name,
+        transcriber.device,
+        transcriber.compute_type,
+    )
+
+    return TranscriptionService(
+        transcriber=transcriber,
+        video_processor=VideoProcessor(),
+        file_writer=FileWriter(output_dir),
+        language=cfg.language,
+        beam_size=cfg.beam_size,
+        best_of=cfg.best_of,
+        temperature=cfg.temperature,
+        condition_on_previous_text=cfg.condition_on_previous_text,
+        word_timestamps=cfg.word_timestamps,
+        vad_filter=settings.get_bool("transcription.vad_filter", True),
+        max_chunk_duration=cfg.max_chunk_duration,
+        output_formats=cfg.output_formats,
+        input_folder=input_folder,
+        mirror_depth=mirror_depth,
+        on_video_done=on_video_done,
+        on_video_error=on_video_error,
+        cancel_check=cancel_check,
+    )
+
+
+def prepare_transcript_text(
+    transcript_path_or_result, segment_merger=None, text_cleaner=None
+) -> str:
+    """从转写路径或 TranscribeResult 中提取并预处理文本。"""
+    if isinstance(transcript_path_or_result, Path):
+        text = transcript_path_or_result.read_text(encoding="utf-8-sig")
+        return text
+    else:
+        result = transcript_path_or_result
+        if segment_merger and text_cleaner:
+            merged = segment_merger.merge_segments(result.segments)
+            processed = segment_merger.format_segments_as_text(
+                merged, include_timestamps=False
+            )
+            return text_cleaner.clean(processed)
+        return result.text
+
+
+# ---------------------------------------------------------------------------
+# TranscribeWorker
+# ---------------------------------------------------------------------------
 
 
 class TranscribeWorker(QObject):
     """后台转写线程 —— 每完成一个文件立即通过信号通知 GUI"""
 
-    # (video_name, segments_count, output_paths)
     video_done = Signal(str, int, list)
-    # (video_name, error_message)
     video_error = Signal(str, str)
     progress = Signal(int, int)
     error = Signal(str)
@@ -97,24 +233,20 @@ class TranscribeWorker(QObject):
         self._confirm_result = [False]
 
     def cancel(self) -> None:
-        """标记取消，终止后续文件转写。"""
         self._cancelled = True
         self._confirm_event.set()
 
     def pause(self) -> None:
-        """暂停当前转写任务。"""
         with self._service_lock:
             if self._service is not None:
                 self._service.pause()
 
     def resume(self) -> None:
-        """恢复被暂停的转写任务。"""
         with self._service_lock:
             if self._service is not None:
                 self._service.resume()
 
     def unpause(self) -> None:
-        """强制解除暂停状态（用于关闭窗口时确保线程不阻塞）。"""
         with self._service_lock:
             if self._service is not None:
                 self._service.resume()
@@ -141,72 +273,34 @@ class TranscribeWorker(QObject):
 
     def run(self) -> None:
         logger = get_logger("video2text")
-
-        transcriber = None
         try:
-            cfg = _load_tx_config(self.settings)
-
-            logger.info("正在加载转写模型...")
-            transcriber = get_cached_transcriber(
-                model_path=cfg.model_path,
-                device=cfg.device,
-                compute_type=cfg.compute_type,
-                num_workers=self.settings.get_int("transcription.num_workers", 1),
-            )
-            transcriber.confirm_download_callback = self._confirm_download_callback
-            transcriber.load_model()
-            logger.info("转写模型加载完成")
-
-            model_name = Path(cfg.model_path).name
-            logger.info(
-                "[转写] 模型: %s | 设备: %s (%s) ✓ ",
-                model_name,
-                transcriber.device,
-                transcriber.compute_type,
-            )
-
-            video_processor = VideoProcessor()
-            file_writer = FileWriter(self.output_dir)
-
             total = len(self.video_files)
-            done_count = 0
+            done_count = [0]
 
-            def on_video_done(result: TranscribeResult):
-                nonlocal done_count
-                done_count += 1
+            def on_done(result: TranscribeResult):
+                done_count[0] += 1
                 self.video_done.emit(
                     result.video_name, len(result.segments), result.output_paths
                 )
-                self.progress.emit(done_count, total)
+                self.progress.emit(done_count[0], total)
 
-            def on_video_error(video_name: str, error_msg: str):
-                nonlocal done_count
-                done_count += 1
+            def on_error(video_name: str, error_msg: str):
+                done_count[0] += 1
                 self.video_error.emit(video_name, error_msg)
-                self.progress.emit(done_count, total)
+                self.progress.emit(done_count[0], total)
 
-            service = TranscriptionService(
-                transcriber=transcriber,
-                video_processor=video_processor,
-                file_writer=file_writer,
-                language=cfg.language,
-                beam_size=cfg.beam_size,
-                best_of=cfg.best_of,
-                temperature=cfg.temperature,
-                condition_on_previous_text=cfg.condition_on_previous_text,
-                word_timestamps=cfg.word_timestamps,
-                vad_filter=self.settings.get_bool("transcription.vad_filter", True),
-                max_chunk_duration=cfg.max_chunk_duration,
-                output_formats=cfg.output_formats,
-                input_folder=self.input_folder,
-                mirror_depth=self.mirror_depth,
-                on_video_done=on_video_done,
-                on_video_error=on_video_error,
+            service = _build_transcription_service(
+                self.settings,
+                self.output_dir,
+                self.input_folder,
+                self.mirror_depth,
+                on_video_done=on_done,
+                on_video_error=on_error,
                 cancel_check=lambda: self._cancelled,
+                confirm_download_callback=self._confirm_download_callback,
             )
             with self._service_lock:
                 self._service = service
-
             service.run(self.video_files, self.output_dir)
 
         except DownloadCancelledError:
@@ -220,8 +314,13 @@ class TranscribeWorker(QObject):
             self.finished.emit()
 
 
+# ---------------------------------------------------------------------------
+# SummarizeWorker
+# ---------------------------------------------------------------------------
+
+
 class SummarizeWorker(QObject):
-    """后台总结线程 —— 支持流式输出和多线程并发"""
+    """后台总结线程 —— 委托 SummarizationService，仅负责 Qt 信号适配"""
 
     summarize_started = Signal(str)
     stream_token = Signal(str)
@@ -250,17 +349,10 @@ class SummarizeWorker(QObject):
         self.input_folder = input_folder
         self.mirror_depth = mirror_depth
         self._cancelled = False
-        self._standalone_text: str = ""
         self._active_provider = None
-        self._pause_event = threading.Event()
-        self._pause_event.set()  # 初始状态：非暂停
-
-    def set_standalone_text(self, text: str) -> None:
-        """设置独立文本模式的内容（仅总结指定文本，不从文件读取）。"""
-        self._standalone_text = text
+        self._pause_ctrl = PauseController()
 
     def cancel(self) -> None:
-        """标记取消，终止后续总结任务。"""
         self._cancelled = True
         provider = self._active_provider
         if provider is not None:
@@ -270,48 +362,92 @@ class SummarizeWorker(QObject):
                 pass
 
     def pause(self) -> None:
-        """暂停当前总结任务（仅 Ollama 本地模型有效）。"""
-        self._pause_event.clear()
+        self._pause_ctrl.pause()
         get_logger("video2text").info("  ├─ ⏸ 总结暂停请求已接收，等待当前任务完成…")
 
     def resume(self) -> None:
-        """恢复被暂停的总结任务。"""
-        self._pause_event.set()
+        self._pause_ctrl.resume()
 
     def unpause(self) -> None:
-        """强制解除暂停状态（用于关闭窗口时确保线程不阻塞）。"""
-        self._pause_event.set()
+        self._pause_ctrl.unpause()
 
     def _wait_if_paused(self) -> None:
-        """如果处于暂停状态，则阻塞直到恢复。"""
-        if self._pause_event.is_set():
-            return
-        _logger = get_logger("video2text")
-        _logger.info("  ├─ ✅ 总结已暂停 — 等待恢复…")
-        while not self._pause_event.wait(timeout=0.5):
-            if self._cancelled:
-                break
-        if not self._cancelled:
-            _logger.info("  └─ ▶ 总结已继续")
+        self._pause_ctrl.wait_if_paused(lambda: self._cancelled)
 
     @property
     def is_paused(self) -> bool:
-        """是否处于暂停状态。"""
-        return not self._pause_event.is_set()
+        return self._pause_ctrl.is_paused
 
     def run(self) -> None:
-        """执行总结任务：根据配置选择单线程或多线程模式。"""
         logger = get_logger("video2text")
-
         try:
             file_writer = FileWriter(self.output_dir)
-            provider = self.settings.get("summarization.provider", "ollama")
-            mode = _get_online_cfg(self.settings, "mode", "single")
+            provider_name = self.settings.get("summarization.provider", "ollama")
 
-            if provider in ("nvidia", "zhipu") and mode == "multi":
-                self._run_multi_thread(logger, file_writer)
-            else:
-                self._run_single_thread(logger, file_writer, provider)
+            if not _check_summarization_connection(
+                self.settings, logger, provider_name
+            ):
+                provider_label = _get_provider_label(provider_name)
+                self.error.emit(f"{provider_label} 服务不可用")
+                return
+
+            items = self._prepare_items(file_writer)
+            if not items:
+                return
+
+            tracker = _ProgressTracker(len(items), self.progress.emit)
+
+            valid_items = []
+            for item in items:
+                if item.get("_skip"):
+                    tracker.tick()
+                    self.video_error.emit(item["video_name"], "转写文件不可用")
+                    continue
+                valid_items.append(item)
+
+            if not valid_items:
+                return
+
+            provider_inst = create_provider(self.settings)
+            self._active_provider = provider_inst
+            try:
+                mode = _get_online_cfg(self.settings, "mode", "single")
+                max_workers = (
+                    _get_online_cfg(self.settings, "thread_count", 5)
+                    if provider_name in ("nvidia", "zhipu") and mode == "multi"
+                    else 1
+                )
+                stream = self.stream and max_workers <= 1
+
+                service = SummarizationService(
+                    settings=self.settings,
+                    file_writer=file_writer,
+                    provider=provider_inst,
+                    custom_prompt=self.custom_prompt,
+                    on_stream_token=lambda token: (
+                        self.stream_token.emit(token) if stream else None
+                    ),
+                    cancel_check=lambda: self._cancelled,
+                    pause_event=self._pause_ctrl.get_event(),
+                    rate_limiter=RateLimiter(1.5) if max_workers > 1 else None,
+                    on_item_started=lambda name: self.summarize_started.emit(name),
+                    on_item_done=lambda name, summary: (
+                        tracker.tick(),
+                        self.video_done.emit(name, summary),
+                    ),
+                    on_item_error=lambda name, err: (
+                        tracker.tick(),
+                        self.video_error.emit(name, err),
+                    ),
+                )
+                service.summarize_batch(
+                    valid_items,
+                    stream=stream,
+                    max_workers=max_workers,
+                )
+            finally:
+                self._active_provider = None
+                provider_inst.close()
 
         except Exception as exc:
             logger.exception("总结线程异常")
@@ -319,352 +455,55 @@ class SummarizeWorker(QObject):
         finally:
             self.finished.emit()
 
-    def _run_single_thread(
-        self, logger, file_writer: FileWriter, provider: str
-    ) -> None:
-        """单线程模式（Ollama / NVIDIA single / 智谱 single）"""
-        provider_label = _get_provider_label(provider)
-        if provider == "ollama":
-            ollama_url = self.settings.get(
-                "summarization.ollama_url", "http://127.0.0.1:11434"
-            )
-            ollama_model = self.settings.get("summarization.ollama_model", "")
-            sum_available = OllamaClient.full_check(ollama_url, ollama_model or "")
-        else:
-            provider_inst = create_provider(self.settings)
-            try:
-                sum_available = provider_inst.check_connection()
-            finally:
-                provider_inst.close()
-
-        sum_status = "✓" if sum_available else "✗"
-        logger.info("[总结] %s: %s", provider_label, sum_status)
-
-        if not sum_available:
-            msg = f"{provider_label} 服务不可用"
-            logger.error(msg)
-            self.error.emit(msg)
-            self._emit_all_errors(msg)
-            return
-
-        provider_inst = create_provider(self.settings)
-        self._active_provider = provider_inst
-        try:
-            service = SummarizationService(
-                settings=self.settings,
-                file_writer=file_writer,
-                provider=provider_inst,
-                custom_prompt=self.custom_prompt,
-                on_stream_token=lambda token: self.stream_token.emit(token),
-                cancel_check=lambda: self._cancelled,
-                pause_event=self._pause_event,
-            )
-            self._execute_summarization(logger, service, file_writer)
-        except Exception as e:
-            logger.exception("总结流程异常")
-            self.error.emit(str(e))
-        finally:
-            self._active_provider = None
-            provider_inst.close()
-
-    def _run_multi_thread(self, logger, file_writer: FileWriter) -> None:
-        """多线程模式（NVIDIA/智谱 multi）—— 强制非流式"""
-        provider = self.settings.get("summarization.provider", "ollama")
-        provider_label = _get_provider_label(provider)
-        provider_inst = create_provider(self.settings)
-        try:
-            sum_available = provider_inst.check_connection()
-        finally:
-            provider_inst.close()
-
-        sum_status = "✓" if sum_available else "✗"
-        logger.info("[总结] %s: %s", provider_label, sum_status)
-
-        if not sum_available:
-            msg = f"{provider_label} 服务不可用"
-            logger.error(msg)
-            self.error.emit(msg)
-            self._emit_all_errors(msg)
-            return
-
-        if self._standalone_text and not self.video_files:
-            self._execute_summarization_single_fallback(logger, file_writer)
-            return
-
-        self._execute_summarization_multi(logger, file_writer)
-
-    def _execute_summarization_single_fallback(
-        self, logger, file_writer: FileWriter
-    ) -> None:
-        """独立文本在 multi 模式下退化为单线程"""
-        provider_inst = create_provider(self.settings)
-        try:
-            service = SummarizationService(
-                settings=self.settings,
-                file_writer=file_writer,
-                provider=provider_inst,
-                custom_prompt=self.custom_prompt,
-                cancel_check=lambda: self._cancelled,
-                pause_event=self._pause_event,
-            )
-            try:
-                self.summarize_started.emit("(粘贴文本)")
-                logger.info("[1/1] (粘贴文本)")
-                summary = service.summarize(
-                    self._standalone_text,
-                    video_name="",
-                    stream=False,
-                    index=1,
-                    total=1,
-                )
-                if summary:
-                    self.video_done.emit("(粘贴文本)", summary)
-                else:
-                    self.video_error.emit("(粘贴文本)", "总结结果为空")
-            except Exception as e:
-                logger.exception("独立文本总结失败")
-                self.video_error.emit("(粘贴文本)", str(e))
-            finally:
-                service.close()
-        except Exception as e:
-            logger.exception("总结流程异常")
-            self.video_error.emit("(粘贴文本)", str(e))
-
-        self.progress.emit(1, 1)
-
-    def _execute_summarization_multi(self, logger, file_writer: FileWriter) -> None:
-        """多线程并发总结"""
-        thread_count = _get_online_cfg(self.settings, "thread_count", 5)
-        total = len(self.video_files)
-        progress_lock = threading.Lock()
-        done_count = [0]
-
-        tasks: list[tuple[str, str, FileWriter]] = []
+    def _prepare_items(self, file_writer: FileWriter) -> list[dict]:
+        """准备 {video_name, text, file_writer} 列表，支持 input_folder 镜像目录。"""
+        logger = get_logger("video2text")
+        items = []
         for video_path in self.video_files:
+            if self._cancelled:
+                break
             video_name = Path(video_path).stem
             file_output_dir = TranscriptionService.get_file_output_dir(
                 video_path, self.output_dir, self.input_folder, self.mirror_depth
             )
-            per_file_writer = (
-                FileWriter(file_output_dir) if self.input_folder else file_writer
-            )
-            transcript_path = per_file_writer.find_transcript_file(video_name)
-
+            per_fw = FileWriter(file_output_dir) if self.input_folder else file_writer
+            transcript_path = per_fw.find_transcript_file(video_name)
             if transcript_path is None:
                 logger.warning("未找到转写文件: %s", video_name)
-                self.video_error.emit(video_name, "未找到转写文件")
-                with progress_lock:
-                    done_count[0] += 1
-                self.progress.emit(done_count[0], total)
-                continue
-
-            try:
-                text = transcript_path.read_text(encoding="utf-8-sig")
-                if not text.strip():
-                    logger.warning("转写文件为空: %s", video_name)
-                    self.video_error.emit(video_name, "转写文件为空")
-                    with progress_lock:
-                        done_count[0] += 1
-                    self.progress.emit(done_count[0], total)
-                    continue
-                tasks.append((video_name, text, per_file_writer))
-            except Exception as e:
-                logger.exception("读取转写文件失败: %s", video_name)
-                self.video_error.emit(video_name, str(e))
-                with progress_lock:
-                    done_count[0] += 1
-                self.progress.emit(done_count[0], total)
-
-        if not tasks:
-            return
-
-        task_total = len(tasks)
-        rate_limiter = RateLimiter(min_interval=1.5)
-        summary_format = (
-            self.settings.get("output.summary_format", "txt").lower().strip()
-        )
-
-        def _process_video(
-            idx: int, video_name: str, text: str, fw: FileWriter
-        ) -> tuple[str, str, str]:
-            if self._cancelled:
-                return video_name, "", "cancelled"
-
-            rate_limiter.acquire()
-            provider = create_provider(self.settings)
-            try:
-                service = SummarizationService(
-                    settings=self.settings,
-                    file_writer=fw,
-                    provider=provider,
-                    custom_prompt=self.custom_prompt,
-                    cancel_check=lambda: self._cancelled,
+                items.append(
+                    {
+                        "video_name": video_name,
+                        "text": "",
+                        "file_writer": per_fw,
+                        "_skip": True,
+                    }
                 )
-                try:
-                    summary = service.summarize(
-                        text,
-                        video_name=video_name,
-                        stream=False,
-                    )
-                    return video_name, summary, ""
-                finally:
-                    service.close()
-            except Exception as e:
-                return video_name, "", str(e)
-            finally:
-                provider.close()
-
-        with ThreadPoolExecutor(max_workers=thread_count) as executor:
-            futures = {}
-            for idx, (video_name, text, fw) in enumerate(tasks):
-                if self._cancelled:
-                    break
-                self.summarize_started.emit(video_name)
-                future = executor.submit(_process_video, idx, video_name, text, fw)
-                futures[future] = (video_name, idx)
-
-            for future in as_completed(futures):
-                try:
-                    video_name, summary, err = future.result()
-                    if err == "cancelled":
-                        continue
-
-                    _, idx = futures[future]
-                    with progress_lock:
-                        done_count[0] += 1
-
-                    if summary:
-                        logger.info("[%d/%d] %s", idx + 1, task_total, video_name)
-                        logger.info("  └─ 文本总结完成 ✓ (.%s)", summary_format)
-                        self.video_done.emit(video_name, summary)
-                    else:
-                        err_msg = err if err else "总结结果为空"
-                        logger.info("[%d/%d] %s", idx + 1, task_total, video_name)
-                        logger.info("  └─ 文本总结失败 ✗ %s", err_msg)
-                        self.video_error.emit(video_name, err_msg)
-                except Exception as e:
-                    video_name, idx = futures[future]
-                    with progress_lock:
-                        done_count[0] += 1
-                    logger.info("[%d/%d] %s", idx + 1, task_total, video_name)
-                    logger.info("  └─ 文本总结失败 ✗ %s", e)
-                    self.video_error.emit(video_name, str(e))
-
-                self.progress.emit(done_count[0], total)
-
-    def _execute_summarization(
-        self, logger, service: SummarizationService, file_writer: FileWriter
-    ) -> None:
-        """串行总结逻辑（single 模式和 Ollama）"""
-        if self._standalone_text and not self.video_files:
-            try:
-                self.summarize_started.emit("(粘贴文本)")
-                logger.info("[1/1] (粘贴文本)")
-                summary = service.summarize(
-                    self._standalone_text,
-                    video_name="",
-                    stream=self.stream,
-                    index=1,
-                    total=1,
-                )
-                if summary:
-                    self.video_done.emit("(粘贴文本)", summary)
-                else:
-                    self.video_error.emit("(粘贴文本)", "总结结果为空")
-            except Exception as e:
-                logger.exception("独立文本总结失败")
-                self.video_error.emit("(粘贴文本)", str(e))
-
-            self.progress.emit(1, 1)
-            return
-
-        total = len(self.video_files)
-
-        for idx, video_path in enumerate(self.video_files):
-            if self._cancelled:
-                break
-
-            self._wait_if_paused()
-            if self._cancelled:
-                break
-
-            video_name = Path(video_path).stem
-            file_output_dir = TranscriptionService.get_file_output_dir(
-                video_path, self.output_dir, self.input_folder, self.mirror_depth
-            )
-            per_file_writer = (
-                FileWriter(file_output_dir) if self.input_folder else file_writer
-            )
-            transcript_path = per_file_writer.find_transcript_file(video_name)
-
-            if transcript_path is None:
-                logger.warning("未找到转写文件: %s", video_name)
-                self.video_error.emit(video_name, "未找到转写文件")
-                self.progress.emit(idx + 1, total)
                 continue
+            text = transcript_path.read_text(encoding="utf-8-sig")
+            if not text.strip():
+                logger.warning("转写文件为空: %s", video_name)
+                items.append(
+                    {
+                        "video_name": video_name,
+                        "text": "",
+                        "file_writer": per_fw,
+                        "_skip": True,
+                    }
+                )
+                continue
+            items.append(
+                {"video_name": video_name, "text": text, "file_writer": per_fw}
+            )
+        return items
 
-            try:
-                text = transcript_path.read_text(encoding="utf-8-sig")
-                if not text.strip():
-                    logger.warning("转写文件为空: %s", video_name)
-                    self.video_error.emit(video_name, "转写文件为空")
-                    self.progress.emit(idx + 1, total)
-                    continue
 
-                self.summarize_started.emit(video_name)
-                logger.info("[%d/%d] %s", idx + 1, total, video_name)
-                if self.input_folder:
-                    per_provider = create_provider(self.settings)
-                    try:
-                        per_service = SummarizationService(
-                            settings=self.settings,
-                            file_writer=per_file_writer,
-                            provider=per_provider,
-                            custom_prompt=self.custom_prompt,
-                            on_stream_token=lambda token: self.stream_token.emit(token),
-                            cancel_check=lambda: self._cancelled,
-                            pause_event=self._pause_event,
-                        )
-                        summary = per_service.summarize(
-                            text,
-                            video_name=video_name,
-                            stream=self.stream,
-                            index=idx + 1,
-                            total=total,
-                        )
-                    finally:
-                        per_provider.close()
-                else:
-                    summary = service.summarize(
-                        text,
-                        video_name=video_name,
-                        stream=self.stream,
-                        index=idx + 1,
-                        total=total,
-                    )
-                if summary:
-                    self.video_done.emit(video_name, summary)
-                else:
-                    self.video_error.emit(video_name, "总结结果为空")
-            except Exception as e:
-                logger.exception("总结失败: %s", video_name)
-                self.video_error.emit(video_name, str(e))
-
-            self.progress.emit(idx + 1, total)
-
-    def _emit_all_errors(self, msg: str) -> None:
-        """连接失败时为所有文件发射错误信号"""
-        if self._standalone_text:
-            self.video_error.emit("(粘贴文本)", msg)
-            self.progress.emit(1, 1)
-        else:
-            for vp in self.video_files:
-                self.video_error.emit(Path(vp).stem, msg)
-            self.progress.emit(len(self.video_files), len(self.video_files))
+# ---------------------------------------------------------------------------
+# PipelineWorker
+# ---------------------------------------------------------------------------
 
 
 class PipelineWorker(QObject):
-    """转写总结管道线程 —— 每完成一个文件的转写就自动开始总结"""
+    """转写总结管道线程 —— Phase 2 复用 SummarizationService.summarize_batch()"""
 
     transcribe_done = Signal(str, int, list)
     transcribe_error = Signal(str, str)
@@ -676,7 +515,6 @@ class PipelineWorker(QObject):
     error = Signal(str)
     finished = Signal()
     confirm_download = Signal()
-    # 阶段变更信号: "transcribe" 或 "summarize"
     phase_changed = Signal(str)
 
     def __init__(
@@ -703,14 +541,12 @@ class PipelineWorker(QObject):
         self._tx_service_lock = threading.Lock()
         self._confirm_event = threading.Event()
         self._confirm_result = [False]
-        self._sum_pause_event = threading.Event()
-        self._sum_pause_event.set()  # 初始状态：非暂停
+        self._sum_pause_ctrl = PauseController()
 
     def cancel(self) -> None:
-        """标记取消，终止后续转写和总结。"""
         self._cancelled = True
         self._confirm_event.set()
-        self._sum_pause_event.set()  # 确保不阻塞
+        self._sum_pause_ctrl.unpause()
         provider = self._active_provider
         if provider is not None:
             try:
@@ -719,59 +555,42 @@ class PipelineWorker(QObject):
                 pass
 
     def pause(self) -> None:
-        """暂停当前转写任务。"""
         with self._tx_service_lock:
             if self._tx_service is not None:
                 self._tx_service.pause()
 
     def resume(self) -> None:
-        """恢复被暂停的转写任务。"""
         with self._tx_service_lock:
             if self._tx_service is not None:
                 self._tx_service.resume()
 
     def unpause(self) -> None:
-        """强制解除暂停状态（用于关闭窗口时确保线程不阻塞）。"""
         with self._tx_service_lock:
             if self._tx_service is not None:
                 self._tx_service.resume()
-        self._sum_pause_event.set()
+        self._sum_pause_ctrl.unpause()
 
     def sum_pause(self) -> None:
-        """暂停当前总结任务（仅 Ollama 本地模型有效）。"""
-        self._sum_pause_event.clear()
+        self._sum_pause_ctrl.pause()
         get_logger("video2text").info("  ├─ ⏸ 总结暂停请求已接收，等待当前任务完成…")
 
     def sum_resume(self) -> None:
-        """恢复被暂停的总结任务。"""
-        self._sum_pause_event.set()
+        self._sum_pause_ctrl.resume()
 
     def sum_unpause(self) -> None:
-        """强制解除总结暂停状态。"""
-        self._sum_pause_event.set()
+        self._sum_pause_ctrl.unpause()
 
     def _sum_wait_if_paused(self) -> None:
-        """如果总结处于暂停状态，则阻塞直到恢复。"""
-        if self._sum_pause_event.is_set():
-            return
-        _logger = get_logger("video2text")
-        _logger.info("  ├─ ✅ 总结已暂停 — 等待恢复…")
-        while not self._sum_pause_event.wait(timeout=0.5):
-            if self._cancelled:
-                break
-        if not self._cancelled:
-            _logger.info("  └─ ▶ 总结已继续")
+        self._sum_pause_ctrl.wait_if_paused(lambda: self._cancelled)
 
     @property
     def is_paused(self) -> bool:
-        """是否处于暂停状态（转写）。"""
         with self._tx_service_lock:
             return self._tx_service.is_paused if self._tx_service else False
 
     @property
     def is_sum_paused(self) -> bool:
-        """总结是否处于暂停状态。"""
-        return not self._sum_pause_event.is_set()
+        return self._sum_pause_ctrl.is_paused
 
     def _confirm_download_callback(self) -> bool:
         if self._cancelled:
@@ -789,144 +608,131 @@ class PipelineWorker(QObject):
         self._confirm_event.set()
 
     def run(self) -> None:
-        """执行管道任务：加载模型 → 逐文件转写 → 文本清理 → 总结。"""
         logger = get_logger("video2text")
-
-        transcriber = None
+        file_writer = FileWriter(self.output_dir)
         try:
-            cfg = _load_tx_config(self.settings)
-
-            logger.info("正在加载转写模型...")
-            transcriber = get_cached_transcriber(
-                model_path=cfg.model_path,
-                device=cfg.device,
-                compute_type=cfg.compute_type,
-                num_workers=self.settings.get_int("transcription.num_workers", 1),
-            )
-            transcriber.confirm_download_callback = self._confirm_download_callback
-            transcriber.load_model()
-            logger.info("转写模型加载完成")
-
-            video_processor = VideoProcessor()
-            file_writer = FileWriter(self.output_dir)
-            segment_merger = SegmentMerger(
-                max_gap=self.settings.get_float("text_processing.max_gap", 2.0),
-                min_length=self.settings.get_int("text_processing.min_length", 50),
-            )
-            text_cleaner = TextCleaner(
-                {
-                    "filler_words": self.settings.get_list(
-                        "text_processing.filler_words"
-                    ),
-                }
-            )
-
-            model_name = Path(cfg.model_path).name
-            logger.info(
-                "[转写] 模型: %s | 设备: %s (%s) ✓ ",
-                model_name,
-                transcriber.device,
-                transcriber.compute_type,
-            )
-
             total = len(self.video_files)
-            done_count = 0
-            sum_done = 0
             total_steps = total * 2
+            done_count = [0]
 
             def on_tx_done(result: TranscribeResult):
-                nonlocal done_count
-                done_count += 1
+                done_count[0] += 1
                 self.transcribe_done.emit(
                     result.video_name, len(result.segments), result.output_paths
                 )
-                self.progress.emit(done_count, total_steps)
+                self.progress.emit(done_count[0], total_steps)
 
             def on_tx_error(video_name: str, error_msg: str):
-                nonlocal done_count
-                done_count += 1
+                done_count[0] += 1
                 self.transcribe_error.emit(video_name, error_msg)
-                self.progress.emit(done_count, total_steps)
+                self.progress.emit(done_count[0], total_steps)
 
-            tx_service = TranscriptionService(
-                transcriber=transcriber,
-                video_processor=video_processor,
-                file_writer=file_writer,
-                language=cfg.language,
-                beam_size=cfg.beam_size,
-                best_of=cfg.best_of,
-                temperature=cfg.temperature,
-                condition_on_previous_text=cfg.condition_on_previous_text,
-                word_timestamps=cfg.word_timestamps,
-                vad_filter=self.settings.get_bool("transcription.vad_filter", True),
-                max_chunk_duration=cfg.max_chunk_duration,
-                output_formats=cfg.output_formats,
-                input_folder=self.input_folder,
-                mirror_depth=self.mirror_depth,
+            service = _build_transcription_service(
+                self.settings,
+                self.output_dir,
+                self.input_folder,
+                self.mirror_depth,
                 on_video_done=on_tx_done,
                 on_video_error=on_tx_error,
                 cancel_check=lambda: self._cancelled,
+                confirm_download_callback=self._confirm_download_callback,
             )
             with self._tx_service_lock:
-                self._tx_service = tx_service
+                self._tx_service = service
 
-            results = tx_service.run(self.video_files, self.output_dir)
+            results = service.run(self.video_files, self.output_dir)
 
+            # ---- Phase 2: 总结 ----
             provider_name = self.settings.get("summarization.provider", "ollama")
-            mode = _get_online_cfg(self.settings, "mode", "single")
-            sum_available = False
-            provider_label = _get_provider_label(provider_name)
+            sum_available = _check_summarization_connection(
+                self.settings, logger, provider_name
+            )
 
-            if provider_name == "ollama":
-                ollama_url = self.settings.get(
-                    "summarization.ollama_url", "http://127.0.0.1:11434"
-                )
-                ollama_model = self.settings.get("summarization.ollama_model", "")
-                sum_available = OllamaClient.full_check(ollama_url, ollama_model or "")
-                if not sum_available:
-                    logger.warning("Ollama 服务不可用，将只执行转写")
-            else:
-                check_provider = create_provider(self.settings)
-                try:
-                    sum_available = check_provider.check_connection()
-                    if not sum_available:
-                        logger.warning("%s 连接: ✗ 失败，将只执行转写", provider_label)
-                finally:
-                    check_provider.close()
-
-            sum_status = "✓" if sum_available else "✗"
-            logger.info("[总结] %s: %s", provider_label, sum_status)
-
-            # 通知 GUI 进入总结阶段
             self.phase_changed.emit("summarize")
 
-            if (
-                sum_available
-                and provider_name in ("nvidia", "zhipu")
-                and mode == "multi"
-            ):
-                sum_done = self._summarize_results_multi(
-                    logger,
-                    file_writer,
-                    segment_merger,
-                    text_cleaner,
-                    results,
-                    sum_done,
-                    total,
-                    total_steps,
+            if sum_available:
+                segment_merger = SegmentMerger(
+                    max_gap=self.settings.get_float("text_processing.max_gap", 2.0),
+                    min_length=self.settings.get_int("text_processing.min_length", 50),
                 )
+                text_cleaner = TextCleaner(
+                    {
+                        "filler_words": self.settings.get_list(
+                            "text_processing.filler_words"
+                        ),
+                    }
+                )
+
+                items = []
+                for result in results:
+                    if self._cancelled:
+                        break
+                    processed_text = prepare_transcript_text(
+                        result, segment_merger, text_cleaner
+                    )
+                    per_file_dir = (
+                        str(Path(result.output_paths[0]).parent)
+                        if result.output_paths and self.input_folder
+                        else self.output_dir
+                    )
+                    per_fw = FileWriter(per_file_dir)
+                    items.append(
+                        {
+                            "video_name": result.video_name,
+                            "text": processed_text,
+                            "file_writer": per_fw,
+                        }
+                    )
+
+                if items and not self._cancelled:
+                    mode = _get_online_cfg(self.settings, "mode", "single")
+                    max_workers = (
+                        _get_online_cfg(self.settings, "thread_count", 5)
+                        if provider_name in ("nvidia", "zhipu") and mode == "multi"
+                        else 1
+                    )
+                    stream = self.stream and max_workers <= 1
+                    rate_limiter = RateLimiter(1.5) if max_workers > 1 else None
+
+                    tracker = _ProgressTracker(
+                        total_steps, self.progress.emit, offset=total
+                    )
+
+                    provider_inst = create_provider(self.settings)
+                    self._active_provider = provider_inst
+                    try:
+                        sum_service = SummarizationService(
+                            settings=self.settings,
+                            file_writer=file_writer,
+                            provider=provider_inst,
+                            custom_prompt=self.custom_prompt,
+                            on_stream_token=lambda token: (
+                                self.stream_token.emit(token) if stream else None
+                            ),
+                            cancel_check=lambda: self._cancelled,
+                            pause_event=self._sum_pause_ctrl.get_event(),
+                            rate_limiter=rate_limiter,
+                            on_item_started=lambda name: self.summarize_started.emit(
+                                name
+                            ),
+                            on_item_done=lambda name, summary: (
+                                tracker.tick(),
+                                self.summarize_done.emit(name, summary),
+                            ),
+                            on_item_error=lambda name, err: (
+                                tracker.tick(),
+                                self.summarize_error.emit(name, err),
+                            ),
+                        )
+                        sum_service.summarize_batch(
+                            items, stream=stream, max_workers=max_workers
+                        )
+                    finally:
+                        self._active_provider = None
+                        provider_inst.close()
             else:
-                sum_done = self._summarize_results_serial(
-                    logger,
-                    file_writer,
-                    segment_merger,
-                    text_cleaner,
-                    results,
-                    sum_done,
-                    total,
-                    total_steps,
-                    sum_available,
-                )
+                provider_label = _get_provider_label(provider_name)
+                logger.warning("%s 服务不可用，跳过总结", provider_label)
 
         except DownloadCancelledError:
             logger.info("用户取消了模型下载")
@@ -938,219 +744,82 @@ class PipelineWorker(QObject):
                 self._tx_service = None
             self.finished.emit()
 
-    def _prepare_text(
-        self, result: TranscribeResult, segment_merger, text_cleaner
-    ) -> str:
-        merged = segment_merger.merge_segments(result.segments)
-        processed_text = segment_merger.format_segments_as_text(
-            merged, include_timestamps=False
-        )
-        return text_cleaner.clean(processed_text)
 
-    def _summarize_results_serial(
-        self,
-        logger,
-        file_writer,
-        segment_merger,
-        text_cleaner,
-        results,
-        sum_done,
-        total,
-        total_steps,
-        sum_available,
-    ) -> int:
-        for idx, result in enumerate(results):
-            if self._cancelled:
-                break
-
-            self._sum_wait_if_paused()
-            if self._cancelled:
-                break
-
-            if sum_available:
-                processed_text = self._prepare_text(
-                    result, segment_merger, text_cleaner
-                )
-                per_file_dir = (
-                    str(Path(result.output_paths[0]).parent)
-                    if result.output_paths and self.input_folder
-                    else self.output_dir
-                )
-                per_fw = FileWriter(per_file_dir)
-                provider_inst = create_provider(self.settings)
-                self._active_provider = provider_inst
-                try:
-                    service = SummarizationService(
-                        settings=self.settings,
-                        file_writer=per_fw,
-                        provider=provider_inst,
-                        custom_prompt=self.custom_prompt,
-                        on_stream_token=lambda token: self.stream_token.emit(token),
-                        cancel_check=lambda: self._cancelled,
-                        pause_event=self._sum_pause_event,
-                    )
-                    self.summarize_started.emit(result.video_name)
-                    logger.info("[%d/%d] %s", idx + 1, len(results), result.video_name)
-                    summary = service.summarize(
-                        processed_text,
-                        video_name=result.video_name,
-                        stream=self.stream,
-                        index=idx + 1,
-                        total=len(results),
-                    )
-                    if summary:
-                        self.summarize_done.emit(result.video_name, summary)
-                    else:
-                        self.summarize_error.emit(result.video_name, "总结结果为空")
-                except Exception as e:
-                    logger.exception("总结失败: %s", result.video_name)
-                    self.summarize_error.emit(result.video_name, str(e))
-                finally:
-                    self._active_provider = None
-                    provider_inst.close()
-            else:
-                self.summarize_error.emit(result.video_name, "总结服务不可用，已跳过")
-
-            sum_done += 1
-            self.progress.emit(total + sum_done, total_steps)
-
-        return sum_done
-
-    def _summarize_results_multi(
-        self,
-        logger,
-        file_writer,
-        segment_merger,
-        text_cleaner,
-        results,
-        sum_done,
-        total,
-        total_steps,
-    ) -> int:
-        thread_count = _get_online_cfg(self.settings, "thread_count", 5)
-        progress_lock = threading.Lock()
-        tasks: list[tuple[str, str, FileWriter]] = []
-
-        for result in results:
-            if self._cancelled:
-                break
-            processed_text = self._prepare_text(result, segment_merger, text_cleaner)
-            per_file_dir = (
-                str(Path(result.output_paths[0]).parent)
-                if result.output_paths and self.input_folder
-                else self.output_dir
-            )
-            per_fw = FileWriter(per_file_dir)
-            tasks.append((result.video_name, processed_text, per_fw))
-
-        if not tasks:
-            return sum_done
-
-        rate_limiter = RateLimiter(min_interval=1.5)
-        task_total = len(tasks)
-        summary_format = (
-            self.settings.get("output.summary_format", "txt").lower().strip()
-        )
-
-        def _process(
-            idx: int, video_name: str, text: str, fw: FileWriter
-        ) -> tuple[str, str, str]:
-            if self._cancelled:
-                return video_name, "", "cancelled"
-            rate_limiter.acquire()
-            provider = create_provider(self.settings)
-            try:
-                service = SummarizationService(
-                    settings=self.settings,
-                    file_writer=fw,
-                    provider=provider,
-                    custom_prompt=self.custom_prompt,
-                    cancel_check=lambda: self._cancelled,
-                )
-                summary = service.summarize(
-                    text,
-                    video_name=video_name,
-                    stream=False,
-                )
-                return video_name, summary, ""
-            except Exception as e:
-                return video_name, "", str(e)
-            finally:
-                provider.close()
-
-        with ThreadPoolExecutor(max_workers=thread_count) as executor:
-            futures = {}
-            for idx, (video_name, text, fw) in enumerate(tasks):
-                if self._cancelled:
-                    break
-                self.summarize_started.emit(video_name)
-                future = executor.submit(_process, idx, video_name, text, fw)
-                futures[future] = (video_name, idx)
-
-            for future in as_completed(futures):
-                try:
-                    video_name, summary, err = future.result()
-                    if err == "cancelled":
-                        continue
-                    _, idx = futures[future]
-                    if summary:
-                        logger.info("[%d/%d] %s", idx + 1, task_total, video_name)
-                        logger.info("  └─ 文本总结完成 ✓ (.%s)", summary_format)
-                        self.summarize_done.emit(video_name, summary)
-                    else:
-                        err_msg = err if err else "总结结果为空"
-                        logger.info("[%d/%d] %s", idx + 1, task_total, video_name)
-                        logger.info("  └─ 文本总结失败 ✗ %s", err_msg)
-                        self.summarize_error.emit(video_name, err_msg)
-                except Exception as e:
-                    video_name, idx = futures[future]
-                    logger.info("[%d/%d] %s", idx + 1, task_total, video_name)
-                    logger.info("  └─ 文本总结失败 ✗ %s", e)
-                    self.summarize_error.emit(video_name, str(e))
-
-                with progress_lock:
-                    sum_done += 1
-                self.progress.emit(total + sum_done, total_steps)
-
-        return sum_done
+# ---------------------------------------------------------------------------
+# CheckWorker (统一)
+# ---------------------------------------------------------------------------
 
 
-class OllamaCheckWorker(QObject):
-    """异步检查 Ollama 连接状态"""
+class CheckWorker(QObject):
+    """通用连接检查 Worker —— 根据 provider_type 检查对应 API 连通性。"""
 
     result = Signal(bool, float, str)
     finished = Signal()
 
-    def __init__(self, url: str, model: str = "") -> None:
+    def __init__(self, provider_type: str, **kwargs):
         super().__init__()
-        self.url = url
-        self.model = model
+        self.provider_type = provider_type
+        self.kwargs = kwargs
 
     def run(self) -> None:
+        t0 = time.monotonic()
         try:
-            client = OllamaClient(base_url=self.url)
-            try:
-                t0 = time.monotonic()
-                ok = client.check_connection(quiet=True)
-                if not ok:
-                    latency_ms = (time.monotonic() - t0) * 1000
-                    self.result.emit(False, latency_ms, "connection_failed")
-                    return
-                if self.model:
-                    ok = client.check_model(self.model, quiet=True)
-                    latency_ms = (time.monotonic() - t0) * 1000
-                    if not ok:
-                        self.result.emit(False, latency_ms, "model_not_found")
-                        return
-                latency_ms = (time.monotonic() - t0) * 1000
-                self.result.emit(True, latency_ms, "")
-            finally:
-                client.close()
-        except Exception as exc:
-            get_logger(__name__).warning("Ollama 连接: ✗ 异常 %s", exc)
+            if self.provider_type == "ollama":
+                ok, detail = self._check_ollama()
+            elif self.provider_type == "nvidia":
+                ok, detail = self._check_nvidia()
+            elif self.provider_type == "zhipu":
+                ok, detail = self._check_zhipu()
+            else:
+                ok, detail = False, "unknown_provider"
+            latency_ms = (time.monotonic() - t0) * 1000
+            self.result.emit(ok, latency_ms, detail)
+        except Exception:
             self.result.emit(False, 0.0, "error")
         finally:
             self.finished.emit()
+
+    def _check_ollama(self) -> tuple[bool, str]:
+        client = OllamaClient(base_url=self.kwargs["url"])
+        try:
+            if not client.check_connection(quiet=True):
+                return False, "connection_failed"
+            model = self.kwargs.get("model", "")
+            if model and not client.check_model(model, quiet=True):
+                return False, "model_not_found"
+            return True, ""
+        finally:
+            client.close()
+
+    def _check_nvidia(self) -> tuple[bool, str]:
+        from src.summarization.nvidia_client import NvidiaClient
+
+        client = NvidiaClient(
+            api_url=self.kwargs["api_url"],
+            api_key=get_api_key("NVIDIA_API_KEY"),
+            model=self.kwargs.get("model", ""),
+        )
+        try:
+            return client.check_connection(), ""
+        finally:
+            client.close()
+
+    def _check_zhipu(self) -> tuple[bool, str]:
+        from src.summarization.zhipu_client import ZhipuClient
+
+        client = ZhipuClient(
+            api_key=get_api_key("ZHIPU_API_KEY"),
+            model=self.kwargs.get("model", ""),
+        )
+        try:
+            return client.check_connection(), ""
+        finally:
+            client.close()
+
+
+# ---------------------------------------------------------------------------
+# Ollama 辅助 Workers (保持不变)
+# ---------------------------------------------------------------------------
 
 
 class OllamaStartServiceWorker(QObject):
@@ -1246,70 +915,9 @@ class OllamaListModelWorker(QObject):
             self.finished.emit()
 
 
-class NvidiaCheckWorker(QObject):
-    """异步检查 NVIDIA API 连接状态"""
-
-    result = Signal(bool, float)
-    finished = Signal()
-
-    def __init__(self, api_url: str, model: str = "") -> None:
-        super().__init__()
-        self.api_url = api_url
-        self.model = model
-
-    def run(self) -> None:
-        from src.summarization.nvidia_client import NvidiaClient
-
-        try:
-            client = NvidiaClient(
-                api_url=self.api_url,
-                api_key=os.environ.get("NVIDIA_API_KEY", ""),
-                model=self.model,
-            )
-            try:
-                t0 = time.monotonic()
-                ok = client.check_connection()
-                latency_ms = (time.monotonic() - t0) * 1000
-                self.result.emit(ok, latency_ms)
-            finally:
-                client.close()
-        except Exception as exc:
-            get_logger(__name__).warning("NVIDIA API 连接: ✗ 异常 %s", exc)
-            self.result.emit(False, 0.0)
-        finally:
-            self.finished.emit()
-
-
-class ZhipuCheckWorker(QObject):
-    """异步检查智谱 API 连接状态"""
-
-    result = Signal(bool, float)
-    finished = Signal()
-
-    def __init__(self, model: str = "") -> None:
-        super().__init__()
-        self.model = model
-
-    def run(self) -> None:
-        from src.summarization.zhipu_client import ZhipuClient
-
-        try:
-            client = ZhipuClient(
-                api_key=os.environ.get("ZHIPU_API_KEY", ""),
-                model=self.model,
-            )
-            try:
-                t0 = time.monotonic()
-                ok = client.check_connection()
-                latency_ms = (time.monotonic() - t0) * 1000
-                self.result.emit(ok, latency_ms)
-            finally:
-                client.close()
-        except Exception as exc:
-            get_logger(__name__).warning("智谱 API 连接: ✗ 异常 %s", exc)
-            self.result.emit(False, 0.0)
-        finally:
-            self.finished.emit()
+# ---------------------------------------------------------------------------
+# ScanFilesWorker (保持不变)
+# ---------------------------------------------------------------------------
 
 
 class ScanFilesWorker(QObject):

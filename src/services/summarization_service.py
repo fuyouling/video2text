@@ -9,8 +9,13 @@ from src.storage.file_writer import FileWriter
 from src.summarization.providers import SummarizationProvider, create_provider
 from src.utils.exceptions import SummarizationError
 from src.utils.logger import get_logger
+from src.utils.rate_limit import RateLimiter
 
 logger = get_logger(__name__)
+
+OnItemStarted = Callable[[str], None]
+OnItemDone = Callable[[str, str], None]
+OnItemError = Callable[[str, str], None]
 
 
 class SummarizationService:
@@ -21,6 +26,7 @@ class SummarizationService:
     2. 支持流式输出（streaming）—— GUI 实时显示生成过程
     3. 支持多后端（Ollama / NVIDIA）via Provider 抽象层
     4. 支持暂停/继续（仅 Ollama 本地模型）
+    5. 支持回调/进度跟踪/RateLimiter
     """
 
     def __init__(
@@ -31,8 +37,12 @@ class SummarizationService:
         *,
         custom_prompt: str = "",
         on_stream_token: Optional[Callable[[str], None]] = None,
+        on_item_started: Optional[OnItemStarted] = None,
+        on_item_done: Optional[OnItemDone] = None,
+        on_item_error: Optional[OnItemError] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
         pause_event: Optional[threading.Event] = None,
+        rate_limiter: Optional[RateLimiter] = None,
     ):
         self.settings = settings
         self.file_writer = file_writer
@@ -40,7 +50,11 @@ class SummarizationService:
         self.custom_prompt = custom_prompt
 
         self.on_stream_token = on_stream_token
+        self.on_item_started = on_item_started
+        self.on_item_done = on_item_done
+        self.on_item_error = on_item_error
         self.cancel_check = cancel_check
+        self.rate_limiter = rate_limiter
         self.summary_format = (
             settings.get("output.summary_format", "txt").lower().strip()
         )
@@ -49,31 +63,23 @@ class SummarizationService:
             self._pause_event = pause_event
         else:
             self._pause_event = threading.Event()
-            self._pause_event.set()  # 初始状态：非暂停
+            self._pause_event.set()
 
     # ------------------------------------------------------------------
     # 公开 API
     # ------------------------------------------------------------------
 
     def close(self) -> None:
-        """关闭底层 Provider 连接。"""
         self.provider.close()
 
-    # ------------------------------------------------------------------
-    # 暂停 / 继续
-    # ------------------------------------------------------------------
-
     def pause(self) -> None:
-        """暂停总结。当前文件完成后会阻塞，直到调用 resume()。"""
         self._pause_event.clear()
         logger.info("  ├─ ⏸ 总结暂停请求已接收，等待当前任务完成…")
 
     def resume(self) -> None:
-        """继续被暂停的总结。"""
         self._pause_event.set()
 
     def _wait_if_paused(self) -> None:
-        """如果处于暂停状态，则阻塞直到恢复。"""
         if self._pause_event.is_set():
             return
         logger.info("  ├─ ✅ 总结已暂停 — 等待恢复…")
@@ -85,7 +91,6 @@ class SummarizationService:
 
     @property
     def is_paused(self) -> bool:
-        """是否处于暂停状态。"""
         return not self._pause_event.is_set()
 
     def summarize(
@@ -96,17 +101,8 @@ class SummarizationService:
         stream: bool = False,
         index: int = 0,
         total: int = 0,
+        file_writer: Optional[FileWriter] = None,
     ) -> str:
-        """总结文本。
-
-        Args:
-            text: 待总结文本
-            video_name: 文件名称（用于保存结果文件）
-            stream: 是否流式输出
-
-        Returns:
-            总结文本
-        """
         if not text or not text.strip():
             raise SummarizationError("输入文本为空")
 
@@ -131,8 +127,9 @@ class SummarizationService:
         if not summary or not summary.strip():
             raise SummarizationError("模型返回空总结")
 
+        writer = file_writer or self.file_writer
         if video_name:
-            self.file_writer.write_summary(summary, video_name, fmt=self.summary_format)
+            writer.write_summary(summary, video_name, fmt=self.summary_format)
 
         if total > 0:
             logger.info("  └─ 文本总结完成 ✓ (.%s)", self.summary_format)
@@ -144,16 +141,6 @@ class SummarizationService:
         stream: bool = False,
         max_workers: int = 1,
     ) -> List[str]:
-        """批量总结多个文本。
-
-        Args:
-            items: 列表，每项包含 {"text": str, "video_name": str}
-            stream: 是否流式输出
-            max_workers: 并发线程数，1 = 串行（兼容现有调用）
-
-        Returns:
-            总结文本列表（与输入顺序一致）
-        """
         total = len(items)
 
         if max_workers <= 1:
@@ -164,7 +151,6 @@ class SummarizationService:
     def _summarize_batch_serial(
         self, items: List[dict], stream: bool, total: int
     ) -> List[str]:
-        """串行批量总结，逐个调用 summarize() 并支持取消检查。"""
         results = []
         for idx, item in enumerate(items):
             if self.cancel_check and self.cancel_check():
@@ -172,6 +158,10 @@ class SummarizationService:
 
             video_name = item.get("video_name", f"item_{idx}")
             text = item.get("text", "")
+            fw = item.get("file_writer") or self.file_writer
+
+            if self.on_item_started:
+                self.on_item_started(video_name)
 
             try:
                 summary = self.summarize(
@@ -180,10 +170,15 @@ class SummarizationService:
                     stream=stream,
                     index=idx + 1,
                     total=total,
+                    file_writer=fw,
                 )
                 results.append(summary)
+                if self.on_item_done:
+                    self.on_item_done(video_name, summary)
             except Exception as e:
                 logger.info("[%d/%d] 总结失败: %s - %s", idx + 1, total, video_name, e)
+                if self.on_item_error:
+                    self.on_item_error(video_name, str(e))
                 results.append("")
 
         return results
@@ -191,13 +186,10 @@ class SummarizationService:
     def _summarize_batch_concurrent(
         self, items: List[dict], stream: bool, total: int, max_workers: int
     ) -> List[str]:
-        """并发批量总结，每个线程创建独立的 Provider 实例，不支持流式输出。"""
         if stream:
             logger.warning("并发模式不支持流式输出，自动切换为非流式")
 
         results: dict[int, str] = {}
-        progress_lock = threading.Lock()
-        done_count = [0]
 
         def _process_item(idx: int, item: dict) -> tuple[int, str]:
             if self.cancel_check and self.cancel_check():
@@ -205,11 +197,20 @@ class SummarizationService:
 
             video_name = item.get("video_name", f"item_{idx}")
             text = item.get("text", "")
+            fw = item.get("file_writer") or self.file_writer
+
+            if self.rate_limiter:
+                self.rate_limiter.acquire()
+
+            if self.on_item_started:
+                self.on_item_started(video_name)
 
             provider = create_provider(self.settings)
             try:
                 if not text or not text.strip():
                     logger.warning("文本为空: %s", video_name)
+                    if self.on_item_error:
+                        self.on_item_error(video_name, "文本为空")
                     return idx, ""
 
                 prompt_text = text
@@ -222,23 +223,24 @@ class SummarizationService:
                 )
 
                 if summary and summary.strip():
-                    self.file_writer.write_summary(
-                        summary, video_name, fmt=self.summary_format
-                    )
+                    fw.write_summary(summary, video_name, fmt=self.summary_format)
 
-                with progress_lock:
-                    done_count[0] += 1
-                    current = done_count[0]
                 logger.info(
-                    "[%d/%d] 总结完成: %s (.%s)", current, total, video_name, self.summary_format,
+                    "[%d/%d] 总结完成: %s (.%s)",
+                    idx + 1,
+                    total,
+                    video_name,
+                    self.summary_format,
                 )
+
+                if self.on_item_done:
+                    self.on_item_done(video_name, summary if summary else "")
 
                 return idx, summary if summary else ""
             except Exception as e:
-                with progress_lock:
-                    done_count[0] += 1
-                    current = done_count[0]
-                logger.info("[%d/%d] 总结失败: %s - %s", current, total, video_name, e)
+                logger.info("[%d/%d] 总结失败: %s - %s", idx + 1, total, video_name, e)
+                if self.on_item_error:
+                    self.on_item_error(video_name, str(e))
                 return idx, ""
             finally:
                 provider.close()
@@ -261,4 +263,3 @@ class SummarizationService:
                     results[idx] = ""
 
         return [results.get(i, "") for i in range(len(items))]
-

@@ -8,23 +8,12 @@ from typing import Callable, Optional
 
 import requests
 
+from src.utils.env_loader import ensure_env_loaded
 from src.utils.exceptions import SummarizationError
 from src.utils.logger import get_logger
 from src.utils.paths import get_base_dir
 
 logger = get_logger(__name__)
-
-
-def _ensure_env_loaded() -> None:
-    """如果 NVIDIA_API_KEY 不在环境变量中，尝试从 .env 文件加载"""
-    if os.environ.get("NVIDIA_API_KEY"):
-        return
-    try:
-        from dotenv import load_dotenv
-
-        load_dotenv(get_base_dir() / ".env", override=False)
-    except Exception:
-        pass
 
 
 class NvidiaClient:
@@ -43,7 +32,7 @@ class NvidiaClient:
         self._model = model
 
         if not api_key:
-            _ensure_env_loaded()
+            ensure_env_loaded()
         self._api_key = api_key or os.environ.get("NVIDIA_API_KEY") or ""
         self._session = requests.Session()
         if self._api_key:
@@ -91,7 +80,7 @@ class NvidiaClient:
                 "temperature": 1.0,
                 "stream": False,
             }
-            resp = self._session.post(self.api_url, json=payload, timeout=30)
+            resp = self._session.post(self.api_url, json=payload, timeout=self.timeout)
             ok = resp.status_code == 200
             if ok:
                 logger.debug("NvidiaClient: 连接检查成功")
@@ -128,22 +117,6 @@ class NvidiaClient:
         cancel_check: Optional[Callable[[], bool]] = None,
         pause_event: Optional[threading.Event] = None,
     ) -> str:
-        """调用 NVIDIA chat/completions 生成文本
-
-        Args:
-            model: 模型名称
-            prompt: 用户提示词
-            temperature: 温度参数
-            max_tokens: 最大生成 token 数
-            top_p: 核采样参数
-            frequency_penalty: 频率惩罚
-            presence_penalty: 存在惩罚
-            stream: 是否流式输出
-            on_token: 流式输出时的 token 回调
-
-        Returns:
-            生成的文本
-        """
         payload = {
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
@@ -171,15 +144,11 @@ class NvidiaClient:
                 )
 
                 with response:
-                    if response.status_code == 429:
-                        retry_after = response.headers.get("Retry-After")
-                        if retry_after:
-                            try:
-                                wait = int(retry_after)
-                            except ValueError:
-                                wait = 2 ** (attempt + 1)
-                        else:
-                            wait = 2 ** (attempt + 1)
+                    from src.utils.rate_limit import is_rate_limit, get_retry_after
+
+                    if is_rate_limit(response):
+                        retry_after = get_retry_after(dict(response.headers))
+                        wait = retry_after if retry_after else 2 ** (attempt + 1)
                         last_exc = SummarizationError(
                             f"NVIDIA API 限流 (429), {wait} 秒后重试"
                         )

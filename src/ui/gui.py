@@ -1104,11 +1104,7 @@ class MainWindow(QMainWindow):
     # ── 仅总结 ──
 
     def _on_summarize(self) -> None:
-        """「仅总结」按钮点击处理：校验输入 → 启动总结线程（支持独立文本模式）。"""
         output_dir = self._get_output_dir()
-
-        standalone_text = self.transcript_view.toPlainText().strip()
-
         video_files: list[str] = list(self._video_files)
 
         if not video_files and self._completed_names:
@@ -1121,16 +1117,11 @@ class MainWindow(QMainWindow):
                 else:
                     video_files.append(name)
 
-        if not video_files and standalone_text:
-            self._summarize_standalone(standalone_text, output_dir)
-            return
-
         if not video_files:
             QMessageBox.warning(
                 self,
                 "提示",
-                "请先选择文件或文件夹，并完成转写后再进行总结。\n"
-                "或在「文本内容」标签页中粘贴文本后点击「仅总结」。",
+                "请先选择文件或文件夹，并完成转写后再进行总结。",
             )
             return
 
@@ -1158,40 +1149,6 @@ class MainWindow(QMainWindow):
             mirror_depth=self._mirror_depth,
         )
 
-        worker.stream_token.connect(self._on_stream_token)
-        worker.summarize_started.connect(self._on_summarize_started)
-        worker.video_done.connect(self._on_single_video_summarized)
-        worker.video_error.connect(self._on_summarize_error)
-        worker.progress.connect(self._on_progress)
-        worker.error.connect(self._on_worker_error)
-
-        self._start_worker(thread, worker)
-
-    def _summarize_standalone(self, text: str, output_dir: str) -> None:
-        """独立文本总结（不依赖文件列表）"""
-        self._current_mode = "summarize"
-        self._reset_counters()
-        self._update_multi_thread_flag()
-
-        self.progress_bar.setMaximum(1)
-        self.progress_bar.setValue(0)
-        self.progress_label.setText("0/1")
-
-        self._set_busy_state(True)
-        self.summary_view.clear()
-
-        custom_prompt = self.ollama_prompt_edit.toPlainText().strip()
-
-        thread = QThread()
-        worker = SummarizeWorker(
-            [],
-            output_dir,
-            self.settings,
-            custom_prompt,
-            stream=self._get_stream_setting(),
-        )
-
-        worker.set_standalone_text(text)
         worker.stream_token.connect(self._on_stream_token)
         worker.summarize_started.connect(self._on_summarize_started)
         worker.video_done.connect(self._on_single_video_summarized)
