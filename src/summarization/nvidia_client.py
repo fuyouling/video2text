@@ -23,7 +23,7 @@ class NvidiaClient:
         self,
         api_url: str = "https://integrate.api.nvidia.com/v1/chat/completions",
         api_key: Optional[str] = None,
-        timeout: int = 600,
+        timeout: int = 60,
         model: str = "openai/gpt-oss-120b",
     ):
         self.api_url = api_url.rstrip("/")

@@ -25,7 +25,7 @@ class ZhipuClient:
         self,
         api_key: Optional[str] = None,
         model: str = "glm-4.7",
-        timeout: int = 600,
+        timeout: int = 60,
     ):
         from zai import ZhipuAiClient
 

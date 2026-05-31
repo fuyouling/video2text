@@ -22,7 +22,7 @@ class OllamaClient:
     # 类级别进程引用，所有实例共享同一个 Ollama 服务进程
     _service_process: Optional[subprocess.Popen] = None
 
-    def __init__(self, base_url: str = "http://127.0.0.1:11434", timeout: int = 300):
+    def __init__(self, base_url: str = "http://127.0.0.1:11434", timeout: int = 60):
         """初始化Ollama客户端
 
         Args:
