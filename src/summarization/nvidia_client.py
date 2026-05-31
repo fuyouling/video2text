@@ -91,7 +91,7 @@ class NvidiaClient:
                 "temperature": 1.0,
                 "stream": False,
             }
-            resp = self._session.post(self.api_url, json=payload, timeout=10)
+            resp = self._session.post(self.api_url, json=payload, timeout=30)
             ok = resp.status_code == 200
             if ok:
                 logger.debug("NvidiaClient: 连接检查成功")

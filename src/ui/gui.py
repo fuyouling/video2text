@@ -1109,16 +1109,23 @@ class MainWindow(QMainWindow):
 
         standalone_text = self.transcript_view.toPlainText().strip()
 
-        video_names: list[str] = list(self._video_files)
+        video_files: list[str] = list(self._video_files)
 
-        if not video_names and self._completed_names:
-            video_names = list(self._completed_names)
+        if not video_files and self._completed_names:
+            video_files = []
+            for name in self._completed_names:
+                resolved_dir = self._resolve_video_output_dir(name)
+                transcript = FileWriter(resolved_dir).find_transcript_file(name)
+                if transcript:
+                    video_files.append(str(transcript))
+                else:
+                    video_files.append(name)
 
-        if not video_names and standalone_text:
+        if not video_files and standalone_text:
             self._summarize_standalone(standalone_text, output_dir)
             return
 
-        if not video_names:
+        if not video_files:
             QMessageBox.warning(
                 self,
                 "提示",
@@ -1131,7 +1138,7 @@ class MainWindow(QMainWindow):
         self._reset_counters()
         self._update_multi_thread_flag()
 
-        total = len(video_names)
+        total = len(video_files)
         self.progress_bar.setMaximum(total)
         self.progress_bar.setValue(0)
         self.progress_label.setText(f"0/{total}")
@@ -1142,7 +1149,7 @@ class MainWindow(QMainWindow):
 
         thread = QThread()
         worker = SummarizeWorker(
-            video_names,
+            video_files,
             output_dir,
             self.settings,
             custom_prompt,
@@ -1379,13 +1386,13 @@ class MainWindow(QMainWindow):
             return
 
         output_dir = self.output_combo.currentText().strip() or _DEFAULT_OUTPUT_DIR
-        video_names = list(self._completed_names)
+        video_files = list(self._completed_names)
 
         if self._result_viewer is None or not self._result_viewer.isVisible():
             self._result_viewer = ResultViewerWindow(self)
 
         self._result_viewer.load_files(
-            video_names, output_dir, folder_mode=self._mirror_subdirs
+            video_files, output_dir, folder_mode=self._mirror_subdirs
         )
         self._result_viewer.show()
         self._result_viewer.raise_()
@@ -1476,6 +1483,8 @@ class MainWindow(QMainWindow):
             if Path(vf).stem == video_name:
                 video_path = vf
                 break
+        else:
+            video_path = str(transcript_path)
 
         thread = QThread()
         worker = SummarizeWorker(
