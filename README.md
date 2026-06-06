@@ -16,6 +16,8 @@
 - 🔍 查找替换（`Ctrl+F` 快速定位文本）
 - ⚙️ 图形化配置编辑器（可视化编辑所有配置项）
 
+> 如果帮助到您,请给个 star 吧!
+
 ## 安装
 
 > **Windows 用户**：如果希望免去源码安装步骤，可以直接下载打包好的 exe 绿色版程序，解压即用。详细安装教程请参阅 [Windows 安装教程（Wiki）](https://github.com/fuyouling/video2text/wiki)。
