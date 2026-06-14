@@ -2,7 +2,7 @@
 
 > 找了下本地视频转文字的工具，都是各种限制，于是自己写了个自用的工具。如果你觉得有用，欢迎在 GitHub 上给个 Star！
 
-- 完全免费，无时长限制，可转写视频和音频
+- 完全免费，无时长限制，可批量转写视频和音频
 - 基于 Whisper large-v3，高准确率
 - 集成 Ollama / NVIDIA 大模型，自动生成摘要
 - 图形界面 + 命令行，Windows 绿色版已打包
@@ -71,17 +71,31 @@ video2text 本地视频转文字工具的安装包体积较大，已上传至 12
 
 | 组件 | 大小 | 是否下载 |
 |------|------|------|
-| `large-v3` 语音模型 | ~3 GB | 可选，建议下载，自己有其它模型也行 |
-| Ollama 总结模型（`qwen2.5:7b`） | ~4.7 GB | 可选，看总结用不用 Ollama |
-| video2text 程序 | ~3 GB | 必须 |
+| video2text 程序包 | ~3 GB | 必须 |
+| `large-v3` 语音转文字模型 | ~3 GB | 可选，建议下载，自己有其它模型也行 |
+| Ollama 安装包和本地模型（`qwen2.5:7b`） | ~6 GB | 可选，看总结用不用 Ollama |
 
 > 请使用支持保留目录结构的解压工具（如 **7-Zip** 或 **Bandizip**）解压压缩包，确保文件夹结构完整。
 
 **下载地址：**
 ```text
-『来自123云盘用户喵王龙的分享』video2text 本地视频转文字工具
+合并下载:
+[video2text] 包括video2text程序包,语音转文字模型,ollama安装包和本地模型qwen2.5:7b
 链接：https://1840674647.share.123pan.cn/123pan/7CfNTd-SE7j3?pwd=viWa#
 提取码：viWa
+
+分开下载:
+[video2text_portable_windows_*.zip] 程序包
+链接：https://1840674647.share.123pan.cn/123pan/7CfNTd-4Ovdh?pwd=1234#
+提取码：1234
+
+[large-v3.zip] 语音转文字模型
+链接：https://1840674647.share.123pan.cn/123pan/7CfNTd-nk8vh?pwd=1234#
+提取码：1234
+
+[ollama] 安装包和本地模型
+链接：https://1840674647.share.123pan.cn/123pan/7CfNTd-DR8dh?pwd=1234#
+提取码：1234
 ```
 
 ## 三、详细安装步骤
@@ -128,7 +142,7 @@ D:\video2text\models\
 
 ### 3.2 总结模型安装
 
-video2text 支持两种总结服务：NVIDIA 在线模型和本地 Ollama 模型，按需选择其一即可。
+video2text 支持两种总结服务：NVIDIA 在线模型和本地 Ollama 模型，按需选择其一即可。选择可以到软件`设置>编辑配置>总结>单选框选择`
 
 #### 3.2.1 NVIDIA 在线（使用在线 NVIDIA 模型总结）
 
