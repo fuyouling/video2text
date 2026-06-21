@@ -1,5 +1,7 @@
 # Video2Text
 
+> 如果帮助到您,请给个 star 吧!
+
 视频转文本工具 - 使用 faster_whisper 进行语音转写，默认使用 Ollama + Qwen2.5 或 NVIDIA API 进行文本总结，语音转写和文本总结模型可自行更换。
 
 ## 功能特性
@@ -10,7 +12,6 @@
 - 图形界面 + 命令行，Windows 绿色版已打包
 - 批量转写 + 总结，输出 TXT/SRT/VTT/JSON
 
-> 如果帮助到您,请给个 star 吧!
 
 ## 安装
 
@@ -24,7 +25,8 @@ pip install -r requirements.txt
 
 ### 2. 转写模型文件下载
 
-模型下载地址: [large-v3](https://huggingface.co/Systran/faster-whisper-large-v3/resolve/main)
+- 模型下载地址huggingface: [faster-whisper-large-v3](https://huggingface.co/Systran/faster-whisper-large-v3)
+- 也可以到Windows 安装教程查看网盘下载地址
 
 
 ### 3. 总结模型安装
