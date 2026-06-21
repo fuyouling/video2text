@@ -922,15 +922,15 @@ class OllamaListModelWorker(QObject):
 
 
 class ScanFilesWorker(QObject):
-    """异步递归扫描文件夹中的媒体文件——单次 os.scandir() 遍历，返回 (path, size_bytes) 元组列表"""
+    """异步递归扫描文件夹中的音视频文件——单次 os.scandir() 遍历，返回 (path, size_bytes) 元组列表"""
 
     result = Signal(list)
     finished = Signal()
 
-    def __init__(self, folder: str, media_exts: set[str]) -> None:
+    def __init__(self, folder: str, input_exts: set[str]) -> None:
         super().__init__()
         self.folder = folder
-        self.media_exts = media_exts
+        self.input_exts = input_exts
 
     def run(self) -> None:
         try:
@@ -950,7 +950,7 @@ class ScanFilesWorker(QObject):
                         self._scan_recursive(entry.path, files)
                     elif entry.is_file(follow_symlinks=False):
                         ext = Path(entry.name).suffix.lower()
-                        if ext in self.media_exts:
+                        if ext in self.input_exts:
                             files.append((entry.path, entry.stat().st_size))
                 except PermissionError:
                     continue

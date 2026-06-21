@@ -29,7 +29,7 @@ def mock_transcriber():
 @pytest.fixture
 def mock_video_processor():
     vp = MagicMock()
-    vp.validate_media.return_value = True
+    vp.validate_input.return_value = True
     vp.is_audio_file.return_value = False
     vp.get_video_info.return_value = MagicMock(
         duration=10.0,

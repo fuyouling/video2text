@@ -60,7 +60,7 @@ class _SortTreeWidgetItem(QTreeWidgetItem):
 
 
 class VideoSelectionDialog(QDialog):
-    """媒体文件选择对话框 —— 树形视图展示文件，支持按类型/后缀/大小组合筛选和勾选。"""
+    """音视频文件选择对话框 —— 树形视图展示文件，支持按类型/后缀/大小组合筛选和勾选。"""
 
     def __init__(
         self,
@@ -90,7 +90,7 @@ class VideoSelectionDialog(QDialog):
         self._init_ui()
 
     def _init_ui(self) -> None:
-        self.setWindowTitle("选择媒体文件")
+        self.setWindowTitle("选择音视频文件")
         self.setWindowFlags(
             self.windowFlags()
             | Qt.WindowType.WindowMinMaxButtonsHint
@@ -101,16 +101,16 @@ class VideoSelectionDialog(QDialog):
         layout = QVBoxLayout(self)
 
         self._info_label = QLabel(
-            f"共找到 {len(self._file_metas)} 个媒体文件，请选择需要处理的文件："
+            f"共找到 {len(self._file_metas)} 个音视频文件，请选择需要处理的文件："
         )
         layout.addWidget(self._info_label)
 
         toolbar = QHBoxLayout()
-        toolbar.addWidget(QLabel("媒体文件:"))
-        self._media_type_combo = QComboBox()
-        self._media_type_combo.addItems(["全部", "仅视频", "仅音频"])
-        self._media_type_combo.currentIndexChanged.connect(self._apply_filters)
-        toolbar.addWidget(self._media_type_combo)
+        toolbar.addWidget(QLabel("音视频文件:"))
+        self._file_type_combo = QComboBox()
+        self._file_type_combo.addItems(["全部", "仅视频", "仅音频"])
+        self._file_type_combo.currentIndexChanged.connect(self._apply_filters)
+        toolbar.addWidget(self._file_type_combo)
         toolbar.addSpacing(16)
         toolbar.addWidget(QLabel("后缀:"))
         self._suffix_combo = QComboBox()
@@ -253,7 +253,7 @@ class VideoSelectionDialog(QDialog):
             elif ext in self._audio_exts:
                 suffix_map[ext] = "音频"
             else:
-                suffix_map[ext] = "媒体"
+                suffix_map[ext] = "音视频"
 
         rel_pairs: list[tuple[Path, Path]] = []
         for p in paths:
@@ -323,13 +323,13 @@ class VideoSelectionDialog(QDialog):
     ) -> _SortTreeWidgetItem:
         abs_path_str = str(abs_p)
         ext = abs_p.suffix.lower()
-        media_type = suffix_map.get(ext, "媒体")
-        icon = "🎬" if media_type == "视频" else "🎵" if media_type == "音频" else "📄"
+        file_type = suffix_map.get(ext, "音视频")
+        icon = "🎬" if file_type == "视频" else "🎵" if file_type == "音频" else "📄"
         size_bytes = self._path_to_size.get(abs_path_str, -1)
         size_str = _format_file_size(size_bytes) if size_bytes >= 0 else "-"
         name_stem = abs_p.stem.lower()
 
-        item = _SortTreeWidgetItem([f"{icon} {abs_p.name}", media_type, size_str, ""])
+        item = _SortTreeWidgetItem([f"{icon} {abs_p.name}", file_type, size_str, ""])
         item.setData(0, Qt.ItemDataRole.UserRole, abs_path_str)
         item.setData(0, Qt.ItemDataRole.UserRole + 1, size_bytes)
         item.setData(0, Qt.ItemDataRole.UserRole + 2, rel_parts)
@@ -377,19 +377,19 @@ class VideoSelectionDialog(QDialog):
                     checked_size += size_bytes
         size_str = _format_file_size(checked_size) if checked_size > 0 else "0 B"
         self._info_label.setText(
-            f"共找到 {total} 个媒体文件，已选择 {checked} 个，共 {size_str}："
+            f"共找到 {total} 个音视频文件，已选择 {checked} 个，共 {size_str}："
         )
 
     def _apply_filters(self) -> None:
         if not self._leaf_items:
             return
 
-        media_idx = self._media_type_combo.currentIndex()
-        media_exts: Optional[set[str]] = None
-        if media_idx == 1:
-            media_exts = self._video_exts
-        elif media_idx == 2:
-            media_exts = self._audio_exts
+        file_type_idx = self._file_type_combo.currentIndex()
+        input_exts: Optional[set[str]] = None
+        if file_type_idx == 1:
+            input_exts = self._video_exts
+        elif file_type_idx == 2:
+            input_exts = self._audio_exts
 
         suffix_target = self._suffix_combo.currentText().strip().lower()
 
@@ -407,7 +407,7 @@ class VideoSelectionDialog(QDialog):
             size_bytes: int = item.data(0, Qt.ItemDataRole.UserRole + 1)
 
             match = True
-            if media_exts is not None and ext not in media_exts:
+            if input_exts is not None and ext not in input_exts:
                 match = False
             if suffix_target and suffix_target != "全部" and ext != suffix_target:
                 match = False

@@ -1,4 +1,4 @@
-"""媒体处理器"""
+"""音视频处理器"""
 
 import json
 import subprocess
@@ -17,7 +17,7 @@ logger = get_logger(__name__)
 
 @dataclass
 class VideoInfo:
-    """媒体信息"""
+    """音视频信息"""
 
     duration: float
     width: int
@@ -30,10 +30,10 @@ class VideoInfo:
 
 
 class VideoProcessor:
-    """媒体处理器"""
+    """音视频处理器"""
 
     def __init__(self):
-        """初始化媒体处理器"""
+        """初始化音视频处理器"""
         self.ffmpeg_path = ensure_ffmpeg()
         self.ffprobe_path = ensure_ffprobe()
         self.supported_video_formats = [
@@ -50,7 +50,7 @@ class VideoProcessor:
                 default=[".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a", ".wma"],
             )
         ]
-        self.supported_media_formats = (
+        self.supported_input_formats = (
             self.supported_video_formats + self.supported_audio_formats
         )
 
@@ -58,34 +58,34 @@ class VideoProcessor:
         """判断文件是否为支持的音频格式"""
         return Path(file_path).suffix.lower() in self.supported_audio_formats
 
-    def is_supported_media(self, file_path: str) -> bool:
-        """判断文件是否为支持的媒体格式（视频或音频）"""
-        return Path(file_path).suffix.lower() in self.supported_media_formats
+    def is_supported_input(self, file_path: str) -> bool:
+        """判断文件是否为支持的音视频格式（视频或音频）"""
+        return Path(file_path).suffix.lower() in self.supported_input_formats
 
-    def validate_media(self, video_path: str) -> bool:
-        """验证媒体文件
+    def validate_input(self, video_path: str) -> bool:
+        """验证音视频文件
 
         Args:
-            video_path: 媒体文件路径
+            video_path: 音视频文件路径
 
         Returns:
-            是否为有效的媒体文件
+            是否为有效的音视频文件
 
         Raises:
-            VideoFileError: 媒体文件无效
+            VideoFileError: 音视频文件无效
         """
         path = Path(video_path)
 
         if not path.exists():
-            raise VideoFileError(f"媒体文件不存在: {video_path}")
+            raise VideoFileError(f"音视频文件不存在: {video_path}")
 
         if not path.is_file():
             raise VideoFileError(f"路径不是文件: {video_path}")
 
-        if path.suffix.lower() not in self.supported_media_formats:
+        if path.suffix.lower() not in self.supported_input_formats:
             raise VideoFileError(
-                f"不支持的媒体格式: {path.suffix}. "
-                f"支持的格式: {', '.join(self.supported_media_formats)}"
+                f"不支持的音视频格式: {path.suffix}. "
+                f"支持的格式: {', '.join(self.supported_input_formats)}"
             )
 
         cmd = [
@@ -112,29 +112,29 @@ class VideoProcessor:
 
             if result.returncode != 0:
                 error_msg = result.stderr or result.stdout
-                raise VideoFileError(f"媒体文件损坏: {error_msg}")
+                raise VideoFileError(f"音视频文件损坏: {error_msg}")
 
-            logger.debug("媒体文件验证通过: %s", path.name)
+            logger.debug("音视频文件验证通过: %s", path.name)
             return True
 
         except subprocess.TimeoutExpired:
-            raise VideoFileError("媒体验证超时")
+            raise VideoFileError("音视频验证超时")
         except VideoFileError:
             raise
         except Exception as e:
-            raise VideoFileError(f"媒体验证失败: {e}")
+            raise VideoFileError(f"音视频验证失败: {e}")
 
     def get_video_info(self, video_path: str) -> VideoInfo:
-        """获取媒体信息
+        """获取音视频信息
 
         Args:
-            video_path: 媒体文件路径
+            video_path: 音视频文件路径
 
         Returns:
-            媒体信息对象
+            音视频信息对象
 
         Raises:
-            VideoFileError: 获取媒体信息失败
+            VideoFileError: 获取音视频信息失败
         """
         cmd = [
             self.ffprobe_path,
@@ -160,7 +160,7 @@ class VideoProcessor:
 
             if result.returncode != 0:
                 raise VideoFileError(
-                    f"获取媒体信息失败: {result.stderr or result.stdout}"
+                    f"获取音视频信息失败: {result.stderr or result.stdout}"
                 )
 
             data = json.loads(result.stdout)
@@ -214,11 +214,11 @@ class VideoProcessor:
             )
 
         except json.JSONDecodeError as e:
-            raise VideoFileError(f"解析媒体信息失败: {e}")
+            raise VideoFileError(f"解析音视频信息失败: {e}")
         except VideoFileError:
             raise
         except Exception as e:
-            raise VideoFileError(f"获取媒体信息失败: {e}")
+            raise VideoFileError(f"获取音视频信息失败: {e}")
 
     def extract_audio(
         self,
@@ -237,7 +237,7 @@ class VideoProcessor:
         4. 若失败，自动回退为 mp3lib 编码再转 WAV
 
         Args:
-            video_path: 媒体文件路径
+            video_path: 音视频文件路径
             output_path: 输出音频文件路径
             sample_rate: 采样率
             channels: 声道数
@@ -256,7 +256,7 @@ class VideoProcessor:
             if video_info is None:
                 video_info = self.get_video_info(video_path)
             if not video_info.has_audio:
-                raise VideoFileError(f"媒体文件没有音轨，无法提取音频: {video_path}")
+                raise VideoFileError(f"音视频文件没有音轨，无法提取音频: {video_path}")
 
         label = "转换音频" if self.is_audio_file(video_path) else "提取音频"
         logger.debug("开始%s: %s", label, Path(video_path).name)
@@ -424,10 +424,10 @@ class VideoProcessor:
     def get_thumbnail(
         self, video_path: str, output_path: str, timestamp: str = "00:00:01"
     ) -> str:
-        """获取媒体缩略图
+        """获取音视频缩略图
 
         Args:
-            video_path: 媒体文件路径
+            video_path: 音视频文件路径
             output_path: 输出图片路径
             timestamp: 时间戳
 

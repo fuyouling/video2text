@@ -27,7 +27,7 @@ logger = get_logger(__name__)
 
 @dataclass
 class TranscribeResult:
-    """单个媒体的转写结果"""
+    """单个音视频的转写结果"""
 
     video_name: str
     segments: List[TranscriptSegment]
@@ -38,7 +38,7 @@ class TranscriptionService:
     """转写服务 —— 统一 CLI / GUI 的转写逻辑
 
     主要职责：
-    1. 验证媒体 → 提取音频 → 切片（长音频）→ 转写 → 保存结果
+    1. 验证音视频 → 提取音频 → 切片（长音频）→ 转写 → 保存结果
     2. 支持断点续传：长音频切片转写时，将已完成的切片结果持久化到
        ``<output_dir>/.checkpoint/<video_name>_chunks.json``，
        重新运行时自动跳过已完成的切片。
@@ -191,7 +191,7 @@ class TranscriptionService:
 
         try:
             t0 = time.monotonic()
-            self.video_processor.validate_media(video_path)
+            self.video_processor.validate_input(video_path)
             video_info = self.video_processor.get_video_info(video_path)
             self.video_processor.extract_audio(
                 video_path,

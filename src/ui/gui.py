@@ -1,4 +1,4 @@
-"""Video2Text GUI —— 基于 PySide6 的媒体转文本图形界面"""
+"""Video2Text GUI —— 基于 PySide6 的音视频转文本图形界面"""
 
 import logging
 import sys
@@ -71,9 +71,9 @@ _BTN_MIN_WIDTH = 100
 
 
 class MainWindow(QMainWindow):
-    """Video2Text 主窗口 —— 媒体转文本工具的图形界面主入口。
+    """Video2Text 主窗口 —— 音视频转文本工具的图形界面主入口。
 
-    功能包括：媒体文件选择、转写、总结、结果查看、暂停/继续、历史加载等。
+    功能包括：音视频文件选择、转写、总结、结果查看、暂停/继续、历史加载等。
     """
 
     def __init__(self) -> None:
@@ -88,7 +88,7 @@ class MainWindow(QMainWindow):
             ext.lower()
             for ext in self.settings.get_list("preprocessing.supported_audio_formats")
         )
-        self._media_exts = self._video_exts | self._audio_exts
+        self._input_exts = self._video_exts | self._audio_exts
         self._video_files: list[str] = []
         self._completed_names: set[str] = set()
         self._worker_thread: Optional[QThread] = None
@@ -130,7 +130,7 @@ class MainWindow(QMainWindow):
 
     def _init_ui(self) -> None:
         """初始化主窗口 UI 布局：菜单栏、输入输出行、进度条、日志面板、结果面板。"""
-        self.setWindowTitle("Video2Text - 媒体转文本工具")
+        self.setWindowTitle("Video2Text - 音视频转文本工具")
         self.resize(1200, 800)
 
         icon_path = (
@@ -370,7 +370,7 @@ class MainWindow(QMainWindow):
             "关于 Video2Text",
             "<div style='min-width:420px'>"
             "<h2 style='margin-bottom:4px'>🎬 Video2Text</h2>"
-            f"<p style='color:#666;margin-top:0'>版本 {APP_VERSION} · 媒体转文本工具</p>"
+            f"<p style='color:#666;margin-top:0'>版本 {APP_VERSION} · 音视频转文本工具</p>"
             "<hr>"
             "<p>基于 <b>faster-whisper</b> 的高精度语音转和智能总结工具。</p>"
             "<p><b>核心功能：</b></p>"
@@ -601,19 +601,19 @@ class MainWindow(QMainWindow):
 
     # ── input selection slots ──
 
-    def _get_media_filter_str(self) -> str:
+    def _get_input_filter_str(self) -> str:
         return (
-            "媒体文件 ("
-            + " ".join(f"*{ext}" for ext in sorted(self._media_exts))
+            "音视频文件 ("
+            + " ".join(f"*{ext}" for ext in sorted(self._input_exts))
             + ");;所有文件 (*.*)"
         )
 
     def _select_input_files(self) -> None:
         paths, _ = QFileDialog.getOpenFileNames(
             self,
-            "选择媒体文件",
+            "选择音视频文件",
             "",
-            self._get_media_filter_str(),
+            self._get_input_filter_str(),
         )
         if paths:
             self._input_folder = None
@@ -629,7 +629,7 @@ class MainWindow(QMainWindow):
             self.output_combo.setCurrentText(str(_PROJECT_ROOT / "output" / last_dir))
 
     def _select_input_folder(self) -> None:
-        folder = QFileDialog.getExistingDirectory(self, "选择媒体文件夹")
+        folder = QFileDialog.getExistingDirectory(self, "选择音视频文件夹")
         if folder:
             self._scan_context = {"mode": "folder_select", "folder": folder}
             self._start_scan(folder)
@@ -671,12 +671,12 @@ class MainWindow(QMainWindow):
             setattr(self, attr_name, None)
 
     def _start_scan(self, folder: str) -> None:
-        """启动后台线程扫描文件夹中的媒体文件。"""
+        """启动后台线程扫描文件夹中的音视频文件。"""
         self.status_bar.showMessage("正在扫描文件...")
         self.input_folder_btn.setEnabled(False)
         self._wait_async_thread("_scan_thread")
         thread = QThread()
-        worker = ScanFilesWorker(folder, self._media_exts)
+        worker = ScanFilesWorker(folder, self._input_exts)
         worker.moveToThread(thread)
 
         def _cleanup():
@@ -702,7 +702,7 @@ class MainWindow(QMainWindow):
 
         if not file_metas:
             QMessageBox.information(
-                self, "提示", "该文件夹及其子目录中未找到支持的媒体文件"
+                self, "提示", "该文件夹及其子目录中未找到支持的音视频文件"
             )
             return
 

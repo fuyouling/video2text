@@ -8,7 +8,7 @@ class Video2TextError(Exception):
 
 
 class VideoFileError(Video2TextError):
-    """媒体文件错误"""
+    """音视频文件错误"""
 
     pass
 

@@ -3,7 +3,7 @@
 > 找了下本地视频转文字的工具，都是各种限制，于是自己写了个自用的工具。如果你觉得有用，欢迎在 GitHub 上给个 Star！
 
 - 完全免费，无时长限制，可批量转写视频和音频
-- 基于 Whisper large-v3，高准确率
+- 基于 faster-whisper large-v3，高准确率
 - 集成 Ollama / NVIDIA 大模型，自动生成摘要
 - 图形界面 + 命令行，Windows 绿色版已打包
 - 批量转写 + 总结，输出 TXT/SRT/VTT/JSON

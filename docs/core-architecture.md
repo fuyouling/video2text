@@ -71,7 +71,7 @@ Video2Text 是一个视频/音频转文本工具，核心功能包括：
 | 模块 | 路径 | 职责 |
 |------|------|------|
 | 配置管理 | `src/config/` | 读写 config.ini，路径解析，转写配置加载，版本信息，收藏目录管理 |
-| 预处理 | `src/preprocessing/` | FFmpeg 路径管理，媒体验证，音频提取 |
+| 预处理 | `src/preprocessing/` | FFmpeg 路径管理，音视频验证，音频提取 |
 | 转写引擎 | `src/transcription/` | faster_whisper 模型加载、转写、OOM 降级 |
 | 文本处理 | `src/text_processing/` | 段落合并、文本清理（去填充词、标点修复） |
 | 总结引擎 | `src/summarization/` | Ollama/NVIDIA/智谱客户端，Provider 抽象层，提示词管理 |
@@ -218,7 +218,7 @@ APP_VERSION = "2.3.6"
 
 ### 5.2 VideoProcessor (`src/preprocessing/video_processor.py`)
 
-**职责**：媒体文件验证、信息提取、音频提取。
+**职责**：音视频文件验证、信息提取、音频提取。
 
 **核心数据结构**：
 
@@ -238,7 +238,7 @@ class VideoInfo:
 **音频提取流程**：
 
 ```
-输入媒体文件
+输入音视频文件
     │
     ├─ 是音频文件？ → 直接转换为 WAV
     │
@@ -602,8 +602,8 @@ video_files: List[str]
         ├─ 检查取消信号
         ├─ 检查暂停状态（_wait_if_paused）
         │
-        ├─ validate_media()          # 验证媒体文件
-        ├─ get_video_info()          # 获取媒体信息
+        ├─ validate_input()          # 验证音视频文件
+        ├─ get_video_info()          # 获取音视频信息
         ├─ extract_audio()           # 提取音频为 WAV
         │
         ├─ 时长 > max_chunk_duration？
@@ -916,7 +916,7 @@ class PipelineWorker(QObject):
 
 ```
 Video2TextError (基础异常)
-    ├─ VideoFileError        # 媒体文件错误
+    ├─ VideoFileError        # 音视频文件错误
     ├─ TranscriptionError    # 转写错误
     │   └─ DownloadCancelledError  # 用户取消模型下载
     ├─ SummarizationError    # 总结错误
@@ -1050,7 +1050,7 @@ CREATE_NO_WINDOW  # Windows 下隐藏控制台窗口，非 Windows 为 0
 ```python
 @app.command()
 def run_pipeline(
-    input_path: str = typer.Argument(..., help="媒体文件路径（视频或音频）"),
+    input_path: str = typer.Argument(..., help="音视频文件路径（视频或音频）"),
     output_dir: Optional[str] = typer.Option(None, "--output-dir", "-o", help="输出目录"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="详细输出"),
 ):
@@ -1070,7 +1070,7 @@ run_pipeline()
     ├─ 2. 公共初始化
     │   └─ _init_common(settings, output_dir, verbose)
     │       ├─ setup_logger()                    # 初始化日志系统
-    │       ├─ VideoProcessor()                  # 创建媒体处理器（自动查找内置 FFmpeg）
+    │       ├─ VideoProcessor()                  # 创建音视频处理器（自动查找内置 FFmpeg）
     │       └─ FileWriter(output_dir)            # 创建文件写入器
     │
     ├─ 3. 加载配置并创建 Transcriber
@@ -1110,15 +1110,15 @@ _transcribe_single(video_path, output_dir)
     │
     ├─ video_name = Path(video_path).stem  → "sample"
     │
-    ├─ 步骤 1: 验证媒体文件
-    │   └─ self.video_processor.validate_media(video_path)  (video_processor.py:69)
+    ├─ 步骤 1: 验证音视频文件
+    │   └─ self.video_processor.validate_input(video_path)  (video_processor.py:69)
     │       ├─ 检查文件存在性: path.exists()
-    │       ├─ 检查文件格式: path.suffix in supported_media_formats
+    │       ├─ 检查文件格式: path.suffix in supported_input_formats
     │       └─ ffprobe 验证完整性:
     │           ffprobe -v error -show_entries format=format_name -of csv=p=0 <file>
-    │           └─ returncode != 0 → raise VideoFileError("媒体文件损坏")
+    │           └─ returncode != 0 → raise VideoFileError("音视频文件损坏")
     │
-    ├─ 步骤 2: 获取媒体信息
+    ├─ 步骤 2: 获取音视频信息
     │   └─ video_info = self.video_processor.get_video_info(video_path)  (video_processor.py:131)
     │       ├─ ffprobe -v quiet -print_format json -show_format -show_streams <file>
     │       ├─ 解析 JSON 输出，提取：
@@ -1491,7 +1491,7 @@ CLI: run_pipeline(input_path)                    GUI: PipelineWorker.run()
      │  ┌─────────────────────────────────────────┐   │  ┌─────────────────────────────────────────┐
      │  │ 阶段一: 预处理                            │   │  │ 阶段一: 预处理                            │
      │  │                                         │   │  │                                         │
-     │  │ VideoProcessor.validate_media()         │   │  │ VideoProcessor.validate_media()         │
+     │  │ VideoProcessor.validate_input()         │   │  │ VideoProcessor.validate_input()         │
      │  │ VideoProcessor.get_video_info()         │   │  │ VideoProcessor.get_video_info()         │
      │  │ VideoProcessor.extract_audio()          │   │  │ VideoProcessor.extract_audio()          │
      │  │   → temp_{name}.wav                     │   │  │   → temp_{name}.wav                     │
@@ -1565,8 +1565,8 @@ CLI: run_pipeline(input_path)                    GUI: PipelineWorker.run()
 | **CLI 入口** | `run_pipeline()` | `cli.py:269` | CLI 命令入口，参数解析与服务编排 |
 | **公共初始化** | `_init_common()` | `cli.py:71` | 日志、VideoProcessor、FileWriter |
 | **配置加载** | `_load_tx_config()` | `transcription_config.py:35` | 从 Settings 构建 TranscriptionConfig |
-| **媒体验证** | `VideoProcessor.validate_media()` | `video_processor.py:69` | ffprobe 验证文件完整性 |
-| **媒体信息** | `VideoProcessor.get_video_info()` | `video_processor.py:131` | 提取时长/编码/采样率 |
+| **音视频验证** | `VideoProcessor.validate_input()` | `video_processor.py:69` | ffprobe 验证文件完整性 |
+| **音视频信息** | `VideoProcessor.get_video_info()` | `video_processor.py:131` | 提取时长/编码/采样率 |
 | **音频提取** | `VideoProcessor.extract_audio()` | `video_processor.py:227` | FFmpeg 提取 WAV（含回退） |
 | **模型缓存** | `get_cached_transcriber()` | `transcriber.py:25` | LRU 缓存，避免重复加载 |
 | **模型加载** | `Transcriber.load_model()` | `transcriber.py:171` | 加载 + OOM 降级 |
@@ -1655,7 +1655,7 @@ def _on_thread_finished(self) -> None:
 _select_input_files() (gui.py:617)
     │
     ├─ QFileDialog.getOpenFileNames()
-    │   └─ 过滤器: _get_media_filter_str() → "媒体文件 (*.mp4 *.mp3 ...)"
+    │   └─ 过滤器: _get_input_filter_str() → "音视频文件 (*.mp4 *.mp3 ...)"
     │
     ├─ self._video_files = list(paths)  # 保存到实例变量
     │
@@ -1671,7 +1671,7 @@ _select_input_folder() (gui.py:633)
     │
     ├─ _start_scan(folder) (gui.py:671)
     │   │
-    │   ├─ 创建 ScanFilesWorker(folder, media_exts)
+    │   ├─ 创建 ScanFilesWorker(folder, input_exts)
     │   │   └─ run(): Path(folder).rglob(f"*{ext}")  # 递归扫描所有支持格式
     │   │
     │   ├─ worker.result.connect(self._on_scan_result)  # 扫描完成信号
@@ -1681,7 +1681,7 @@ _select_input_folder() (gui.py:633)
     ▼
 _on_scan_result(video_files) (gui.py:695)
     │
-    ├─ video_files 为空？ → 提示"未找到支持的媒体文件"
+    ├─ video_files 为空？ → 提示"未找到支持的音视频文件"
     │
     ├─ 弹出 VideoSelectionDialog(video_files)
     │   └─ 树形视图展示文件，支持按类型/后缀/大小/关键字筛选

@@ -26,7 +26,7 @@ from src.utils.exceptions import (
 )
 from src.utils.logger import setup_logger
 
-app = typer.Typer(help="Video2Text - 媒体转文本工具")
+app = typer.Typer(help="Video2Text - 音视频转文本工具")
 console = Console()
 
 
@@ -54,13 +54,13 @@ def _init_common(
 
 @app.command()
 def transcribe(
-    input_path: str = typer.Argument(..., help="媒体文件路径（视频或音频）"),
+    input_path: str = typer.Argument(..., help="音视频文件路径（视频或音频）"),
     output_dir: Optional[str] = typer.Option(
         None, "--output-dir", "-o", help="输出目录"
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="详细输出"),
 ):
-    """转写媒体为文本"""
+    """转写音视频为文本"""
     try:
         settings = get_settings()
 
@@ -196,7 +196,7 @@ def summarize(
 
 @app.command()
 def run_pipeline(
-    input_path: str = typer.Argument(..., help="媒体文件路径（视频或音频）"),
+    input_path: str = typer.Argument(..., help="音视频文件路径（视频或音频）"),
     output_dir: Optional[str] = typer.Option(
         None, "--output-dir", "-o", help="输出目录"
     ),
@@ -343,8 +343,8 @@ def help_command():
     commands = [
         {
             "name": "transcribe",
-            "description": "转写媒体为文本",
-            "usage": "video2text transcribe <媒体文件路径> [选项]",
+            "description": "转写音视频为文本",
+            "usage": "video2text transcribe <音视频文件路径> [选项]",
             "options": [
                 ("--output-dir, -o", "输出目录"),
                 ("--verbose, -v", "详细输出"),
@@ -362,7 +362,7 @@ def help_command():
         {
             "name": "run-pipeline",
             "description": "运行完整处理管道（转写总结）",
-            "usage": "video2text run-pipeline <媒体文件路径> [选项]",
+            "usage": "video2text run-pipeline <音视频文件路径> [选项]",
             "options": [
                 ("--output-dir, -o", "输出目录"),
                 ("--verbose, -v", "详细输出"),

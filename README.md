@@ -4,17 +4,11 @@
 
 ## 功能特性
 
-- 🎬 支持多种视频和音频格式（16种视频 + 7种音频：MP3, WAV, FLAC, AAC, OGG, M4A, WMA）
-- 🎤 高质量语音转写（基于 faster_whisper）
-- 🤖 智能文本总结（支持本地 Ollama + Qwen2.5 和在线 NVIDIA API 两种模式）
-- 📝 多种输出格式（TXT, SRT, VTT, JSON）
-- ⚡ GPU加速支持
-- 🌍 多语言支持
-- 🔄 长音频自动分段转写 + 断点续传（基于 checkpoint 机制）
-- 🧵 多线程并发总结（NVIDIA multi 模式，支持速率限制与自动重试）
-- 📂 收藏目录管理（常用输入/输出目录一键切换）
-- 🔍 查找替换（`Ctrl+F` 快速定位文本）
-- ⚙️ 图形化配置编辑器（可视化编辑所有配置项）
+- 完全免费，无时长限制，可批量转写视频和音频
+- 基于 faster-whisper large-v3，高准确率
+- 集成 Ollama / NVIDIA 大模型，自动生成摘要
+- 图形界面 + 命令行，Windows 绿色版已打包
+- 批量转写 + 总结，输出 TXT/SRT/VTT/JSON
 
 > 如果帮助到您,请给个 star 吧!
 
@@ -23,29 +17,22 @@
 > **Windows 用户**：如果希望免去源码安装步骤，可以直接下载打包好的 exe 绿色版程序，解压即用。详细安装教程请参阅 [Windows 安装教程（Wiki）](https://github.com/fuyouling/video2text/wiki)。
 > 或者直接查看文件 docs\install_windows.md
 
-### 1. 创建虚拟环境
-
-```bash
-conda create -n video2text python=3.12.8
-conda activate video2text
-```
-
-### 2. 安装依赖
+### 1. 安装依赖
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. 转写模型文件下载
+### 2. 转写模型文件下载
 
 模型下载地址: [large-v3](https://huggingface.co/Systran/faster-whisper-large-v3/resolve/main)
 
 
-### 4. 总结模型安装
+### 3. 总结模型安装
 
 支持两种总结服务，按需选择其一即可。
 
-#### 4.1 NVIDIA 在线（使用在线 NVIDIA 模型总结）
+#### 3.1 NVIDIA 在线（使用在线 NVIDIA 模型总结）
 
 需要先在 [NVIDIA Build](https://build.nvidia.com/) 注册账号并创建 API Key（目前大部分模型免费使用）。获取 Key 后在项目根目录创建 `.env` 文件填入：
 
@@ -61,7 +48,10 @@ NVIDIA_API_KEY=nvapi-你的API密钥
 provider = nvidia
 ```
 
-#### 4.2 安装 Ollama（使用本地模型总结）
+#### 3.2 安装 Ollama（使用本地模型总结）
+
+> 本文以 `qwen2.5:7b-instruct-q4_K_M` 为例进行安装演示，该模型实际总结效果一般，推荐优先使用 NVIDIA 在线模型。
+> 或者本地显卡较好,拉取较大的模型也可使用这种本地总结的方式
 
 ```bash
 # 安装 Ollama
