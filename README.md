@@ -15,7 +15,6 @@
 ## 安装
 
 > **Windows 用户**：如果希望免去源码安装步骤，可以直接下载打包好的 exe 绿色版程序，解压即用。详细安装教程请参阅 [Windows 安装教程（Wiki）](https://github.com/fuyouling/video2text/wiki)。
-> 或者直接查看文件 docs\install_windows.md
 
 ### 1. 安装依赖
 
