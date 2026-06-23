@@ -571,3 +571,78 @@ filler_words = 嗯,啊,呃,嗯嗯,啊啊  # 需要过滤的填充词
 | `error.log` | ERROR | 错误日志，10MB 轮转，保留 30 份 |
 
 失败的任务会额外记录到 `logs/fail_log.log`，包含时间戳、操作模式、视频名称和错误信息。程序崩溃时会写入 `logs/crash.log`，未捕获的线程异常会写入 `logs/thread_error.log`。
+
+### 5.6 转写模型切换说明
+
+video2text 基于 **faster-whisper** 构建，其底层使用 **CTranslate2** 引擎进行模型加载与推理加速。因此，**并非所有 Whisper 模型都能直接用于本程序**——放入 `models/` 目录的模型文件必须符合 CTranslate2 格式规范。
+
+#### 为什么不能直接使用 OpenAI 原生模型？
+
+OpenAI 官方发布的模型（如 `openai/whisper-large-v3`、`openai/whisper-large-v3-turbo`）以 PyTorch 权重（`.safetensors` 或 `.bin`）或原始 checkpoint 形式存在于 Hugging Face 上。faster-whisper 并不支持直接读取这些格式，而是要求模型经过 CTranslate2 转换：将权重分片为优化的二进制文件（`model.bin`），并附带转换后的 `config.json`、`vocabulary.json`（或 `tokenizer.json`）。只有经过这一步骤，才能利用 CTranslate2 提供的 4-bit/8-bit 量化、动态批处理与 KV 缓存等加速特性。
+
+#### 可用的模型来源
+
+获取 CTranslate2 格式模型主要有两种途径：
+
+1. **Systran 官方转换模型**  
+   Systran 是 faster-whisper 的主要维护者，其 Hugging Face 主页 [`Systran`](https://huggingface.co/Systran) 提供了大量经过官方转换与严格测试的 Whisper CT2 模型，推荐优先选用。
+
+2. **社区转换模型**  
+   Hugging Face 上有不少作者自行转换并发布了 CTranslate2 格式的模型。使用前建议确认其基于的原生模型版本、量化精度（float16 / int8）以及 faster-whisper 的版本兼容性。
+
+#### 典型转换示例：large-v3-turbo
+
+若想使用体积更小、速度更快的 **Whisper Large V3 Turbo**，请直接下载已转换的 CT2 版本，而非 OpenAI 原版：
+
+| 模型名称 | 格式 | 是否可用 |
+|---------|------|---------|
+| `openai/whisper-large-v3-turbo` | PyTorch 原生 | ❌ 不可直接使用 |
+| `deepdml/faster-whisper-large-v3-turbo-ct2` | CTranslate2 | ✅ 可直接使用 |
+
+**Hugging Face 下载地址：**  
+`https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2`
+
+该模型在全精度下与 large-v3 准确率接近，但体积和显存占用显著降低，适合对速度敏感的场景。
+
+123网盘已上传
+```
+『来自123云盘用户喵王龙的分享』faster-whisper-large-v3-turbo-ct2.zip
+链接：https://1840674647.share.123pan.cn/123pan/7CfNTd-TD8dh?pwd=1234#
+提取码：1234
+```
+
+#### 模型部署与配置
+
+1. 将下载好的 CT2 模型文件夹放置到程序目录下的 `models\` 中，确保目录结构完整：
+
+   ```text
+   models\
+   └── <模型文件夹名>\
+       ├── config.json
+       ├── model.bin
+       ├── vocabulary.json
+       └── tokenizer.json
+   ```
+
+2. 打开 `config.ini`，在 `[transcription]` 段设置 `model_path`：
+
+   ```ini
+   [transcription]
+   model_path = faster-whisper-large-v3-turbo-ct2
+   ```
+
+   `model_path` 支持相对路径（相对于 `[paths] models_dir`）或绝对路径。
+
+3. 若模型为 int8 量化版本，建议同步修改计算类型以匹配：
+
+   ```ini
+   [transcription]
+   compute_type = int8
+   ```
+
+#### 注意事项
+
+- **模型完整性检查**：程序启动时会对模型目录进行校验，如缺少 `model.bin` 或 `config.json` 等核心文件，将无法正常加载。
+- **多模型切换**：`models/` 目录下可同时存放多个模型文件夹，修改 `config.ini` 中的 `model_path` 即可立即切换，无需额外复制操作。
+- **自动下载**：若配置的模型路径不存在，程序会尝试从 Hugging Face 自动下载，但同样要求模型本身提供 CTranslate2 格式的权重文件。
+- **磁盘空间**：不同模型体积差异较大（large-v3 约 3 GB，large-v3-turbo 约 1.5 GB），请根据磁盘容量选择。

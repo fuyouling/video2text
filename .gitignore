@@ -224,9 +224,10 @@ plans/
 output/*
 !output/readme.md
 
-# large-v3模型文件
+# 模型文件
 models/large-v3/
-#!models/large-v3
+models/whisper-large-v3-turbo
+models/faster-whisper-large-v3-turbo-ct2
 
 # vscode设置
 .vscode/
