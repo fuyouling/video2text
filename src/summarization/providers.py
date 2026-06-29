@@ -29,6 +29,7 @@ class SummarizationProvider(Protocol):
         on_token: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
         pause_event: Optional[threading.Event] = None,
+        is_use_gui_markdown_flag: bool = True
     ) -> str:
         """将文本转为总结"""
         ...
@@ -65,8 +66,9 @@ class OllamaProvider:
         on_token: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
         pause_event: Optional[threading.Event] = None,
+        is_use_gui_markdown_flag: bool = True
     ) -> str:
-        prompt = PromptManager().build_prompt(text, custom_prompt)
+        prompt = PromptManager().build_prompt(text, custom_prompt, is_use_gui_markdown_flag=is_use_gui_markdown_flag)
         return self._client.generate(
             model=self._model_name,
             prompt=prompt,
@@ -119,8 +121,9 @@ class NvidiaProvider:
         on_token: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
         pause_event: Optional[threading.Event] = None,
+        is_use_gui_markdown_flag: bool = True
     ) -> str:
-        prompt = PromptManager().build_prompt(text, custom_prompt)
+        prompt = PromptManager().build_prompt(text, custom_prompt, is_use_gui_markdown_flag=is_use_gui_markdown_flag)
         return self._client.generate(
             model=self._model,
             prompt=prompt,
@@ -165,8 +168,9 @@ class ZhipuProvider:
         on_token: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
         pause_event: Optional[threading.Event] = None,
+        is_use_gui_markdown_flag: bool = True
     ) -> str:
-        prompt = PromptManager().build_prompt(text, custom_prompt)
+        prompt = PromptManager().build_prompt(text, custom_prompt, is_use_gui_markdown_flag=is_use_gui_markdown_flag)
         return self._client.generate(
             model=self._model,
             prompt=prompt,

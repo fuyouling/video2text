@@ -121,7 +121,7 @@ def create_zip_with_progress(zip_path, source_dir, compress_level):
         zip_path, "w", zipfile.ZIP_DEFLATED, compresslevel=compress_level
     ) as zf:
         for file_path in all_files:
-            arcname = file_path.relative_to(source_dir)
+            arcname = Path("video2text_portable") / file_path.relative_to(source_dir)
             zf.write(file_path, arcname)
             written += 1
             if written % 500 == 0 or written == total:

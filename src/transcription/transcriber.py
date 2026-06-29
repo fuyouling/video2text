@@ -356,6 +356,7 @@ class Transcriber:
         best_of: int = 5,
         temperature: float = 0.0,
         vad_filter: bool = True,
+        vad_parameters: Optional[Dict[str, Any]] = None,
         word_timestamps: bool = False,
         condition_on_previous_text: bool = True,
         progress_callback: Optional[Callable] = None,
@@ -369,6 +370,7 @@ class Transcriber:
             best_of: 采样数量
             temperature: 温度参数
             vad_filter: 是否使用VAD过滤
+            vad_parameters: VAD参数（vad_onset, vad_offset等）
             word_timestamps: 是否生成词级时间戳
             condition_on_previous_text: 是否基于前文条件
             progress_callback: 进度回调函数，接收 (start, end, segment_count)
@@ -406,6 +408,7 @@ class Transcriber:
                 best_of=best_of,
                 temperature=temperature,
                 vad_filter=vad_filter,
+                vad_parameters=vad_parameters,
                 word_timestamps=word_timestamps,
                 condition_on_previous_text=condition_on_previous_text,
             )

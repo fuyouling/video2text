@@ -133,7 +133,7 @@ class PromptManager:
         self._markdown_enabled = value
         self.save()
 
-    def build_prompt(self, text: str, custom_prompt: str = "") -> str:
+    def build_prompt(self, text: str, custom_prompt: str = "", is_use_gui_markdown_flag: bool = True) -> str:
         """构建完整的用户提示词
 
         包含默认 system prompt、Markdown 格式指令（如果启用）、用户文本。
@@ -144,7 +144,7 @@ class PromptManager:
         else:
             base = "你是一个专业的文本总结助手，擅长提取关键信息并生成简洁准确的总结，只输出总结正文，**禁止添加任何开头语、结尾说明、解释性语句、备注**，**不要额外修饰、补充话术，纯输出总结内容**。"
 
-        if self._markdown_enabled:
+        if self._markdown_enabled and is_use_gui_markdown_flag:
             md_prompt = self._markdown_prompt
             if md_prompt.strip():
                 return f"{base}\n\n{md_prompt}\n\n文本内容：\n{text}"

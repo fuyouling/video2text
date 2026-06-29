@@ -243,3 +243,6 @@ bookmarks.json
 favorite_dirs.json
 # 转写历史记录
 transcription_history.json
+
+# 语音转写
+voice/

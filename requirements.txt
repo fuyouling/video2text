@@ -7,3 +7,6 @@ markdown>=3.5.0
 pygments>=2.15.0
 python-dotenv>=1.0.0
 zai-sdk>=0.2.2
+sounddevice>=0.4.6
+numpy>=1.24.0
+opencc-python-reimplemented>=0.1.7

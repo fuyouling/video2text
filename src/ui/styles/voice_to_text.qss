@@ -1,0 +1,330 @@
+/* ============================================================
+   VoiceToText 主样式 v3.0
+   布局: 侧边会话栏(QGroupBox) + 主区域(QGroupBox) + 控制区(QGroupBox) + 状态栏
+   色彩: 科技蓝 #1976d2 / 灰阶 / 红 #f44336 / 绿 #4caf50
+   圆角: 按钮6px / 卡片10px / 录音按钮22px
+   ============================================================ */
+
+VoiceToTextWidget {
+    background-color: #f0f2f5;
+    font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
+}
+
+/* ── QGroupBox 统一样式 ────────────────────── */
+
+QGroupBox {
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    margin-top: 8px;
+    padding-top: 16px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #424242;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    padding: 0 10px;
+    left: 12px;
+}
+
+/* ── 系统消息样式 ──────────────────────────── */
+
+.system-msg {
+    color: #9e9e9e;
+    font-style: italic;
+    font-size: 12px;
+    padding: 4px 0;
+    text-align: center;
+}
+
+/* ── 滚动条统一样式 ────────────────────────── */
+
+QScrollBar:vertical {
+    background: transparent;
+    width: 8px;
+    margin: 0;
+}
+
+QScrollBar::handle:vertical {
+    background: #c0c0c0;
+    border-radius: 4px;
+    min-height: 30px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #a0a0a0;
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0;
+}
+
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background: transparent;
+}
+
+QScrollBar:horizontal {
+    background: transparent;
+    height: 8px;
+    margin: 0;
+}
+
+QScrollBar::handle:horizontal {
+    background: #c0c0c0;
+    border-radius: 4px;
+    min-width: 30px;
+}
+
+QScrollBar::handle:horizontal:hover {
+    background: #a0a0a0;
+}
+
+QScrollBar::add-line:horizontal,
+QScrollBar::sub-line:horizontal {
+    width: 0;
+}
+
+QScrollBar::add-page:horizontal,
+QScrollBar::sub-page:horizontal {
+    background: transparent;
+}
+
+/* ── 侧边栏 QGroupBox ──────────────────────── */
+
+#sidebarGroup {
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+}
+
+/* ── 会话列表 ──────────────────────────────── */
+
+#historyList {
+    background: transparent;
+    border: none;
+    outline: none;
+    padding: 4px 0;
+}
+
+#historyList::item {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid #f0f0f0;
+    padding: 0;
+}
+
+#historyList::item:hover {
+    background: #f5f8ff;
+}
+
+#historyList::item:selected {
+    background: #e3f2fd;
+}
+
+/* ── 会话项 ────────────────────────────────── */
+
+#convItem {
+    background: transparent;
+}
+
+#convItemTitle {
+    font-size: 13px;
+    font-weight: 500;
+    color: #212121;
+}
+
+#convItemMeta {
+    font-size: 11px;
+    color: #9e9e9e;
+}
+
+/* ── 主区域 QGroupBox ──────────────────────── */
+
+#mainAreaGroup {
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+}
+
+/* ── 标题栏 ────────────────────────────────── */
+
+#titleBar {
+    background: transparent;
+    border-bottom: 1px solid #eeeeee;
+}
+
+#convTitleLabel {
+    font-size: 16px;
+    font-weight: 600;
+    color: #212121;
+}
+
+#backBtn {
+    background: transparent;
+    color: #1976d2;
+    border: 1px solid #1976d2;
+    border-radius: 6px;
+    padding: 6px 16px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+#backBtn:hover {
+    background: #e3f2fd;
+}
+
+#newConvBtn {
+    background: #1976d2;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 16px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+#newConvBtn:hover {
+    background: #1565c0;
+}
+
+#newConvBtn:pressed {
+    background: #0d47a1;
+}
+
+/* ── 对话显示区 ────────────────────────────── */
+
+#chatDisplay {
+    background: #fafafa;
+    border: 1px solid #eeeeee;
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #212121;
+}
+
+/* ── 控制区 QGroupBox ──────────────────────── */
+
+#controlGroup {
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding-top: 8px;
+}
+
+#controlTopRow {
+    background: transparent;
+    border-bottom: 1px solid #eeeeee;
+    padding: 4px 0;
+}
+
+#controlLabel {
+    font-size: 13px;
+    color: #616161;
+}
+
+#modeCombo {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 13px;
+    min-width: 100px;
+}
+
+#modeCombo:hover {
+    border-color: #1976d2;
+}
+
+#modeCombo::drop-down {
+    border: none;
+}
+
+QComboBox QAbstractItemView {
+    background: white;
+    border: 1px solid #e0e0e0;
+    selection-background-color: #e3f2fd;
+    selection-color: #1a1a1a;
+}
+
+#deviceIndicator {
+    font-size: 11px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+
+#recordingTime {
+    font-size: 18px;
+    font-weight: 600;
+    color: #424242;
+    font-family: "Consolas", "Courier New", monospace;
+}
+
+/* ── 波形控件 ──────────────────────────────── */
+
+#waveformWidget {
+    background: #f5f5f5;
+    border: 1px solid #eeeeee;
+    border-radius: 6px;
+}
+
+/* ── 状态栏 ────────────────────────────────── */
+
+#statusBar {
+    background: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+}
+
+#statusLabel {
+    font-size: 12px;
+    color: #757575;
+}
+
+/* ── Toast ─────────────────────────────────── */
+
+#toastLabel {
+    background: rgba(0, 0, 0, 0.75);
+    color: white;
+    padding: 8px 20px;
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+/* ── 右键菜单 ──────────────────────────────── */
+
+#chatMenu {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 4px;
+}
+
+#chatMenu::item {
+    padding: 8px 24px;
+    font-size: 13px;
+    color: #424242;
+}
+
+#chatMenu::item:selected {
+    background: #e3f2fd;
+    color: #1976d2;
+    border-radius: 4px;
+}
+
+/* ── Splitter ──────────────────────────────── */
+
+QSplitter::handle {
+    background: #e0e0e0;
+    width: 1px;
+}
+
+QSplitter::handle:hover {
+    background: #1976d2;
+}

@@ -2,7 +2,7 @@
 
 > 如果帮助到您,请给个 star 吧!
 
-视频转文本工具 - 使用 faster_whisper 进行语音转写，默认使用 Ollama + Qwen2.5 或 NVIDIA API 进行文本总结，语音转写和文本总结模型可自行更换。
+视频转文本工具 - 使用 faster-whisper 进行语音转写，默认使用 Ollama + Qwen2.5 或 NVIDIA API 进行文本总结，语音转写和文本总结模型可自行更换。
 
 ## 功能特性
 

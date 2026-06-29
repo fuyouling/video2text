@@ -154,13 +154,16 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(10, 10, 10, 10)
         root.setSpacing(8)
 
-        root.addLayout(self._create_input_row())
-        root.addLayout(self._create_output_row())
-        root.addLayout(self._create_run_row())
+        self.main_panel = QWidget()
+        main_layout = QVBoxLayout(self.main_panel)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(8)
 
-        # ── splitter: logs + right panel ──
+        main_layout.addLayout(self._create_input_row())
+        main_layout.addLayout(self._create_output_row())
+        main_layout.addLayout(self._create_run_row())
+
         splitter = QSplitter(Qt.Orientation.Horizontal)
-
         self.log_panel = LogPanel()
         splitter.addWidget(self.log_panel)
 
@@ -173,7 +176,19 @@ class MainWindow(QMainWindow):
 
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 1)
-        root.addWidget(splitter, 1)
+        main_layout.addWidget(splitter, 1)
+
+        root.addWidget(self.main_panel, 1)
+
+        self.voice_panel = QWidget()
+        voice_layout = QVBoxLayout(self.voice_panel)
+        voice_layout.setContentsMargins(0, 0, 0, 0)
+        voice_layout.setSpacing(0)
+        from src.ui.voice_to_text_widget import VoiceToTextWidget
+        self._voice_widget = VoiceToTextWidget(self.settings, self)
+        voice_layout.addWidget(self._voice_widget)
+        self.voice_panel.hide()
+        root.addWidget(self.voice_panel, 1)
 
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
@@ -357,6 +372,10 @@ class MainWindow(QMainWindow):
         clear_input_action.triggered.connect(self._clear_all_input_dirs)
         clear_output_action = fav_menu.addAction("移除所有输出目录")
         clear_output_action.triggered.connect(self._clear_all_output_dirs)
+
+        tools_menu = menu_bar.addMenu("工具")
+        voice_action = tools_menu.addAction("VoiceToText(声音转文本)")
+        voice_action.triggered.connect(self._on_show_voice_to_text)
 
         help_menu = menu_bar.addMenu("帮助")
         donate_action = help_menu.addAction("捐赠支持")
@@ -1274,6 +1293,16 @@ class MainWindow(QMainWindow):
         )
         worker.set_download_confirmed(reply == QMessageBox.StandardButton.Yes)
 
+    # ── VoiceToText 界面翻转 ──
+
+    def _on_show_voice_to_text(self) -> None:
+        self.main_panel.hide()
+        self.voice_panel.show()
+
+    def _on_back_to_main(self) -> None:
+        self.voice_panel.hide()
+        self.main_panel.show()
+
     def _on_thread_finished(self) -> None:
         sender = self.sender()
         if sender is not None and sender is not self._worker_thread:
@@ -1529,6 +1558,10 @@ class MainWindow(QMainWindow):
 
         if self._result_viewer is not None:
             self._result_viewer.close()
+
+        if hasattr(self, "_voice_widget") and self._voice_widget is not None:
+            self._voice_widget.cleanup()
+
         event.accept()
 
 
