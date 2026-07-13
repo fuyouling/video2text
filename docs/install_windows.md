@@ -72,14 +72,18 @@ video2text 本地视频转文字工具的安装包体积较大，已上传至 12
 | 组件 | 大小 | 是否下载 |
 |------|------|------|
 | video2text 程序包 | ~3 GB | 必须 |
-| `large-v3` 语音转文字模型 | ~3 GB | 可选，建议下载，自己有其它模型也行 |
-| Ollama 安装包和本地模型（`qwen2.5:7b`） | ~6 GB | 可选，看总结用不用 Ollama |
+| `large-v3` 语音转文字模型 | ~3 GB | 可选，建议下载，自己下载其它模型也行,其 Hugging Face 主页 [`Systran`](https://huggingface.co/Systran) |
+| Ollama 安装包和本地模型（`qwen2.5:7b`） | ~6 GB | 可选，看总结用不用 Ollama ,[官网](https://ollama.com/) |
 
 > 请使用支持保留目录结构的解压工具（如 **7-Zip** 或 **Bandizip**）解压压缩包，确保文件夹结构完整。
 
 **下载地址：**
 ```text
-合并下载:
+tips:
+   用这个盘的原因是因为不限速,最近才发现它每个月才10个G的免费下载流量,超出会计费,恰好所有文件超出了10个G
+   建议下载个程序包,语音转文字模型到Hugging Face下载就行,ollama到它的官网下载就行
+
+合并下载(11.84GB):
 [video2text] 包括video2text程序包,语音转文字模型,ollama安装包和本地模型qwen2.5:7b
 链接：https://1840674647.share.123pan.cn/123pan/7CfNTd-SE7j3?pwd=viWa#
 提取码：viWa
@@ -632,13 +636,6 @@ OpenAI 官方发布的模型（如 `openai/whisper-large-v3`、`openai/whisper-l
    ```
 
    `model_path` 支持相对路径（相对于 `[paths] models_dir`）或绝对路径。
-
-3. 若模型为 int8 量化版本，建议同步修改计算类型以匹配：
-
-   ```ini
-   [transcription]
-   compute_type = int8
-   ```
 
 #### 注意事项
 

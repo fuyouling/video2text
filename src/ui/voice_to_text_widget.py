@@ -210,7 +210,7 @@ class VoiceToTextWidget(QWidget):
     def _init_ui(self) -> None:
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 0)
-        root.setSpacing(8)
+        root.setSpacing(0)
 
         self._load_styles()
 
@@ -219,9 +219,15 @@ class VoiceToTextWidget(QWidget):
 
         sidebar = self._build_sidebar()
         main_area = self._build_main_area()
+        control_bar = self._build_control_bar()
+
+        right_layout = QVBoxLayout()
+        right_layout.setSpacing(0)
+        right_layout.addWidget(main_area, 1)
+        right_layout.addWidget(control_bar)
 
         content_layout.addWidget(sidebar)
-        content_layout.addWidget(main_area, 1)
+        content_layout.addLayout(right_layout, 1)
 
         root.addLayout(content_layout, 1)
 
@@ -250,7 +256,7 @@ class VoiceToTextWidget(QWidget):
         group = QGroupBox()
         group.setObjectName("mainAreaGroup")
         layout = QVBoxLayout(group)
-        layout.setContentsMargins(8, 8, 8, 0)
+        layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
 
         title_bar = self._build_title_bar()
@@ -269,9 +275,6 @@ class VoiceToTextWidget(QWidget):
             "点击右下角开始录音，开启语音转写"
         )
         layout.addWidget(self.chat_display, 1)
-
-        control_bar = self._build_control_bar()
-        layout.addWidget(control_bar)
 
         return group
 

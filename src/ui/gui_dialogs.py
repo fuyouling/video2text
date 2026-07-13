@@ -565,12 +565,14 @@ _SECTION_LABELS: dict[str, str] = {
     "paths": "路径",
     "tools": "工具",
     "text_processing": "文本处理",
+    "voice_to_text": "声音转文本",
 }
 
 _KEY_LABELS: dict[str, str] = {
     "app.name": "软件名称",
     "app.version": "版本号",
     "app.log_level": "日志级别",
+    "app.incremental_mode": "增量模式",
     "transcription.model_path": "模型路径",
     "transcription.device": "设备",
     "transcription.language": "语言",
@@ -599,10 +601,20 @@ _KEY_LABELS: dict[str, str] = {
     "text_processing.max_gap": "合并最大间隔",
     "text_processing.min_length": "最小合并长度",
     "text_processing.filler_words": "填充词列表",
+    "voice_to_text.voice_dir": "语音存储目录",
+    "voice_to_text.summary_dir": "摘要存储目录",
+    "voice_to_text.realtime_auto_send_interval": "实时录入自动发送间隔",
+    "voice_to_text.noise_suppression": "噪声抑制",
+    "voice_to_text.noise_gate_threshold": "噪声门限阈值",
+    "voice_to_text.spectral_subtraction_factor": "谱减系数",
+    "voice_to_text.noise_profile_frames": "噪声采样帧数",
+    "voice_to_text.vad_onset_enhanced": "VAD 起始阈值",
+    "voice_to_text.vad_offset_enhanced": "VAD 结束阈值",
 }
 
 _KEY_TOOLTIPS: dict[str, str] = {
     "app.log_level": "日志级别: DEBUG / INFO / WARNING / ERROR",
+    "app.incremental_mode": "启用后，若输出目录中已存在该视频的转写文件和摘要文件，则跳过该文件不再处理: true / false",
     "transcription.model_path": "Whisper 模型目录,填写目录名称",
     "transcription.device": "推理设备: cuda (NVIDIA GPU), cpu, auto (自动选择)",
     "transcription.language": "转写语言代码: zh (中文), en (英文), ja (日文) 等，留空或 auto 自动检测",
@@ -631,7 +643,91 @@ _KEY_TOOLTIPS: dict[str, str] = {
     "text_processing.max_gap": "段落合并最大时间间隔 (秒)，间隔超过此值的段落不会合并",
     "text_processing.min_length": "最小文本长度，短于此长度的段落会尝试与相邻段落合并",
     "text_processing.filler_words": "需要清除的填充词，逗号分隔",
+    "voice_to_text.voice_dir": "语音录入与对话记录存储目录，支持相对路径 (相对程序目录) 和绝对路径",
+    "voice_to_text.summary_dir": "语音转写摘要的存储目录，支持相对路径和绝对路径",
+    "voice_to_text.realtime_auto_send_interval": "实时录入模式下自动分段转写并发送的间隔 (秒)",
+    "voice_to_text.noise_suppression": "是否启用噪声抑制，改善非真人发声录音效果: True / False",
+    "voice_to_text.noise_gate_threshold": "噪声门限阈值 (0~1)，低于该音量视为静音不录制",
+    "voice_to_text.spectral_subtraction_factor": "谱减降噪系数 (0~N)，越大降噪越强但可能损伤语音",
+    "voice_to_text.noise_profile_frames": "用于估计噪声谱的静音帧数",
+    "voice_to_text.vad_onset_enhanced": "增强 VAD 语音起始灵敏度 (0~1)，越大越早判定为语音开始",
+    "voice_to_text.vad_offset_enhanced": "增强 VAD 语音结束灵敏度 (0~1)，越大越晚判定为语音结束",
 }
+
+_BOOL_COMBO_KEYS: set[str] = {
+    "app.incremental_mode",
+    "transcription.vad_filter",
+    "transcription.condition_on_previous_text",
+    "transcription.word_timestamps",
+    "output.mirror_enabled",
+    "voice_to_text.noise_suppression",
+}
+
+_COMBO_KEYS: set[str] = set(_BOOL_COMBO_KEYS) | {
+    "summarization.nvidia_stream",
+    "summarization.zhipu_stream",
+    "summarization.nvidia_mode",
+    "summarization.zhipu_mode",
+    "app.log_level",
+    "transcription.device",
+    "transcription.compute_type",
+}
+
+_COMBO_OPTIONS: dict[str, list[str]] = {
+    key: ["是", "否"]
+    for key in _BOOL_COMBO_KEYS
+}
+_COMBO_OPTIONS.update(
+    {
+        "summarization.nvidia_stream": ["是", "否"],
+        "summarization.zhipu_stream": ["是", "否"],
+        "summarization.nvidia_mode": ["单线程", "多线程"],
+        "summarization.zhipu_mode": ["单线程", "多线程"],
+    }
+)
+
+_COMBO_VALUE_MAP: dict[str, dict[str, str]] = {
+    key: {"是": "True", "否": "False"}
+    for key in _BOOL_COMBO_KEYS
+}
+_COMBO_VALUE_MAP.update(
+    {
+        "summarization.nvidia_stream": {"是": "True", "否": "False"},
+        "summarization.zhipu_stream": {"是": "True", "否": "False"},
+        "summarization.nvidia_mode": {"单线程": "single", "多线程": "multi"},
+        "summarization.zhipu_mode": {"单线程": "single", "多线程": "multi"},
+    }
+)
+
+_COMBO_OPTIONS.update(
+    {
+        "app.log_level": ["DEBUG", "INFO", "WARNING", "ERROR"],
+        "transcription.device": ["cuda", "cpu", "auto"],
+        "transcription.compute_type": ["float16", "int8", "float32"],
+    }
+)
+
+_COMBO_VALUE_MAP.update(
+    {
+        "app.log_level": {
+            "DEBUG": "DEBUG",
+            "INFO": "INFO",
+            "WARNING": "WARNING",
+            "ERROR": "ERROR",
+        },
+        "transcription.device": {
+            "cuda": "cuda",
+            "cpu": "cpu",
+            "auto": "auto",
+        },
+        "transcription.compute_type": {
+            "float16": "float16",
+            "int8": "int8",
+            "float32": "float32",
+        },
+    }
+)
+
 
 
 class ConfigEditorDialog(QDialog):
@@ -687,12 +783,19 @@ class ConfigEditorDialog(QDialog):
             full_key = f"{section}.{key}"
             if full_key in _SKIP_KEYS:
                 continue
-            widget = QLineEdit(value)
             tooltip = _KEY_TOOLTIPS.get(full_key)
-            if tooltip:
-                widget.setToolTip(tooltip)
             label = _KEY_LABELS.get(full_key, key)
-            if full_key in Settings.PATH_KEYS:
+            if full_key in _COMBO_KEYS:
+                widget = QComboBox()
+                widget.addItems(_COMBO_OPTIONS.get(full_key, []))
+                ConfigEditorDialog._set_widget_text(widget, value)
+                if tooltip:
+                    widget.setToolTip(tooltip)
+                form.addRow(f"{label}:", widget)
+            elif full_key in Settings.PATH_KEYS:
+                widget = QLineEdit(value)
+                if tooltip:
+                    widget.setToolTip(tooltip)
                 row = QHBoxLayout()
                 row.addWidget(widget, 1)
                 browse_btn = QPushButton("浏览")
@@ -701,6 +804,9 @@ class ConfigEditorDialog(QDialog):
                 row.addWidget(browse_btn)
                 form.addRow(f"{label}:", row)
             else:
+                widget = QLineEdit(value)
+                if tooltip:
+                    widget.setToolTip(tooltip)
                 form.addRow(f"{label}:", widget)
             section_edits[key] = widget
 
@@ -738,7 +844,11 @@ class ConfigEditorDialog(QDialog):
     @staticmethod
     def _widget_text(widget: QWidget) -> str:
         if isinstance(widget, QComboBox):
-            return widget.currentText()
+            display = widget.currentText()
+            for mapping in _COMBO_VALUE_MAP.values():
+                if display in mapping:
+                    return mapping[display]
+            return display
         if hasattr(widget, "text"):
             return widget.text()  # type: ignore[union-attr]
         return ""
@@ -746,6 +856,20 @@ class ConfigEditorDialog(QDialog):
     @staticmethod
     def _set_widget_text(widget: QWidget, value: str) -> None:
         if isinstance(widget, QComboBox):
+            value = value.strip()
+            for mapping in _COMBO_VALUE_MAP.values():
+                for display_text, config_value in mapping.items():
+                    if config_value.lower() == value.lower():
+                        index = widget.findText(display_text, Qt.MatchFlag.MatchFixedString)
+                        if index >= 0:
+                            widget.setCurrentIndex(index)
+                            return
+            if hasattr(widget, "currentData"):
+                for i in range(widget.count()):
+                    data = widget.itemData(i)
+                    if isinstance(data, str) and data.lower() == value.lower():
+                        widget.setCurrentIndex(i)
+                        return
             widget.setCurrentText(value)
         elif hasattr(widget, "setText"):
             widget.setText(value)  # type: ignore[union-attr]

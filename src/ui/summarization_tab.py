@@ -222,9 +222,11 @@ class SummarizationTab(QWidget):
         nvidia_mode = self._settings.get("summarization.nvidia_mode", "single")
 
         self._nvidia_mode_combo = QComboBox()
-        self._nvidia_mode_combo.addItem("single", "单线程")
-        self._nvidia_mode_combo.addItem("multi", "多线程")
-        self._nvidia_mode_combo.setCurrentText(nvidia_mode)
+        self._nvidia_mode_combo.addItem("单线程", "single")
+        self._nvidia_mode_combo.addItem("多线程", "multi")
+        nvidia_mode_val = self._settings.get("summarization.nvidia_mode", "single")
+        from src.ui.gui_dialogs import ConfigEditorDialog
+        ConfigEditorDialog._set_widget_text(self._nvidia_mode_combo, nvidia_mode_val)
         self._nvidia_mode_combo.setToolTip(
             _SUMM_KEY_TOOLTIPS.get("summarization.nvidia_mode", "")
         )
@@ -232,10 +234,11 @@ class SummarizationTab(QWidget):
         self._section_edits["nvidia_mode"] = self._nvidia_mode_combo
 
         self._nvidia_stream_combo = QComboBox()
-        self._nvidia_stream_combo.addItem("true", "是")
-        self._nvidia_stream_combo.addItem("false", "否")
+        self._nvidia_stream_combo.addItem("是")
+        self._nvidia_stream_combo.addItem("否")
         nvidia_stream_val = self._settings.get("summarization.nvidia_stream", "true")
-        self._nvidia_stream_combo.setCurrentText(nvidia_stream_val)
+        from src.ui.gui_dialogs import ConfigEditorDialog
+        ConfigEditorDialog._set_widget_text(self._nvidia_stream_combo, nvidia_stream_val)
         self._nvidia_stream_combo.setToolTip(
             _SUMM_KEY_TOOLTIPS.get("summarization.nvidia_stream", "")
         )
@@ -295,9 +298,11 @@ class SummarizationTab(QWidget):
         zhipu_mode = self._settings.get("summarization.zhipu_mode", "single")
 
         self._zhipu_mode_combo = QComboBox()
-        self._zhipu_mode_combo.addItem("single", "单线程")
-        self._zhipu_mode_combo.addItem("multi", "多线程")
-        self._zhipu_mode_combo.setCurrentText(zhipu_mode)
+        self._zhipu_mode_combo.addItem("单线程", "single")
+        self._zhipu_mode_combo.addItem("多线程", "multi")
+        zhipu_mode_val = self._settings.get("summarization.zhipu_mode", "single")
+        from src.ui.gui_dialogs import ConfigEditorDialog
+        ConfigEditorDialog._set_widget_text(self._zhipu_mode_combo, zhipu_mode_val)
         self._zhipu_mode_combo.setToolTip(
             _SUMM_KEY_TOOLTIPS.get("summarization.zhipu_mode", "")
         )
@@ -305,10 +310,11 @@ class SummarizationTab(QWidget):
         self._section_edits["zhipu_mode"] = self._zhipu_mode_combo
 
         self._zhipu_stream_combo = QComboBox()
-        self._zhipu_stream_combo.addItem("true", "是")
-        self._zhipu_stream_combo.addItem("false", "否")
+        self._zhipu_stream_combo.addItem("是")
+        self._zhipu_stream_combo.addItem("否")
         zhipu_stream_val = self._settings.get("summarization.zhipu_stream", "true")
-        self._zhipu_stream_combo.setCurrentText(zhipu_stream_val)
+        from src.ui.gui_dialogs import ConfigEditorDialog
+        ConfigEditorDialog._set_widget_text(self._zhipu_stream_combo, zhipu_stream_val)
         self._zhipu_stream_combo.setToolTip(
             _SUMM_KEY_TOOLTIPS.get("summarization.zhipu_stream", "")
         )
@@ -351,7 +357,7 @@ class SummarizationTab(QWidget):
 
     def _on_nvidia_mode_changed(self) -> None:
         """切换 single/multi 模式时联动显隐流式输出和线程数"""
-        is_multi = self._nvidia_mode_combo.currentData() == "多线程"
+        is_multi = self._nvidia_mode_combo.currentData() == "multi"
         self._nvidia_stream_combo.setVisible(not is_multi)
         self._nvidia_stream_row_label.setVisible(not is_multi)
         self._nvidia_thread_edit.setVisible(is_multi)
@@ -359,7 +365,7 @@ class SummarizationTab(QWidget):
 
     def _on_zhipu_mode_changed(self) -> None:
         """切换智谱 single/multi 模式时联动显隐流式输出和线程数"""
-        is_multi = self._zhipu_mode_combo.currentData() == "多线程"
+        is_multi = self._zhipu_mode_combo.currentData() == "multi"
         self._zhipu_stream_combo.setVisible(not is_multi)
         self._zhipu_stream_row_label.setVisible(not is_multi)
         self._zhipu_thread_edit.setVisible(is_multi)

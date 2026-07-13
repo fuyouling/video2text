@@ -113,6 +113,9 @@ class MainWindow(QMainWindow):
         self._current_phase = "transcribe"  # 管道当前阶段
 
         self._dir_manager = DirectoryManager(_PROJECT_ROOT / "favorite_dirs.json")
+        self._default_output_dir = self.settings.get(
+            "output.output_dir", _DEFAULT_OUTPUT_DIR
+        )
 
         self._init_ui()
 
@@ -120,7 +123,7 @@ class MainWindow(QMainWindow):
             dir_manager=self._dir_manager,
             input_combo=self.input_combo,
             output_combo=self.output_combo,
-            default_output_dir=_DEFAULT_OUTPUT_DIR,
+            default_output_dir=self._default_output_dir,
             status_callback=lambda msg, t: self.status_bar.showMessage(msg, t),
             parent=self,
         )
@@ -225,7 +228,7 @@ class MainWindow(QMainWindow):
         output_row.addWidget(QLabel("输出:"))
         self.output_combo = QComboBox()
         self.output_combo.setEditable(True)
-        self.output_combo.setCurrentText(_DEFAULT_OUTPUT_DIR)
+        self.output_combo.setCurrentText(self._default_output_dir)
         self.output_combo.setMinimumWidth(300)
         output_row.addWidget(self.output_combo, 1)
         self.output_btn = QPushButton("浏览")
@@ -391,7 +394,7 @@ class MainWindow(QMainWindow):
             "<h2 style='margin-bottom:4px'>🎬 Video2Text</h2>"
             f"<p style='color:#666;margin-top:0'>版本 {APP_VERSION} · 音视频转文本工具</p>"
             "<hr>"
-            "<p>基于 <b>faster-whisper</b> 的高精度语音转和智能总结工具。</p>"
+            "<p>基于 <b>faster-whisper</b> 的高精度语音转写和智能总结工具。</p>"
             "<p><b>核心功能：</b></p>"
             "<ul style='margin-top:2px'>"
             "<li>支持视频和音频格式转写,长音频自动分段</li>"
@@ -425,7 +428,18 @@ class MainWindow(QMainWindow):
         dialog = ConfigEditorDialog(self)
         if dialog.exec() == dialog.DialogCode.Accepted:
             self._load_prompt_config()
+            self._refresh_output_dir()
             self.status_bar.showMessage("配置已保存", 5000)
+
+    def _refresh_output_dir(self) -> None:
+        """配置保存后刷新输出目录：同步内存配置与界面控件，使其立即生效"""
+        new_default = self.settings.get("output.output_dir", _DEFAULT_OUTPUT_DIR)
+        if new_default == self._default_output_dir:
+            return
+        self._default_output_dir = new_default
+        current = self.output_combo.currentText().strip()
+        if not current or current == self._default_output_dir:
+            self.output_combo.setCurrentText(new_default)
 
     def _load_prompt_config(self) -> None:
         prompt = self.settings.get("summarization.custom_prompt", "")
@@ -541,7 +555,7 @@ class MainWindow(QMainWindow):
         if not self._current_video_name:
             self.status_bar.showMessage("没有选中的文件，无法保存", 3000)
             return
-        output_dir = self.output_combo.currentText().strip() or _DEFAULT_OUTPUT_DIR
+        output_dir = self.output_combo.currentText().strip() or self._default_output_dir
         current_tab = self.result_tabs.currentIndex()
         if current_tab == 0:
             text = self.transcript_view.toPlainText()
@@ -645,7 +659,7 @@ class MainWindow(QMainWindow):
                 self.input_combo.setCurrentText(f"已选择 {len(paths)} 个文件")
             self._video_files = list(paths)
             last_dir = Path(paths[0]).parent.name
-            self.output_combo.setCurrentText(str(_PROJECT_ROOT / "output" / last_dir))
+            self.output_combo.setCurrentText(str(Path(self._default_output_dir) / last_dir))
 
     def _select_input_folder(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, "选择音视频文件夹")
@@ -669,7 +683,7 @@ class MainWindow(QMainWindow):
             self._video_files = [str(path)]
             self.input_combo.setCurrentText(str(path))
             last_dir = path.parent.name
-            self.output_combo.setCurrentText(str(_PROJECT_ROOT / "output" / last_dir))
+            self.output_combo.setCurrentText(str(Path(self._default_output_dir) / last_dir))
         elif path.is_dir():
             self._scan_context = {
                 "mode": "combo_select",
@@ -754,7 +768,7 @@ class MainWindow(QMainWindow):
             last_dir = Path(folder).name
 
         self._video_files = selected_files
-        self.output_combo.setCurrentText(str(_PROJECT_ROOT / "output" / last_dir))
+        self.output_combo.setCurrentText(str(Path(self._default_output_dir) / last_dir))
 
     def _select_output_dir(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, "选择输出目录")
@@ -763,7 +777,7 @@ class MainWindow(QMainWindow):
 
     def _load_history_files(self) -> None:
         """从输出目录加载历史转写和总结文件，填充文件列表。"""
-        output_dir = self.output_combo.currentText().strip() or _DEFAULT_OUTPUT_DIR
+        output_dir = self.output_combo.currentText().strip() or self._default_output_dir
         output_path = Path(output_dir)
 
         if not output_path.exists():
@@ -826,7 +840,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(
                 self,
                 "提示",
-                f"未在输出目录中找到历史文件:\n{output_dir}\n\n"
+                f"未在输出目录中找到历史文件(不扫描子目录):\n{output_dir}\n\n"
                 "请先完成转写，或更换包含历史文件的输出目录后重试。",
             )
             self.status_bar.showMessage("未找到历史文件")
@@ -848,10 +862,41 @@ class MainWindow(QMainWindow):
 
     def _get_output_dir(self) -> str:
         """获取并规范化输出目录路径，不存在时自动创建。"""
-        output_dir = self.output_combo.currentText().strip() or _DEFAULT_OUTPUT_DIR
+        output_dir = self.output_combo.currentText().strip() or self._default_output_dir
         self.output_combo.setCurrentText(output_dir)
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         return output_dir
+
+    def _apply_incremental_mode(self, video_files: list[str], output_dir: str) -> list[str]:
+        if not self.settings.get_bool("app.incremental_mode", False):
+            return video_files
+
+        keep = []
+        skipped = 0
+        for video_path in video_files:
+            name = Path(video_path).stem
+            resolved_dir = self._resolve_video_output_dir(name)
+            if not Path(resolved_dir).exists():
+                keep.append(video_path)
+                continue
+
+            writer = FileWriter(resolved_dir)
+            has_tx = writer.find_transcript_file(name) is not None
+            has_sum = writer.find_summary_file(name) is not None
+            if has_tx and has_sum:
+                logger.info(
+                    "[增量模式] 跳过: %s — 转写和摘要已存在于 %s",
+                    name,
+                    resolved_dir,
+                )
+                skipped += 1
+            else:
+                keep.append(video_path)
+
+        if skipped > 0:
+            self.status_bar.showMessage(f"增量模式: 已跳过 {skipped} 个已处理文件", 5000)
+
+        return keep
 
     def _get_stream_setting(self) -> bool:
         """根据当前配置决定是否使用流式输出"""
@@ -864,7 +909,7 @@ class MainWindow(QMainWindow):
         return self.settings.get_bool(f"summarization.{provider}_stream", True)
 
     def _resolve_video_output_dir(self, video_name: str) -> str:
-        base_dir = self.output_combo.currentText().strip() or _DEFAULT_OUTPUT_DIR
+        base_dir = self.output_combo.currentText().strip() or self._default_output_dir
         if not self._mirror_subdirs:
             return base_dir
         if video_name in self._name_to_output_dir:
@@ -1048,7 +1093,14 @@ class MainWindow(QMainWindow):
         self._current_mode = "transcribe"
         self._reset_counters()
 
-        total = len(self._video_files)
+        video_files = self._apply_incremental_mode(self._video_files, output_dir)
+        if not video_files:
+            QMessageBox.information(
+                self, "提示", "增量模式: 所有文件均已有转写和摘要结果，无需重复处理。"
+            )
+            return
+
+        total = len(video_files)
         self.progress_bar.setMaximum(total)
         self.progress_bar.setValue(0)
         self.progress_label.setText(f"0/{total}")
@@ -1057,7 +1109,7 @@ class MainWindow(QMainWindow):
 
         thread = QThread()
         worker = TranscribeWorker(
-            self._video_files,
+            video_files,
             output_dir,
             self.settings,
             input_folder=self._input_folder,
@@ -1229,7 +1281,14 @@ class MainWindow(QMainWindow):
         self._reset_counters()
         self._update_multi_thread_flag()
 
-        total = len(self._video_files)
+        video_files = self._apply_incremental_mode(self._video_files, output_dir)
+        if not video_files:
+            QMessageBox.information(
+                self, "提示", "增量模式: 所有文件均已有转写和摘要结果，无需重复处理。"
+            )
+            return
+
+        total = len(video_files)
         self.progress_bar.setMaximum(total * 2)
         self.progress_bar.setValue(0)
         self.progress_label.setText(f"0/{total * 2}")
@@ -1240,7 +1299,7 @@ class MainWindow(QMainWindow):
 
         thread = QThread()
         worker = PipelineWorker(
-            self._video_files,
+            video_files,
             output_dir,
             self.settings,
             custom_prompt,
@@ -1371,7 +1430,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "提示", "请先完成转写或加载历史文件")
             return
 
-        output_dir = self.output_combo.currentText().strip() or _DEFAULT_OUTPUT_DIR
+        output_dir = self.output_combo.currentText().strip() or self._default_output_dir
         video_files = list(self._completed_names)
 
         if self._result_viewer is None or not self._result_viewer.isVisible():

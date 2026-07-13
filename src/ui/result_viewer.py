@@ -98,6 +98,7 @@ class ResultViewerWindow(QMainWindow):
         self._load_bookmarks()
 
         self.tabs.currentChanged.connect(self._on_tab_changed)
+        self.tabs.setCurrentIndex(1)
 
     # ─── UI 初始化 ─────────────────────────────────────────────
 

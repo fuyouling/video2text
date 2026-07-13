@@ -59,9 +59,6 @@ a = Analysis(
     datas=[
         ('config.ini', '.'),
         ('src/ui/styles/voice_to_text.qss', 'src/ui/styles'),
-        ('ffmpeg/bin/ffmpeg.exe', 'ffmpeg/bin'),
-        ('ffmpeg/bin/ffprobe.exe', 'ffmpeg/bin'),
-        ('ffmpeg/presets', 'ffmpeg/presets'),
     ] + pyside6_data + faster_whisper_data + ctranslate2_data + tokenizers_data + huggingface_hub_data,
     hiddenimports=[
         'typing_extensions',
