@@ -1434,7 +1434,7 @@ class MainWindow(QMainWindow):
         video_files = list(self._completed_names)
 
         if self._result_viewer is None or not self._result_viewer.isVisible():
-            self._result_viewer = ResultViewerWindow(self)
+            self._result_viewer = ResultViewerWindow()
 
         self._result_viewer.load_files(
             video_files, output_dir, folder_mode=self._mirror_subdirs

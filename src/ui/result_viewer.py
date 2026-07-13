@@ -1,6 +1,7 @@
 """独立结果查看窗口 —— 支持全屏、Markdown、多标签、搜索、书签、主题切换"""
 
 import logging
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
@@ -16,6 +17,7 @@ from PySide6.QtGui import (
     QAction,
     QColor,
     QFont,
+    QIcon,
     QKeyEvent,
     QKeySequence,
     QTextCursor,
@@ -72,8 +74,22 @@ class ResultViewerWindow(QMainWindow):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.Window)
         self.setWindowTitle("结果查看 - Video2Text")
         self.resize(1400, 900)
+
+        icon_path = (
+            Path(__file__).resolve().parent.parent.parent
+            / "assets"
+            / "video2text_logo.ico"
+        )
+        if not icon_path.exists():
+            if getattr(sys, "frozen", False):
+                icon_path = (
+                    Path(sys.executable).parent / "assets" / "video2text_logo.ico"
+                )
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
 
         self._theme_manager = ThemeManager()
         self._output_dir = ""
@@ -155,12 +171,20 @@ class ResultViewerWindow(QMainWindow):
         self.transcript_view = QTextEdit()
         self.transcript_view.setFont(QFont("Consolas", 14))
         self.transcript_view.setPlaceholderText("转写文本将显示在此处")
+        self.transcript_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.transcript_view.customContextMenuRequested.connect(
+            self._show_content_context_menu
+        )
         self.tabs.addTab(self.transcript_view, "转写文本")
 
         # 摘要标签页（支持Markdown）
         self.summary_view = QTextBrowser()
         self.summary_view.setOpenExternalLinks(True)
         self.summary_view.setPlaceholderText("摘要将显示在此处")
+        self.summary_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.summary_view.customContextMenuRequested.connect(
+            self._show_content_context_menu
+        )
         self.tabs.addTab(self.summary_view, "摘要")
 
         right_layout.addWidget(self.tabs)
@@ -251,6 +275,15 @@ class ResultViewerWindow(QMainWindow):
         self._folder_mode_action.setChecked(False)
         self._folder_mode_action.triggered.connect(self._toggle_folder_mode)
         toolbar.addAction(self._folder_mode_action)
+
+        toolbar.addSeparator()
+
+        # 重新加载按钮
+        reload_action = QAction("重新加载", self)
+        reload_action.setShortcut(QKeySequence("Ctrl+R"))
+        reload_action.setToolTip("重新加载当前文件内容 (Ctrl+R)")
+        reload_action.triggered.connect(self._reload_content)
+        toolbar.addAction(reload_action)
 
         toolbar.addSeparator()
 
@@ -399,7 +432,7 @@ class ResultViewerWindow(QMainWindow):
             )
             if summary_path:
                 try:
-                    summary_text = summary_path.read_text(encoding="utf-8")
+                    summary_text = summary_path.read_text(encoding="utf-8-sig")
                     self._display_markdown(summary_text)
                 except Exception:
                     logger.warning(
@@ -716,7 +749,7 @@ class ResultViewerWindow(QMainWindow):
         summary_path = _find_summary_path(output_dir, video_name)
         if summary_path:
             try:
-                summary_text = summary_path.read_text(encoding="utf-8")
+                summary_text = summary_path.read_text(encoding="utf-8-sig")
                 self._display_markdown(summary_text)
             except Exception as exc:
                 self.summary_view.setPlainText(f"读取失败: {exc}")
@@ -735,6 +768,24 @@ class ResultViewerWindow(QMainWindow):
         if video_name == self._current_video_name:
             return
         self.load_content(video_name, self._output_dir)
+
+    def _reload_content(self) -> None:
+        """重新加载当前文件内容"""
+        if not self._current_video_name:
+            QMessageBox.information(self, "提示", "请先选择一个文件")
+            return
+        self.load_content(self._current_video_name, self._output_dir)
+        self.status_bar.showMessage("已重新加载文件内容")
+
+    # ─── 内容区右键菜单 ──────────────────────────────────────────
+
+    def _show_content_context_menu(self, pos) -> None:
+        """内容查看区右键菜单"""
+        menu = QMenu(self)
+        reload_action = menu.addAction("刷新")
+        reload_action.setShortcut(QKeySequence("Ctrl+R"))
+        reload_action.triggered.connect(self._reload_content)
+        menu.exec(self.sender().mapToGlobal(pos))
 
     # ─── Markdown 渲染 ─────────────────────────────────────────
 
@@ -781,7 +832,7 @@ class ResultViewerWindow(QMainWindow):
             )
             if summary_path:
                 try:
-                    summary_text = summary_path.read_text(encoding="utf-8")
+                    summary_text = summary_path.read_text(encoding="utf-8-sig")
                     self._display_markdown(summary_text)
                 except Exception:
                     logger.warning("重新渲染摘要失败: %s", summary_path.name)

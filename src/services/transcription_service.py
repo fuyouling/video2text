@@ -504,8 +504,8 @@ class TranscriptionService:
         except OSError:
             pass
 
-        logger.info("  ├─ ⚠ 切片时长估算失败，使用默认值 %.0fs", self.max_chunk_duration)
-        return float(self.max_chunk_duration)
+        logger.info("  ├─ ⚠ 切片时长估算失败，回退为 0s（不偏移后续时间戳）")
+        return 0.0
 
 
     @staticmethod
