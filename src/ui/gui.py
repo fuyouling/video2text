@@ -207,10 +207,6 @@ class MainWindow(QMainWindow):
         self.input_combo.activated.connect(self._on_input_combo_activated)
         input_row.addWidget(self.input_combo, 1)
 
-        self.input_file_btn = QPushButton("选择文件")
-        self.input_file_btn.setMinimumWidth(_BTN_MIN_WIDTH)
-        self.input_file_btn.clicked.connect(self._select_input_files)
-        input_row.addWidget(self.input_file_btn)
         self.input_folder_btn = QPushButton("选择文件夹")
         self.input_folder_btn.setMinimumWidth(_BTN_MIN_WIDTH)
         self.input_folder_btn.clicked.connect(self._select_input_folder)
@@ -221,6 +217,12 @@ class MainWindow(QMainWindow):
         self.pause_btn.setEnabled(False)
         self.pause_btn.clicked.connect(self._on_pause_resume)
         input_row.addWidget(self.pause_btn)
+        self.stop_btn = QPushButton("停止")
+        self.stop_btn.setMinimumWidth(_BTN_MIN_WIDTH)
+        self.stop_btn.setToolTip("立即停止当前的转写或总结任务")
+        self.stop_btn.setEnabled(False)
+        self.stop_btn.clicked.connect(self._on_stop)
+        input_row.addWidget(self.stop_btn)
         return input_row
 
     def _create_output_row(self) -> QHBoxLayout:
@@ -231,7 +233,7 @@ class MainWindow(QMainWindow):
         self.output_combo.setCurrentText(self._default_output_dir)
         self.output_combo.setMinimumWidth(300)
         output_row.addWidget(self.output_combo, 1)
-        self.output_btn = QPushButton("浏览")
+        self.output_btn = QPushButton("选择文件夹")
         self.output_btn.setMinimumWidth(_BTN_MIN_WIDTH)
         self.output_btn.clicked.connect(self._select_output_dir)
         output_row.addWidget(self.output_btn)
@@ -641,26 +643,6 @@ class MainWindow(QMainWindow):
             + ");;所有文件 (*.*)"
         )
 
-    def _select_input_files(self) -> None:
-        paths, _ = QFileDialog.getOpenFileNames(
-            self,
-            "选择音视频文件",
-            "",
-            self._get_input_filter_str(),
-        )
-        if paths:
-            self._input_folder = None
-            self._mirror_subdirs = False
-            self._mirror_depth = 1
-            self._name_to_output_dir = {}
-            if len(paths) == 1:
-                self.input_combo.setCurrentText(paths[0])
-            else:
-                self.input_combo.setCurrentText(f"已选择 {len(paths)} 个文件")
-            self._video_files = list(paths)
-            last_dir = Path(paths[0]).parent.name
-            self.output_combo.setCurrentText(str(Path(self._default_output_dir) / last_dir))
-
     def _select_input_folder(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, "选择音视频文件夹")
         if folder:
@@ -964,10 +946,10 @@ class MainWindow(QMainWindow):
         self.transcribe_btn.setEnabled(not busy)
         self.summarize_btn.setEnabled(not busy)
         self.combine_btn.setEnabled(not busy)
-        self.input_file_btn.setEnabled(not busy)
         self.input_folder_btn.setEnabled(not busy)
         self.output_btn.setEnabled(not busy)
         self.load_history_btn.setEnabled(not busy)
+        self.stop_btn.setEnabled(busy)
         self._update_pause_button(busy)
         if not busy:
             self.pause_btn.setText("暂停")
@@ -1073,6 +1055,21 @@ class MainWindow(QMainWindow):
             self._worker.pause()
             self.pause_btn.setText("继续")
             self.status_bar.showMessage("正在等待当前音频/切片转写完成后暂停…")
+
+    def _on_stop(self) -> None:
+        """立即停止当前的转写或总结任务：请求取消并退出工作线程。"""
+        if self._worker is None or self._worker_thread is None:
+            return
+        get_logger("video2text").info("  ├─ ⏹ 停止请求已接收，等待当前任务完成…")
+        self.status_bar.showMessage("正在停止任务…")
+        if hasattr(self._worker, "cancel"):
+            self._worker.cancel()
+        if hasattr(self._worker, "unpause"):
+            self._worker.unpause()
+        if self._worker_thread.isRunning():
+            self._worker_thread.quit()
+        self.stop_btn.setEnabled(False)
+        self.pause_btn.setEnabled(False)
 
     # ── 仅转写 ──
 

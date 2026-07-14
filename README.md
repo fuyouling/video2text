@@ -18,7 +18,7 @@
 > **Windows 用户**：如果希望免去源码安装步骤，可以直接下载打包好的 exe 绿色版程序，解压即用。详细安装教程请参阅 [Windows 安装教程（Wiki）](https://github.com/fuyouling/video2text/wiki)。
 
 ### 1. 安装依赖
-
+安装依赖之前,请安装pytorch,步骤查看[官网](https://pytorch.org/),cuda版本需要和nvidia的驱动版本对应,版本可使用`nvidia-smi`查看
 ```bash
 pip install -r requirements.txt
 ```

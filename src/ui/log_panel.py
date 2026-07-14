@@ -14,7 +14,7 @@ _RE_TAG = re.compile(r"^(\[[\u4e00-\u9fa5\d/]+\])(.*)$")
 _RE_TAG_STEP = re.compile(r"^(\[\d+/\d+\])(.*?)( ✓| ✗)(.*)$")
 _RE_STEP = re.compile(r"^(  [├└]─ )(.+?)( ✓| ✗)(.*)$")
 _RE_PROG = re.compile(r"^(  [├└]─ )(.+?)( …)(.*)$")
-_RE_STATE = re.compile(r"^(  [├└]─ )(⏸|▶)(.*)$")
+_RE_STATE = re.compile(r"^(  [├└]─ )(⏸|▶|⏹)(.*)$")
 _RE_TREE = re.compile(r"^(  [├└]─ )(.*)$")
 
 _LOG_COLOR_RULES = [
@@ -135,12 +135,14 @@ class LogPanel(QWidget):
             self._insert_colored(cursor, m_step.group(4), QColor("#757575"))
         elif m_state:
             self._insert_colored(cursor, m_state.group(1), QColor("#9E9E9E"))
-            is_resume = "▶" in m_state.group(2)
-            self._insert_colored(
-                cursor,
-                m_state.group(2),
-                QColor("#2196F3") if is_resume else QColor("#FF9800"),
-            )
+            icon = m_state.group(2)
+            if icon == "▶":
+                icon_color = QColor("#2196F3")
+            elif icon == "⏹":
+                icon_color = QColor("#F44336")
+            else:
+                icon_color = QColor("#FF9800")
+            self._insert_colored(cursor, icon, icon_color)
             self._insert_colored(cursor, m_state.group(3))
         elif m_prog:
             self._insert_colored(cursor, m_prog.group(1), QColor("#9E9E9E"))

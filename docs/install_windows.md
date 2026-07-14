@@ -1,9 +1,9 @@
 # video2text Windows 安装部署教程
 
-> 找了下本地视频转文字的工具，都是各种限制，于是自己写了个自用的工具。如果你觉得有用，欢迎在 GitHub 上给个 Star！
+> 如果你觉得有用，欢迎在 GitHub 上给个 Star！
 
 - 完全免费，无时长限制，可批量转写视频和音频
-- 基于 faster-whisper large-v3，高准确率
+- 基于 faster-whisper，高准确率
 - 集成 Ollama / NVIDIA 大模型，自动生成摘要
 - 图形界面 + 命令行，Windows 绿色版已打包
 - 批量转写 + 总结，输出 TXT/SRT/VTT/JSON
@@ -11,15 +11,15 @@
 
 ## 一、界面
 ### 主界面GUI
-- **仅转写**：Whisper提取语音，输出原文、字幕，不生成AI总结
-- **仅总结**：读取已有文稿，本地大模型生成摘要
-- **转写总结**：一键执行语音转写+AI摘要整套流程
-- **左侧日志区**：实时打印加载、报错、显存、任务耗时等运行日志
+- **仅转写**：提取语音，可输出文字,可保存成多种格式文件
+- **仅总结**：读取转写后的文本，使用本地或者在线大模型生成摘要
+- **转写总结**：一键执行语音转写和总结整套流程
+- **左侧日志区**：实时打印加载、报错、任务耗时等运行日志
 - **右上结果区**
   - 文本内容：原文编辑，`Ctrl+S`保存、`Ctrl+F`查找，右键重转文件
-  - 摘要页：AI产出文案，支持手动修改
+  - 摘要页：大模型总结，支持手动修改
 - **右下提示词区**
-  - 自定义摘要提示词，可保存/删除模板；勾选Markdown自动格式化导出
+  - 大模型总结自定义提示词，可保存/删除模板；勾选Markdown自动格式化导出
 
 ![](https://github.com/user-attachments/assets/754586d1-352c-45f2-8054-8cb8b62e8133)
 
@@ -27,7 +27,7 @@
 
 video2text 的处理流程分为两个阶段：
 
-1. **语音转写**：输入视频/音频 → Whisper large-v3 模型 → 输出 TXT/SRT/VTT/JSON 文本
+1. **语音转写**：输入视频/音频 → 语音转写模型 → 输出 TXT/SRT/VTT/JSON 文本
 2. **智能总结**：转写文本 → Ollama 本地模型 / NVIDIA 在线模型 → 输出 Markdown 格式摘要
 
 两个阶段可独立运行，也可以一键完成。
@@ -43,9 +43,9 @@ video2text 的处理流程分为两个阶段：
 | **操作系统** | Windows 10 64位 | Windows 11 64位 |
 | **磁盘空间** | 20 GB 可用空间 | 30 GB 以上（含模型文件） |
 | **内存（RAM）** | 8 GB | 16 GB 及以上 |
-| **显卡** | 无（CPU模式可用但很慢） | NVIDIA 显卡（6GB显存以上） + CUDA |
+| **显卡** | 无（CPU模式可用但比较慢） | NVIDIA 显卡（6GB显存以上） + CUDA |
 
-> **注意**：AMD 显卡暂不支持 GPU 加速。CPU 模式可以运行会比较慢。
+> **注意**：AMD 显卡暂不支持 GPU 加速。
 
 **显卡信息参考（nvidia-smi 输出示例）：**
 
@@ -53,15 +53,13 @@ video2text 的处理流程分为两个阶段：
 > - **Driver Version: 572.83**：NVIDIA 显卡驱动版本，video2text 依赖驱动提供的 CUDA 运行时。驱动版本过低可能导致 GPU 无法被识别。
 > - **CUDA Version: 12.8**：此驱动支持的最高 CUDA 版本。Whisper 和各类深度学习模型在 CUDA 12.x 下均可正常工作。
 
-| NVIDIA-SMI 572.83                 | Driver Version: 572.83         | CUDA Version: 12.8     |
-|-----------------------------------|--------------------------------|------------------------|
-| GPU  Name          Driver-Model   | Bus-Id                Disp.A | Volatile Uncorr. ECC |
-| Fan  Temp  Perf  Pwr:Usage/Cap    | Memory-Usage                 | GPU-Util  Compute M. |
-|                                   |                                | MIG M. |
-|===================================|================================|========================|
-| 0  NVIDIA GeForce RTX 4060  WDDM  | 00000000:01:00.0 Off          | N/A |
-| N/A   41C    P5     5W / 140W     | 365MiB / 8188MiB              | 0%      Default |
-|                                   |                                | N/A |
+| NVIDIA-SMI 572.83 | Driver Version: 572.83 | CUDA Version: 12.8 |
+|-------------------|------------------------|-------------------|
+| GPU  Name              | Bus-Id          | Disp.A |
+| Fan  Temp  Perf  Pwr  | Memory-Usage   | GPU-Util |
+|=======================|================|=========|
+| 0  NVIDIA RTX 4060    | 0000:01:00.0   | Off     |
+| N/A 41C P5  5W / 140W | 365/8188 MiB   | 0%      |
 
 > 如果驱动版本和 CUDA 版本太低也可能无法使用 GPU 加速。建议先在命令行执行 `nvidia-smi` 确认显卡状态。
 
@@ -100,7 +98,23 @@ tips:
 [ollama] 安装包和本地模型
 链接：https://1840674647.share.123pan.cn/123pan/7CfNTd-DR8dh?pwd=1234#
 提取码：1234
+
+[faster-whisper-large-v3-turbo-ct2.zip] 语音转文字模型
+链接：https://1840674647.share.123pan.cn/123pan/7CfNTd-TD8dh?pwd=1234#
+提取码：1234
+
 ```
+
+### 2.3 转写模型选择
+
+下表为同一批视频在 NVIDIA GeForce RTX 4060 Laptop GPU 上的实测平均转写时间（按每分钟音频折算）：
+
+| 模型 | 平均转写时间 | 模型体积 |
+|------|------------|---------|
+| `large-v3` | 约 19 秒/分钟音频 | ~3 GB |
+| `faster-whisper-large-v3-turbo-ct2` | 约 5 秒/分钟音频 | ~1.5 GB |
+
+turbo 模型速度约为 large-v3 的 4倍，准确率接近比 large-v3 低一些，显存占用更低，适合大批量转写。
 
 ## 三、详细安装步骤
 
@@ -146,7 +160,7 @@ D:\video2text\models\
 
 ### 3.2 总结模型安装
 
-video2text 支持两种总结服务：NVIDIA 在线模型和本地 Ollama 模型，按需选择其一即可。选择可以到软件`设置>编辑配置>总结>单选框选择`
+video2text 支持两种总结服务：NVIDIA 在线模型和本地 Ollama 模型，按需选择其一即可。配置步骤`设置>编辑配置>总结>单选框选择`
 
 #### 3.2.1 NVIDIA 在线（使用在线 NVIDIA 模型总结）
 
