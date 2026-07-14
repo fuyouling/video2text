@@ -55,10 +55,18 @@ class TranscriptionService:
         language: str = "auto",
         beam_size: int = 5,
         best_of: int = 5,
-        temperature: float = 0.0,
-        condition_on_previous_text: bool = True,
+        temperature: list[float] = 0.0,
+        condition_on_previous_text: bool = False,
         word_timestamps: bool = False,
         vad_filter: bool = True,
+        vad_parameters: Optional[dict] = None,
+        initial_prompt: str = "",
+        hotwords: str = "",
+        compression_ratio_threshold: float = 2.4,
+        log_prob_threshold: float = -1.0,
+        no_speech_threshold: float = 0.6,
+        repetition_penalty: float = 1.0,
+        no_repeat_ngram_size: int = 0,
         max_chunk_duration: int = 300,
         output_formats: Optional[List[str]] = None,
         input_folder: Optional[str] = None,
@@ -79,6 +87,14 @@ class TranscriptionService:
         self.condition_on_previous_text = condition_on_previous_text
         self.word_timestamps = word_timestamps
         self.vad_filter = vad_filter
+        self.vad_parameters = vad_parameters
+        self.initial_prompt = initial_prompt
+        self.hotwords = hotwords
+        self.compression_ratio_threshold = compression_ratio_threshold
+        self.log_prob_threshold = log_prob_threshold
+        self.no_speech_threshold = no_speech_threshold
+        self.repetition_penalty = repetition_penalty
+        self.no_repeat_ngram_size = no_repeat_ngram_size
         self.max_chunk_duration = max_chunk_duration
         self.output_formats = output_formats or ["txt"]
         self.input_folder = input_folder
@@ -230,8 +246,16 @@ class TranscriptionService:
                     best_of=self.best_of,
                     temperature=self.temperature,
                     vad_filter=self.vad_filter,
+                    vad_parameters=self.vad_parameters,
                     word_timestamps=self.word_timestamps,
                     condition_on_previous_text=self.condition_on_previous_text,
+                    initial_prompt=self.initial_prompt,
+                    hotwords=self.hotwords,
+                    compression_ratio_threshold=self.compression_ratio_threshold,
+                    log_prob_threshold=self.log_prob_threshold,
+                    no_speech_threshold=self.no_speech_threshold,
+                    repetition_penalty=self.repetition_penalty,
+                    no_repeat_ngram_size=self.no_repeat_ngram_size,
                     progress_callback=_on_progress,
                 )
             elapsed = time.monotonic() - t0
@@ -387,8 +411,16 @@ class TranscriptionService:
                         best_of=self.best_of,
                         temperature=self.temperature,
                         vad_filter=self.vad_filter,
+                        vad_parameters=self.vad_parameters,
                         word_timestamps=self.word_timestamps,
                         condition_on_previous_text=self.condition_on_previous_text,
+                        initial_prompt=self.initial_prompt,
+                        hotwords=self.hotwords,
+                        compression_ratio_threshold=self.compression_ratio_threshold,
+                        log_prob_threshold=self.log_prob_threshold,
+                        no_speech_threshold=self.no_speech_threshold,
+                        repetition_penalty=self.repetition_penalty,
+                        no_repeat_ngram_size=self.no_repeat_ngram_size,
                     )
                 except Exception as chunk_err:
                     logger.warning(

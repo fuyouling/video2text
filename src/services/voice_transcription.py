@@ -7,6 +7,7 @@ from typing import Optional
 from PySide6.QtCore import QObject, Signal
 
 from src.config.settings import Settings
+from src.config.transcription_config import _parse_temperature, _build_vad_parameters
 from src.transcription.transcriber import get_cached_transcriber
 from src.utils.exceptions import TranscriptionError, Video2TextError
 from src.utils.logger import get_logger
@@ -93,32 +94,24 @@ class VoiceTranscriptionService(QObject):
             vad_filter = self._settings.get_bool(
                 "transcription.vad_filter", True,
             )
+            vad_params = _build_vad_parameters(self._settings) if vad_filter else None
+            if vad_params is not None and noise_suppression:
+                # 噪声抑制场景用更严格的阈值（独立键，勿与 transcription.vad_threshold 混淆）
+                vad_params["threshold"] = self._settings.get_float(
+                    "voice_to_text.vad_onset_enhanced", 0.300,
+                )
 
-            vad_params = {}
-            if vad_filter:
-                vad_params = {
-                    "threshold": self._settings.get_float(
-                        "transcription.vad_onset", 0.500,
-                    ),
-                }
-                if noise_suppression:
-                    vad_params["threshold"] = self._settings.get_float(
-                        "voice_to_text.vad_onset_enhanced", 0.300,
-                    )
-
-            temperature = self._settings.get_float(
-                "transcription.temperature", 0.0,
-            )
+            configured_temps = _parse_temperature(self._settings)
             if noise_suppression:
                 temperatures = [0.0, 0.2, 0.4]
             else:
-                temperatures = [temperature] if temperature > 0 else [0.0]
+                temperatures = configured_temps
 
             segments = transcriber.transcribe(
                 str(path),
                 language=language if language != "auto" else None,
                 vad_filter=vad_filter,
-                vad_parameters=vad_params if vad_params else None,
+                vad_parameters=vad_params,
                 temperature=temperatures,
             )
 

@@ -354,11 +354,19 @@ class Transcriber:
         language: str = "auto",
         beam_size: int = 5,
         best_of: int = 5,
-        temperature: float = 0.0,
+        temperature=0.0,                       # 支持 float 或 list/tuple
         vad_filter: bool = True,
         vad_parameters: Optional[Dict[str, Any]] = None,
         word_timestamps: bool = False,
-        condition_on_previous_text: bool = True,
+        condition_on_previous_text: bool = False,
+        # ↓ 新增参数
+        initial_prompt: Optional[str] = None,
+        hotwords: Optional[str] = None,
+        compression_ratio_threshold: float = 2.4,
+        log_prob_threshold: float = -1.0,
+        no_speech_threshold: float = 0.6,
+        repetition_penalty: float = 1.0,
+        no_repeat_ngram_size: int = 0,
         progress_callback: Optional[Callable] = None,
     ) -> List[TranscriptSegment]:
         """转写音频
@@ -367,12 +375,19 @@ class Transcriber:
             audio_path: 音频文件路径
             language: 语言代码 (auto表示自动检测)
             beam_size: beam search大小
-            best_of: 采样数量
-            temperature: 温度参数
+            best_of: 采样数量（仅当 temperature 含 >0 值时生效）
+            temperature: 温度参数，支持 float 或 list/tuple，传入列表时在失败时逐级升温重采样
             vad_filter: 是否使用VAD过滤
-            vad_parameters: VAD参数（vad_onset, vad_offset等）
+            vad_parameters: VAD参数字典（threshold, min_silence_duration_ms 等）
             word_timestamps: 是否生成词级时间戳
             condition_on_previous_text: 是否基于前文条件
+            initial_prompt: 领域提示词，留空不启用
+            hotwords: 热词偏置，多个词空格分隔，留空不启用
+            compression_ratio_threshold: 压缩比超阈值判重复并重采样
+            log_prob_threshold: 平均对数概率低阈值判低置信并重采样
+            no_speech_threshold: 无语音概率阈值
+            repetition_penalty: 重复惩罚系数
+            no_repeat_ngram_size: 禁止重复的 N-gram 大小
             progress_callback: 进度回调函数，接收 (start, end, segment_count)
 
         Returns:
@@ -380,6 +395,11 @@ class Transcriber:
 
         Raises:
             TranscriptionError: 转写失败
+
+        注意：本项目使用 WhisperModel.transcribe()（非 batched）。若改用
+        BatchedInferencePipeline，以下参数将失效：compression_ratio_threshold、
+        log_prob_threshold、no_speech_threshold、condition_on_previous_text、
+        temperature 列表回退。
         """
         if not self._loaded:
             self.load_model()
@@ -411,6 +431,13 @@ class Transcriber:
                 vad_parameters=vad_parameters,
                 word_timestamps=word_timestamps,
                 condition_on_previous_text=condition_on_previous_text,
+                initial_prompt=initial_prompt or None,
+                hotwords=hotwords or None,
+                compression_ratio_threshold=compression_ratio_threshold,
+                log_prob_threshold=log_prob_threshold,
+                no_speech_threshold=no_speech_threshold,
+                repetition_penalty=repetition_penalty,
+                no_repeat_ngram_size=no_repeat_ngram_size,
             )
 
             detected_language = info.language

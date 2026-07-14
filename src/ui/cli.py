@@ -70,7 +70,6 @@ def transcribe(
 
         cfg = _load_tx_config(settings)
         num_workers = settings.get_int("transcription.num_workers", 1)
-        vad_filter = settings.get_bool("transcription.vad_filter", True)
 
         console.print(Panel.fit("[bold blue]Video2Text 转写模式[/bold blue]"))
         console.print(f"输入文件: {input_path}")
@@ -95,7 +94,15 @@ def transcribe(
             temperature=cfg.temperature,
             condition_on_previous_text=cfg.condition_on_previous_text,
             word_timestamps=cfg.word_timestamps,
-            vad_filter=vad_filter,
+            vad_filter=cfg.vad_filter,
+            vad_parameters=cfg.vad_parameters,
+            initial_prompt=cfg.initial_prompt,
+            hotwords=cfg.hotwords,
+            compression_ratio_threshold=cfg.compression_ratio_threshold,
+            log_prob_threshold=cfg.log_prob_threshold,
+            no_speech_threshold=cfg.no_speech_threshold,
+            repetition_penalty=cfg.repetition_penalty,
+            no_repeat_ngram_size=cfg.no_repeat_ngram_size,
             max_chunk_duration=cfg.max_chunk_duration,
             output_formats=cfg.output_formats,
         )
@@ -212,7 +219,6 @@ def run_pipeline(
 
         cfg = _load_tx_config(settings)
         num_workers = settings.get_int("transcription.num_workers", 1)
-        vad_filter = settings.get_bool("transcription.vad_filter", True)
 
         console.print(Panel.fit("[bold blue]Video2Text 完整管道模式[/bold blue]"))
         console.print(f"输入文件: {input_path}")
@@ -237,7 +243,15 @@ def run_pipeline(
             temperature=cfg.temperature,
             condition_on_previous_text=cfg.condition_on_previous_text,
             word_timestamps=cfg.word_timestamps,
-            vad_filter=vad_filter,
+            vad_filter=cfg.vad_filter,
+            vad_parameters=cfg.vad_parameters,
+            initial_prompt=cfg.initial_prompt,
+            hotwords=cfg.hotwords,
+            compression_ratio_threshold=cfg.compression_ratio_threshold,
+            log_prob_threshold=cfg.log_prob_threshold,
+            no_speech_threshold=cfg.no_speech_threshold,
+            repetition_penalty=cfg.repetition_penalty,
+            no_repeat_ngram_size=cfg.no_repeat_ngram_size,
             max_chunk_duration=cfg.max_chunk_duration,
             output_formats=cfg.output_formats,
         )
