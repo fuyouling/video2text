@@ -135,10 +135,16 @@ def _build_transcription_service(
     on_video_error: Callable[[str, str], None],
     cancel_check: Callable[[], bool],
     confirm_download_callback: Callable[[], bool],
+    initial_prompt: Optional[str] = None,
+    hotwords: Optional[str] = None,
 ) -> TranscriptionService:
     """创建配置完整的 TranscriptionService 并加载模型。"""
     logger = get_logger("video2text")
     cfg = _load_tx_config(settings)
+
+    # GUI 直接传入的 initial_prompt / hotwords 优先于 config.ini
+    initial_prompt = cfg.initial_prompt if initial_prompt is None else initial_prompt
+    hotwords = cfg.hotwords if hotwords is None else hotwords
 
     logger.info("正在加载转写模型...")
     transcriber = get_cached_transcriber(
@@ -171,8 +177,8 @@ def _build_transcription_service(
         word_timestamps=cfg.word_timestamps,
         vad_filter=cfg.vad_filter,
         vad_parameters=cfg.vad_parameters,
-        initial_prompt=cfg.initial_prompt,
-        hotwords=cfg.hotwords,
+        initial_prompt=initial_prompt,
+        hotwords=hotwords,
         compression_ratio_threshold=cfg.compression_ratio_threshold,
         log_prob_threshold=cfg.log_prob_threshold,
         no_speech_threshold=cfg.no_speech_threshold,
@@ -226,15 +232,23 @@ class TranscribeWorker(QObject):
         video_files: list[str],
         output_dir: str,
         settings: Settings,
+        custom_prompt: str = "",
+        stream: bool = True,
         input_folder: Optional[str] = None,
         mirror_depth: int = 1,
+        initial_prompt: Optional[str] = None,
+        hotwords: Optional[str] = None,
     ) -> None:
         super().__init__()
         self.video_files = video_files
         self.output_dir = output_dir
         self.settings = settings
+        self.custom_prompt = custom_prompt
+        self.stream = stream
         self.input_folder = input_folder
         self.mirror_depth = mirror_depth
+        self.initial_prompt = initial_prompt
+        self.hotwords = hotwords
         self._cancelled = False
         self._service: Optional[TranscriptionService] = None
         self._service_lock = threading.Lock()
@@ -307,6 +321,8 @@ class TranscribeWorker(QObject):
                 on_video_error=on_error,
                 cancel_check=lambda: self._cancelled,
                 confirm_download_callback=self._confirm_download_callback,
+                initial_prompt=self.initial_prompt,
+                hotwords=self.hotwords,
             )
             with self._service_lock:
                 self._service = service
@@ -645,6 +661,8 @@ class PipelineWorker(QObject):
                 on_video_error=on_tx_error,
                 cancel_check=lambda: self._cancelled,
                 confirm_download_callback=self._confirm_download_callback,
+                initial_prompt=self.initial_prompt,
+                hotwords=self.hotwords,
             )
             with self._tx_service_lock:
                 self._tx_service = service

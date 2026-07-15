@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -57,6 +58,7 @@ from src.ui.log_panel import LogPanel
 from src.ui.result_viewer import ResultViewerWindow, _find_summary_path
 from src.ui.search_controller import SearchController
 from src.transcription.transcriber import _model_cache as _transcriber_cache
+from src.transcription.transcription_prompt_manager import TranscriptionPromptManager
 from src.utils.logger import get_logger, setup_logger
 
 logger = get_logger(__name__)
@@ -80,6 +82,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.settings = Settings()
         self.prompt_manager = PromptManager()
+        self._tx_prompt_manager = TranscriptionPromptManager()
         self._video_exts = set(
             ext.lower()
             for ext in self.settings.get_list("preprocessing.supported_video_formats")
@@ -135,6 +138,7 @@ class MainWindow(QMainWindow):
         """初始化主窗口 UI 布局：菜单栏、输入输出行、进度条、日志面板、结果面板。"""
         self.setWindowTitle("Video2Text - 音视频转文本工具")
         self.resize(1200, 800)
+        self.showMaximized()
 
         icon_path = (
             Path(__file__).resolve().parent.parent.parent
@@ -323,8 +327,49 @@ class MainWindow(QMainWindow):
         return results_group
 
     def _create_prompt_panel(self) -> QWidget:
-        prompt_group = QGroupBox("提示词配置")
-        prompt_layout = QVBoxLayout(prompt_group)
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+
+        tx_prompt_group = QGroupBox("转写提示词配置")
+        tx_prompt_layout = QVBoxLayout(tx_prompt_group)
+
+        self.tx_prompt_template_combo = QComboBox()
+        self.tx_prompt_template_combo.setMinimumWidth(150)
+        self.tx_prompt_template_combo.setPlaceholderText("选择已保存的提示词…")
+        self.tx_prompt_template_combo.currentTextChanged.connect(
+            self._on_tx_prompt_template_selected
+        )
+
+        self.initial_prompt_edit = QTextEdit()
+        self.initial_prompt_edit.setMaximumHeight(60)
+        self.initial_prompt_edit.setPlaceholderText(
+            "转写初始提示词（可选），可输入领域术语以提升识别准确率，留空不启用"
+        )
+        tx_prompt_layout.addWidget(self.initial_prompt_edit)
+
+        self.hotwords_edit = QTextEdit()
+        self.hotwords_edit.setMaximumHeight(40)
+        self.hotwords_edit.setPlaceholderText(
+            "热词，多个词用空格分隔，留空不启用"
+        )
+        tx_prompt_layout.addWidget(self.hotwords_edit)
+
+        tx_prompt_btn_row = QHBoxLayout()
+        tx_prompt_btn_row.addWidget(self.tx_prompt_template_combo, 1)
+        self.tx_prompt_save_btn = QPushButton("保存")
+        self.tx_prompt_save_btn.clicked.connect(self._save_tx_prompt_template)
+        tx_prompt_btn_row.addWidget(self.tx_prompt_save_btn)
+        self.tx_prompt_delete_btn = QPushButton("删除")
+        self.tx_prompt_delete_btn.clicked.connect(self._delete_tx_prompt_template)
+        tx_prompt_btn_row.addWidget(self.tx_prompt_delete_btn)
+        tx_prompt_layout.addLayout(tx_prompt_btn_row)
+
+        layout.addWidget(tx_prompt_group, 1)
+
+        summary_prompt_group = QGroupBox("总结提示词配置")
+        prompt_layout = QVBoxLayout(summary_prompt_group)
 
         self.ollama_prompt_edit = QTextEdit()
         self.ollama_prompt_edit.setMaximumHeight(100)
@@ -341,10 +386,10 @@ class MainWindow(QMainWindow):
             self._on_prompt_template_selected
         )
         prompt_btn_row.addWidget(self.prompt_template_combo, 1)
-        self.prompt_save_btn = QPushButton("保存提示词")
+        self.prompt_save_btn = QPushButton("保存")
         self.prompt_save_btn.clicked.connect(self._save_prompt_template)
         prompt_btn_row.addWidget(self.prompt_save_btn)
-        self.prompt_delete_btn = QPushButton("删除提示词")
+        self.prompt_delete_btn = QPushButton("删除")
         self.prompt_delete_btn.clicked.connect(self._delete_prompt_template)
         prompt_btn_row.addWidget(self.prompt_delete_btn)
         self.markdown_enabled_cb = QCheckBox("Markdown格式")
@@ -356,7 +401,9 @@ class MainWindow(QMainWindow):
         self.markdown_enabled_cb.toggled.connect(self._on_markdown_toggled)
         prompt_btn_row.addWidget(self.markdown_enabled_cb)
         prompt_layout.addLayout(prompt_btn_row)
-        return prompt_group
+
+        layout.addWidget(summary_prompt_group, 1)
+        return container
 
     def _create_menu_bar(self) -> None:
         menu_bar = self.menuBar()
@@ -446,6 +493,106 @@ class MainWindow(QMainWindow):
     def _load_prompt_config(self) -> None:
         prompt = self.settings.get("summarization.custom_prompt", "")
         self.ollama_prompt_edit.setPlainText(prompt)
+
+        self._load_tx_prompt_templates()
+
+    # ── 转写提示词模板管理 ──
+
+    _TX_PLACEHOLDER_PROMPT = "新建"
+
+    def _load_tx_prompt_templates(self) -> None:
+        self.tx_prompt_template_combo.blockSignals(True)
+        self.tx_prompt_template_combo.clear()
+        self.tx_prompt_template_combo.addItem(self._TX_PLACEHOLDER_PROMPT)
+        for name in self._tx_prompt_manager.get_names():
+            self.tx_prompt_template_combo.addItem(name)
+        last_used = self._tx_prompt_manager.get_last_used()
+        if last_used and last_used in self._tx_prompt_manager.get_names():
+            idx = self.tx_prompt_template_combo.findText(last_used)
+            if idx >= 0:
+                self.tx_prompt_template_combo.setCurrentIndex(idx)
+                tmpl = self._tx_prompt_manager.get_template(last_used)
+                self.initial_prompt_edit.setPlainText(
+                    tmpl.get("initial_prompt", "")
+                )
+                self.hotwords_edit.setPlainText(tmpl.get("hotwords", ""))
+        else:
+            self.initial_prompt_edit.clear()
+            self.hotwords_edit.clear()
+        self.tx_prompt_template_combo.blockSignals(False)
+
+    def _on_tx_prompt_template_selected(self, name: str) -> None:
+        if not name or name == self._TX_PLACEHOLDER_PROMPT:
+            self.initial_prompt_edit.clear()
+            self.hotwords_edit.clear()
+            return
+        tmpl = self._tx_prompt_manager.get_template(name)
+        if tmpl:
+            self.initial_prompt_edit.setPlainText(tmpl.get("initial_prompt", ""))
+            self.hotwords_edit.setPlainText(tmpl.get("hotwords", ""))
+            self._tx_prompt_manager.set_last_used(name)
+
+    def _save_tx_prompt_template(self) -> None:
+        initial_prompt = self.initial_prompt_edit.toPlainText().strip()
+        hotwords = self.hotwords_edit.toPlainText().strip()
+        if not initial_prompt and not hotwords:
+            QMessageBox.warning(self, "提示", "初始提示词和热词均为空，无法保存。")
+            return
+
+        current_name = self.tx_prompt_template_combo.currentText()
+        if current_name == self._TX_PLACEHOLDER_PROMPT:
+            current_name = ""
+        name, ok = QInputDialog.getText(
+            self, "保存转写提示词模板", "模板名称:", text=current_name
+        )
+        if not ok or not name.strip():
+            return
+
+        name = name.strip()
+        if name == self._TX_PLACEHOLDER_PROMPT:
+            QMessageBox.warning(
+                self,
+                "提示",
+                f"「{self._TX_PLACEHOLDER_PROMPT}」是保留名称，请使用其他名称。",
+            )
+            return
+        self._tx_prompt_manager.set_template(name, initial_prompt, hotwords)
+        self._tx_prompt_manager.set_last_used(name)
+
+        self.tx_prompt_template_combo.blockSignals(True)
+        if self.tx_prompt_template_combo.findText(name) < 0:
+            self.tx_prompt_template_combo.addItem(name)
+        self.tx_prompt_template_combo.setCurrentText(name)
+        self.tx_prompt_template_combo.blockSignals(False)
+
+        self.status_bar.showMessage(f"转写提示词「{name}」已保存", 5000)
+
+    def _delete_tx_prompt_template(self) -> None:
+        name = self.tx_prompt_template_combo.currentText()
+        if not name or name == self._TX_PLACEHOLDER_PROMPT:
+            QMessageBox.warning(self, "提示", "请先选择要删除的转写提示词模板。")
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "确认删除",
+            f"确定要删除转写提示词模板「{name}」吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        self._tx_prompt_manager.delete_template(name)
+
+        self.tx_prompt_template_combo.blockSignals(True)
+        idx = self.tx_prompt_template_combo.currentIndex()
+        self.tx_prompt_template_combo.removeItem(idx)
+        self.tx_prompt_template_combo.setCurrentIndex(0)
+        self.tx_prompt_template_combo.blockSignals(False)
+
+        self.initial_prompt_edit.clear()
+        self.hotwords_edit.clear()
+        self.status_bar.showMessage(f"转写提示词「{name}」已删除", 5000)
 
     # ── 提示词模板管理 ──
 
@@ -1090,6 +1237,9 @@ class MainWindow(QMainWindow):
         self._current_mode = "transcribe"
         self._reset_counters()
 
+        initial_prompt = self.initial_prompt_edit.toPlainText().strip()
+        hotwords = self.hotwords_edit.toPlainText().strip()
+
         video_files = self._apply_incremental_mode(self._video_files, output_dir)
         if not video_files:
             QMessageBox.information(
@@ -1111,6 +1261,8 @@ class MainWindow(QMainWindow):
             self.settings,
             input_folder=self._input_folder,
             mirror_depth=self._mirror_depth,
+            initial_prompt=initial_prompt,
+            hotwords=hotwords,
         )
 
         worker.video_done.connect(self._on_single_video_transcribed)
@@ -1278,6 +1430,9 @@ class MainWindow(QMainWindow):
         self._reset_counters()
         self._update_multi_thread_flag()
 
+        initial_prompt = self.initial_prompt_edit.toPlainText().strip()
+        hotwords = self.hotwords_edit.toPlainText().strip()
+
         video_files = self._apply_incremental_mode(self._video_files, output_dir)
         if not video_files:
             QMessageBox.information(
@@ -1303,6 +1458,8 @@ class MainWindow(QMainWindow):
             stream=self._get_stream_setting(),
             input_folder=self._input_folder,
             mirror_depth=self._mirror_depth,
+            initial_prompt=initial_prompt,
+            hotwords=hotwords,
         )
 
         worker.transcribe_done.connect(self._on_single_video_transcribed)
@@ -1489,6 +1646,8 @@ class MainWindow(QMainWindow):
             self.settings,
             input_folder=self._input_folder,
             mirror_depth=self._mirror_depth,
+            initial_prompt=self.initial_prompt_edit.toPlainText().strip(),
+            hotwords=self.hotwords_edit.toPlainText().strip(),
         )
         worker.video_done.connect(self._on_single_video_transcribed)
         worker.video_error.connect(self._on_transcribe_error)

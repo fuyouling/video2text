@@ -234,6 +234,8 @@ models/faster-whisper-large-v3-turbo-ct2
 
 # 用户提示词
 prompts.json
+# 转写提示词配置
+transcription_prompts.json
 
 # 结果查看器窗口布局
 result_viewer.ini
