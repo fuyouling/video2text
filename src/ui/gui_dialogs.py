@@ -613,12 +613,24 @@ _KEY_LABELS: dict[str, str] = {
     "voice_to_text.voice_dir": "语音存储目录",
     "voice_to_text.summary_dir": "摘要存储目录",
     "voice_to_text.realtime_auto_send_interval": "实时录入自动发送间隔",
-    "voice_to_text.noise_suppression": "噪声抑制",
-    "voice_to_text.noise_gate_threshold": "噪声门限阈值",
-    "voice_to_text.spectral_subtraction_factor": "谱减系数",
-    "voice_to_text.noise_profile_frames": "噪声采样帧数",
-    "voice_to_text.vad_onset_enhanced": "VAD 起始阈值",
-    "voice_to_text.vad_offset_enhanced": "VAD 结束阈值",
+    "voice_to_text.model_path": "转写模型路径",
+    "voice_to_text.device": "推理设备",
+    "voice_to_text.compute_type": "计算精度",
+    "voice_to_text.language": "转写语言",
+    "voice_to_text.num_workers": "推理线程数",
+    "voice_to_text.audio_sample_rate": "音频采样率",
+    "voice_to_text.audio_channels": "音频声道数",
+    "voice_to_text.vad_filter": "VAD 过滤",
+    "voice_to_text.vad_threshold": "VAD 阈值",
+    "voice_to_text.vad_min_silence_ms": "VAD 静音断句(毫秒)",
+    "voice_to_text.vad_speech_pad_ms": "VAD 首尾补静音(毫秒)",
+    "voice_to_text.initial_prompt": "初始提示词",
+    "voice_to_text.vad_endpoint_detection": "VAD 端点检测",
+    "voice_to_text.vad_energy_threshold": "VAD 能量阈值",
+    "voice_to_text.vad_silence_frames": "VAD 静音帧数",
+    "voice_to_text.vad_min_speech_frames": "VAD 最小语音帧数",
+    "voice_to_text.vad_calibration_frames": "VAD 校准帧数",
+    "voice_to_text.context_max_chars": "上下文最大字符数",
 }
 
 _KEY_TOOLTIPS: dict[str, str] = {
@@ -664,12 +676,24 @@ _KEY_TOOLTIPS: dict[str, str] = {
     "voice_to_text.voice_dir": "语音录入与对话记录存储目录，支持相对路径 (相对程序目录) 和绝对路径",
     "voice_to_text.summary_dir": "语音转写摘要的存储目录，支持相对路径和绝对路径",
     "voice_to_text.realtime_auto_send_interval": "实时录入模式下自动分段转写并发送的间隔 (秒)",
-    "voice_to_text.noise_suppression": "是否启用噪声抑制，改善非真人发声录音效果: True / False",
-    "voice_to_text.noise_gate_threshold": "噪声门限阈值 (0~1)，低于该音量视为静音不录制",
-    "voice_to_text.spectral_subtraction_factor": "谱减降噪系数 (0~N)，越大降噪越强但可能损伤语音",
-    "voice_to_text.noise_profile_frames": "用于估计噪声谱的静音帧数",
-    "voice_to_text.vad_onset_enhanced": "增强 VAD 语音起始灵敏度 (0~1)，越大越早判定为语音开始",
-    "voice_to_text.vad_offset_enhanced": "增强 VAD 语音结束灵敏度 (0~1)，越大越晚判定为语音结束",
+    "voice_to_text.model_path": "Whisper 模型目录名称或路径",
+    "voice_to_text.device": "推理设备: cuda (NVIDIA GPU), cpu, auto (自动选择)",
+    "voice_to_text.compute_type": "计算精度: float16, int8, float32",
+    "voice_to_text.language": "转写语言代码: zh (中文), en (英文), ja (日文) 等，留空或 auto 自动检测",
+    "voice_to_text.num_workers": "CTranslate2 推理引擎线程数 (1~CPU核心数)",
+    "voice_to_text.audio_sample_rate": "音频采样率 (Hz)，Whisper 推荐 16000",
+    "voice_to_text.audio_channels": "音频声道数: 1=单声道 (推荐), 2=立体声",
+    "voice_to_text.vad_filter": "是否启用 VAD 语音活动检测，过滤静音段可减少幻觉: True / False",
+    "voice_to_text.vad_threshold": "VAD 语音判定阈值(0~1)，嘈杂/有背景音乐时调高(0.6~0.7)，默认 0.5",
+    "voice_to_text.vad_min_silence_ms": "静音持续多久才断句(毫秒)，调小断句更细，默认 2000",
+    "voice_to_text.vad_speech_pad_ms": "每段语音首尾补静音(毫秒)，防止吞字，建议 300~500，默认 400",
+    "voice_to_text.initial_prompt": "转写初始提示词，可用于上下文增强",
+    "voice_to_text.vad_endpoint_detection": "是否启用实时 VAD 端点检测，语音结束后自动发送转写: True / False",
+    "voice_to_text.vad_energy_threshold": "手动指定 VAD 噪底能量阈值 (0~N)，设为 0 自动校准",
+    "voice_to_text.vad_silence_frames": "VAD 判定语音结束的连续静音帧数 (每帧约32ms)",
+    "voice_to_text.vad_min_speech_frames": "VAD 判定为有效语音的最小帧数 (每帧约32ms)",
+    "voice_to_text.vad_calibration_frames": "VAD 自动校准噪底时采集的静音帧数 (每帧约10ms)",
+    "voice_to_text.context_max_chars": "连续转写时保留的上文最大字符数",
 }
 
 _BOOL_COMBO_KEYS: set[str] = {
@@ -678,7 +702,8 @@ _BOOL_COMBO_KEYS: set[str] = {
     "transcription.condition_on_previous_text",
     "transcription.word_timestamps",
     "output.mirror_enabled",
-    "voice_to_text.noise_suppression",
+    "voice_to_text.vad_filter",
+    "voice_to_text.vad_endpoint_detection",
 }
 
 _COMBO_KEYS: set[str] = set(_BOOL_COMBO_KEYS) | {
@@ -689,6 +714,9 @@ _COMBO_KEYS: set[str] = set(_BOOL_COMBO_KEYS) | {
     "app.log_level",
     "transcription.device",
     "transcription.compute_type",
+    "voice_to_text.device",
+    "voice_to_text.compute_type",
+    "voice_to_text.language",
 }
 
 _COMBO_OPTIONS: dict[str, list[str]] = {
@@ -722,6 +750,9 @@ _COMBO_OPTIONS.update(
         "app.log_level": ["DEBUG", "INFO", "WARNING", "ERROR"],
         "transcription.device": ["cuda", "cpu", "auto"],
         "transcription.compute_type": ["float16", "int8", "float32"],
+        "voice_to_text.device": ["cuda", "cpu", "auto"],
+        "voice_to_text.compute_type": ["float16", "int8", "float32"],
+        "voice_to_text.language": ["zh", "en", "ja", "auto"],
     }
 )
 
@@ -742,6 +773,22 @@ _COMBO_VALUE_MAP.update(
             "float16": "float16",
             "int8": "int8",
             "float32": "float32",
+        },
+        "voice_to_text.device": {
+            "cuda": "cuda",
+            "cpu": "cpu",
+            "auto": "auto",
+        },
+        "voice_to_text.compute_type": {
+            "float16": "float16",
+            "int8": "int8",
+            "float32": "float32",
+        },
+        "voice_to_text.language": {
+            "zh": "zh",
+            "en": "en",
+            "ja": "ja",
+            "auto": "auto",
         },
     }
 )

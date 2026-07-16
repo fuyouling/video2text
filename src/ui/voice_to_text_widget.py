@@ -1,4 +1,4 @@
-"""VoiceToText 主界面 Widget —— 语音录入、实时转写、对话管理"""
+"""VoiceToText 主界面 Widget —— 语音录入、流式转写、对话管理"""
 
 import html
 import json
@@ -11,11 +11,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QTimer, QObject, Signal, Qt, QEvent
+from PySide6.QtCore import QTimer, QObject, Signal, Qt
 from PySide6.QtGui import QPainter, QColor, QBrush, QTextCursor, QTextBlockUserData
 from PySide6.QtWidgets import (
     QApplication,
-    QCheckBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -27,7 +26,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QMenu,
-    QComboBox,
 )
 
 from src.config.settings import Settings
@@ -49,37 +47,14 @@ logger = get_logger(__name__)
 _USER_PREFIX = "[用户] "
 _SUMMARY_PREFIX = "[归纳摘要] "
 
-_RECORD_STYLE_IDLE = """
-    #recordBtn {
-        background: #1976d2;
-        color: white;
-        border: none;
-        border-radius: 22px;
-        min-width: 140px;
-        min-height: 44px;
-        font-size: 15px;
-        font-weight: 600;
-        padding: 8px 24px;
-    }
-    #recordBtn:hover { background: #1565c0; }
-    #recordBtn:pressed { background: #0d47a1; }
-"""
-
-_RECORD_STYLE_ACTIVE = """
-    #recordBtn {
-        background: #f44336;
-        color: white;
-        border: none;
-        border-radius: 22px;
-        min-width: 140px;
-        min-height: 44px;
-        font-size: 15px;
-        font-weight: 600;
-        padding: 8px 24px;
-    }
-    #recordBtn:hover { background: #d32f2f; }
-    #recordBtn:pressed { background: #b71c1c; }
-"""
+# ── 状态颜色映射 ─────────────────────────────────────────────────
+_STATUS_COLORS = {
+    "ok": ("#388e3c", "#e8f5e9"),
+    "warn": ("#f57c00", "#fff3e0"),
+    "error": ("#d32f2f", "#ffebee"),
+    "busy": ("#1976d2", "#e3f2fd"),
+    "info": ("#616161", "#f5f5f5"),
+}
 
 
 class _SignalBridge(QObject):
@@ -88,19 +63,19 @@ class _SignalBridge(QObject):
 
 
 class _WaveformWidget(QWidget):
-    """音频录入动态波纹控件 —— 柱状高度随录音音量实时变化"""
+    """音频录入动态波纹控件 —— 柱状高度随录音音量实时变化（增强版）"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._active = False
-        self._bars = 16
+        self._bars = 20
         self._values = [0.0] * self._bars
         self._target_volume = 0.0
         self._level_volume = 0.0
         self._timer = QTimer(self)
-        self._timer.setInterval(60)
+        self._timer.setInterval(50)
         self._timer.timeout.connect(self._update_values)
-        self.setFixedHeight(52)
+        self.setFixedHeight(90)
 
     def start(self) -> None:
         self._active = True
@@ -117,8 +92,8 @@ class _WaveformWidget(QWidget):
         self.update()
 
     def update_volume(self, volume: float) -> None:
-        self._target_volume = volume * 4.0
-        self._level_volume = min(1.0, max(self._level_volume, self._target_volume * 0.6))
+        self._target_volume = volume * 7.0
+        self._level_volume = min(1.0, max(self._level_volume, self._target_volume * 0.7))
 
     def _update_values(self) -> None:
         resting = self._level_volume < 0.06
@@ -128,11 +103,11 @@ class _WaveformWidget(QWidget):
                 self._values[i] += (0.0 - self._values[i]) * 0.25
         else:
             for i in range(self._bars):
-                spread = self._level_volume * 0.7
+                spread = self._level_volume * 0.85
                 variation = random.uniform(-spread, spread)
-                target = max(0.05, self._target_volume + variation)
-                self._values[i] += (target - self._values[i]) * 0.35
-            self._level_volume *= 0.92
+                target = max(0.05, min(1.0, self._target_volume + variation))
+                self._values[i] += (target - self._values[i]) * 0.40
+            self._level_volume *= 0.90
         self.update()
 
     def paintEvent(self, event) -> None:
@@ -141,20 +116,20 @@ class _WaveformWidget(QWidget):
         w = self.width()
         h = self.height()
         gap = 3
-        bar_w = max(2, (w - (self._bars + 1) * gap) / self._bars)
+        bar_w = max(3, (w - (self._bars + 1) * gap) / self._bars)
         painter.setPen(Qt.PenStyle.NoPen)
         for i, val in enumerate(self._values):
             x = gap + i * (bar_w + gap)
             if self._active:
-                bar_h = max(3, val * (h - 6))
-                alpha = int(80 + val * 175)
+                bar_h = max(4, val * (h - 10))
+                alpha = int(60 + val * 195)
                 color = QColor(25, 118, 210, alpha)
             else:
-                bar_h = 3
+                bar_h = 4
                 color = QColor(25, 118, 210, 60)
             y = (h - bar_h) / 2
             painter.setBrush(QBrush(color))
-            painter.drawRoundedRect(int(x), int(y), int(bar_w), int(bar_h), 2, 2)
+            painter.drawRoundedRect(int(x), int(y), int(bar_w), int(bar_h), 3, 3)
         painter.end()
 
 
@@ -173,10 +148,11 @@ class VoiceToTextWidget(QWidget):
         self._transcription = VoiceTranscriptionService(self._settings)
 
         self._current_conv_id: Optional[str] = None
-        self._mode: str = "normal"
         self._recording: bool = False
         self._multi_select_mode: bool = False
         self._editing_msg_uuid: Optional[str] = None
+        self._model_loaded: bool = False
+        self._closing: bool = False  # 应用正在关闭，跳过耗时操作
 
         self._recorder: Optional[VoiceRecorder] = None
 
@@ -189,21 +165,20 @@ class VoiceToTextWidget(QWidget):
         )
         self._realtime_timer.timeout.connect(self._on_realtime_chunk)
 
+        self._vad_enabled = self._settings.get_bool(
+            "voice_to_text.vad_endpoint_detection", True
+        )
+
         self._recording_seconds: int = 0
         self._recording_timer = QTimer(self)
         self._recording_timer.setInterval(1000)
         self._recording_timer.timeout.connect(self._on_recording_tick)
 
+        self._last_transcribed_text = ""
+
         self._init_ui()
         self._refresh_history()
-        self._update_record_btn_style(False)
-        self._update_device_indicator_style(False)
-        self.device_indicator.setText("● 加载模型中...")
-        self.device_indicator.setStyleSheet(
-            "font-size:11px;font-weight:500;padding:2px 8px;"
-            "border-radius:10px;color:#f57c00;background:#fff3e0;"
-        )
-        self._preload_model()
+        self._set_status("● 初始化...", "info")
 
     # ── UI 构建 ────────────────────────────────────────────────────────────
 
@@ -249,7 +224,7 @@ class VoiceToTextWidget(QWidget):
         )
         layout.addWidget(self.history_list, 1)
 
-        group.setFixedWidth(230)
+        group.setFixedWidth(280)
         return group
 
     def _build_main_area(self) -> QWidget:
@@ -272,13 +247,14 @@ class VoiceToTextWidget(QWidget):
             self._on_chat_context_menu
         )
         self.chat_display.setPlaceholderText(
-            "点击右下角开始录音，开启语音转写"
+            "点击顶部开始录音，开启语音转写"
         )
         layout.addWidget(self.chat_display, 1)
 
         return group
 
     def _build_title_bar(self) -> QWidget:
+        """头部操作栏：[返回主界面] [新建] [开始录音]  status_label  recording_time"""
         bar = QWidget()
         bar.setObjectName("titleBar")
         bar_layout = QHBoxLayout(bar)
@@ -295,67 +271,33 @@ class VoiceToTextWidget(QWidget):
         new_btn.clicked.connect(self._on_new_conversation)
         bar_layout.addWidget(new_btn)
 
+        self.record_btn = QPushButton("🎤 开始录音")
+        self.record_btn.setObjectName("recordBtn")
+        self.record_btn.clicked.connect(self._on_record_toggled)
+        bar_layout.addWidget(self.record_btn)
+
         bar_layout.addSpacing(12)
 
-        self.status_label = QLabel("就绪")
+        self.status_label = QLabel("● 初始化...")
         self.status_label.setObjectName("statusLabel")
+        self._apply_status_style("info")
         bar_layout.addWidget(self.status_label)
+
+        self.recording_time_label = QLabel("00:00")
+        self.recording_time_label.setObjectName("recordingTime")
+        bar_layout.addWidget(self.recording_time_label)
+
         bar_layout.addStretch()
 
         return bar
 
     def _build_control_bar(self) -> QWidget:
-        group = QGroupBox("控制区")
+        """底部波形区"""
+        group = QGroupBox("")
         group.setObjectName("controlGroup")
         layout = QVBoxLayout(group)
         layout.setContentsMargins(12, 0, 12, 0)
         layout.setSpacing(8)
-
-        top_widget = QWidget()
-        top_widget.setObjectName("controlTopRow")
-        top_row = QHBoxLayout(top_widget)
-        top_row.setSpacing(12)
-
-        mode_label = QLabel("录入模式:")
-        mode_label.setObjectName("controlLabel")
-        top_row.addWidget(mode_label)
-
-        self.mode_combo = QComboBox()
-        self.mode_combo.setObjectName("modeCombo")
-        self.mode_combo.addItems(["普通录入", "实时录入"])
-        self.mode_combo.setCurrentIndex(0)
-        self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
-        top_row.addWidget(self.mode_combo)
-
-        self.noise_suppression_cb = QCheckBox("噪声抑制")
-        self.noise_suppression_cb.setObjectName("noiseSuppressionCb")
-        self.noise_suppression_cb.setToolTip(
-            "启用噪声抑制，改善非真人发声（音箱、电子音等）录音效果"
-        )
-        self.noise_suppression_cb.setChecked(
-            self._settings.get_bool("voice_to_text.noise_suppression", False)
-        )
-        top_row.addWidget(self.noise_suppression_cb)
-
-        self.device_indicator = QLabel("● 设备就绪")
-        self.device_indicator.setObjectName("deviceIndicator")
-        top_row.addWidget(self.device_indicator)
-
-        top_row.addStretch()
-
-        self.recording_time_label = QLabel("00:00")
-        self.recording_time_label.setObjectName("recordingTime")
-        top_row.addWidget(self.recording_time_label)
-
-        top_row.addStretch()
-
-        self.record_btn = QPushButton("🎤 开始录音")
-        self.record_btn.setObjectName("recordBtn")
-        self.record_btn.setMinimumSize(140, 44)
-        self.record_btn.clicked.connect(self._on_record_toggled)
-        top_row.addWidget(self.record_btn)
-
-        layout.addWidget(top_widget)
 
         self.waveform = _WaveformWidget()
         self.waveform.setObjectName("waveformWidget")
@@ -370,29 +312,22 @@ class VoiceToTextWidget(QWidget):
         if style_path.exists():
             self.setStyleSheet(style_path.read_text(encoding="utf-8"))
 
-    def _update_record_btn_style(self, recording: bool) -> None:
-        self.record_btn.setStyleSheet(
-            _RECORD_STYLE_ACTIVE if recording else _RECORD_STYLE_IDLE
-        )
-
-    def _update_device_indicator_style(self, recording: bool) -> None:
-        if recording:
-            self.device_indicator.setText("● 录音中")
-            color = "#d32f2f"
-            bg = "#ffebee"
-        else:
-            self.device_indicator.setText("● 设备就绪")
-            color = "#388e3c"
-            bg = "#e8f5e9"
-        self.device_indicator.setStyleSheet(
-            f"font-size:11px;font-weight:500;padding:2px 8px;"
+    def _apply_status_style(self, level: str) -> None:
+        """应用状态颜色到 status_label"""
+        if level not in _STATUS_COLORS:
+            level = "info"
+        color, bg = _STATUS_COLORS[level]
+        self.status_label.setStyleSheet(
+            f"font-size:12px;font-weight:500;padding:2px 8px;"
             f"border-radius:10px;color:{color};background:{bg};"
         )
 
     # ── 状态栏 ──────────────────────────────────────────────────────────────
 
-    def _set_status(self, text: str) -> None:
+    def _set_status(self, text: str, level: str = "info") -> None:
+        """统一状态标签更新"""
         self.status_label.setText(text)
+        self._apply_status_style(level)
 
     # ── 计时器 ──────────────────────────────────────────────────────────────
 
@@ -408,18 +343,12 @@ class VoiceToTextWidget(QWidget):
             self._editing_msg_uuid = None
             self.chat_display.setReadOnly(True)
         self._current_conv_id = None
+        self._last_transcribed_text = ""
         self.chat_display.clear()
         self._recording_seconds = 0
         self.recording_time_label.setText("00:00")
-        self._set_status("就绪")
+        self._set_status("● 就绪", "ok")
         self._refresh_history()
-
-    # ── 模式切换 ────────────────────────────────────────────────────────────
-
-    def _on_mode_changed(self, index: int) -> None:
-        self._mode = "normal" if index == 0 else "realtime"
-        if self._recording:
-            self._stop_recording()
 
     # ── 录音控制 ────────────────────────────────────────────────────────────
 
@@ -431,32 +360,32 @@ class VoiceToTextWidget(QWidget):
 
     def _start_recording(self) -> None:
         try:
-            ns = self.noise_suppression_cb.isChecked()
+            if not self._model_loaded:
+                self._set_status("● 模型尚未加载完成，请稍候...", "warn")
+                return
+
             self._recorder = VoiceRecorder(
                 sample_rate=16000, channels=1, settings=self._settings,
-                noise_suppression=ns,
             )
             self._recorder.finished.connect(self._on_record_finished)
             self._recorder.error_occurred.connect(self._on_record_error)
             self._recorder.volume_changed.connect(self.waveform.update_volume)
+            self._recorder.speech_ended.connect(self._on_speech_ended)
 
             self._recording = True
             self._recording_seconds = 0
             self.recording_time_label.setText("00:00")
             self._recording_timer.start()
 
-            self._update_record_btn_style(True)
-            self._update_device_indicator_style(True)
             self.waveform.start()
 
-            if self._mode == "realtime":
-                self._realtime_timer.start()
-                self.record_btn.setText("⏹ 停止实时录入")
-                self._set_status("开始实时录入...")
+            if self._vad_enabled:
+                self._set_status("● 录音中 (VAD)...", "error")
             else:
-                self.record_btn.setText("⏹ 停止录入")
-                self._set_status("开始录音...")
+                self._realtime_timer.start()
+                self._set_status("● 录音中 (定时切片)...", "error")
 
+            self.record_btn.setText("⏹ 停止录音")
             self._recorder.start()
 
         except Exception as exc:
@@ -466,54 +395,63 @@ class VoiceToTextWidget(QWidget):
             )
             self._recording = False
             self.record_btn.setText("🎤 开始录音")
-            self._update_record_btn_style(False)
-            self._update_device_indicator_style(False)
             self._recording_timer.stop()
             self.waveform.stop()
+            self._set_status(f"● 录音失败: {exc}", "error")
 
     def _stop_recording(self) -> None:
         self._recording = False
         self._realtime_timer.stop()
         self._recording_timer.stop()
 
-        self._update_record_btn_style(False)
-        self._update_device_indicator_style(False)
         self.waveform.stop()
 
         if self._recorder is not None:
+            try:
+                self._recorder.speech_ended.disconnect(self._on_speech_ended)
+            except (RuntimeError, TypeError):
+                pass
             self._recorder.stop()
-            ns = self.noise_suppression_cb.isChecked()
-            if self._mode == "realtime":
-                chunk_path = self._recorder.extract_chunk()
-                if chunk_path:
-                    self._transcribe_async(chunk_path, realtime=True)
-                self.record_btn.setText("🎤 开始录音")
-                self._set_status("实时录入已停止")
-            else:
-                self.record_btn.setText("🎤 开始录音")
-                self._set_status("录音已停止，等待转写...")
+            if not self._closing:
+                # 检查缓冲区是否有有效音频，避免将尾部静音/噪声送入 Whisper 产生幻觉文字
+                buffer_rms = self._recorder.get_buffer_rms()
+                noise_floor = (
+                    getattr(self._recorder, "_noise_floor", None)
+                    or 0.005
+                )
+                energy_threshold = max(noise_floor * 2.0, 0.01)
+
+                if buffer_rms > energy_threshold:
+                    # 缓冲区含有有效音频，提取并转写
+                    chunk_path = self._recorder.extract_chunk()
+                    if chunk_path:
+                        self._transcribe_async(
+                            chunk_path,
+                            previous_text=self._last_transcribed_text,
+                        )
+                else:
+                    # 缓冲区能量太低（静音/噪声），直接丢弃，不送入转写
+                    self._recorder.extract_chunk()
+
+        self.record_btn.setText("🎤 开始录音")
+        self._set_status("● 已停止", "info")
 
     def _on_record_finished(self, wav_path: str) -> None:
         try:
-            if self._mode == "normal":
-                self.record_btn.setText("🎤 开始录音")
-                self._update_record_btn_style(False)
-                self._recording_timer.stop()
-                self._update_device_indicator_style(False)
-                self.waveform.stop()
-                self._set_status("录音完成，正在转写...")
-                self._transcribe_async(wav_path, realtime=False)
+            self.record_btn.setText("🎤 开始录音")
+            self._recording_timer.stop()
+            self.waveform.stop()
+            self._set_status("● 录音完成，正在转写...", "busy")
+            self._transcribe_async(wav_path)
         except Exception:
             logger.error("on_record_finished 异常:\n%s", traceback.format_exc())
 
     def _on_record_error(self, msg: str) -> None:
-        if "没有录制到音频数据" in msg and self._mode == "realtime":
+        if "没有录制到音频数据" in msg:
             return
         try:
             self._recording = False
             self.record_btn.setText("🎤 开始录音")
-            self._update_record_btn_style(False)
-            self._update_device_indicator_style(False)
             self._realtime_timer.stop()
             self._recording_timer.stop()
             self.waveform.stop()
@@ -525,25 +463,31 @@ class VoiceToTextWidget(QWidget):
         if self._recorder is not None:
             self._recorder.stop()
 
-    # ── 实时录入定时器 ──────────────────────────────────────────────────────
+    # ── 流式转录 ──────────────────────────────────────────────────────────
 
     def _on_realtime_chunk(self) -> None:
+        """定时切片（VAD 关闭时回退）"""
         if not self._recording or self._recorder is None:
             return
         chunk_path = self._recorder.extract_chunk()
         if chunk_path:
-            self._transcribe_async(chunk_path, realtime=True)
+            self._transcribe_async(chunk_path, previous_text=self._last_transcribed_text)
+
+    def _on_speech_ended(self, chunk_path: str) -> None:
+        """VAD 检测到语音结束"""
+        if not self._recording:
+            return
+        self._transcribe_async(chunk_path, previous_text=self._last_transcribed_text)
 
     # ── 转写 (threading.Thread, 无 QThread) ────────────────────────────────
 
-    def _transcribe_async(self, wav_path: str, realtime: bool) -> None:
-        self._set_status("转写中...")
+    def _transcribe_async(self, wav_path: str, previous_text: str = "") -> None:
+        self._set_status("● 转写中...", "busy")
         bridge = _SignalBridge()
-        ns = self.noise_suppression_cb.isChecked()
 
         def _on_done(text: str) -> None:
             try:
-                self._on_transcribe_done(text, wav_path, realtime)
+                self._on_transcribe_done(text, wav_path)
             except Exception:
                 logger.error("_on_transcribe_done 异常:\n%s", traceback.format_exc())
             bridge.deleteLater()
@@ -561,7 +505,7 @@ class VoiceToTextWidget(QWidget):
         def _worker():
             try:
                 result = self._transcription.transcribe_file(
-                    wav_path, noise_suppression=ns,
+                    wav_path, previous_text=previous_text,
                 )
                 bridge.result.emit(result)
             except Exception as exc:
@@ -569,15 +513,21 @@ class VoiceToTextWidget(QWidget):
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    def _on_transcribe_done(self, text: str, wav_path: str, realtime: bool) -> None:
+    def _on_transcribe_done(self, text: str, wav_path: str) -> None:
         try:
             Path(wav_path).unlink(missing_ok=True)
         except Exception:
             pass
 
+        # 未检测到语音内容不显示在聊天界面
+        if text.startswith("(未检测到"):
+            self._set_status("● 未检测到语音内容", "info")
+            return
+
+        self._last_transcribed_text = text
+
         if self._current_conv_id is None:
-            mode = "realtime" if realtime else "normal"
-            self._current_conv_id = self._store.create_conversation(text, mode=mode)
+            self._current_conv_id = self._store.create_conversation(text, mode="realtime")
             self._refresh_history()
             conv = self._store.get_conversation(self._current_conv_id)
             msg_uuid = conv.messages[0].uuid if conv and conv.messages else ""
@@ -586,7 +536,7 @@ class VoiceToTextWidget(QWidget):
                 role="user",
                 content=text,
                 uuid=uuid.uuid4().hex[:16],
-                mode="realtime" if realtime else "normal",
+                mode="realtime",
                 timestamp=datetime.now().timestamp(),
             )
             self._store.append_message(self._current_conv_id, msg)
@@ -594,14 +544,14 @@ class VoiceToTextWidget(QWidget):
 
         self._append_user(text, msg_uuid=msg_uuid)
         self._refresh_history()
-        self._set_status("转写完成")
+        self._set_status("● 转写完成", "ok")
 
     def _on_transcribe_error(self, err: str, wav_path: str) -> None:
         try:
             Path(wav_path).unlink(missing_ok=True)
         except Exception:
             pass
-        self._set_status(f"转写失败: {err}")
+        self._set_status(f"● 转写失败: {err}", "error")
 
     # ── 对话显示 ────────────────────────────────────────────────────────────
 
@@ -753,7 +703,6 @@ class VoiceToTextWidget(QWidget):
                 multi_action = menu.addAction("多选")
                 delete_all_action = menu.addAction("全部删除")
             else:
-                conv_id = item.data(Qt.ItemDataRole.UserRole)
                 multi_action = menu.addAction("多选")
                 delete_action = menu.addAction("删除此会话")
                 menu.addSeparator()
@@ -780,8 +729,9 @@ class VoiceToTextWidget(QWidget):
                     item.setSelected(True)
             elif action == delete_action:
                 item = self.history_list.itemAt(pos)
-                conv_id = item.data(Qt.ItemDataRole.UserRole)
-                self._delete_conversation(conv_id)
+                if item is not None:
+                    conv_id = item.data(Qt.ItemDataRole.UserRole)
+                    self._delete_conversation(conv_id)
             elif action == delete_all_action:
                 self._delete_all_conversations()
 
@@ -801,9 +751,9 @@ class VoiceToTextWidget(QWidget):
             if self._current_conv_id == conv_id:
                 self._current_conv_id = None
                 self.chat_display.clear()
-                self._set_status("就绪")
+                self._set_status("● 就绪", "ok")
             self._refresh_history()
-            self._set_status("会话已删除")
+            self._set_status("会话已删除", "ok")
         except Exception as exc:
             logger.error("删除会话失败 %s: %s", conv_id, exc)
             QMessageBox.warning(self, "删除失败", f"删除会话时出错: {exc}")
@@ -814,13 +764,13 @@ class VoiceToTextWidget(QWidget):
             self.history_list.setSelectionMode(
                 QListWidget.SelectionMode.MultiSelection
             )
-            self._set_status("多选模式：点击列表项选中，右键菜单可批量删除")
+            self._set_status("多选模式：点击列表项选中，右键菜单可批量删除", "busy")
         else:
             self.history_list.setSelectionMode(
                 QListWidget.SelectionMode.SingleSelection
             )
             self.history_list.clearSelection()
-            self._set_status("就绪")
+            self._set_status("● 就绪", "ok")
 
     def _toggle_select_all(self) -> None:
         if not self._multi_select_mode:
@@ -864,7 +814,7 @@ class VoiceToTextWidget(QWidget):
             except Exception as exc:
                 logger.error("删除会话失败 %s: %s", conv_id, exc)
         self._refresh_history()
-        self._set_status(f"已删除 {deleted} 个会话")
+        self._set_status(f"已删除 {deleted} 个会话", "ok")
 
     def _delete_all_conversations(self) -> None:
         count = self.history_list.count()
@@ -892,7 +842,7 @@ class VoiceToTextWidget(QWidget):
         self.chat_display.clear()
         self._toggle_multi_select(False)
         self._refresh_history()
-        self._set_status(f"已删除 {deleted} 个会话")
+        self._set_status(f"已删除 {deleted} 个会话", "ok")
 
     # ── 聊天区右键菜单 ──────────────────────────────────────────────────────
 
@@ -967,7 +917,7 @@ class VoiceToTextWidget(QWidget):
         self._editing_msg_uuid = msg_uuid
         self.chat_display.setReadOnly(False)
         self.chat_display.setFocus()
-        self._set_status("编辑模式：修改内容后右键选择[保存]完成")
+        self._set_status("编辑模式：修改内容后右键选择[保存]完成", "busy")
 
     def _save_edited_message(self) -> None:
         if not self._editing_msg_uuid or not self._current_conv_id:
@@ -994,7 +944,7 @@ class VoiceToTextWidget(QWidget):
         self.chat_display.setReadOnly(True)
         self._reload_conversation_display(conv=conv)
         self._refresh_history()
-        self._set_status("消息已保存")
+        self._set_status("消息已保存", "ok")
 
     def _get_edited_text(self) -> Optional[str]:
         doc = self.chat_display.document()
@@ -1016,15 +966,15 @@ class VoiceToTextWidget(QWidget):
         self._editing_msg_uuid = None
         self.chat_display.setReadOnly(True)
         self._reload_conversation_display()
-        self._set_status("已取消编辑")
+        self._set_status("已取消编辑", "info")
 
     def _copy_message_text(self, text: str) -> None:
         clipboard = QApplication.clipboard()
         clipboard.setText(text)
-        self._set_status("已复制到剪贴板")
+        self._set_status("已复制到剪贴板", "ok")
 
     def _run_grammar_correction(self, text: str, original_uuid: str) -> None:
-        self._set_status("正在纠正语法...")
+        self._set_status("正在纠正语法...", "busy")
         provider = create_provider(self._settings)
         provider_name = self._settings.get("summarization.provider", "ollama")
         conv_id = self._current_conv_id
@@ -1067,7 +1017,7 @@ class VoiceToTextWidget(QWidget):
                         role=provider_name,
                         content=display_text,
                         uuid=uuid.uuid4().hex[:16],
-                        mode="normal",
+                        mode="realtime",
                         corrected=True,
                         parent_uuid=original_uuid,
                         timestamp=datetime.now().timestamp(),
@@ -1078,7 +1028,7 @@ class VoiceToTextWidget(QWidget):
                 modified_conv = conv
 
         self._reload_conversation_display(conv=modified_conv)
-        self._set_status("语法纠正完成")
+        self._set_status("语法纠正完成", "ok")
 
     def _delete_message(self, msg_uuid: str) -> None:
         if not self._current_conv_id or not msg_uuid:
@@ -1100,7 +1050,7 @@ class VoiceToTextWidget(QWidget):
         self._store._save(conv)
         self._reload_conversation_display(conv=conv)
         self._refresh_history()
-        self._set_status("消息已删除")
+        self._set_status("消息已删除", "ok")
 
     def _run_summarization(self) -> None:
         if self._current_conv_id is None:
@@ -1110,7 +1060,7 @@ class VoiceToTextWidget(QWidget):
         if conv is None or not conv.messages:
             return
 
-        self._set_status("正在总结...")
+        self._set_status("正在总结...", "busy")
         provider = create_provider(self._settings)
 
         replaced_uuids = {m.parent_uuid for m in conv.messages if m.parent_uuid}
@@ -1151,7 +1101,7 @@ class VoiceToTextWidget(QWidget):
         )
         if self._current_conv_id:
             self._store.update_summary_path(self._current_conv_id, str(md_path))
-        self._set_status("总结完成")
+        self._set_status("总结完成", "ok")
 
     # ── 通用 API 调用 (threading.Thread, 无 QThread) ───────────────────────
 
@@ -1168,7 +1118,7 @@ class VoiceToTextWidget(QWidget):
 
         bridge.result.connect(_wrap_on_done)
         bridge.error.connect(
-            lambda err: self._set_status(f"操作失败: {err}")
+            lambda err: self._set_status(f"操作失败: {err}", "error")
         )
         bridge.error.connect(bridge.deleteLater)
 
@@ -1181,48 +1131,36 @@ class VoiceToTextWidget(QWidget):
 
         threading.Thread(target=_worker, daemon=True).start()
 
+    # ── 模型加载 ──────────────────────────────────────────────────────────
+
+    def load_model_async(self) -> None:
+        """进入 VoiceToText 界面后异步加载模型"""
+        if self._model_loaded:
+            self._set_status("● 就绪", "ok")
+            return
+        self._set_status("● 加载模型中...", "warn")
+        self._preload_model()
+
     def _preload_model(self) -> None:
         bridge = _SignalBridge()
 
         def _on_loaded(_text: str) -> None:
-            self._update_device_indicator_style(False)
+            self._model_loaded = True
+            self._set_status("● 就绪", "ok")
             bridge.deleteLater()
 
         def _on_error(err: str) -> None:
-            self.device_indicator.setText("● 模型加载失败")
-            self.device_indicator.setStyleSheet(
-                "font-size:11px;font-weight:500;padding:2px 8px;"
-                "border-radius:10px;color:#d32f2f;background:#ffebee;"
-            )
-            self._set_status(f"模型加载失败: {err}")
+            self._set_status(f"● 模型加载失败: {err}", "error")
             bridge.deleteLater()
 
         bridge.result.connect(_on_loaded)
         bridge.error.connect(_on_error)
 
         def _worker():
-            import struct
-            import wave
             try:
-                self._transcription._get_transcriber()
-                sample_rate = 16000
-                duration = 1
-                silence = b'\x00\x00' * (sample_rate * duration)
-                tmp = Path.cwd() / "voice" / "_warmup.wav"
-                tmp.parent.mkdir(parents=True, exist_ok=True)
-                with wave.open(str(tmp), "wb") as wf:
-                    wf.setnchannels(1)
-                    wf.setsampwidth(2)
-                    wf.setframerate(sample_rate)
-                    wf.writeframes(silence)
-                self._transcription.transcribe_file(str(tmp))
-                tmp.unlink(missing_ok=True)
+                self._transcription.preload_model()
                 bridge.result.emit("")
             except Exception as exc:
-                try:
-                    tmp.unlink(missing_ok=True)
-                except Exception:
-                    pass
                 bridge.error.emit(str(exc))
 
         threading.Thread(target=_worker, daemon=True).start()
@@ -1239,6 +1177,7 @@ class VoiceToTextWidget(QWidget):
         self.window()._on_back_to_main()
 
     def cleanup(self) -> None:
+        self._closing = True
         if self._recording:
             self._stop_recording()
         self._cleanup_recorder()

@@ -471,8 +471,15 @@ class Transcriber:
             raise TranscriptionError(f"转写失败: {e}") from e
 
     def unload_model(self) -> None:
-        """卸载模型并释放 GPU 显存，并恢复原始 device/compute_type。"""
-        with self._model_lock:
+        """卸载模型并释放 GPU 显存，并恢复原始 device/compute_type。
+
+        使用非阻塞锁获取：若模型正在加载中（锁被持有）则跳过卸载，
+        避免主线程在窗口关闭时被阻塞（进程退出时操作系统会回收资源）。
+        """
+        if not self._model_lock.acquire(blocking=False):
+            logger.warning("Transcriber: ⚠ 模型正在加载中，跳过卸载")
+            return
+        try:
             if self.model is not None:
                 del self.model
                 self.model = None
@@ -483,6 +490,8 @@ class Transcriber:
                     self.compute_type = self._original_compute_type
                 _clear_gpu_memory()
                 logger.info("Transcriber: ✓ 模型已卸载")
+        finally:
+            self._model_lock.release()
 
     def get_supported_languages(self) -> Dict[str, str]:
         """获取支持的语言列表

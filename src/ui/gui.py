@@ -345,14 +345,14 @@ class MainWindow(QMainWindow):
         self.initial_prompt_edit = QTextEdit()
         self.initial_prompt_edit.setMaximumHeight(60)
         self.initial_prompt_edit.setPlaceholderText(
-            "转写初始提示词（可选），可输入领域术语以提升识别准确率，留空不启用"
+            "场景指令,不要换行,输入邻域术语提升识别准确率,不宜过长,会影响识别速度"
         )
         tx_prompt_layout.addWidget(self.initial_prompt_edit)
 
         self.hotwords_edit = QTextEdit()
         self.hotwords_edit.setMaximumHeight(40)
         self.hotwords_edit.setPlaceholderText(
-            "热词，多个词用空格分隔，留空不启用"
+            "热词,空格分隔,输入核心专有名词,不宜过长,会影响识别速度"
         )
         tx_prompt_layout.addWidget(self.hotwords_edit)
 
@@ -1511,6 +1511,7 @@ class MainWindow(QMainWindow):
     def _on_show_voice_to_text(self) -> None:
         self.main_panel.hide()
         self.voice_panel.show()
+        self._voice_widget.load_model_async()
 
     def _on_back_to_main(self) -> None:
         self.voice_panel.hide()
@@ -1762,6 +1763,10 @@ class MainWindow(QMainWindow):
 
         self.log_panel.cleanup()
 
+        # ⚠ 先清理 VoiceToText 再卸载模型，避免转写线程与模型卸载竞争
+        if hasattr(self, "_voice_widget") and self._voice_widget is not None:
+            self._voice_widget.cleanup()
+
         OllamaClient.stop_service()
 
         for cached_transcriber in list(_transcriber_cache.values()):
@@ -1773,9 +1778,6 @@ class MainWindow(QMainWindow):
 
         if self._result_viewer is not None:
             self._result_viewer.close()
-
-        if hasattr(self, "_voice_widget") and self._voice_widget is not None:
-            self._voice_widget.cleanup()
 
         event.accept()
 

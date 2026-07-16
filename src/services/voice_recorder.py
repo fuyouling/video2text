@@ -1,7 +1,5 @@
-"""麦克风录音服务 —— 基于 sounddevice 捕获系统麦克风音频"""
+"""麦克风录音服务 —— 基于 sounddevice 捕获系统麦克风音频，支持VAD端点检测"""
 
-import os
-import tempfile
 import threading
 import time
 import wave
@@ -24,15 +22,16 @@ class VoiceRecorder(QObject):
     录音循环运行在 threading.Thread 中（不依赖 moveToThread），
     通过信号向主线程传递结果。extract_chunk 可从任意线程安全调用。
 
-    支持噪声抑制（noise_suppression）：
-      - 噪声门（noise gate）：丢弃低于阈值的静默/噪底帧
-      - 频谱减法（spectral subtraction）：衰减稳态背景噪声
-    可显著改善非真人发声（如音箱播放、电子音等）的录音质量。
+    支持实时VAD端点检测：
+       - 自动校准噪底能量
+       - 检测语音开始/结束
+       - 语音结束后立即发出 speech_ended 信号
     """
 
     started = Signal()
     finished = Signal(str)
     chunk_ready = Signal(str)
+    speech_ended = Signal(str)
     volume_changed = Signal(float)
     error_occurred = Signal(str)
 
@@ -41,23 +40,15 @@ class VoiceRecorder(QObject):
         sample_rate: int = 16000,
         channels: int = 1,
         settings: Optional[Settings] = None,
-        noise_suppression: bool = False,
         parent=None,
     ):
         super().__init__(parent)
         self._settings = settings or Settings()
         self._sample_rate = self._settings.get_int(
-            "preprocessing.audio_sample_rate", sample_rate
+            "voice_to_text.audio_sample_rate", sample_rate
         )
         self._channels = self._settings.get_int(
-            "preprocessing.audio_channels", channels
-        )
-        self._noise_suppression = noise_suppression
-        self._noise_gate_threshold = self._settings.get_float(
-            "voice_to_text.noise_gate_threshold", 0.015,
-        )
-        self._spectral_subtraction_factor = self._settings.get_float(
-            "voice_to_text.spectral_subtraction_factor", 1.5,
+            "voice_to_text.audio_channels", channels
         )
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -67,20 +58,128 @@ class VoiceRecorder(QObject):
         self._temp_dir = Path.cwd() / "voice"
         self._temp_dir.mkdir(parents=True, exist_ok=True)
         self._latest_volume = 0.0
-        self._noise_profile = None
-        self._noise_profile_frames = []
-        self._noise_profile_ready = False
-        self._noise_profile_frame_count = self._settings.get_int(
-            "voice_to_text.noise_profile_frames", 10,
+
+        # VAD 端点检测参数
+        self._vad_enabled = self._settings.get_bool(
+            "voice_to_text.vad_endpoint_detection", True
         )
+        self._vad_energy_threshold = self._settings.get_float(
+            "voice_to_text.vad_energy_threshold", 0.0
+        )
+        self._vad_silence_frames = self._settings.get_int(
+            "voice_to_text.vad_silence_frames", 30
+        )
+        self._vad_min_speech_frames = self._settings.get_int(
+            "voice_to_text.vad_min_speech_frames", 10
+        )
+        self._vad_calibration_frames = self._settings.get_int(
+            "voice_to_text.vad_calibration_frames", 30
+        )
+        self._blocksize = 512
+
+        # VAD 运行时状态
+        self._calibrated = False
+        self._noise_floor = 0.0
+        self._speech_active = False
+        self._silence_frame_count = 0
+        self._speech_frame_count = 0
+        self._calibration_frames = []
+        self._speech_start_idx = 0
+        self._vad_initialized = False
+
+    def _init_vad(self) -> None:
+        if self._vad_initialized:
+            return
+        self._vad_initialized = True
+        if self._vad_energy_threshold > 0:
+            self._calibrated = True
+            self._noise_floor = self._vad_energy_threshold
+
+    def _calibrate_noise_floor(self, frame: np.ndarray) -> None:
+        if self._calibrated:
+            return
+        self._calibration_frames.append(frame)
+        if len(self._calibration_frames) >= self._vad_calibration_frames:
+            energies = []
+            for f in self._calibration_frames:
+                rms = float(np.sqrt(np.mean(f * f)))
+                energies.append(rms)
+            if energies:
+                self._noise_floor = float(np.mean(energies)) * 1.2
+                if self._noise_floor < 0.005:
+                    self._noise_floor = 0.005
+            self._calibrated = True
+            self._calibration_frames = []
+            logger.info(
+                "VoiceRecorder VAD 校准完成, noise_floor=%.6f", self._noise_floor
+            )
+
+    def _detect_speech_end(self, frame: np.ndarray) -> bool:
+        if not self._vad_enabled or not self._calibrated:
+            return False
+        rms = float(np.sqrt(np.mean(frame * frame)))
+        threshold = self._noise_floor * 2.0
+        if rms > threshold:
+            self._silence_frame_count = 0
+            if not self._speech_active:
+                self._speech_active = True
+                self._speech_start_idx = max(0, len(self._frames) - 1)
+            self._speech_frame_count += 1
+        else:
+            if self._speech_active:
+                self._silence_frame_count += 1
+                if self._silence_frame_count >= self._vad_silence_frames:
+                    if self._speech_frame_count >= self._vad_min_speech_frames:
+                        return True
+                    self._speech_active = False
+                    self._silence_frame_count = 0
+                    self._speech_frame_count = 0
+        return False
+
+    def _extract_speech_chunk(self) -> Optional[str]:
+        if not self._speech_active or self._speech_frame_count < self._vad_min_speech_frames:
+            self._speech_active = False
+            self._silence_frame_count = 0
+            self._speech_frame_count = 0
+            return None
+        start_idx = max(0, self._speech_start_idx)
+        end_idx = len(self._frames)
+        if end_idx <= start_idx:
+            self._speech_active = False
+            self._silence_frame_count = 0
+            self._speech_frame_count = 0
+            return None
+        speech_frames = self._frames[start_idx:end_idx]
+        audio = np.concatenate(speech_frames, axis=0)
+        self._frames = self._frames[end_idx:]
+        self._speech_active = False
+        self._silence_frame_count = 0
+        self._speech_frame_count = 0
+        audio_int16 = (audio * 32767).astype(np.int16)
+        timestamp = time.strftime("%Y%d%m%H%M%S")
+        wav_path = self._temp_dir / f"voice_vad_{timestamp}.wav"
+        try:
+            with wave.open(str(wav_path), "wb") as wf:
+                wf.setnchannels(self._channels)
+                wf.setsampwidth(2)
+                wf.setframerate(self._sample_rate)
+                wf.writeframes(audio_int16.tobytes())
+            return str(wav_path)
+        except Exception as exc:
+            logger.error("VAD chunk 保存失败: %s", exc)
+            return None
 
     def start(self) -> None:
         """启动录音（非阻塞，立即返回）"""
+        self._init_vad()
         self._running = True
         self._frames = []
-        self._noise_profile = None
-        self._noise_profile_frames = []
-        self._noise_profile_ready = False
+        self._calibrated = False
+        self._calibration_frames = []
+        self._speech_active = False
+        self._silence_frame_count = 0
+        self._speech_frame_count = 0
+        self._speech_start_idx = 0
         self._thread = threading.Thread(target=self._record_loop, daemon=True)
         self._thread.start()
         self.started.emit()
@@ -98,16 +197,22 @@ class VoiceRecorder(QObject):
                 samplerate=self._sample_rate,
                 channels=self._channels,
                 dtype="float32",
-                blocksize=1024,
+                blocksize=self._blocksize,
                 callback=self._audio_callback,
             ):
                 while self._running:
                     time.sleep(0.05)
         except Exception as exc:
+            # CallbackAbort 被 sd.InputStream 内部消化，不会到达此处
             self.error_occurred.emit(f"录音异常: {exc}")
             return
         finally:
             self._stream = None
+
+        # stop() 设置了 _running=False 时，跳过 save_to_wav 和信号发射
+        # （外部调用者已通过 extract_chunk() 保存了音频）
+        if not self._running:
+            return
 
         try:
             wav_path = self.save_to_wav()
@@ -121,80 +226,27 @@ class VoiceRecorder(QObject):
         """sounddevice 音频回调（在 PortAudio 线程中执行）"""
         if status:
             logger.warning("VoiceRecorder 回调状态: %s", status)
-        if self._running:
-            processed = indata.copy()
-            if self._noise_suppression:
-                processed = self._apply_noise_suppression(processed)
-                rms = float(np.sqrt(np.mean(processed * processed)))
-                if rms < self._noise_gate_threshold:
-                    return
-            with self._lock:
-                self._frames.append(processed)
-            volume = float(np.sqrt(np.mean(indata * indata)))
-            self._latest_volume = volume
-            self.volume_changed.emit(volume)
+        if not self._running:
+            import sounddevice as sd
+            raise sd.CallbackAbort()  # 立即停止 InputStream，避免音频流关闭延迟
 
-    def _apply_noise_suppression(self, frame: np.ndarray) -> np.ndarray:
-        """对单帧音频应用频谱减法噪声抑制"""
-        if not self._noise_profile_ready:
-            self._noise_profile_frames.append(frame.copy())
-            if len(self._noise_profile_frames) >= self._noise_profile_frame_count:
-                self._build_noise_profile()
-            return frame
-        return self._spectral_subtract(frame)
+        if self._vad_enabled:
+            if not self._calibrated:
+                self._calibrate_noise_floor(indata)
+            else:
+                if self._detect_speech_end(indata):
+                    chunk_path = self._extract_speech_chunk()
+                    if chunk_path:
+                        self.speech_ended.emit(chunk_path)
 
-    def _build_noise_profile(self) -> None:
-        """从初始静默帧构建噪声频谱参考（与单帧 FFT 尺寸对齐）"""
-        try:
-            n = self._noise_profile_frames[0].shape[0]
-            mag_sum = None
-            count = 0
-            for frm in self._noise_profile_frames:
-                samples = frm.flatten()
-                if len(samples) < n:
-                    samples = np.pad(samples, (0, n - len(samples)))
-                spectrum = np.fft.rfft(samples[:n])
-                mag_sum = np.abs(spectrum) if mag_sum is None else mag_sum + np.abs(spectrum)
-                count += 1
-            self._noise_profile = mag_sum / max(count, 1)
-            self._noise_profile_ready = True
-        except Exception:
-            logger.debug("构建噪声轮廓失败")
-        self._noise_profile_frames = []
-
-    def _spectral_subtract(self, frame: np.ndarray) -> np.ndarray:
-        """频谱减法：用噪声轮廓衰减稳态噪声"""
-        if self._noise_profile is None:
-            return frame
-        try:
-            samples = frame.flatten()
-            n = len(samples)
-            if n == 0:
-                return frame
-            spectrum = np.fft.rfft(samples)
-            magnitude = np.abs(spectrum)
-            phase = np.angle(spectrum)
-            noise_mag = self._noise_profile[:len(magnitude)]
-            if len(noise_mag) < len(magnitude):
-                noise_mag = np.pad(noise_mag, (0, len(magnitude) - len(noise_mag)))
-            alpha = self._spectral_subtraction_factor
-            enhanced = np.maximum(magnitude - alpha * noise_mag, 0.0)
-            new_spectrum = enhanced * np.exp(1j * phase)
-            cleaned = np.fft.irfft(new_spectrum, n=n)
-            return cleaned.reshape(frame.shape).astype(np.float32)
-        except Exception:
-            return frame
-
-    @property
-    def noise_suppression(self) -> bool:
-        return self._noise_suppression
-
-    @noise_suppression.setter
-    def noise_suppression(self, value: bool) -> None:
-        self._noise_suppression = value
+        with self._lock:
+            self._frames.append(indata.copy())
+        volume = float(np.sqrt(np.mean(indata * indata)))
+        self._latest_volume = volume
+        self.volume_changed.emit(volume)
 
     def stop(self) -> None:
-        """请求停止录音"""
+        """请求停止录音（立即关闭音频流）"""
         self._running = False
 
     def is_running(self) -> bool:
@@ -232,3 +284,26 @@ class VoiceRecorder(QObject):
             return self.save_to_wav()
         except Video2TextError:
             return None
+
+    def get_buffer_rms(self) -> float:
+        """获取当前缓冲区的 RMS 能量值，用于判断是否含有有效音频
+
+        线程安全：内部有锁保护，可从任意线程调用。
+        返回 0.0 表示缓冲区为空或能量为 0。
+        """
+        with self._lock:
+            if not self._frames:
+                return 0.0
+            audio = np.concatenate(self._frames, axis=0)
+            return float(np.sqrt(np.mean(audio * audio)))
+
+    def get_vad_state(self) -> dict:
+        """获取当前VAD检测状态（用于UI调试显示）"""
+        return {
+            "calibrated": self._calibrated,
+            "noise_floor": self._noise_floor,
+            "speech_active": self._speech_active,
+            "silence_frames": self._silence_frame_count,
+            "speech_frames": self._speech_frame_count,
+            "buffer_frames": len(self._frames),
+        }

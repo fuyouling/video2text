@@ -1,8 +1,9 @@
 /* ============================================================
-   VoiceToText 主样式 v3.0
-   布局: 侧边会话栏(QGroupBox) + 主区域(QGroupBox) + 控制区(QGroupBox) + 状态栏
+   VoiceToText 主样式 v4.1
+   布局: 侧边会话栏(QGroupBox) + 主区域(QGroupBox) + 波形区(QGroupBox)
+   头部: [返回主界面] [新建] [开始录音] | status_label 00:00 |
    色彩: 科技蓝 #1976d2 / 灰阶 / 红 #f44336 / 绿 #4caf50
-   圆角: 按钮6px / 卡片10px / 录音按钮22px
+   圆角: 按钮6px / 卡片10px
    ============================================================ */
 
 VoiceToTextWidget {
@@ -153,17 +154,18 @@ QScrollBar::sub-page:horizontal {
     border-bottom-right-radius: 0px;
 }
 
-/* ── 标题栏 ────────────────────────────────── */
+/* ── 标题栏（头部操作栏） ─────────────────── */
 
 #titleBar {
     background: transparent;
     border-bottom: 1px solid #eeeeee;
 }
 
-#convTitleLabel {
-    font-size: 16px;
-    font-weight: 600;
-    color: #212121;
+/* 头部三个按钮统一宽度 */
+#backBtn,
+#newConvBtn,
+#recordBtn {
+    min-width: 100px;
 }
 
 #backBtn {
@@ -198,6 +200,25 @@ QScrollBar::sub-page:horizontal {
     background: #0d47a1;
 }
 
+/* 录音按钮样式（空闲状态） */
+#recordBtn {
+    background: #1976d2;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 16px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+#recordBtn:hover {
+    background: #1565c0;
+}
+
+#recordBtn:pressed {
+    background: #0d47a1;
+}
+
 /* ── 对话显示区 ────────────────────────────── */
 
 #chatDisplay {
@@ -210,7 +231,7 @@ QScrollBar::sub-page:horizontal {
     color: #212121;
 }
 
-/* ── 控制区 QGroupBox ──────────────────────── */
+/* ── 控制区 QGroupBox（仅波形） ──────────── */
 
 #controlGroup {
     background-color: #ffffff;
@@ -221,55 +242,6 @@ QScrollBar::sub-page:horizontal {
     padding-top: 8px;
 }
 
-#controlTopRow {
-    background: transparent;
-    border-bottom: 1px solid #eeeeee;
-    padding: 4px 0;
-}
-
-#controlLabel {
-    font-size: 13px;
-    color: #616161;
-}
-
-#modeCombo {
-    background: white;
-    border: 1px solid #e0e0e0;
-    border-radius: 6px;
-    padding: 4px 8px;
-    font-size: 13px;
-    min-width: 100px;
-}
-
-#modeCombo:hover {
-    border-color: #1976d2;
-}
-
-#modeCombo::drop-down {
-    border: none;
-}
-
-QComboBox QAbstractItemView {
-    background: white;
-    border: 1px solid #e0e0e0;
-    selection-background-color: #e3f2fd;
-    selection-color: #1a1a1a;
-}
-
-#deviceIndicator {
-    font-size: 11px;
-    font-weight: 500;
-    padding: 2px 8px;
-    border-radius: 10px;
-}
-
-#recordingTime {
-    font-size: 18px;
-    font-weight: 600;
-    color: #424242;
-    font-family: "Consolas", "Courier New", monospace;
-}
-
 /* ── 波形控件 ──────────────────────────────── */
 
 #waveformWidget {
@@ -278,17 +250,22 @@ QComboBox QAbstractItemView {
     border-radius: 6px;
 }
 
-/* ── 状态栏 ────────────────────────────────── */
-
-#statusBar {
-    background: #ffffff;
-    border: 1px solid #e0e0e0;
-    border-radius: 6px;
-}
+/* ── 状态标签 ──────────────────────────────── */
 
 #statusLabel {
     font-size: 12px;
-    color: #757575;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+
+/* ── 录音时间 ──────────────────────────────── */
+
+#recordingTime {
+    font-size: 18px;
+    font-weight: 600;
+    color: #424242;
+    font-family: "Consolas", "Courier New", monospace;
 }
 
 /* ── Toast ─────────────────────────────────── */
