@@ -6,6 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
 
+from src.ui.background_content import BackgroundContent
+from src.config.settings import Settings
 from src.storage.bookmark_manager import BookmarkItem, BookmarkManager
 from src.storage.file_writer import FileWriter
 from src.ui.markdown_renderer import MarkdownRenderer
@@ -20,6 +22,7 @@ from PySide6.QtGui import (
     QIcon,
     QKeyEvent,
     QKeySequence,
+    QPixmap,
     QTextCursor,
     QTextDocument,
 )
@@ -28,6 +31,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QDockWidget,
+    QFileDialog,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -45,6 +49,7 @@ from PySide6.QtWidgets import (
     QTextBrowser,
     QTextEdit,
     QToolBar,
+    QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -59,6 +64,24 @@ except ImportError:
     MARKDOWN_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
+
+
+def _asset_path(name: str) -> Optional[str]:
+    """解析 assets 目录下的图片资源路径（兼容打包环境）。"""
+    candidates = [
+        Path(__file__).resolve().parent.parent.parent / "assets" / name,
+    ]
+    try:
+        import sys
+
+        if getattr(sys, "frozen", False):
+            candidates.append(Path(sys.executable).parent / "assets" / name)
+    except Exception:
+        pass
+    for path in candidates:
+        if path.exists():
+            return str(path)
+    return None
 
 
 def _find_summary_path(output_dir: str, video_name: str) -> Optional[Path]:
@@ -109,7 +132,13 @@ class ResultViewerWindow(QMainWindow):
         self._search_timer.setInterval(300)
         self._search_timer.timeout.connect(self._do_search)
 
+        # 背景图片
+        self._bg_pixmap: Optional[QPixmap] = None
+        self._bg_opacity: float = 0.4
+        self._bg_image_path: str = ""
+
         self._init_ui()
+        self._load_bg_settings()
         self._apply_theme()
         self._load_bookmarks()
 
@@ -120,9 +149,9 @@ class ResultViewerWindow(QMainWindow):
 
     def _init_ui(self) -> None:
         """初始化UI布局"""
-        central = QWidget()
-        self.setCentralWidget(central)
-        layout = QVBoxLayout(central)
+        self._bg_content = BackgroundContent()
+        self.setCentralWidget(self._bg_content)
+        layout = QVBoxLayout(self._bg_content)
         layout.setContentsMargins(0, 0, 0, 0)
 
         # 工具栏
@@ -207,6 +236,57 @@ class ResultViewerWindow(QMainWindow):
         # 书签停靠窗口
         self._create_bookmark_dock()
 
+
+    def _apply_bg_transparency(self) -> None:
+        """有背景图片时设置面板/控件透明，否则恢复默认样式"""
+        has_bg = (
+            self._bg_pixmap is not None
+            and not self._bg_pixmap.isNull()
+        )
+
+        if has_bg:
+            # 设置 splitter 透明
+            if hasattr(self, "_main_splitter"):
+                self._main_splitter.setStyleSheet("background: transparent;")
+
+            # 文件列表相关 — 透明 + 细边框
+            self.tabs.setStyleSheet(
+                "QTabWidget { background: transparent; }"
+                " QTabWidget::pane { background: transparent; border: 1px solid palette(mid); border-radius: 3px; }"
+                " QTabBar::tab { padding: 6px 14px; border: 1px solid palette(mid); border-bottom: none;"
+                "  border-top-left-radius: 3px; border-top-right-radius: 3px; }"
+                " QTabBar::tab:selected { border-bottom: 2px solid palette(highlight); }"
+            )
+            self._file_filter.setStyleSheet(
+                "QLineEdit { background: transparent; border: 1px solid palette(mid); border-radius: 3px; padding: 2px 4px; }"
+            )
+            self.file_list.setStyleSheet(
+                "QListWidget { background: transparent; border: 1px solid palette(mid); border-radius: 3px; }"
+            )
+            self._folder_tree.setStyleSheet(
+                "QTreeWidget { background: transparent; border: 1px solid palette(mid); border-radius: 3px; }"
+            )
+
+            # 文本视图 — 透明 + 细边框
+            for view in (self.transcript_view, self.summary_view):
+                view.setStyleSheet(
+                    f"{type(view).__name__} {{ background: transparent; border: 1px solid palette(mid); border-radius: 3px; }}"
+                )
+                if hasattr(view, "viewport"):
+                    view.viewport().setStyleSheet("background: transparent;")
+        else:
+            # 无背景图时恢复默认样式，让主题/系统样式生效
+            if hasattr(self, "_main_splitter"):
+                self._main_splitter.setStyleSheet("")
+            self.tabs.setStyleSheet("")
+            self._file_filter.setStyleSheet("")
+            self.file_list.setStyleSheet("")
+            self._folder_tree.setStyleSheet("")
+            for view in (self.transcript_view, self.summary_view):
+                view.setStyleSheet("")
+                if hasattr(view, "viewport"):
+                    view.viewport().setStyleSheet("")
+
     def _create_toolbar(self):
         """创建工具栏"""
         toolbar = QToolBar("主工具栏")
@@ -287,6 +367,30 @@ class ResultViewerWindow(QMainWindow):
 
         toolbar.addSeparator()
 
+        # 背景图片（合成按钮：更换 / 清除 / 透明度）
+        self._bg_btn = QToolButton()
+        self._bg_btn.setText("背景图片")
+        self._bg_btn.setToolTip("背景图片设置")
+        self._bg_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self._bg_btn.setStyleSheet("QToolButton::menu-indicator { image: none; }")
+        bg_menu = QMenu(self)
+
+        change_action = bg_menu.addAction("更换图片")
+        change_action.triggered.connect(self._change_bg_image)
+
+        clear_action = bg_menu.addAction("清除背景")
+        clear_action.triggered.connect(self._clear_bg_image)
+
+        bg_menu.addSeparator()
+
+        transparency_action = bg_menu.addAction("调整不透明度")
+        transparency_action.triggered.connect(self._adjust_bg_transparency)
+
+        self._bg_btn.setMenu(bg_menu)
+        toolbar.addWidget(self._bg_btn)
+
+        toolbar.addSeparator()
+
         # 关闭按钮
         # close_action = QAction("关闭", self)
         # close_action.setShortcut(QKeySequence("Ctrl+W"))
@@ -310,11 +414,16 @@ class ResultViewerWindow(QMainWindow):
         title_label.setStyleSheet("font-weight: 600;")
         title_layout.addWidget(title_label)
         title_layout.addStretch()
-        dock_close_btn = QPushButton("✕")
+        dock_close_btn = QPushButton()
         dock_close_btn.setFixedWidth(28)
-        dock_close_btn.setStyleSheet(
-            "font-size: 16px; font-weight: bold; border: none; padding: 0;"
-        )
+        close_icon = _asset_path("close.png")
+        if close_icon:
+            dock_close_btn.setIcon(QIcon(close_icon))
+        else:
+            dock_close_btn.setText("✕")
+            dock_close_btn.setStyleSheet(
+                "font-size: 16px; font-weight: bold; border: none; padding: 0;"
+            )
         dock_close_btn.setToolTip("关闭书签面板")
         dock_close_btn.clicked.connect(self.bookmark_dock.close)
         title_layout.addWidget(dock_close_btn)
@@ -417,6 +526,8 @@ class ResultViewerWindow(QMainWindow):
         self.setStyleSheet(self._theme_manager.get_style())
         theme_index = 0 if self._theme_manager.current_theme == "light" else 1
         self.theme_combo.setCurrentIndex(theme_index)
+        # 主题样式会覆盖透明背景，需要重新设置
+        self._apply_bg_transparency()
 
     def _on_theme_changed(self, index: int):
         """主题切换"""
@@ -862,15 +973,25 @@ class ResultViewerWindow(QMainWindow):
         self.search_edit.textChanged.connect(self._on_search_text_changed)
         layout.addWidget(self.search_edit, 1)
 
-        self.search_prev_btn = QPushButton("▲")
+        self.search_prev_btn = QPushButton()
         self.search_prev_btn.setFixedWidth(32)
         self.search_prev_btn.setToolTip("上一个")
+        prev_icon = _asset_path("arrow_up.png")
+        if prev_icon:
+            self.search_prev_btn.setIcon(QIcon(prev_icon))
+        else:
+            self.search_prev_btn.setText("▲")
         self.search_prev_btn.clicked.connect(self._search_prev)
         layout.addWidget(self.search_prev_btn)
 
-        self.search_next_btn = QPushButton("▼")
+        self.search_next_btn = QPushButton()
         self.search_next_btn.setFixedWidth(32)
         self.search_next_btn.setToolTip("下一个 (Enter)")
+        next_icon = _asset_path("arrow_down.png")
+        if next_icon:
+            self.search_next_btn.setIcon(QIcon(next_icon))
+        else:
+            self.search_next_btn.setText("▼")
         self.search_next_btn.clicked.connect(self._search_next)
         layout.addWidget(self.search_next_btn)
 
@@ -878,12 +999,17 @@ class ResultViewerWindow(QMainWindow):
         self.search_count_label.setMinimumWidth(90)
         layout.addWidget(self.search_count_label)
 
-        close_btn = QPushButton("✕")
+        close_btn = QPushButton()
         close_btn.setFixedWidth(28)
-        close_btn.setStyleSheet(
-            "font-size: 16px; font-weight: bold; border: none; padding: 0;"
-        )
         close_btn.setToolTip("关闭搜索栏 (Esc)")
+        close_icon = _asset_path("close.png")
+        if close_icon:
+            close_btn.setIcon(QIcon(close_icon))
+        else:
+            close_btn.setText("✕")
+            close_btn.setStyleSheet(
+                "font-size: 16px; font-weight: bold; border: none; padding: 0;"
+            )
         close_btn.clicked.connect(self._close_search_bar)
         layout.addWidget(close_btn)
 
@@ -1566,6 +1692,118 @@ class ResultViewerWindow(QMainWindow):
     def _save_bookmarks(self):
         """保存书签 — BookmarkManager 的 add/remove/clear 已自动持久化，此方法保留兼容性"""
         pass
+
+    # ─── 背景图片 ────────────────────────────────────────────
+
+    def _load_bg_settings(self) -> None:
+        """从配置加载背景图片设置"""
+        try:
+            settings = Settings()
+            path = settings.get("app.result_image_path", "")
+            if path:
+                p = Path(path)
+                if not p.is_absolute():
+                    p = _get_base_dir() / path
+                if p.exists():
+                    self._bg_pixmap = QPixmap(str(p))
+                    self._bg_image_path = str(p)
+                else:
+                    self._bg_pixmap = None
+                    self._bg_image_path = ""
+            else:
+                self._bg_pixmap = None
+                self._bg_image_path = ""
+
+            opacity_int = settings.get_int(
+                "app.result_transparency", 100
+            )
+            self._bg_opacity = max(0.0, min(1.0, opacity_int / 255.0))
+        except Exception:
+            self._bg_pixmap = None
+            self._bg_image_path = ""
+            self._bg_opacity = 0.4
+
+        if hasattr(self, "_bg_content"):
+            self._bg_content.set_bg_pixmap(self._bg_pixmap)
+            self._bg_content.set_bg_opacity(self._bg_opacity)
+        self._apply_bg_transparency()
+
+    def _save_bg_config(self) -> None:
+        """保存背景图片配置到 config.ini"""
+        try:
+            settings = Settings()
+            if self._bg_image_path:
+                p = Path(self._bg_image_path)
+                base = _get_base_dir()
+                try:
+                    rel = p.relative_to(base)
+                    settings.set("app.result_image_path", str(rel))
+                except ValueError:
+                    settings.set("app.result_image_path", str(p))
+            else:
+                settings.set("app.result_image_path", "")
+
+            opacity_int = round(self._bg_opacity * 255)
+            settings.set("app.result_transparency", str(opacity_int))
+            settings.save()
+        except Exception as e:
+            logger.warning("保存背景图片配置失败: %s", e)
+
+    def _change_bg_image(self) -> None:
+        """通过资源管理器选择并更换背景图片"""
+        initial_dir = (
+            self._bg_image_path if self._bg_image_path else str(_get_base_dir())
+        )
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "选择背景图片",
+            initial_dir,
+            "图片文件 (*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp);;所有文件 (*.*)",
+        )
+        if not file_path:
+            return
+
+        pixmap = QPixmap(file_path)
+        if pixmap.isNull():
+            QMessageBox.warning(self, "提示", "无法加载该图片文件，请选择其他图片。")
+            return
+
+        self._bg_pixmap = pixmap
+        self._bg_image_path = file_path
+        if hasattr(self, "_bg_content"):
+            self._bg_content.set_bg_pixmap(self._bg_pixmap)
+        self._apply_bg_transparency()
+        self._save_bg_config()
+        self.status_bar.showMessage(f"背景图片已更换: {Path(file_path).name}")
+
+    def _clear_bg_image(self) -> None:
+        """清除背景图片"""
+        self._bg_pixmap = None
+        self._bg_image_path = ""
+        if hasattr(self, "_bg_content"):
+            self._bg_content.set_bg_pixmap(None)
+        self._apply_bg_transparency()
+        self._save_bg_config()
+        self.status_bar.showMessage("背景图片已清除")
+
+    def _adjust_bg_transparency(self) -> None:
+        """弹出输入框修改背景不透明度 (0~255)"""
+        current_val = round(self._bg_opacity * 255)
+        value, ok = QInputDialog.getInt(
+            self,
+            "调整背景不透明度",
+            "请输入背景不透明度 (0~255)：\n0=完全透明（背景图不可见），255=完全不透明（背景图最明显）",
+            current_val,
+            0,
+            255,
+            1,
+        )
+        if ok:
+            self._bg_opacity = max(0.0, min(1.0, value / 255.0))
+            if hasattr(self, "_bg_content"):
+                self._bg_content.set_bg_opacity(self._bg_opacity)
+            self._save_bg_config()
+            self.status_bar.showMessage(f"背景不透明度已设置为: {value} (0~255)")
 
     # ─── 标签页切换 ────────────────────────────────────────────
 

@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -573,6 +574,10 @@ _KEY_LABELS: dict[str, str] = {
     "app.version": "版本号",
     "app.log_level": "日志级别",
     "app.incremental_mode": "增量模式",
+    "app.result_image_path": "结果查看图片路径",
+    "app.result_transparency": "结果查看透明度",
+    "app.main_image_path": "主界面图片路径",
+    "app.main_transparency": "主界面透明度",
     "transcription.model_path": "模型路径",
     "transcription.device": "设备",
     "transcription.language": "语言",
@@ -694,6 +699,27 @@ _KEY_TOOLTIPS: dict[str, str] = {
     "voice_to_text.vad_min_speech_frames": "VAD 判定为有效语音的最小帧数 (每帧约32ms)",
     "voice_to_text.vad_calibration_frames": "VAD 自动校准噪底时采集的静音帧数 (每帧约10ms)",
     "voice_to_text.context_max_chars": "连续转写时保留的上文最大字符数",
+    "app.result_image_path": "背景图片路径，可填写相对路径（相对于程序目录）或绝对路径，留空则不使用背景图片",
+    "app.result_transparency": "背景图片透明度 (0~255)，0=完全透明，255=完全不透明",
+    "app.main_image_path": "主界面背景图片路径，可填写相对路径（相对于程序目录）或绝对路径，留空则不使用背景图片",
+    "app.main_transparency": "主界面背景图片透明度 (0~255)，0=完全透明，255=完全不透明",
+}
+
+_SECTION_GROUPS: dict[str, dict[str, list[str]]] = {
+    "app": {
+        "通用配置": ["log_level", "incremental_mode"],
+        "背景图片配置": [
+            "result_image_path",
+            "result_transparency",
+            "main_image_path",
+            "main_transparency",
+        ],
+    },
+}
+
+_FILE_KEYS: set[str] = {
+    "app.result_image_path",
+    "app.main_image_path",
 }
 
 _BOOL_COMBO_KEYS: set[str] = {
@@ -836,49 +862,120 @@ class ConfigEditorDialog(QDialog):
             return
 
         tab = QWidget()
-        form = QFormLayout(tab)
-        form.setContentsMargins(8, 8, 8, 8)
+        groups = _SECTION_GROUPS.get(section)
+        if groups:
+            tab_layout = QVBoxLayout(tab)
+            tab_layout.setContentsMargins(8, 8, 8, 8)
+            tab_layout.setSpacing(12)
+        else:
+            form = QFormLayout(tab)
+            form.setContentsMargins(8, 8, 8, 8)
 
         section_edits: dict[str, QWidget] = {}
         items = self.settings.config.items(section)
 
         _SKIP_KEYS = {"summarization.custom_prompt"}
 
-        for key, value in items:
-            full_key = f"{section}.{key}"
-            if full_key in _SKIP_KEYS:
-                continue
-            tooltip = _KEY_TOOLTIPS.get(full_key)
-            label = _KEY_LABELS.get(full_key, key)
-            if full_key in _COMBO_KEYS:
-                widget = QComboBox()
-                widget.addItems(_COMBO_OPTIONS.get(full_key, []))
-                ConfigEditorDialog._set_widget_text(widget, value)
-                if tooltip:
-                    widget.setToolTip(tooltip)
-                form.addRow(f"{label}:", widget)
-            elif full_key in Settings.PATH_KEYS:
-                widget = QLineEdit(value)
-                if tooltip:
-                    widget.setToolTip(tooltip)
-                row = QHBoxLayout()
-                row.addWidget(widget, 1)
-                browse_btn = QPushButton("浏览")
-                browse_btn.setProperty("_path_edit", widget)
-                browse_btn.clicked.connect(self._browse_dir)
-                row.addWidget(browse_btn)
-                form.addRow(f"{label}:", row)
-            else:
-                widget = QLineEdit(value)
-                if tooltip:
-                    widget.setToolTip(tooltip)
-                form.addRow(f"{label}:", widget)
-            section_edits[key] = widget
+        if groups:
+            for group_name, keys in groups.items():
+                gb = QGroupBox(group_name)
+                gb_form = QFormLayout(gb)
+                gb_form.setContentsMargins(8, 8, 8, 8)
+                gb_form.setSpacing(4)
+                for key in keys:
+                    full_key = f"{section}.{key}"
+                    if full_key in _SKIP_KEYS:
+                        continue
+                    value = dict(items).get(key, "")
+                    tooltip = _KEY_TOOLTIPS.get(full_key)
+                    label = _KEY_LABELS.get(full_key, key)
+                    widget = self._create_edit_widget(full_key, value, tooltip)
+                    if widget is not None:
+                        gb_form.addRow(f"{label}:", widget)
+                        section_edits[key] = widget
+                tab_layout.addWidget(gb)
+            # 未在分组中定义的 key 在最后以平铺方式展示
+            grouped_keys = set()
+            for keys in groups.values():
+                grouped_keys.update(keys)
+            extra_keys = [k for k in dict(items) if k not in grouped_keys and f"{section}.{k}" not in _SKIP_KEYS]
+            if extra_keys:
+                gb = QGroupBox("其他")
+                gb_form = QFormLayout(gb)
+                gb_form.setContentsMargins(8, 8, 8, 8)
+                for key in extra_keys:
+                    full_key = f"{section}.{key}"
+                    value = dict(items).get(key, "")
+                    tooltip = _KEY_TOOLTIPS.get(full_key)
+                    label = _KEY_LABELS.get(full_key, key)
+                    widget = self._create_edit_widget(full_key, value, tooltip)
+                    if widget is not None:
+                        gb_form.addRow(f"{label}:", widget)
+                        section_edits[key] = widget
+                tab_layout.addWidget(gb)
+            tab_layout.addStretch()
+        else:
+            for key, value in items:
+                full_key = f"{section}.{key}"
+                if full_key in _SKIP_KEYS:
+                    continue
+                tooltip = _KEY_TOOLTIPS.get(full_key)
+                label = _KEY_LABELS.get(full_key, key)
+                widget = self._create_edit_widget(full_key, value, tooltip)
+                if widget is not None:
+                    form.addRow(f"{label}:", widget)
+                    section_edits[key] = widget
 
         self._edits[section] = section_edits
 
         tab_label = _SECTION_LABELS.get(section, section)
         self.tab_widget.addTab(tab, tab_label)
+
+
+    def _create_edit_widget(
+        self, full_key: str, value: str, tooltip: Optional[str]
+    ) -> Optional[QWidget]:
+        """根据 key 类型创建对应的编辑控件"""
+        if full_key in _COMBO_KEYS:
+            widget = QComboBox()
+            widget.addItems(_COMBO_OPTIONS.get(full_key, []))
+            ConfigEditorDialog._set_widget_text(widget, value)
+            if tooltip:
+                widget.setToolTip(tooltip)
+            return widget
+        elif full_key in Settings.PATH_KEYS:
+            widget = QLineEdit(value)
+            if tooltip:
+                widget.setToolTip(tooltip)
+            row = QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
+            row.addWidget(widget, 1)
+            browse_btn = QPushButton("浏览")
+            browse_btn.setProperty("_path_edit", widget)
+            browse_btn.clicked.connect(self._browse_dir)
+            row.addWidget(browse_btn)
+            container = QWidget()
+            container.setLayout(row)
+            return container
+        elif full_key in _FILE_KEYS:
+            widget = QLineEdit(value)
+            if tooltip:
+                widget.setToolTip(tooltip)
+            row = QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
+            row.addWidget(widget, 1)
+            browse_btn = QPushButton("浏览")
+            browse_btn.setProperty("_path_edit", widget)
+            browse_btn.clicked.connect(self._browse_file)
+            row.addWidget(browse_btn)
+            container = QWidget()
+            container.setLayout(row)
+            return container
+        else:
+            widget = QLineEdit(value)
+            if tooltip:
+                widget.setToolTip(tooltip)
+            return widget
 
     def _browse_dir(self) -> None:
         btn = self.sender()
@@ -891,6 +988,30 @@ class ConfigEditorDialog(QDialog):
         folder = QFileDialog.getExistingDirectory(self, "选择目录", current)
         if folder:
             edit.setText(folder)
+
+    def _browse_file(self) -> None:
+        """浏览图片文件"""
+        btn = self.sender()
+        if btn is None:
+            return
+        edit: Optional[QLineEdit] = btn.property("_path_edit")
+        if edit is None:
+            return
+        current = edit.text().strip()
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "选择背景图片",
+            current,
+            "图片文件 (*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp);;所有文件 (*.*)",
+        )
+        if file_path:
+            from src.utils.paths import get_base_dir as _get_base_dir
+            base = _get_base_dir()
+            try:
+                rel = Path(file_path).relative_to(base)
+                edit.setText(str(rel))
+            except ValueError:
+                edit.setText(file_path)
 
     def closeEvent(self, event) -> None:
         if hasattr(self, "_summarization_tab"):
@@ -914,9 +1035,13 @@ class ConfigEditorDialog(QDialog):
                 if display in mapping:
                     return mapping[display]
             return display
-        if hasattr(widget, "text"):
-            return widget.text()  # type: ignore[union-attr]
-        return ""
+        # 容器控件（PATH_KEYS / _FILE_KEYS 带浏览按钮）取内部的 QLineEdit
+        if not hasattr(widget, "text"):
+            line_edit = widget.findChild(QLineEdit)
+            if line_edit is not None:
+                return line_edit.text()
+            return ""
+        return widget.text()  # type: ignore[union-attr]
 
     @staticmethod
     def _set_widget_text(widget: QWidget, value: str) -> None:
@@ -938,6 +1063,10 @@ class ConfigEditorDialog(QDialog):
             widget.setCurrentText(value)
         elif hasattr(widget, "setText"):
             widget.setText(value)  # type: ignore[union-attr]
+        else:
+            line_edit = widget.findChild(QLineEdit)
+            if line_edit is not None:
+                line_edit.setText(value)
 
     def _save(self) -> None:
         for section, edits in self._edits.items():

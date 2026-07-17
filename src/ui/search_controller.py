@@ -1,8 +1,9 @@
 """搜索替换控制器 —— 从 MainWindow 提取的查找/替换逻辑"""
 
+from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtGui import QColor, QTextCursor
+from PySide6.QtGui import QColor, QIcon, QTextCursor
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -12,6 +13,26 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+
+def _asset_path(name: str) -> Optional[str]:
+    """解析 assets 目录下的图片资源路径（兼容打包环境）。"""
+    candidates = [
+        Path(__file__).resolve().parent.parent.parent / "assets" / name,
+    ]
+    try:
+        import sys
+
+        if getattr(sys, "frozen", False):
+            candidates.append(
+                Path(sys.executable).parent / "assets" / name
+            )
+    except Exception:
+        pass
+    for path in candidates:
+        if path.exists():
+            return str(path)
+    return None
 
 
 class SearchController(QWidget):
@@ -49,15 +70,25 @@ class SearchController(QWidget):
         self._search_input.textChanged.connect(self._find_all_matches)
         search_row.addWidget(self._search_input, 1)
 
-        prev_btn = QPushButton("▲")
+        prev_btn = QPushButton()
         prev_btn.setFixedWidth(32)
         prev_btn.setToolTip("上一个")
+        prev_icon = _asset_path("arrow_up.png")
+        if prev_icon:
+            prev_btn.setIcon(QIcon(prev_icon))
+        else:
+            prev_btn.setText("▲")
         prev_btn.clicked.connect(self._find_prev)
         search_row.addWidget(prev_btn)
 
-        next_btn = QPushButton("▼")
+        next_btn = QPushButton()
         next_btn.setFixedWidth(32)
         next_btn.setToolTip("下一个 (Enter)")
+        next_icon = _asset_path("arrow_down.png")
+        if next_icon:
+            next_btn.setIcon(QIcon(next_icon))
+        else:
+            next_btn.setText("▼")
         next_btn.clicked.connect(self._find_next)
         search_row.addWidget(next_btn)
 
@@ -65,9 +96,14 @@ class SearchController(QWidget):
         self._count_label.setMinimumWidth(90)
         search_row.addWidget(self._count_label)
 
-        close_btn = QPushButton("✕")
+        close_btn = QPushButton()
         close_btn.setFixedWidth(28)
         close_btn.setToolTip("关闭搜索栏")
+        close_icon = _asset_path("close.png")
+        if close_icon:
+            close_btn.setIcon(QIcon(close_icon))
+        else:
+            close_btn.setText("✕")
         close_btn.clicked.connect(self.hide)
         search_row.addWidget(close_btn)
 

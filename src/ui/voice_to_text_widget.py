@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import QTimer, QObject, Signal, Qt
-from PySide6.QtGui import QPainter, QColor, QBrush, QTextCursor, QTextBlockUserData
+from PySide6.QtGui import QPainter, QPixmap, QColor, QBrush, QTextCursor, QTextBlockUserData
 from PySide6.QtWidgets import (
     QApplication,
     QGroupBox,
@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QMenu,
 )
 
+from src.ui.background_content import BackgroundContent
 from src.config.settings import Settings
 from src.services.voice_recorder import VoiceRecorder
 from src.services.voice_transcription import (
@@ -41,6 +42,8 @@ from src.storage.voice_conversation_store import (
 from src.summarization.providers import create_provider
 from src.utils.exceptions import Video2TextError
 from src.utils.logger import get_logger
+
+from src.utils.paths import get_base_dir as _get_base_dir
 
 logger = get_logger(__name__)
 
@@ -176,16 +179,28 @@ class VoiceToTextWidget(QWidget):
 
         self._last_transcribed_text = ""
 
+        # ── 背景图片 ───────────────────────────────────────────────────────
+        self._bg_pixmap: Optional[QPixmap] = None
+        self._bg_opacity: float = 0.4
+        self._bg_image_path: str = ""
+
         self._init_ui()
         self._refresh_history()
         self._set_status("● 初始化...", "info")
+        self._load_bg_settings()
 
     # ── UI 构建 ────────────────────────────────────────────────────────────
 
     def _init_ui(self) -> None:
-        root = QVBoxLayout(self)
-        root.setContentsMargins(8, 8, 8, 0)
-        root.setSpacing(0)
+        # BackgroundContent 作为根部容器，支持背景图片
+        self._bg_content = BackgroundContent(self)
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.addWidget(self._bg_content)
+
+        bg_layout = QVBoxLayout(self._bg_content)
+        bg_layout.setContentsMargins(8, 8, 8, 0)
+        bg_layout.setSpacing(0)
 
         self._load_styles()
 
@@ -204,7 +219,7 @@ class VoiceToTextWidget(QWidget):
         content_layout.addWidget(sidebar)
         content_layout.addLayout(right_layout, 1)
 
-        root.addLayout(content_layout, 1)
+        bg_layout.addLayout(content_layout, 1)
 
     def _build_sidebar(self) -> QWidget:
         group = QGroupBox("会话列表")
@@ -1175,6 +1190,116 @@ class VoiceToTextWidget(QWidget):
             self._editing_msg_uuid = None
             self.chat_display.setReadOnly(True)
         self.window()._on_back_to_main()
+
+    # ── 背景图片 ──────────────────────────────────────────────────────────
+
+    def _load_bg_settings(self) -> None:
+        """从主界面配置加载背景图片设置（跟随主界面）"""
+        try:
+            path = self._settings.get("app.result_image_path", "")
+            if path:
+                p = Path(path)
+                if not p.is_absolute():
+                    p = _get_base_dir() / path
+                if p.exists():
+                    self._bg_pixmap = QPixmap(str(p))
+                    self._bg_image_path = str(p)
+                else:
+                    self._bg_pixmap = None
+                    self._bg_image_path = ""
+            else:
+                self._bg_pixmap = None
+                self._bg_image_path = ""
+
+            opacity_int = self._settings.get_int(
+                "app.result_transparency", 100
+            )
+            self._bg_opacity = max(0.0, min(1.0, opacity_int / 255.0))
+        except Exception:
+            self._bg_pixmap = None
+            self._bg_image_path = ""
+            self._bg_opacity = 0.4
+
+        if hasattr(self, "_bg_content"):
+            self._bg_content.set_bg_pixmap(self._bg_pixmap)
+            self._bg_content.set_bg_opacity(self._bg_opacity)
+        self._apply_bg_transparency()
+
+    def _apply_bg_transparency(self) -> None:
+        """有背景图片时设置面板/控件透明，否则恢复默认样式"""
+        has_bg = (
+            self._bg_pixmap is not None
+            and not self._bg_pixmap.isNull()
+        )
+
+        if has_bg:
+            # 左侧 sidebar 组
+            sidebar_group = self.findChild(QGroupBox, "sidebarGroup")
+            if sidebar_group:
+                sidebar_group.setStyleSheet(
+                    "#sidebarGroup { background: transparent; border: 1px solid palette(mid); border-radius: 4px; }"
+                )
+            self.history_list.setStyleSheet(
+                "#historyList { background: transparent; border: 1px solid palette(mid); border-radius: 3px; }"
+            )
+
+            # 主区域（与底部控制区上下拼接，底部无圆角）
+            main_group = self.findChild(QGroupBox, "mainAreaGroup")
+            if main_group:
+                main_group.setStyleSheet(
+                    "#mainAreaGroup { background: transparent;"
+                    " border: 1px solid palette(mid); border-radius: 4px;"
+                    " border-bottom-left-radius: 0; border-bottom-right-radius: 0; }"
+                )
+
+            # 标题栏（在 mainAreaGroup 内部，只透明明无需单独外框）
+            title_bar = self.findChild(QWidget, "titleBar")
+            if title_bar:
+                title_bar.setStyleSheet("#titleBar { background: transparent; }")
+
+            # 聊天显示区
+            self.chat_display.setStyleSheet(
+                "#chatDisplay { background: transparent; border: 1px solid palette(mid); border-radius: 3px; }"
+            )
+            if hasattr(self.chat_display, "viewport"):
+                self.chat_display.viewport().setStyleSheet("background: transparent;")
+
+            # 底部波形控制区（与主区域拼接，顶部无边框/圆角避免双线）
+            control_group = self.findChild(QGroupBox, "controlGroup")
+            if control_group:
+                control_group.setStyleSheet(
+                    "#controlGroup { background: transparent;"
+                    " border: 1px solid palette(mid); border-radius: 4px;"
+                    " border-top: none;"
+                    " border-top-left-radius: 0; border-top-right-radius: 0; }"
+                )
+            # 波形控件
+            waveform = self.findChild(QWidget, "waveformWidget")
+            if waveform:
+                waveform.setStyleSheet(
+                    "#waveformWidget { background: transparent; border: 1px solid palette(mid); border-radius: 3px; }"
+                )
+        else:
+            # 无背景图时恢复默认样式
+            sidebar_group = self.findChild(QGroupBox, "sidebarGroup")
+            if sidebar_group:
+                sidebar_group.setStyleSheet("")
+            self.history_list.setStyleSheet("")
+            main_group = self.findChild(QGroupBox, "mainAreaGroup")
+            if main_group:
+                main_group.setStyleSheet("")
+            title_bar = self.findChild(QWidget, "titleBar")
+            if title_bar:
+                title_bar.setStyleSheet("")
+            self.chat_display.setStyleSheet("")
+            if hasattr(self.chat_display, "viewport"):
+                self.chat_display.viewport().setStyleSheet("")
+            control_group = self.findChild(QGroupBox, "controlGroup")
+            if control_group:
+                control_group.setStyleSheet("")
+            waveform = self.findChild(QWidget, "waveformWidget")
+            if waveform:
+                waveform.setStyleSheet("")
 
     def cleanup(self) -> None:
         self._closing = True

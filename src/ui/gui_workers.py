@@ -551,6 +551,8 @@ class PipelineWorker(QObject):
         stream: bool = True,
         input_folder: Optional[str] = None,
         mirror_depth: int = 1,
+        initial_prompt: str = "",
+        hotwords: str = "",
     ) -> None:
         super().__init__()
         self.video_files = video_files
@@ -560,6 +562,8 @@ class PipelineWorker(QObject):
         self.stream = stream
         self.input_folder = input_folder
         self.mirror_depth = mirror_depth
+        self.initial_prompt = initial_prompt
+        self.hotwords = hotwords
         self._cancelled = False
         self._active_provider = None
         self._tx_service: Optional[TranscriptionService] = None

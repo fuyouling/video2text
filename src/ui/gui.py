@@ -13,6 +13,7 @@ from PySide6.QtGui import (
     QFont,
     QIcon,
     QKeySequence,
+    QPixmap,
     QTextCursor,
 )
 from PySide6.QtWidgets import (
@@ -46,6 +47,7 @@ from src.services.transcription_service import TranscriptionService
 from src.summarization.prompt_manager import PromptManager
 from src.storage.file_writer import FileWriter
 from src.summarization.ollama_client import OllamaClient
+from src.ui.background_content import BackgroundContent
 from src.ui.gui_dialogs import ConfigEditorDialog, VideoSelectionDialog
 from src.ui.gui_workers import (
     PipelineWorker,
@@ -120,6 +122,11 @@ class MainWindow(QMainWindow):
             "output.output_dir", _DEFAULT_OUTPUT_DIR
         )
 
+        # 背景图片
+        self._bg_pixmap: Optional[QPixmap] = None
+        self._bg_opacity: float = 0.4
+        self._bg_image_path: str = ""
+
         self._init_ui()
 
         self._fav_helper = FavoriteDirHelper(
@@ -138,7 +145,6 @@ class MainWindow(QMainWindow):
         """初始化主窗口 UI 布局：菜单栏、输入输出行、进度条、日志面板、结果面板。"""
         self.setWindowTitle("Video2Text - 音视频转文本工具")
         self.resize(1200, 800)
-        self.showMaximized()
 
         icon_path = (
             Path(__file__).resolve().parent.parent.parent
@@ -155,9 +161,9 @@ class MainWindow(QMainWindow):
 
         self._create_menu_bar()
 
-        central = QWidget()
-        self.setCentralWidget(central)
-        root = QVBoxLayout(central)
+        self._bg_content = BackgroundContent()
+        self.setCentralWidget(self._bg_content)
+        root = QVBoxLayout(self._bg_content)
         root.setContentsMargins(10, 10, 10, 10)
         root.setSpacing(8)
 
@@ -188,18 +194,22 @@ class MainWindow(QMainWindow):
         root.addWidget(self.main_panel, 1)
 
         self.voice_panel = QWidget()
-        voice_layout = QVBoxLayout(self.voice_panel)
-        voice_layout.setContentsMargins(0, 0, 0, 0)
-        voice_layout.setSpacing(0)
-        from src.ui.voice_to_text_widget import VoiceToTextWidget
-        self._voice_widget = VoiceToTextWidget(self.settings, self)
-        voice_layout.addWidget(self._voice_widget)
+        self._voice_layout = QVBoxLayout(self.voice_panel)
+        self._voice_layout.setContentsMargins(0, 0, 0, 0)
+        self._voice_layout.setSpacing(0)
+        self._voice_widget = None  # 延迟创建，首次切换到 VoiceToText 时才实例化
         self.voice_panel.hide()
         root.addWidget(self.voice_panel, 1)
 
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage(f"配置: {self.settings.config_path}")
+
+        # 在窗口显示前加载背景图片和透明样式，避免先显示默认样式再闪变
+        self._load_bg_settings()
+
+        # 在所有控件构造完成且样式就绪后才最大化显示
+        self.showMaximized()
 
     def _create_input_row(self) -> QHBoxLayout:
         input_row = QHBoxLayout()
@@ -336,8 +346,35 @@ class MainWindow(QMainWindow):
         tx_prompt_layout = QVBoxLayout(tx_prompt_group)
 
         self.tx_prompt_template_combo = QComboBox()
+        self.tx_prompt_template_combo.setObjectName("TxPromptCombo")
         self.tx_prompt_template_combo.setMinimumWidth(150)
         self.tx_prompt_template_combo.setPlaceholderText("选择已保存的提示词…")
+        self.tx_prompt_template_combo.setStyleSheet("""
+            QComboBox {
+                background: transparent;
+                color: palette(text);
+                border: 1px solid palette(mid);
+                border-radius: 3px;
+                padding: 2px 4px;
+            }
+            QComboBox::drop-down {
+                border-left: 1px solid palette(mid);
+                width: 24px;
+            }
+            QComboBox::down-arrow {
+                image: url(assets/arrow_down.png);
+                width: 20px; height: 20px;
+            }
+            QComboBox QAbstractItemView {
+                background: palette(window);
+                color: palette(text);
+                selection-background-color: palette(highlight);
+                selection-color: palette(highlighted-text);
+                border: 1px solid palette(mid);
+                outline: none;
+            }
+        """)
+
         self.tx_prompt_template_combo.currentTextChanged.connect(
             self._on_tx_prompt_template_selected
         )
@@ -380,8 +417,35 @@ class MainWindow(QMainWindow):
 
         prompt_btn_row = QHBoxLayout()
         self.prompt_template_combo = QComboBox()
+        self.prompt_template_combo.setObjectName("SummaryPromptCombo")
         self.prompt_template_combo.setMinimumWidth(150)
         self.prompt_template_combo.setPlaceholderText("选择已保存的提示词…")
+        self.prompt_template_combo.setStyleSheet("""
+            QComboBox {
+                background: transparent;
+                color: palette(text);
+                border: 1px solid palette(mid);
+                border-radius: 3px;
+                padding: 2px 4px;
+            }
+            QComboBox::drop-down {
+                border-left: 1px solid palette(mid);
+                width: 24px;
+            }
+            QComboBox::down-arrow {
+                image: url(assets/arrow_down.png);
+                width: 20px; height: 20px;
+            }
+            QComboBox QAbstractItemView {
+                background: palette(window);
+                color: palette(text);
+                selection-background-color: palette(highlight);
+                selection-color: palette(highlighted-text);
+                border: 1px solid palette(mid);
+                outline: none;
+            }
+        """)
+
         self.prompt_template_combo.currentTextChanged.connect(
             self._on_prompt_template_selected
         )
@@ -411,6 +475,15 @@ class MainWindow(QMainWindow):
         settings_menu = menu_bar.addMenu("设置")
         edit_config_action = settings_menu.addAction("编辑配置")
         edit_config_action.triggered.connect(self._show_config_editor)
+
+        # 背景图片子菜单
+        bg_menu = settings_menu.addMenu("背景图片")
+        bg_change_action = bg_menu.addAction("更换图片")
+        bg_change_action.triggered.connect(self._change_bg_image)
+        bg_clear_action = bg_menu.addAction("清除背景")
+        bg_clear_action.triggered.connect(self._clear_bg_image)
+        bg_transparency_action = bg_menu.addAction("不透明度")
+        bg_transparency_action.triggered.connect(self._adjust_bg_transparency)
 
         fav_menu = settings_menu.addMenu("收藏")
         fav_input_action = fav_menu.addAction("收藏输入文件夹")
@@ -1509,6 +1582,10 @@ class MainWindow(QMainWindow):
     # ── VoiceToText 界面翻转 ──
 
     def _on_show_voice_to_text(self) -> None:
+        if self._voice_widget is None:
+            from src.ui.voice_to_text_widget import VoiceToTextWidget
+            self._voice_widget = VoiceToTextWidget(self.settings, self)
+            self._voice_layout.addWidget(self._voice_widget)
         self.main_panel.hide()
         self.voice_panel.show()
         self._voice_widget.load_model_async()
@@ -1780,6 +1857,171 @@ class MainWindow(QMainWindow):
             self._result_viewer.close()
 
         event.accept()
+
+    # ─── 背景图片 ────────────────────────────────────────────
+
+    def _load_bg_settings(self) -> None:
+        """从配置加载背景图片设置"""
+        try:
+            path = self.settings.get("app.main_image_path", "")
+            if path:
+                p = Path(path)
+                if not p.is_absolute():
+                    from src.utils.paths import get_base_dir as _get_base_dir
+                    p = _get_base_dir() / path
+                if p.exists():
+                    self._bg_pixmap = QPixmap(str(p))
+                    self._bg_image_path = str(p)
+                else:
+                    self._bg_pixmap = None
+                    self._bg_image_path = ""
+            else:
+                self._bg_pixmap = None
+                self._bg_image_path = ""
+
+            opacity_int = self.settings.get_int(
+                "app.main_transparency", 100
+            )
+            self._bg_opacity = max(0.0, min(1.0, opacity_int / 255.0))
+        except Exception:
+            self._bg_pixmap = None
+            self._bg_image_path = ""
+            self._bg_opacity = 0.4
+
+        if hasattr(self, "_bg_content"):
+            self._bg_content.set_bg_pixmap(self._bg_pixmap)
+            self._bg_content.set_bg_opacity(self._bg_opacity)
+        self._apply_bg_transparency()
+
+    def _save_bg_config(self) -> None:
+        """保存背景图片配置到 config.ini"""
+        try:
+            if self._bg_image_path:
+                p = Path(self._bg_image_path)
+                from src.utils.paths import get_base_dir as _get_base_dir
+                base = _get_base_dir()
+                try:
+                    rel = p.relative_to(base)
+                    self.settings.set("app.main_image_path", str(rel))
+                except ValueError:
+                    self.settings.set("app.main_image_path", str(p))
+            else:
+                self.settings.set("app.main_image_path", "")
+
+            opacity_int = round(self._bg_opacity * 255)
+            self.settings.set("app.main_transparency", str(opacity_int))
+            self.settings.save()
+        except Exception as e:
+            logger.warning("保存主界面背景图片配置失败: %s", e)
+
+    def _change_bg_image(self) -> None:
+        """通过资源管理器选择并更换背景图片"""
+        initial_dir = (
+            self._bg_image_path if self._bg_image_path else str(Path.cwd())
+        )
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "选择背景图片",
+            initial_dir,
+            "图片文件 (*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp);;所有文件 (*.*)",
+        )
+        if not file_path:
+            return
+
+        pixmap = QPixmap(file_path)
+        if pixmap.isNull():
+            QMessageBox.warning(self, "提示", "无法加载该图片文件，请选择其他图片。")
+            return
+
+        self._bg_pixmap = pixmap
+        self._bg_image_path = file_path
+        if hasattr(self, "_bg_content"):
+            self._bg_content.set_bg_pixmap(self._bg_pixmap)
+        self._apply_bg_transparency()
+        self._save_bg_config()
+        self.status_bar.showMessage(f"背景图片已更换: {Path(file_path).name}")
+
+    def _clear_bg_image(self) -> None:
+        """清除背景图片"""
+        self._bg_pixmap = None
+        self._bg_image_path = ""
+        if hasattr(self, "_bg_content"):
+            self._bg_content.set_bg_pixmap(None)
+        self._apply_bg_transparency()
+        self._save_bg_config()
+        self.status_bar.showMessage("背景图片已清除")
+
+    def _adjust_bg_transparency(self) -> None:
+        """弹出输入框修改背景不透明度 (0~255)"""
+        current_val = round(self._bg_opacity * 255)
+        value, ok = QInputDialog.getInt(
+            self,
+            "调整背景不透明度",
+            "请输入背景不透明度 (0~255)：\n0=完全透明（背景图不可见），255=完全不透明（背景图最明显）",
+            current_val,
+            0,
+            255,
+            1,
+        )
+        if ok:
+            self._bg_opacity = max(0.0, min(1.0, value / 255.0))
+            if hasattr(self, "_bg_content"):
+                self._bg_content.set_bg_opacity(self._bg_opacity)
+            self._save_bg_config()
+            self.status_bar.showMessage(f"背景不透明度已设置为: {value} (0~255)")
+
+    def _apply_bg_transparency(self) -> None:
+        """有背景图片时设置面板透明，否则恢复默认样式"""
+        has_bg = (
+            self._bg_pixmap is not None
+            and not self._bg_pixmap.isNull()
+        )
+        for w in (self.main_panel, self.voice_panel):
+            if has_bg:
+                w.setStyleSheet("""
+                    QWidget { background: transparent; }
+                    QGroupBox { border: 1px solid palette(mid); border-radius: 4px; margin-top: 8px; }
+                    QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 4px; }
+                    QComboBox { background: transparent; color: palette(text); border: 1px solid palette(mid); border-radius: 3px; padding: 2px 4px; }
+                    QComboBox::drop-down { border-left: 1px solid palette(mid); width: 24px; }
+                    QComboBox::down-arrow {
+                        image: url(assets/arrow_down.png);
+                        width: 20px; height: 20px;
+                    }
+                    QComboBox QListView, QComboBox QAbstractItemView {
+                        background: palette(window);
+                        color: palette(text);
+                        selection-background-color: palette(highlight);
+                        selection-color: palette(highlighted-text);
+                        outline: none;
+                    }
+                    QComboBox QAbstractItemView {
+                        background: palette(window);
+                        color: palette(text);
+                        border: 1px solid palette(mid);
+                        selection-background-color: palette(highlight);
+                        selection-color: palette(highlighted-text);
+                    }
+                    QLineEdit { background: transparent; border: 1px solid palette(mid); border-radius: 3px; padding: 2px 4px; }
+                    QTextEdit { background: transparent; border: 1px solid palette(mid); border-radius: 3px; }
+                    QListWidget { background: transparent; border: 1px solid palette(mid); border-radius: 3px; }
+                    QPushButton { border: 1px solid palette(mid); border-radius: 3px; padding: 4px 12px; }
+                    QPushButton:hover { border-color: palette(highlight); }
+                    QCheckBox { spacing: 6px; }
+                    QProgressBar { border: 1px solid palette(mid); border-radius: 3px; text-align: center; background: transparent; }
+                    QProgressBar::chunk { background: palette(highlight); border-radius: 2px; }
+                    QSplitter::handle { background: palette(mid); width: 1px; }
+                """)
+            else:
+                w.setStyleSheet("")
+                # 无背景时仍保持下拉箭头使用图片
+                for cb in (self.input_combo, self.output_combo):
+                    cb.setStyleSheet("""
+                        QComboBox { background: transparent; color: palette(text); border: 1px solid palette(mid); border-radius: 3px; padding: 2px 4px; }
+                        QComboBox::drop-down { border-left: 1px solid palette(mid); width: 24px; }
+                        QComboBox::down-arrow { image: url(assets/arrow_down.png); width: 20px; height: 20px; }
+                        QComboBox QAbstractItemView { background: palette(window); color: palette(text); border: 1px solid palette(mid); selection-background-color: palette(highlight); selection-color: palette(highlighted-text); outline: none; }
+                    """)
 
 
 def main() -> None:
