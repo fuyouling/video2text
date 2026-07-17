@@ -349,32 +349,6 @@ class MainWindow(QMainWindow):
         self.tx_prompt_template_combo.setObjectName("TxPromptCombo")
         self.tx_prompt_template_combo.setMinimumWidth(150)
         self.tx_prompt_template_combo.setPlaceholderText("选择已保存的提示词…")
-        self.tx_prompt_template_combo.setStyleSheet("""
-            QComboBox {
-                background: transparent;
-                color: palette(text);
-                border: 1px solid palette(mid);
-                border-radius: 3px;
-                padding: 2px 4px;
-            }
-            QComboBox::drop-down {
-                border-left: 1px solid palette(mid);
-                width: 24px;
-            }
-            QComboBox::down-arrow {
-                image: url(assets/arrow_down.png);
-                width: 20px; height: 20px;
-            }
-            QComboBox QAbstractItemView {
-                background: palette(window);
-                color: palette(text);
-                selection-background-color: palette(highlight);
-                selection-color: palette(highlighted-text);
-                border: 1px solid palette(mid);
-                outline: none;
-            }
-        """)
-
         self.tx_prompt_template_combo.currentTextChanged.connect(
             self._on_tx_prompt_template_selected
         )
@@ -420,32 +394,6 @@ class MainWindow(QMainWindow):
         self.prompt_template_combo.setObjectName("SummaryPromptCombo")
         self.prompt_template_combo.setMinimumWidth(150)
         self.prompt_template_combo.setPlaceholderText("选择已保存的提示词…")
-        self.prompt_template_combo.setStyleSheet("""
-            QComboBox {
-                background: transparent;
-                color: palette(text);
-                border: 1px solid palette(mid);
-                border-radius: 3px;
-                padding: 2px 4px;
-            }
-            QComboBox::drop-down {
-                border-left: 1px solid palette(mid);
-                width: 24px;
-            }
-            QComboBox::down-arrow {
-                image: url(assets/arrow_down.png);
-                width: 20px; height: 20px;
-            }
-            QComboBox QAbstractItemView {
-                background: palette(window);
-                color: palette(text);
-                selection-background-color: palette(highlight);
-                selection-color: palette(highlighted-text);
-                border: 1px solid palette(mid);
-                outline: none;
-            }
-        """)
-
         self.prompt_template_combo.currentTextChanged.connect(
             self._on_prompt_template_selected
         )
@@ -1988,25 +1936,19 @@ class MainWindow(QMainWindow):
                         image: url(assets/arrow_down.png);
                         width: 20px; height: 20px;
                     }
-                    QComboBox QListView, QComboBox QAbstractItemView {
-                        background: palette(window);
-                        color: palette(text);
-                        selection-background-color: palette(highlight);
-                        selection-color: palette(highlighted-text);
-                        outline: none;
-                    }
                     QComboBox QAbstractItemView {
                         background: palette(window);
                         color: palette(text);
                         border: 1px solid palette(mid);
                         selection-background-color: palette(highlight);
                         selection-color: palette(highlighted-text);
+                        outline: none;
                     }
                     QLineEdit { background: transparent; border: 1px solid palette(mid); border-radius: 3px; padding: 2px 4px; }
                     QTextEdit { background: transparent; border: 1px solid palette(mid); border-radius: 3px; }
                     QListWidget { background: transparent; border: 1px solid palette(mid); border-radius: 3px; }
                     QPushButton { border: 1px solid palette(mid); border-radius: 3px; padding: 4px 12px; }
-                    QPushButton:hover { border-color: palette(highlight); }
+                    QPushButton:hover { background: rgba(128, 128, 128, 30); border-color: palette(highlight); }
                     QCheckBox { spacing: 6px; }
                     QProgressBar { border: 1px solid palette(mid); border-radius: 3px; text-align: center; background: transparent; }
                     QProgressBar::chunk { background: palette(highlight); border-radius: 2px; }
@@ -2014,14 +1956,6 @@ class MainWindow(QMainWindow):
                 """)
             else:
                 w.setStyleSheet("")
-                # 无背景时仍保持下拉箭头使用图片
-                for cb in (self.input_combo, self.output_combo):
-                    cb.setStyleSheet("""
-                        QComboBox { background: transparent; color: palette(text); border: 1px solid palette(mid); border-radius: 3px; padding: 2px 4px; }
-                        QComboBox::drop-down { border-left: 1px solid palette(mid); width: 24px; }
-                        QComboBox::down-arrow { image: url(assets/arrow_down.png); width: 20px; height: 20px; }
-                        QComboBox QAbstractItemView { background: palette(window); color: palette(text); border: 1px solid palette(mid); selection-background-color: palette(highlight); selection-color: palette(highlighted-text); outline: none; }
-                    """)
 
 
 def main() -> None:

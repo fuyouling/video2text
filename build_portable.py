@@ -82,7 +82,7 @@ def run_cmd_stream(cmd, verbose=False):
             print(stripped)
         elif any(
             kw in stripped.lower()
-            for kw in ["error", "warning", "fail", "building", "completed", "info:"]
+            for kw in ["error", "fail"]
         ):
             print(stripped)
     proc.wait()
@@ -304,7 +304,7 @@ def main():
                 "PyInstaller",
                 "--noconfirm",
                 "--log-level",
-                "WARN" if not args.verbose else "INFO",
+                "ERROR" if not args.verbose else "INFO",
                 str(spec_file),
             ]
             run_cmd_stream(pyinstaller_cmd, verbose=args.verbose)

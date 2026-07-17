@@ -1,4 +1,4 @@
-"""独立结果查看窗口 —— 支持全屏、Markdown、多标签、搜索、书签、主题切换"""
+"""独立结果查看窗口 —— 支持全屏、Markdown、多标签、搜索、书签"""
 
 import logging
 import sys
@@ -11,7 +11,6 @@ from src.config.settings import Settings
 from src.storage.bookmark_manager import BookmarkItem, BookmarkManager
 from src.storage.file_writer import FileWriter
 from src.ui.markdown_renderer import MarkdownRenderer
-from src.ui.theme_manager import ThemeManager
 from src.utils.paths import get_base_dir as _get_base_dir
 
 from PySide6.QtCore import Qt, QTimer
@@ -22,6 +21,9 @@ from PySide6.QtGui import (
     QIcon,
     QKeyEvent,
     QKeySequence,
+    QPainter,
+    QPaintEvent,
+    QPalette,
     QPixmap,
     QTextCursor,
     QTextDocument,
@@ -90,8 +92,7 @@ def _find_summary_path(output_dir: str, video_name: str) -> Optional[Path]:
 
 
 class ResultViewerWindow(QMainWindow):
-    """独立的结果查看窗口 —— 支持全屏显示、多标签页、搜索替换、书签管理、主题切换。
-
+    """独立的结果查看窗口 —— 支持全屏显示、多标签页、搜索替换、书签管理。
     可从主窗口打开，独立浏览转写和总结结果，支持 Markdown 渲染和键盘快捷键。
     """
 
@@ -114,7 +115,6 @@ class ResultViewerWindow(QMainWindow):
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
 
-        self._theme_manager = ThemeManager()
         self._output_dir = ""
         self._root_output_dir = ""
         self._flat_video_names: list[str] = []
@@ -136,14 +136,36 @@ class ResultViewerWindow(QMainWindow):
         self._bg_pixmap: Optional[QPixmap] = None
         self._bg_opacity: float = 0.4
         self._bg_image_path: str = ""
+        self._bookmark_preserved_styles: dict[str, str] = {}
 
         self._init_ui()
         self._load_bg_settings()
-        self._apply_theme()
         self._load_bookmarks()
 
         self.tabs.currentChanged.connect(self._on_tab_changed)
         self.tabs.setCurrentIndex(1)
+
+        # 在初始化最后统一应用 ToolTip 样式，避免深色主题下黑底黑字
+        self._apply_tooltip_style()
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        """在 QMainWindow 层级绘制背景图片，使 dock widget 区域也能透出背景"""
+        super().paintEvent(event)
+        if (
+            self._bg_pixmap is not None
+            and not self._bg_pixmap.isNull()
+        ):
+            painter = QPainter(self)
+            painter.setOpacity(self._bg_opacity)
+            scaled = self._bg_pixmap.scaled(
+                self.size(),
+                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            x = (self.width() - scaled.width()) // 2
+            y = (self.height() - scaled.height()) // 2
+            painter.drawPixmap(x, y, scaled)
+            painter.end()
 
     # ─── UI 初始化 ─────────────────────────────────────────────
 
@@ -274,8 +296,27 @@ class ResultViewerWindow(QMainWindow):
                 )
                 if hasattr(view, "viewport"):
                     view.viewport().setStyleSheet("background: transparent;")
+
+            # ── 所有 QComboBox：按钮透明（可见背景图），下拉列表实底 ──
+            self._apply_combo_style()
+
+            # 书签停靠面板 — 透明 + 细边框
+            if hasattr(self, "bookmark_dock"):
+                self.bookmark_dock.setStyleSheet(
+                    "QDockWidget { background: transparent; border: 1px solid palette(mid); border-radius: 3px; }"
+                )
+                # 内容面板（setWidget）
+                dock_widget = self.bookmark_dock.widget()
+                if dock_widget:
+                    dock_widget.setStyleSheet("background: transparent;")
+                    self._make_children_transparent(dock_widget)
+                # 自定义标题栏（setTitleBarWidget — 平级控件，需单独处理）
+                title_bar = self.bookmark_dock.titleBarWidget()
+                if title_bar:
+                    title_bar.setStyleSheet("background: transparent;")
+                    self._make_children_transparent(title_bar)
         else:
-            # 无背景图时恢复默认样式，让主题/系统样式生效
+            # 无背景图时恢复默认样式，让系统原生样式生效
             if hasattr(self, "_main_splitter"):
                 self._main_splitter.setStyleSheet("")
             self.tabs.setStyleSheet("")
@@ -286,6 +327,141 @@ class ResultViewerWindow(QMainWindow):
                 view.setStyleSheet("")
                 if hasattr(view, "viewport"):
                     view.viewport().setStyleSheet("")
+            # 恢复书签面板子控件样式
+            if hasattr(self, "bookmark_dock"):
+                self.bookmark_dock.setStyleSheet("")
+                dock_widget = self.bookmark_dock.widget()
+                if dock_widget:
+                    dock_widget.setStyleSheet("")
+                    self._clear_children_stylesheet(dock_widget)
+                title_bar = self.bookmark_dock.titleBarWidget()
+                if title_bar:
+                    title_bar.setStyleSheet("")
+                    self._clear_children_stylesheet(title_bar)
+            # QComboBox 按钮恢复系统原生样式，但下拉列表始终使用浅色背景以保证可读
+            self._apply_combo_style()
+
+        # 不论是否有背景图，始终确保 ToolTip 样式不被覆盖
+        self._apply_tooltip_style()
+
+    def _make_children_transparent(self, parent: QWidget) -> None:
+        """递归设置子控件透明背景（保留已有内联样式，仅追加透明+边框规则）
+
+        Args:
+            parent: 父控件
+        """
+        for child in parent.findChildren(QWidget, options=Qt.FindChildOption.FindDirectChildrenOnly):
+            old = child.styleSheet()
+            # 所有可见控件：透明背景 + 细边框
+            if isinstance(child, (QLineEdit, QListWidget, QLabel, QPushButton)):
+                extra = (
+                    f" {type(child).__name__} {{ background: transparent;"
+                    f" color: palette(text);"
+                    f" border: 1px solid palette(mid); border-radius: 3px; }}"
+                )
+                child.setStyleSheet(old + "\n" + extra if old else extra.lstrip())
+            elif isinstance(child, QWidget):
+                if old:
+                    if "background" not in old.lower():
+                        child.setStyleSheet(old + "\nbackground: transparent;")
+                else:
+                    child.setStyleSheet("background: transparent;")
+            self._make_children_transparent(child)
+
+    def _clear_children_stylesheet(self, parent: QWidget) -> None:
+        """递归清除子控件样式（有原始样式的控件恢复原始样式）"""
+        for child in parent.findChildren(QWidget, options=Qt.FindChildOption.FindDirectChildrenOnly):
+            obj_name = child.objectName()
+            if obj_name in self._bookmark_preserved_styles:
+                child.setStyleSheet(self._bookmark_preserved_styles[obj_name])
+            else:
+                child.setStyleSheet("")
+            self._clear_children_stylesheet(child)
+
+    def _apply_combo_style(self) -> None:
+        """为所有 QComboBox 设置统一样式 —— 关键是下拉列表必须保证白底黑字可见。
+
+        使用 background-color（而非 background 简写）以避免被父控件的 background:transparent 覆盖。
+        显式为 ::item、::item:selected 写背景，保证选中行/未选中行都可读。
+        """
+        combo_style = (
+            "QComboBox {"
+            "  background-color: transparent;"
+            "  color: palette(text);"
+            "  border: 1px solid palette(mid);"
+            "  border-radius: 3px;"
+            "  padding: 2px 6px;"
+            "}"
+            "QComboBox:hover {"
+            "  border: 1px solid palette(highlight);"
+            "}"
+            "QComboBox::drop-down {"
+            "  subcontrol-origin: padding;"
+            "  subcontrol-position: top right;"
+            "  width: 18px;"
+            "  border: none;"
+            "}"
+            "QComboBox QAbstractItemView {"
+            "  background-color: #ffffff;"
+            "  color: #000000;"
+            "  selection-background-color: #cce5ff;"
+            "  selection-color: #000000;"
+            "  border: 1px solid #999999;"
+            "  outline: 0;"
+            "  padding: 2px;"
+            "}"
+            "QComboBox QAbstractItemView::item {"
+            "  background-color: #ffffff;"
+            "  color: #000000;"
+            "  min-height: 1.4em;"
+            "  padding: 2px 4px;"
+            "}"
+            "QComboBox QAbstractItemView::item:hover {"
+            "  background-color: #e6f0ff;"
+            "  color: #000000;"
+            "}"
+            "QComboBox QAbstractItemView::item:selected {"
+            "  background-color: #cce5ff;"
+            "  color: #000000;"
+            "}"
+        )
+        for combo in self.findChildren(QComboBox):
+            combo.setStyleSheet(combo_style)
+            view = combo.view()
+            if view is not None:
+                view.setStyleSheet("background-color: #ffffff; color: #000000;")
+
+    def _apply_tooltip_style(self) -> None:
+        """为所有 ToolTip 设置统一样式 —— 避免系统深色主题下黑色背景看不见文字。
+
+        使用 QPalette 直接设置 ToolTip 颜色，不受父控件 QSS 级联影响；
+        同时追加 Application 级 QToolTip QSS 以防 platform style 覆盖 palette。
+        """
+        app = QApplication.instance()
+        if app is not None:
+            # ── QPalette：直接设置颜色角色，不依赖 QSS 层级 ──
+            palette = app.palette()
+            palette.setColor(QPalette.ColorRole.ToolTipBase, QColor("#ffffe1"))
+            palette.setColor(QPalette.ColorRole.ToolTipText, QColor("#000000"))
+            app.setPalette(palette)
+
+            # ── Application 级 QSS：移除 guard，每次都确保覆盖 ──
+            app_style = app.styleSheet()
+            # 移除旧的 QToolTip 声明（如果存在），再追加新声明
+            lines = [
+                line
+                for line in app_style.split("\n")
+                if "QToolTip" not in line
+            ]
+            app.setStyleSheet(
+                "\n".join(lines)
+                + "\nQToolTip {"
+                " background-color: #ffffe1;"
+                " color: #000000;"
+                " border: 1px solid #999999;"
+                " padding: 2px 4px;"
+                "}"
+            )
 
     def _create_toolbar(self):
         """创建工具栏"""
@@ -307,28 +483,6 @@ class ResultViewerWindow(QMainWindow):
 
         toolbar.addSeparator()
 
-        # 主题切换
-        toolbar.addWidget(QLabel("主题:"))
-        self.theme_combo = QComboBox()
-        self.theme_combo.addItems(["浅色", "深色"])
-        self.theme_combo.currentIndexChanged.connect(self._on_theme_changed)
-        toolbar.addWidget(self.theme_combo)
-
-        toolbar.addSeparator()
-
-        # 搜索按钮
-        find_action = QAction("搜索", self)
-        find_action.setShortcut(QKeySequence("Ctrl+F"))
-        find_action.setToolTip("搜索文本 (Ctrl+F)")
-        find_action.triggered.connect(self._toggle_search_bar)
-        toolbar.addAction(find_action)
-
-        # 全屏按钮
-        fullscreen_action = QAction("全屏", self)
-        fullscreen_action.setShortcut(QKeySequence("F11"))
-        fullscreen_action.setToolTip("切换全屏 (F11)")
-        fullscreen_action.triggered.connect(self._toggle_fullscreen)
-        toolbar.addAction(fullscreen_action)
 
         toolbar.addSeparator()
 
@@ -411,7 +565,9 @@ class ResultViewerWindow(QMainWindow):
         title_layout = QHBoxLayout(title_bar)
         title_layout.setContentsMargins(10, 4, 4, 4)
         title_label = QLabel("书签")
-        title_label.setStyleSheet("font-weight: 600;")
+        title_label.setObjectName("BookmarkTitleLabel")
+        self._bookmark_preserved_styles["BookmarkTitleLabel"] = "font-weight: 600;"
+        title_label.setStyleSheet(self._bookmark_preserved_styles["BookmarkTitleLabel"])
         title_layout.addWidget(title_label)
         title_layout.addStretch()
         dock_close_btn = QPushButton()
@@ -421,9 +577,10 @@ class ResultViewerWindow(QMainWindow):
             dock_close_btn.setIcon(QIcon(close_icon))
         else:
             dock_close_btn.setText("✕")
-            dock_close_btn.setStyleSheet(
-                "font-size: 16px; font-weight: bold; border: none; padding: 0;"
-            )
+            style_close = "font-size: 16px; font-weight: bold; border: none; padding: 0;"
+            dock_close_btn.setObjectName("BookmarkCloseBtn")
+            self._bookmark_preserved_styles["BookmarkCloseBtn"] = style_close
+            dock_close_btn.setStyleSheet(style_close)
         dock_close_btn.setToolTip("关闭书签面板")
         dock_close_btn.clicked.connect(self.bookmark_dock.close)
         title_layout.addWidget(dock_close_btn)
@@ -468,6 +625,18 @@ class ResultViewerWindow(QMainWindow):
         )
         filter_row.addWidget(self._bookmark_sort_combo)
 
+        self._bookmark_date_combo.setStyleSheet(
+            "QComboBox { background-color: transparent; color: palette(text);"
+            " border: 1px solid palette(mid); border-radius: 3px; padding: 2px 6px; }"
+            "QComboBox QAbstractItemView { background-color: #ffffff; color: #000000;"
+            " selection-background-color: #cce5ff; selection-color: #000000;"
+            " border: 1px solid #999999; outline: 0; }"
+            "QComboBox QAbstractItemView::item { background-color: #ffffff; color: #000000; }"
+            "QComboBox QAbstractItemView::item:selected {"
+            " background-color: #cce5ff; color: #000000; }"
+        )
+        self._bookmark_sort_combo.setStyleSheet(self._bookmark_date_combo.styleSheet())
+
         bookmark_layout.addWidget(self._bookmark_filter_row)
 
         self.bookmark_list = QListWidget()
@@ -484,9 +653,10 @@ class ResultViewerWindow(QMainWindow):
 
         self._bookmark_empty_label = QLabel("暂无书签\nCtrl+B 添加书签")
         self._bookmark_empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._bookmark_empty_label.setStyleSheet(
-            "color: #aaa; font-size: 12px; padding: 20px 0;"
-        )
+        style_empty = "color: #aaa; font-size: 12px; padding: 20px 0;"
+        self._bookmark_empty_label.setObjectName("BookmarkEmptyLabel")
+        self._bookmark_preserved_styles["BookmarkEmptyLabel"] = style_empty
+        self._bookmark_empty_label.setStyleSheet(style_empty)
         self._bookmark_empty_label.setVisible(True)
         bookmark_layout.addWidget(self._bookmark_empty_label)
 
@@ -518,37 +688,6 @@ class ResultViewerWindow(QMainWindow):
         self.bookmark_dock.setWidget(bookmark_widget)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.bookmark_dock)
         self.bookmark_dock.hide()
-
-    # ─── 主题 ──────────────────────────────────────────────────
-
-    def _apply_theme(self):
-        """应用主题"""
-        self.setStyleSheet(self._theme_manager.get_style())
-        theme_index = 0 if self._theme_manager.current_theme == "light" else 1
-        self.theme_combo.setCurrentIndex(theme_index)
-        # 主题样式会覆盖透明背景，需要重新设置
-        self._apply_bg_transparency()
-
-    def _on_theme_changed(self, index: int):
-        """主题切换"""
-        theme = "dark" if index == 1 else "light"
-        self._theme_manager.set_theme(theme)
-        self._apply_theme()
-
-        # 重新渲染Markdown内容（清除搜索状态）
-        if self._current_video_name:
-            self._clear_search_state()
-            summary_path = _find_summary_path(
-                self._output_dir, self._current_video_name
-            )
-            if summary_path:
-                try:
-                    summary_text = summary_path.read_text(encoding="utf-8-sig")
-                    self._display_markdown(summary_text)
-                except Exception:
-                    logger.warning(
-                        "重新渲染摘要失败（主题切换）: %s", summary_path.name
-                    )
 
     # ─── 文件加载与过滤 ────────────────────────────────────────
 
@@ -907,10 +1046,6 @@ class ResultViewerWindow(QMainWindow):
             return
 
         font_size = self.font_size_spin.value()
-        theme = self._theme_manager.THEMES.get(
-            self._theme_manager.current_theme, self._theme_manager.THEMES["light"]
-        )
-        css = self._theme_manager.get_markdown_css(font_size)
 
         default_font = QFont()
         default_font.setPointSize(font_size)
@@ -919,9 +1054,9 @@ class ResultViewerWindow(QMainWindow):
         html = self._md_renderer.render(
             markdown_text,
             font_size=font_size,
-            theme_css=css,
-            border_color=theme["border_color"],
-            secondary_bg=theme["secondary_bg"],
+            theme_css="",
+            border_color="#cccccc",
+            secondary_bg="#f5f5f5",
         )
         if html is None:
             self.summary_view.setPlainText(markdown_text)
@@ -1124,14 +1259,9 @@ class ResultViewerWindow(QMainWindow):
     ) -> None:
         """高亮所有匹配项（当前项橙色，其他项黄色）"""
         extra_selections = []
-        if self._theme_manager.current_theme == "dark":
-            current_color = QColor("#b86e00")
-            other_color = QColor("#3d3d00")
-            current_fg = QColor("#ffffff")
-        else:
-            current_color = QColor("#ff9632")
-            other_color = QColor("#fff3a8")
-            current_fg = QColor("#ffffff")
+        current_color = QColor("#ff9632")
+        other_color = QColor("#fff3a8")
+        current_fg = QColor("#ffffff")
 
         for i, (start, end) in enumerate(self._search_matches):
             selection = QTextEdit.ExtraSelection()
@@ -1317,6 +1447,7 @@ class ResultViewerWindow(QMainWindow):
             for i, b in enumerate(all_bookmarks)
         }
         type_labels = {"transcript": "转写", "summary": "摘要"}
+        # 标签内容详情
         for bookmark in display_bookmarks:
             key = (bookmark.file_path, bookmark.position, bookmark.created_at)
             real_index = index_map.get(key, -1)
@@ -1331,20 +1462,6 @@ class ResultViewerWindow(QMainWindow):
 
             item = QListWidgetItem(display_text)
             item.setData(Qt.ItemDataRole.UserRole, real_index)
-            tooltip_parts = [
-                f"文件: {bookmark.relative_path or bookmark.video_name}",
-                f"类型: {type_label}",
-                f"位置: {bookmark.position}",
-            ]
-            if bookmark.file_path:
-                tooltip_parts.append(f"路径: {bookmark.file_path}")
-            if bookmark.created_at:
-                tooltip_parts.append(f"创建: {bookmark.created_at}")
-            if bookmark.note:
-                tooltip_parts.append(f"备注: {bookmark.note}")
-            tooltip_parts.append("---")
-            tooltip_parts.append(bookmark.text)
-            item.setToolTip("\n".join(tooltip_parts))
             self.bookmark_list.addItem(item)
 
     def _update_date_filter_options(self, bookmarks: list[BookmarkItem]):
@@ -1774,6 +1891,7 @@ class ResultViewerWindow(QMainWindow):
             self._bg_content.set_bg_pixmap(self._bg_pixmap)
         self._apply_bg_transparency()
         self._save_bg_config()
+        self.update()
         self.status_bar.showMessage(f"背景图片已更换: {Path(file_path).name}")
 
     def _clear_bg_image(self) -> None:
@@ -1784,6 +1902,7 @@ class ResultViewerWindow(QMainWindow):
             self._bg_content.set_bg_pixmap(None)
         self._apply_bg_transparency()
         self._save_bg_config()
+        self.update()
         self.status_bar.showMessage("背景图片已清除")
 
     def _adjust_bg_transparency(self) -> None:
@@ -1803,6 +1922,7 @@ class ResultViewerWindow(QMainWindow):
             if hasattr(self, "_bg_content"):
                 self._bg_content.set_bg_opacity(self._bg_opacity)
             self._save_bg_config()
+            self.update()
             self.status_bar.showMessage(f"背景不透明度已设置为: {value} (0~255)")
 
     # ─── 标签页切换 ────────────────────────────────────────────
@@ -1823,6 +1943,9 @@ class ResultViewerWindow(QMainWindow):
                 self._close_search_bar()
             elif self.isFullScreen():
                 self.showNormal()
+
+        elif key == Qt.Key.Key_F11:
+            self._toggle_fullscreen()
 
         elif key == Qt.Key.Key_F and mods == Qt.KeyboardModifier.ControlModifier:
             self._toggle_search_bar()
