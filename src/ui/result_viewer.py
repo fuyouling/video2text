@@ -101,6 +101,7 @@ class ResultViewerWindow(QMainWindow):
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.Window)
         self.setWindowTitle("结果查看 - Video2Text")
         self.resize(1400, 900)
+        # showMaximized() 由调用方 _open_result_viewer 执行，确保内容先加载完成再显示
 
         icon_path = (
             Path(__file__).resolve().parent.parent.parent
@@ -236,7 +237,7 @@ class ResultViewerWindow(QMainWindow):
         self.summary_view.customContextMenuRequested.connect(
             self._show_content_context_menu
         )
-        self.tabs.addTab(self.summary_view, "摘要")
+        self.tabs.addTab(self.summary_view, "摘要结果")
 
         right_layout.addWidget(self.tabs)
 
@@ -477,7 +478,6 @@ class ResultViewerWindow(QMainWindow):
         self.font_size_spin = QSpinBox()
         self.font_size_spin.setRange(8, 32)
         self.font_size_spin.setValue(14)
-        self.font_size_spin.setSuffix(" pt")
         self.font_size_spin.valueChanged.connect(self._update_font_size)
         toolbar.addWidget(self.font_size_spin)
 

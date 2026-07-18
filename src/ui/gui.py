@@ -279,7 +279,7 @@ class MainWindow(QMainWindow):
         run_row.addWidget(self.transcribe_btn)
         self.summarize_btn = QPushButton("仅总结")
         self.summarize_btn.setMinimumWidth(_BTN_MIN_WIDTH)
-        self.summarize_btn.setToolTip("仅对「文本内容」标签页中的文字进行摘要总结")
+        self.summarize_btn.setToolTip("仅对「转写文本」标签页中的文字进行摘要总结")
         self.summarize_btn.clicked.connect(self._on_summarize)
         run_row.addWidget(self.summarize_btn)
         self.combine_btn = QPushButton("转写总结")
@@ -307,13 +307,13 @@ class MainWindow(QMainWindow):
         self.transcript_view.setPlaceholderText(
             "可直接编辑修改，Ctrl+S 保存，Ctrl+F 查找替换,保存后右键点击文件列表中文件可重新转写和摘要"
         )
-        self.result_tabs.addTab(self.transcript_view, "文本内容")
+        self.result_tabs.addTab(self.transcript_view, "转写文本")
         self.summary_view = QTextEdit()
         self.summary_view.setFont(QFont("Consolas", 9))
         self.summary_view.setPlaceholderText(
             "摘要结果，可直接编辑修改，Ctrl+S 保存，Ctrl+F 查找替换。"
         )
-        self.result_tabs.addTab(self.summary_view, "摘要")
+        self.result_tabs.addTab(self.summary_view, "摘要结果")
         self.result_tabs.currentChanged.connect(self._on_tab_changed)
         content_layout.addWidget(self.result_tabs, 3)
 
@@ -712,7 +712,7 @@ class MainWindow(QMainWindow):
     def _on_tab_changed(self, index: int) -> None:
         if index == 0:
             self.status_bar.showMessage(
-                "文本内容 —— 可直接编辑修改，Ctrl+S 保存，Ctrl+F 查找替换"
+                "转写文本 —— 可直接编辑修改，Ctrl+S 保存，Ctrl+F 查找替换"
             )
         elif index == 1:
             self.status_bar.showMessage(
@@ -1616,10 +1616,14 @@ class MainWindow(QMainWindow):
         if self._result_viewer is None or not self._result_viewer.isVisible():
             self._result_viewer = ResultViewerWindow()
 
+        # 先强制创建原生 HWND（窗口仍隐藏），使 Windows 使用 resize(1400,900) 的几何信息
+        # 而非 CW_USEDEFAULT 默认小尺寸；再加载内容；最后 showMaximized() 直接在已有 HWND
+        # 上调用 ShowWindow(SW_SHOWMAXIMIZED)，窗口一出场即最大化，消除"小窗口先闪"。
+        self._result_viewer.winId()
         self._result_viewer.load_files(
             video_files, output_dir, folder_mode=self._mirror_subdirs
         )
-        self._result_viewer.show()
+        self._result_viewer.showMaximized()
         self._result_viewer.raise_()
         self._result_viewer.activateWindow()
 
@@ -1949,13 +1953,31 @@ class MainWindow(QMainWindow):
                     QListWidget { background: transparent; border: 1px solid palette(mid); border-radius: 3px; }
                     QPushButton { border: 1px solid palette(mid); border-radius: 3px; padding: 4px 12px; }
                     QPushButton:hover { background: rgba(128, 128, 128, 30); border-color: palette(highlight); }
-                    QCheckBox { spacing: 6px; }
+                    QCheckBox { spacing: 6px; border: 1px solid palette(mid); border-radius: 3px; padding: 2px 4px; background: transparent; }
+                    QCheckBox::indicator { width: 14px; height: 14px; border: 1px solid palette(mid); border-radius: 2px; background: transparent; }
+                    QCheckBox::indicator:checked { background: palette(highlight); }
                     QProgressBar { border: 1px solid palette(mid); border-radius: 3px; text-align: center; background: transparent; }
                     QProgressBar::chunk { background: palette(highlight); border-radius: 2px; }
                     QSplitter::handle { background: palette(mid); width: 1px; }
                 """)
+                self.result_tabs.setStyleSheet("""
+                    QTabBar::tab {
+                        border: 1px solid palette(mid);
+                        padding: 4px 12px;
+                        margin-right: 2px;
+                        background: transparent;
+                    }
+                    QTabBar::tab:selected {
+                        background: rgba(128, 128, 128, 30);
+                        border-bottom-color: palette(highlight);
+                    }
+                    QTabBar::tab:!selected {
+                        background: rgba(128, 128, 128, 20);
+                    }
+                """)
             else:
                 w.setStyleSheet("")
+                self.result_tabs.setStyleSheet("")
 
 
 def main() -> None:
