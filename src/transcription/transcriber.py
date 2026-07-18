@@ -178,41 +178,13 @@ class Transcriber:
             self._do_load_model(progress_callback)
 
     def _do_load_model(self, progress_callback: Optional[Callable] = None) -> None:
-        """实际加载模型的内部实现（调用方需持有 _model_lock）。"""
+        """实际加载模型的内部实现（调用方需持有 _model_lock）。
+
+        模型文件的完整性检查与下载统一在程序启动时的
+        check_models_integrity 中完成一次，此处不再重复检测。
+        """
         self._original_device = self.device
         self._original_compute_type = self.compute_type
-        model_path_obj = Path(self.model_path)
-        has_core_files = all((model_path_obj / f).exists() for f in _CORE_FILES)
-        if not has_core_files:
-            logger.info("Transcriber: ⚠ 文件不完整，将下载到 (%s)", self.model_path)
-            try:
-                from src.utils.model_downloader import ModelDownloader, MODEL_CONFIG
-
-                model_name = Path(self.model_path).name
-                if model_name not in MODEL_CONFIG:
-                    raise TranscriptionError(
-                        f"模型 {model_name} 不支持自动下载。\n"
-                        f"请手动下载模型核心文件后复制到 models/{model_name}/ 目录，\n"
-                        f"然后在配置中更改模型名称。"
-                    )
-
-                downloader = ModelDownloader(model_name)
-                if not downloader.download_model(
-                    progress_callback, self.confirm_download_callback
-                ):
-                    if downloader.download_cancelled:
-                        from src.utils.exceptions import DownloadCancelledError
-
-                        raise DownloadCancelledError("用户取消了模型下载")
-                    raise TranscriptionError(
-                        "模型下载失败，请检查网络连接或配置代理。\n"
-                        "可在 config.ini 的 [network] 节设置 proxy。"
-                    )
-            except ImportError:
-                raise TranscriptionError(
-                    "模型文件不完整且 model_downloader 模块不可用，"
-                    "请手动下载模型到 models/ 目录。"
-                )
 
         try:
             from faster_whisper import WhisperModel

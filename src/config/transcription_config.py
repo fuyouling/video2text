@@ -71,7 +71,7 @@ def _get_output_formats(settings: Settings) -> list[str]:
 def _load_tx_config(settings: Settings) -> TranscriptionConfig:
     """从配置加载转写参数"""
     language = settings.get("transcription.language", "auto")
-    model_name = settings.get("transcription.model_path", "large-v3")
+    model_name = settings.get("transcription.model_path", "faster-whisper-large-v3-turbo-ct2")
     models_dir = settings.get("paths.models_dir", "models")
     model_path_obj = Path(models_dir) / model_name
     model_path = str(model_path_obj) if model_path_obj.exists() else model_name

@@ -562,7 +562,6 @@ _SECTION_LABELS: dict[str, str] = {
     "summarization": "总结",
     "preprocessing": "预处理",
     "output": "输出",
-    "network": "网络",
     "paths": "路径",
     "tools": "工具",
     "text_processing": "文本处理",
@@ -574,6 +573,8 @@ _KEY_LABELS: dict[str, str] = {
     "app.version": "版本号",
     "app.log_level": "日志级别",
     "app.incremental_mode": "增量模式",
+    "app.is_check_model_file": "模型检测",
+    "app.proxy": "代理地址",
     "app.result_image_path": "结果查看图片路径",
     "app.result_transparency": "结果查看透明度",
     "app.main_image_path": "主界面图片路径",
@@ -608,7 +609,6 @@ _KEY_LABELS: dict[str, str] = {
     "output.summary_format": "摘要格式",
     "output.mirror_enabled": "目录拼接开关",
     "output.mirror_depth": "目录拼接层级",
-    "network.proxy": "代理地址",
     "paths.models_dir": "模型目录",
     "paths.logs_dir": "日志目录",
     "paths.video_dir": "视频目录",
@@ -641,6 +641,8 @@ _KEY_LABELS: dict[str, str] = {
 _KEY_TOOLTIPS: dict[str, str] = {
     "app.log_level": "日志级别: DEBUG / INFO / WARNING / ERROR",
     "app.incremental_mode": "启用后，若输出目录中已存在该视频的转写文件和摘要文件，则跳过该文件不再处理: true / false",
+    "app.is_check_model_file": "程序启动时是否检测模型文件完整性（缺失则自动下载）。首次通过后自动置为 false 以跳过后续检测: true / false",
+    "app.proxy": "HTTP 代理地址 (如 http://127.0.0.1:7890)，用于访问外部 API，留空不使用",
     "transcription.model_path": "Whisper 模型目录,填写目录名称",
     "transcription.device": "推理设备: cuda (NVIDIA GPU), cpu, auto (自动选择)",
     "transcription.language": "转写语言代码: zh (中文), en (英文), ja (日文) 等，留空或 auto 自动检测",
@@ -671,7 +673,6 @@ _KEY_TOOLTIPS: dict[str, str] = {
     "output.summary_format": "摘要输出格式: txt (纯文本), md (Markdown)",
     "output.mirror_enabled": "是否启用输出目录拼接: True / False",
     "output.mirror_depth": "输出目录拼接的默认层级深度 (1~10)，控制取输入目录的前几层子目录",
-    "network.proxy": "HTTP 代理地址 (如 http://127.0.0.1:7890)，用于访问外部 API，留空不使用",
     "paths.models_dir": "模型文件存储目录，支持相对路径和绝对路径",
     "paths.logs_dir": "日志文件存储目录",
     "paths.video_dir": "视频文件默认目录",
@@ -707,12 +708,12 @@ _KEY_TOOLTIPS: dict[str, str] = {
 
 _SECTION_GROUPS: dict[str, dict[str, list[str]]] = {
     "app": {
-        "通用配置": ["log_level", "incremental_mode"],
+        "通用配置": ["log_level", "incremental_mode", "is_check_model_file", "proxy"],
         "背景图片配置": [
-            "result_image_path",
-            "result_transparency",
             "main_image_path",
             "main_transparency",
+            "result_image_path",
+            "result_transparency",
         ],
     },
 }
@@ -724,6 +725,7 @@ _FILE_KEYS: set[str] = {
 
 _BOOL_COMBO_KEYS: set[str] = {
     "app.incremental_mode",
+    "app.is_check_model_file",
     "transcription.vad_filter",
     "transcription.condition_on_previous_text",
     "transcription.word_timestamps",

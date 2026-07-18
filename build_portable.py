@@ -24,6 +24,8 @@ Requires: Python 3.8+, PyInstaller, requests
     python build_portable.py --only-zip
     # 将构建结果复制到安装目录 DIR（DIR 必填）
     python build_portable.py --copy DIR
+    # 不复制 DLL 文件到便携目录（仅在构建时有效）
+    python build_portable.py --not-copy-dll
 
     # 复制示例（部署到安装目录）
     python build_portable.py --copy C:\\dev\\windowsTools\\video2text
@@ -243,6 +245,11 @@ def main():
         metavar="DIR",
         default=None,
         help="Only copy existing build to install directory DIR (no build/ZIP, DIR required)",
+    )
+    parser.add_argument(
+        "--not-copy-dll",
+        action="store_true",
+        help="Do not copy DLL files from libs/ into the portable directory",
     )
     args = parser.parse_args()
     install_dir_arg = args.copy[0] if args.copy else None
@@ -471,12 +478,15 @@ start "" "%~dp0video2text.exe" %*
 
         libs_src = root / "libs"
         if libs_src.is_dir():
-            dst = portable_dir / "libs"
-            dst.mkdir(parents=True, exist_ok=True)
-            for p in libs_src.iterdir():
-                if p.suffix.lower() == ".dll":
-                    shutil.copy2(p, dst / p.name)
-            log("  Copied: libs/ (CUDA/cuDNN DLLs, loaded at runtime)", "green")
+            if args.not_copy_dll:
+                log("  Skipped: libs/ (--not-copy-dll specified)", "yellow")
+            else:
+                dst = portable_dir / "libs"
+                dst.mkdir(parents=True, exist_ok=True)
+                for p in libs_src.iterdir():
+                    if p.suffix.lower() == ".dll":
+                        shutil.copy2(p, dst / p.name)
+                log("  Copied: libs/ (CUDA/cuDNN DLLs, loaded at runtime)", "green")
 
         ffmpeg_src = root / "ffmpeg"
         if ffmpeg_src.exists():

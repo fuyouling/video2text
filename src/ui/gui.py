@@ -62,6 +62,7 @@ from src.ui.search_controller import SearchController
 from src.transcription.transcriber import _model_cache as _transcriber_cache
 from src.transcription.transcription_prompt_manager import TranscriptionPromptManager
 from src.utils.logger import get_logger, setup_logger
+from src.utils.model_downloader import StartupModelCheckWorker
 
 logger = get_logger(__name__)
 
@@ -111,6 +112,8 @@ class MainWindow(QMainWindow):
         self._scan_context: Optional[dict] = None
         self._scan_thread: Optional[QThread] = None
         self._scan_worker = None
+        self._startup_check_thread: Optional[QThread] = None
+        self._startup_check_worker: Optional[StartupModelCheckWorker] = None
         self._input_folder: Optional[str] = None
         self._mirror_subdirs: bool = False
         self._mirror_depth: int = 1
@@ -140,6 +143,169 @@ class MainWindow(QMainWindow):
         self._fav_helper.load()
         self._load_prompt_config()
         self._load_prompt_templates()
+
+        # 界面完整加载并渲染后，再执行启动模型完整性检测。
+        # 使用 300ms 延迟而非 0ms，确保窗口完全绘制后再弹出模态确认对话框，
+        # 避免在窗口未完成渲染时弹出 QMessageBox 导致 Qt 内部状态异常。
+        QTimer.singleShot(300, self._startup_model_check)
+
+    def _startup_model_check(self) -> None:
+        """在主线程执行启动模型完整性检测和用户确认，仅下载阶段在后台线程执行。
+
+        Phase 1（主线程，同步）：
+        - 读取 is_check_model_file 配置，若已关闭则跳过
+        - 快速检查模型文件是否存在（纯文件 stat，不阻塞）
+        - 若模型完整则关闭检测标记并返回
+        - 若模型不完整则弹出确认对话框
+
+        Phase 2（后台线程，异步）：
+        - 用户确认后才启动下载线程
+        - progress_updated 信号 → 状态栏显示进度
+        - finished 信号 → 清理线程引用
+        """
+        _log = get_logger("video2text")
+        try:
+            self._do_startup_model_check()
+        except Exception:
+            _log.exception("启动模型检测异常，已跳过（不影响主界面使用）")
+
+    def _do_startup_model_check(self) -> None:
+        """_startup_model_check 的实际实现，由 try/except 包裹调用。"""
+        _log = get_logger("video2text")
+        from src.utils.model_downloader import (
+            DEFAULT_MODEL_NAME,
+            MODEL_CONFIG,
+            ModelDownloader,
+        )
+
+        do_check = self.settings.get_bool("app.is_check_model_file", True)
+        if not do_check:
+            # _log.info("启动模型检测: 已跳过")
+            return
+
+        # ── Phase 1: 主线程检查 + 确认 ──
+        model_name = self.settings.get(
+            "transcription.model_path", DEFAULT_MODEL_NAME
+        )
+        if model_name not in MODEL_CONFIG:
+            _log.warning("启动模型检测: 跳过未知模型 (%s)", model_name)
+            return
+
+        try:
+            downloader = ModelDownloader(model_name)
+        except ValueError:
+            return
+
+        if downloader.is_model_exists():
+            _log.info("启动模型检测: ✓ 模型已完整 (%s)", model_name)
+            self.settings.set("app.is_check_model_file", "false")
+            self.settings.save()
+            return
+
+        _log.info("启动模型检测: 模型不完整 (%s)，请求用户确认…", model_name)
+        reply = QMessageBox.question(
+            self,
+            "模型下载确认",
+            "模型文件不完整，需要下载。\n\n"
+            "建议使用网盘中已下载好的模型，HuggingFace 一般不可直连。\n\n"
+            "是否开始下载？\n\n"
+            "点击「否」将跳过本次检测，不再提示。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            # 用户取消 → 关闭检测标记，下次不弹
+            self.settings.set("app.is_check_model_file", "false")
+            self.settings.save()
+            _log.info("启动模型检测: 用户取消，已关闭后续检测")
+            return
+
+        # ── Phase 2: 确认下载 → 启动后台线程 ──
+        _log.info("启动模型检测: 用户确认下载，启动后台线程…")
+        self._wait_async_thread("_startup_check_thread")
+        thread = QThread()
+        worker = StartupModelCheckWorker(self.settings)
+        worker.moveToThread(thread)
+
+        worker.progress_updated.connect(self._on_startup_progress)
+        worker.finished.connect(self._on_startup_check_finished)
+        thread.started.connect(worker.run)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        # 使用 destroyed 信号清理引用，而非在 _on_startup_check_finished 中
+        # 提前置 None —— 否则 QThread 的 Python 包装可能在底层线程退出前
+        # 被 GC 回收，触发 "QThread: Destroyed while thread is still running"
+        # 警告，甚至导致进程 abort/窗口自动关闭。
+        thread.finished.connect(self._on_startup_thread_finished)
+        thread.start()
+
+        self._startup_check_thread = thread
+        self._startup_check_worker = worker
+
+    def _on_startup_thread_finished(self) -> None:
+        """后台线程退出后的清理槽：调度 QThread 删除并清除 Python 引用。
+
+        此槽通过 thread.finished 信号触发，保证底层线程已完全退出。
+        此时安全地 deleteLater() 并清除引用，避免 QThread 析构时
+        检测到线程仍在运行而触发 terminate/abort。
+        """
+        thread = self._startup_check_thread
+        if thread is not None:
+            thread.deleteLater()
+        self._startup_check_thread = None
+        self._startup_check_worker = None
+
+    def _on_startup_progress(self, downloaded: int, total: int) -> None:
+        """主线程槽：显示模型下载进度到状态栏。"""
+        if total > 0:
+            self.status_bar.showMessage(
+                f"模型下载中: {self._fmt_size(downloaded)} / {self._fmt_size(total)}"
+            )
+        else:
+            self.status_bar.showMessage(
+                f"模型下载中: {self._fmt_size(downloaded)}", 0
+            )
+
+    def _on_startup_check_finished(self, ok: bool) -> None:
+        """主线程槽：模型完整性检测完成，保存配置并输出结果日志。
+
+        配置保存必须在主线程执行：configparser 的 write 不是线程安全的，
+        后台线程中直接写 config.ini 可能导致主线程读取到损坏的配置数据，
+        进而引发未处理异常 → Qt 事件循环崩溃 → 窗口自动关闭。
+
+        注意：不在此处清除 _startup_check_thread / _startup_check_worker 引用。
+        QThread 的 Python 包装必须保留引用直到底层线程完全退出（thread.finished），
+        否则 GC 可能在线程运行中回收 QThread → "QThread: Destroyed while thread
+        is still running" → terminate/abort → 进程崩溃。
+        引用清除交由 _on_startup_thread_finished 槽处理。
+        """
+        _log = get_logger("video2text")
+        try:
+            self.settings.save()
+            _log.info("启动模型检测: 配置已保存")
+        except Exception:
+            _log.warning("启动模型检测: 配置保存失败（不影响使用）")
+        if ok:
+            _log.info("启动模型检测: ✓ 通过，应用就绪")
+            self.status_bar.showMessage("模型完整性检测: ✓ 通过", 5000)
+        else:
+            _log.warning(
+                "启动模型检测: ✗ 未通过 — HuggingFace 不可直连且未配置代理。"
+                "主界面不受影响，可正常使用；"
+                "请配置 [app] proxy 或从网盘下载模型放入 models 目录后重启。"
+            )
+            self.status_bar.showMessage(
+                "模型完整性检测未通过，转写前请先配置模型；应用可正常使用", 8000
+            )
+
+    @staticmethod
+    def _fmt_size(size: int) -> str:
+        """将字节数格式化为可读形式。"""
+        for unit in ("B", "KB", "MB", "GB"):
+            if size < 1024.0:
+                return f"{size:.1f}{unit}"
+            size /= 1024.0
+        return f"{size:.1f}TB"
 
     def _init_ui(self) -> None:
         """初始化主窗口 UI 布局：菜单栏、输入输出行、进度条、日志面板、结果面板。"""
@@ -1775,6 +1941,18 @@ class MainWindow(QMainWindow):
         if self._scan_thread is not None and self._scan_thread.isRunning():
             self._scan_thread.quit()
             self._scan_thread.wait(3000)
+
+        if self._startup_check_thread is not None and self._startup_check_thread.isRunning():
+            if self._startup_check_worker is not None:
+                self._startup_check_worker.cancel()
+            self._startup_check_thread.quit()
+            # 网络探测已缩短为 (2, 1) 超时，线程应在 3 秒内退出；
+            # 等待 5 秒（含安全余量），超时则强制终止，避免窗口关闭卡顿。
+            if not self._startup_check_thread.wait(5000):
+                self._startup_check_thread.terminate()
+                self._startup_check_thread.wait(2000)
+            self._startup_check_thread = None
+            self._startup_check_worker = None
 
         if self._worker_thread is not None and self._worker_thread.isRunning():
             if self._worker is not None and hasattr(self._worker, "cancel"):

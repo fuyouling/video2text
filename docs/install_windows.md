@@ -448,6 +448,13 @@ OLLAMA_API_KEY=你的API密钥
 ```ini
 [app]
 log_level = INFO              # 日志级别: DEBUG/INFO/WARNING/ERROR
+incremental_mode = False      # 增量模式
+is_check_model_file = false   # 启动时检查模型文件
+proxy =                       # 代理地址（用于 HuggingFace 模型下载）
+main_image_path = assets\image_001.png  # 主界面背景图片路径
+main_transparency = 100       # 主界面背景图片透明度 (0~255)
+result_image_path = assets\image_001.png  # 结果查看背景图片路径
+result_transparency = 100     # 结果查看背景图片透明度 (0~255)
 
 [transcription]
 model_path = large-v3         # 转写模型名称或路径
@@ -500,9 +507,6 @@ transcript_format = txt       # 转写格式（可逗号分隔: txt,srt,vtt,json
 summary_format = md           # 摘要格式: txt/md
 mirror_enabled = False        # 是否启用镜像输出（同时保存到源文件目录）
 mirror_depth = 1              # 镜像输出时保留的目录层级数
-
-[network]
-proxy =                       # 代理地址（用于 HuggingFace 模型下载）
 
 [paths]
 models_dir = models           # 模型目录
@@ -640,7 +644,7 @@ initial_prompt =                       # 自定义初始提示词（可留空）
 
 **暂停/继续：** 转写过程中可随时点击「暂停」按钮，当前音频分段完成后再暂停，暂停后按钮变为「继续」。暂停期间不会丢失已完成的进度。
 
-**模型自动下载：** 首次运行时如果 `models/large-v3/` 目录下没有模型文件（或文件不完整），程序会自动从 HuggingFace 下载（约 3GB）。下载支持代理设置（在 `config.ini` 的 `[network] proxy` 中配置）、失败自动重试（最多 3 次，指数退避）、下载进度显示在日志面板。
+**模型自动下载：** 首次运行时如果 `models/large-v3/` 目录下没有模型文件（或文件不完整），程序会自动从 HuggingFace 下载（约 3GB）。下载支持代理设置（在 `config.ini` 的 `[app]` 的 `proxy` 中配置）、失败自动重试（最多 3 次，指数退避）、下载进度显示在日志面板。
 
 **GPU 显存管理：** 转写模型加载到 GPU 后会缓存复用（按模型路径+设备+计算类型+线程数作为缓存键），避免重复加载。关闭程序时会自动卸载模型并释放 GPU 显存。如果 GPU 显存不足（CUDA OOM），程序会自动降级：先在同一设备上尝试不同计算类型（`float16` → `int8` → `float32` → `int8_float16`），如果仍然失败则回退到 CPU 模式（`cpu` + `int8` → `cpu` + `float32`）。每次降级前会清理 GPU 缓存。
 

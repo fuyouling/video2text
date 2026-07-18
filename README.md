@@ -346,6 +346,19 @@ video2text/
 
 以下为 `config.ini` 中各配置段的关键参数说明。完整配置请参考项目中的 `config.ini` 文件。
 
+### [app] 应用配置
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `log_level` | `INFO` | 日志级别（`DEBUG` / `INFO` / `WARNING` / `ERROR`） |
+| `incremental_mode` | `False` | 增量模式：跳过已处理完成的文件 |
+| `is_check_model_file` | `false` | 启动时是否检查模型文件完整性 |
+| `proxy` | `http://127.0.0.1:7890` | HTTP 代理地址（用于模型下载和 API 访问） |
+| `result_image_path` | `assets\image_001.png` | 结果查看背景图片路径 |
+| `result_transparency` | `100` | 结果查看背景图片透明度 |
+| `main_image_path` | `assets\image_001.png` | 主界面背景图片路径 |
+| `main_transparency` | `100` | 主界面背景图片透明度 |
+
 ### [transcription] 转写配置
 
 | 参数 | 默认值 | 说明 |
@@ -401,12 +414,6 @@ video2text/
 | `output_dir` | `output` | 默认输出目录 |
 | `transcript_format` | `txt` | 转写输出格式（`txt` / `srt` / `vtt` / `json`，可逗号分隔多选） |
 | `summary_format` | `md` | 摘要输出格式（`txt` / `md`） |
-
-### [network] 网络配置
-
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `proxy` | `http://127.0.0.1:7890` | HTTP 代理地址 |
 
 ### [text_processing] 文本处理配置
 

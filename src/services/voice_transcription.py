@@ -56,7 +56,7 @@ class VoiceTranscriptionService(QObject):
         if self._transcriber is not None:
             return self._transcriber
         model = self._settings.get(
-            "voice_to_text.model_path", "large-v3",
+            "voice_to_text.model_path", "faster-whisper-large-v3-turbo-ct2",
         )
         device = self._settings.get(
             "voice_to_text.device", "auto",

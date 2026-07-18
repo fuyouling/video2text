@@ -49,6 +49,11 @@ def _init_common(
     video_processor = VideoProcessor()
     file_writer = FileWriter(output_dir)
 
+    from src.utils.model_downloader import check_models_integrity
+
+    check_models_integrity(settings)
+    settings.save()
+
     return video_processor, file_writer
 
 
