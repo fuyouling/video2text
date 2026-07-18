@@ -3,16 +3,43 @@
 Video2Text Portable Build Script (Python)
 Requires: Python 3.8+, PyInstaller, requests
 
-Usage:
-  python build_portable.py                  # Build + create ZIP
-  python build_portable.py --clean          # Full clean + build + create ZIP
-  python build_portable.py --no-zip         # Build only, skip ZIP
-  python build_portable.py --clean --no-zip # Full clean + build only
-  python build_portable.py --dry-run        # Preview build steps without executing
-  python build_portable.py --verbose        # Show detailed output
-  python build_portable.py --fast-zip       # ZIP with fastest compression
-   python build_portable.py --best-zip       # ZIP with best compression
-   python build_portable.py --only-zip       # Only repackage existing build into ZIP
+用法:
+    # 构建 + 生成 ZIP
+    python build_portable.py
+    # 完全清理 + 构建 + 生成 ZIP
+    python build_portable.py --clean
+    # 仅构建，跳过 ZIP
+    python build_portable.py --no-zip
+    # 完全清理 + 仅构建
+    python build_portable.py --clean --no-zip
+    # 预览构建步骤，不实际执行
+    python build_portable.py --dry-run
+    # 显示详细输出
+    python build_portable.py --verbose
+    # ZIP 最快压缩
+    python build_portable.py --fast-zip
+    # ZIP 最大压缩
+    python build_portable.py --best-zip
+    # 仅将已有构建重新打包为 ZIP
+    python build_portable.py --only-zip
+    # 将构建结果复制到安装目录 DIR（DIR 必填）
+    python build_portable.py --copy DIR
+
+    # 复制示例（部署到安装目录）
+    python build_portable.py --copy C:\\dev\\windowsTools\\video2text
+    # 完全重建后部署
+    python build_portable.py --clean --copy C:\\dev\\windowsTools\\video2text
+
+    # 构建后直接部署，不生成 ZIP
+    python build_portable.py --no-zip --copy C:\\dev\\windowsTools\\video2text
+    # 完全清理 + 构建 + 部署，不生成 ZIP
+    python build_portable.py --clean --no-zip --copy C:\\dev\\windowsTools\\video2text
+
+    # 仅复制已有构建到安装目录 DIR（不做构建/ZIP）
+    python build_portable.py --only-copy DIR
+    # 仅复制示例（部署到安装目录）
+    python build_portable.py --only-copy C:\\dev\\windowsTools\\video2text
+
 """
 
 import argparse
@@ -27,7 +54,7 @@ import time
 import zipfile
 from pathlib import Path
 
-TOTAL_STEPS = 6
+TOTAL_STEPS = 7
 
 
 def log(msg, color="white"):
@@ -152,6 +179,36 @@ def safe_rmtree(path):
         return False
 
 
+def copy_dir_contents(src_dir, dst_dir):
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    for item in src_dir.iterdir():
+        dst = dst_dir / item.name
+        # 仅删除与目标中同名的项，避免残留；不删除目标里其它目录/文件
+        if dst.exists():
+            if dst.is_dir():
+                cmd = f'rmdir /s /q "{dst}"'
+                log(f"  Command: {cmd}", "white")
+                if not safe_rmtree(dst):
+                    sys.exit(1)
+                log(f"  Deleted dir (stale): {dst}", "yellow")
+            else:
+                cmd = f'del /q "{dst}"'
+                log(f"  Command: {cmd}", "white")
+                dst.unlink()
+                log(f"  Deleted file (stale): {dst}", "yellow")
+        if item.is_dir():
+            cmd = f'robocopy "{item}" "{dst}" /E /R:1 /W:1'
+            log(f"  Command: {cmd}", "white")
+            shutil.copytree(item, dst, dirs_exist_ok=True)
+            log(f"  Copied dir: {item.name} -> {dst}", "green")
+        else:
+            cmd = f'copy /y "{item}" "{dst}"'
+            log(f"  Command: {cmd}", "white")
+            shutil.copy2(item, dst)
+            log(f"  Copied file: {item.name} -> {dst}", "green")
+    return True
+
+
 def main():
     os.system("")
 
@@ -173,7 +230,23 @@ def main():
     parser.add_argument(
         "--only-zip", action="store_true", help="Only repackage existing build into ZIP"
     )
+    parser.add_argument(
+        "--copy",
+        nargs=1,
+        metavar="DIR",
+        default=None,
+        help="Copy built files to install directory DIR after build (DIR required)",
+    )
+    parser.add_argument(
+        "--only-copy",
+        nargs=1,
+        metavar="DIR",
+        default=None,
+        help="Only copy existing build to install directory DIR (no build/ZIP, DIR required)",
+    )
     args = parser.parse_args()
+    install_dir_arg = args.copy[0] if args.copy else None
+    only_copy_dir_arg = args.only_copy[0] if args.only_copy else None
 
     compress_level = 1 if args.fast_zip else (9 if args.best_zip else 6)
     build_start = time.time()
@@ -218,17 +291,48 @@ def main():
         print()
         return
 
+    if args.only_copy:
+        install_dir = Path(only_copy_dir_arg)
+        log("=" * 52, "cyan")
+        log("Video2Text --only-copy Mode: copy existing build only", "cyan")
+        log("=" * 52, "cyan")
+        print()
+
+        if not portable_dir.exists():
+            log(f"[ERROR] Portable directory not found: {portable_dir}", "red")
+            log("Run a full build first before using --only-copy.", "red")
+            sys.exit(1)
+
+        step_log(7, f"Copying build to install directory ({install_dir})...")
+        cmd = f'robocopy "{portable_dir}" "{install_dir}" /E /R:1 /W:1'
+        log(f"  Command: {cmd}", "white")
+        try:
+            copy_dir_contents(portable_dir, install_dir)
+            log(f"  Copied to: {install_dir}", "green")
+        except Exception as e:
+            log(f"  [ERROR] Copy failed: {e}", "red")
+            sys.exit(1)
+
+        print()
+        log("=" * 52, "cyan")
+        log("Copy Complete!", "green")
+        log("=" * 52, "cyan")
+        print()
+        log(f"  - Installed to: {install_dir}", "white")
+        print()
+        return
+
     log("=" * 52, "cyan")
     log("Video2Text Green Version Build Tool", "cyan")
     log("=" * 52, "cyan")
     print()
 
-    # Step 1: Check Python
+    # 步骤 1：检查 Python 环境
     step_log(1, "Checking Python environment...")
     py_ver = sys.version.split()[0]
     log(f"  Python found: {py_ver}", "green")
 
-    # Step 2: Clean old builds
+    # 步骤 2：清理旧构建
     step_log(2, "Cleaning old builds...")
     if args.dry_run:
         log("  [dry-run] Would clean build artifacts", "white")
@@ -251,7 +355,7 @@ def main():
                 sys.exit(1)
         log("  Preserved build/ cache (use --clean for full clean)", "green")
 
-    # Step 3: Install dependencies
+    # 步骤 3：检查依赖
     step_log(3, "Checking dependencies...")
     required_pkgs = ["pyinstaller", "requests"]
     result = run_cmd(
@@ -270,7 +374,7 @@ def main():
     else:
         log("  All dependencies satisfied", "green")
 
-    # Step 4: Build with PyInstaller
+    # 步骤 4：PyInstaller 打包
     step_log(4, "Building executable...")
     if not spec_file.exists():
         log(f"  [ERROR] Spec file not found: {spec_file}", "red")
@@ -318,7 +422,7 @@ def main():
     else:
         log("  Skipped (using previous build)", "green")
 
-    # Step 5: Create directory structure and copy files
+    # 步骤 5：组装便携目录
     step_log(5, "Creating portable directory structure...")
     if args.dry_run:
         log("  [dry-run] Would create portable directory structure", "white")
@@ -365,6 +469,15 @@ start "" "%~dp0video2text.exe" %*
         (portable_dir / "video2text.bat").write_text(bat_content, encoding="ascii")
         log("  Created: video2text.bat", "green")
 
+        libs_src = root / "libs"
+        if libs_src.is_dir():
+            dst = portable_dir / "libs"
+            dst.mkdir(parents=True, exist_ok=True)
+            for p in libs_src.iterdir():
+                if p.suffix.lower() == ".dll":
+                    shutil.copy2(p, dst / p.name)
+            log("  Copied: libs/ (CUDA/cuDNN DLLs, loaded at runtime)", "green")
+
         ffmpeg_src = root / "ffmpeg"
         if ffmpeg_src.exists():
             dst = portable_dir / "ffmpeg"
@@ -378,7 +491,7 @@ start "" "%~dp0video2text.exe" %*
                 shutil.copytree(presets_src, dst / "presets", dirs_exist_ok=True)
             log("  Copied: ffmpeg/ (内置 FFmpeg)", "green")
 
-    # Step 6: Create ZIP package
+    # 步骤 6：打包 ZIP
     zip_path = None
     if args.no_zip:
         step_log(6, "Skipping ZIP package (--no-zip specified)")
@@ -401,6 +514,24 @@ start "" "%~dp0video2text.exe" %*
                 log(f"  You can manually zip: {portable_dir}", "yellow")
                 zip_path = None
 
+    # 步骤 7：复制到安装目录
+    install_dir = None
+    if install_dir_arg:
+        install_dir = Path(install_dir_arg)
+        step_log(7, f"Copying build to install directory ({install_dir})...")
+        if args.dry_run:
+            log(f"  [dry-run] Would copy {portable_dir} -> {install_dir}", "white")
+        else:
+            if not portable_dir.exists():
+                log(f"  [ERROR] Portable directory not found: {portable_dir}", "red")
+                sys.exit(1)
+            try:
+                copy_dir_contents(portable_dir, install_dir)
+                log(f"  Copied to: {install_dir}", "green")
+            except Exception as e:
+                log(f"  [ERROR] Copy failed: {e}", "red")
+                sys.exit(1)
+
     elapsed = time.time() - build_start
     minutes = int(elapsed // 60)
     seconds = int(elapsed % 60)
@@ -416,6 +547,8 @@ start "" "%~dp0video2text.exe" %*
     log(f"  - Directory: {portable_dir}", "white")
     if zip_path:
         log(f"  - ZIP package: {zip_path}", "white")
+    if install_dir:
+        log(f"  - Installed to: {install_dir}", "white")
     print()
     log("Green version features:", "yellow")
     log("  [√] No installation required, extract and use", "green")
@@ -438,6 +571,10 @@ start "" "%~dp0video2text.exe" %*
     log("  - Use --dry-run to preview without executing", "white")
     log("  - Use --verbose for detailed PyInstaller output", "white")
     log("  - Use --only-zip to repackage existing build into ZIP", "white")
+    log(
+        "  - Use --copy DIR to deploy build to install dir DIR",
+        "white",
+    )
     print()
 
 

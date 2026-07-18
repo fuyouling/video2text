@@ -248,3 +248,7 @@ transcription_history.json
 
 # 语音转写
 voice/
+
+# faster-whisper依赖
+libs/*
+!libs/readme.md

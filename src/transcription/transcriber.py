@@ -69,17 +69,6 @@ def _logprob_to_confidence(avg_logprob: float) -> float:
     return round(max(0.0, min(100.0, math.exp(avg_logprob) * 100)), 2)
 
 
-def _clear_gpu_memory() -> None:
-    """尝试释放 GPU 显存。"""
-    try:
-        import torch
-
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-    except ImportError:
-        pass
-
-
 _CORE_FILES = [
     "model.bin",
     "config.json",
@@ -263,7 +252,6 @@ class Transcriber:
             if is_oom:
                 logger.warning("Transcriber: ⚠ 显存不足，尝试降级")
                 self.model = None
-                _clear_gpu_memory()
                 self._load_model_fallback()
             else:
                 raise TranscriptionError(f"模型加载失败: {e}")
@@ -273,7 +261,6 @@ class Transcriber:
             if is_oom:
                 logger.warning("Transcriber: ⚠ 显存不足，尝试降级")
                 self.model = None
-                _clear_gpu_memory()
                 self._load_model_fallback()
             else:
                 raise TranscriptionError(f"模型加载失败: {e}")
@@ -317,7 +304,6 @@ class Transcriber:
             except Exception as inner_e:
                 logger.debug("回退 %s 失败: %s", ct, inner_e)
                 self.model = None
-                _clear_gpu_memory()
                 continue
 
         if self.device != "cpu":
@@ -340,7 +326,6 @@ class Transcriber:
                 except Exception as inner_e:
                     logger.debug("CPU 回退 %s 失败: %s", ct, inner_e)
                     self.model = None
-                    _clear_gpu_memory()
                     continue
 
         raise TranscriptionError(
@@ -488,7 +473,6 @@ class Transcriber:
                     self.device = self._original_device
                 if hasattr(self, "_original_compute_type"):
                     self.compute_type = self._original_compute_type
-                _clear_gpu_memory()
                 logger.info("Transcriber: ✓ 模型已卸载")
         finally:
             self._model_lock.release()

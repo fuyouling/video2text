@@ -1798,12 +1798,23 @@ class MainWindow(QMainWindow):
 
         OllamaClient.stop_service()
 
-        for cached_transcriber in list(_transcriber_cache.values()):
-            try:
-                cached_transcriber.unload_model()
-            except Exception:
-                pass
+        # 模型卸载（del WhisperModel）会触发 ctranslate2 的 CUDA 上下文同步释放，
+        # 在打包环境下可能耗时数秒。放到 daemon 后台线程执行，避免阻塞窗口关闭，
+        # 让界面立即退出；进程结束时操作系统会兜底回收剩余资源。
+        cached = list(_transcriber_cache.values())
         _transcriber_cache.clear()
+
+        def _async_unload():
+            for cached_transcriber in cached:
+                try:
+                    cached_transcriber.unload_model()
+                except Exception:
+                    pass
+
+        import threading
+
+        unload_thread = threading.Thread(target=_async_unload, daemon=True)
+        unload_thread.start()
 
         if self._result_viewer is not None:
             self._result_viewer.close()

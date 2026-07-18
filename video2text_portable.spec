@@ -4,6 +4,14 @@ import json
 import os
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
+from PyInstaller.building.datastruct import TOC
+
+# CUDA 依赖库目录
+# 注意：CUDA/cuDNN 的 DLL 不打包进 _internal，而是作为发布目录下的 libs/ 子目录
+# 随附分发，由程序运行时通过 os.add_dll_directory() 显式加载（见 src/main.py）。
+specpath = SPECPATH
+_LIBS_DIR = Path(specpath) / 'libs'
+_cuda_libs = []
 
 block_cipher = None
 
@@ -26,10 +34,7 @@ def load_or_collect():
         'ctranslate2_data': collect_data_files('ctranslate2'),
         'tokenizers_data': collect_data_files('tokenizers'),
         'huggingface_hub_data': collect_data_files('huggingface_hub'),
-        'pyside6_data': collect_data_files('PySide6'),
-        'pyside6_bins': [list(b) for b in collect_dynamic_libs('PySide6')],
         'ctranslate2_bins': [list(b) for b in collect_dynamic_libs('ctranslate2')],
-        'pyside6_subs': collect_submodules('PySide6'),
         'ctranslate2_subs': collect_submodules('ctranslate2'),
         'tokenizers_subs': collect_submodules('tokenizers'),
     }
@@ -45,12 +50,17 @@ faster_whisper_data = _cache['faster_whisper_data']
 ctranslate2_data = _cache['ctranslate2_data']
 tokenizers_data = _cache['tokenizers_data']
 huggingface_hub_data = _cache['huggingface_hub_data']
-pyside6_data = _cache['pyside6_data']
-pyside6_bins = [tuple(b) for b in _cache['pyside6_bins']]
 ctranslate2_bins = [tuple(b) for b in _cache['ctranslate2_bins']]
-pyside6_subs = _cache['pyside6_subs']
-ctranslate2_subs = _cache['ctranslate2_subs']
+ctranslate2_subs = [m for m in _cache['ctranslate2_subs'] if not m.startswith('ctranslate2.converters.')]
 tokenizers_subs = _cache['tokenizers_subs']
+
+# --- PySide6：仅收集实际使用的模块，避免全量拷贝 WebEngine/Quick/3D 等 ---
+# 本应用只使用 QtCore / QtGui / QtWidgets。依赖交由 PyInstaller 的 PySide6 hook
+# 自动解析（会带上必要的依赖 DLL 与 platforms 插件），随后在 Analysis 之后
+# 通过黑名单过滤剔除 WebEngine/Quick/Qml/3D/Multimedia 等未使用的大体积文件。
+pyside6_bins = []
+pyside6_data = []
+pyside6_subs = ['PySide6.QtCore', 'PySide6.QtGui', 'PySide6.QtWidgets']
 
 a = Analysis(
     ['src/main.py'],
@@ -71,7 +81,6 @@ a = Analysis(
         'tokenizers',
         'tokenizers.models',
         'huggingface_hub',
-        'PySide6',
         'requests',
     ] + pyside6_subs + ctranslate2_subs + tokenizers_subs,
     hookspath=[],
@@ -112,12 +121,48 @@ a = Analysis(
         'PySide6.QtWebEngineWidgets',
         'PySide6.QtWebSockets',
         'PySide6.QtXml',
+        'torch',
+        'torchvision',
+        'torchaudio',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
     noarchive=False,
 )
+
+# --- 剔除未使用的 PySide6 大体积文件（WebEngine/Quick/Qml/3D/Multimedia 等）---
+# 即使在 excludes 中声明了这些模块，PySide6 的 hook 仍可能收集其 DLL 与数据文件。
+# 这里对 binaries / datas 按路径关键字做黑名单过滤，可显著减小发布体积。
+_PYSIDE_DROP = (
+    'qt6webengine', 'qtwebengine', 'webengine',
+    'qt6quick', 'qtquick', 'qt6qml', 'qtqml', 'qmltooling',
+    'qt6pdf', 'qt6designer', 'designercomponents',
+    'qt63d', 'qt6multimedia', 'qtmultimedia',
+    'qt6charts', 'qt6datavis', 'qt6graphs',
+    'qt6sensors', 'qt6serialport', 'qt6sql', 'qt6svg',
+    'qt6remoteobjects', 'qt6positioning', 'qt6nfc', 'qt6bluetooth',
+    'qt6websockets', 'qt6webchannel', 'qt6test',
+    'qt6shadertools', 'qt6quick3d',
+    'opengl32sw.dll',
+    'avcodec-', 'avformat-', 'avutil-', 'swscale-', 'swresample-',
+    'qmlls.exe', 'qmlformat.exe', 'qmlprofiler', 'qml.exe', 'qmlscene',
+)
+
+
+def _drop_pyside(entry):
+    dest = entry[0].replace('\\', '/').lower()
+    if 'pyside6' not in dest and 'qt6' not in dest:
+        return False
+    # 保留 qml 相关中确属核心的？此处直接按关键字剔除
+    return any(k in dest for k in _PYSIDE_DROP)
+
+
+_before = (len(a.binaries), len(a.datas))
+a.binaries = TOC([e for e in a.binaries if not _drop_pyside(e)])
+a.datas = TOC([e for e in a.datas if not _drop_pyside(e)])
+print(f'[spec] PySide6 filter: binaries {_before[0]}->{len(a.binaries)}, '
+      f'datas {_before[1]}->{len(a.datas)}')
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 

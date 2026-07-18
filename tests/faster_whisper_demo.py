@@ -5,7 +5,7 @@ from faster_whisper import WhisperModel
 pytestmark = pytest.mark.skip(reason="requires GPU and model download")
 
 
-model_size = "models/large-v3"
+model_size = "models/faster-whisper-large-v3-turbo-ct2"
 
 # Run on GPU with FP16
 model = WhisperModel(model_size, device="cuda", compute_type="float16")
@@ -15,7 +15,7 @@ model = WhisperModel(model_size, device="cuda", compute_type="float16")
 # or run on CPU with INT8
 # model = WhisperModel(model_size, device="cpu", compute_type="int8")
 
-segments, info = model.transcribe("video/test002.mp4", beam_size=5)
+segments, info = model.transcribe("video/20260426_003.mp4", beam_size=5)
 
 print(
     "Detected language '%s' with probability %f"
