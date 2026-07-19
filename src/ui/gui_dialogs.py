@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -216,6 +217,20 @@ class VideoSelectionDialog(QDialog):
         bottom_layout.addWidget(cancel_btn)
         layout.addLayout(bottom_layout)
 
+        self.setStyleSheet("""
+            QComboBox::drop-down {
+                width: 24px;
+                border-left: none;
+                subcontrol-origin: padding;
+                subcontrol-position: center right;
+                padding-right: 4px;
+            }
+            QComboBox::down-arrow {
+                image: url(assets/arrow_down.png);
+                width: 16px;
+                height: 16px;
+            }
+        """)
         QTimer.singleShot(0, self._deferred_populate)
 
     def _deferred_populate(self) -> None:
@@ -631,7 +646,10 @@ _KEY_LABELS: dict[str, str] = {
     "voice_to_text.vad_threshold": "VAD 阈值",
     "voice_to_text.vad_min_silence_ms": "VAD 静音断句(毫秒)",
     "voice_to_text.vad_speech_pad_ms": "VAD 首尾补静音(毫秒)",
+    "voice_to_text.vad_max_speech_s": "VAD 单段最长时长",
     "voice_to_text.initial_prompt": "初始提示词",
+    "voice_to_text.bg_image_path": "背景图片路径",
+    "voice_to_text.bg_transparency": "背景透明度",
     "voice_to_text.vad_endpoint_detection": "VAD 端点检测",
     "voice_to_text.vad_energy_threshold": "VAD 能量阈值",
     "voice_to_text.vad_silence_frames": "VAD 静音帧数",
@@ -696,7 +714,10 @@ _KEY_TOOLTIPS: dict[str, str] = {
     "voice_to_text.vad_threshold": "VAD 语音判定阈值(0~1)，嘈杂/有背景音乐时调高(0.6~0.7)，默认 0.5",
     "voice_to_text.vad_min_silence_ms": "静音持续多久才断句(毫秒)，调小断句更细，默认 2000",
     "voice_to_text.vad_speech_pad_ms": "每段语音首尾补静音(毫秒)，防止吞字，建议 300~500，默认 400",
+    "voice_to_text.vad_max_speech_s": "VAD 单段最长秒数，0 表示不限制",
     "voice_to_text.initial_prompt": "转写初始提示词，可用于上下文增强",
+    "voice_to_text.bg_image_path": "声音转文本界面背景图片路径，可填写相对路径（相对于程序目录）或绝对路径，留空则不使用背景图片",
+    "voice_to_text.bg_transparency": "声音转文本界面背景图片透明度 (0~255)，0=完全透明，255=完全不透明",
     "voice_to_text.vad_endpoint_detection": "是否启用实时 VAD 端点检测，语音结束后自动发送转写: True / False",
     "voice_to_text.vad_energy_threshold": "手动指定 VAD 噪底能量阈值 (0~N)，设为 0 自动校准",
     "voice_to_text.vad_silence_frames": "VAD 判定语音结束的连续静音帧数 (每帧约32ms)",
@@ -719,11 +740,64 @@ _SECTION_GROUPS: dict[str, dict[str, list[str]]] = {
             "result_transparency",
         ],
     },
+    "transcription": {
+        "基础参数": ["model_path", "device", "language", "compute_type", "num_workers"],
+        "解码参数": ["beam_size", "best_of", "temperature"],
+        "VAD 语音检测": [
+            "vad_filter",
+            "vad_threshold",
+            "vad_min_silence_ms",
+            "vad_speech_pad_ms",
+            "vad_max_speech_s",
+        ],
+        "质量控制": [
+            "condition_on_previous_text",
+            "word_timestamps",
+            "compression_ratio_threshold",
+            "log_prob_threshold",
+            "no_speech_threshold",
+        ],
+        "重复抑制": ["repetition_penalty", "no_repeat_ngram_size"],
+    },
+    "preprocessing": {
+        "音频处理": ["audio_sample_rate", "audio_channels", "max_chunk_duration"],
+        "支持格式": ["supported_video_formats", "supported_audio_formats"],
+    },
+    "output": {
+        "输出设置": ["output_dir", "transcript_format", "summary_format"],
+        "目录拼接": ["mirror_enabled", "mirror_depth"],
+    },
+    "text_processing": {
+        "合并与清理": ["max_gap", "min_length", "filler_words"],
+    },
+    "voice_to_text": {
+        "基础参数": ["voice_dir", "summary_dir", "realtime_auto_send_interval", "model_path", "device", "compute_type", "language", "num_workers"],
+        "音频与 VAD": [
+            "audio_sample_rate",
+            "audio_channels",
+            "vad_filter",
+            "vad_threshold",
+            "vad_min_silence_ms",
+            "vad_speech_pad_ms",
+            "vad_max_speech_s",
+        ],
+        "实时端点检测": [
+            "vad_endpoint_detection",
+            "vad_energy_threshold",
+            "vad_silence_frames",
+            "vad_min_speech_frames",
+            "vad_calibration_frames",
+            "context_max_chars",
+        ],
+        "提示词": ["initial_prompt"],
+        "背景图片配置": ["bg_image_path", "bg_transparency"],
+    },
 }
 
 _FILE_KEYS: set[str] = {
     "app.result_image_path",
     "app.main_image_path",
+    "voice_to_text.bg_image_path",
 }
 
 _BOOL_COMBO_KEYS: set[str] = {
@@ -828,6 +902,133 @@ class ConfigEditorDialog(QDialog):
         self._edits: dict[str, dict[str, QWidget]] = {}
         self._init_ui()
 
+    _STYLE_SHEET = """
+        QDialog {
+            background-color: #f5f6f8;
+            font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
+            font-size: 13px;
+        }
+        QLabel { color: #34495e; }
+        QGroupBox {
+            border: 1px solid #dfe3e8;
+            border-radius: 8px;
+            margin-top: 16px;
+            padding: 14px 12px 12px 12px;
+            background-color: #ffffff;
+        }
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            subcontrol-position: top left;
+            left: 12px;
+            padding: 0 6px;
+            color: #2c3e50;
+            font-weight: 600;
+            background-color: #f5f6f8;
+        }
+        QLineEdit, QComboBox {
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            padding: 5px 8px;
+            background-color: #ffffff;
+            min-height: 22px;
+            color: #2c3e50;
+        }
+        QLineEdit:focus, QComboBox:focus {
+            border: 1px solid #4a90d9;
+        }
+        QLineEdit:hover, QComboBox:hover {
+            border: 1px solid #aac4e4;
+        }
+        QComboBox QAbstractItemView {
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            selection-background-color: #4a90d9;
+        }
+        QComboBox::drop-down {
+            width: 24px;
+            border-left: none;
+            subcontrol-origin: padding;
+            subcontrol-position: center right;
+            padding-right: 4px;
+        }
+        QComboBox::down-arrow {
+            image: url(assets/arrow_down.png);
+            width: 16px;
+            height: 16px;
+        }
+        QPushButton {
+            background-color: #4a90d9;
+            color: #ffffff;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 16px;
+            min-height: 22px;
+        }
+        QPushButton:hover { background-color: #357abd; }
+        QPushButton:pressed { background-color: #2c639b; }
+        QPushButton#_secondary_btn {
+            background-color: #ffffff;
+            color: #4a90d9;
+            border: 1px solid #4a90d9;
+        }
+        QPushButton#_secondary_btn:hover {
+            background-color: #eaf2fb;
+        }
+        QPushButton#_browse_btn {
+            background-color: #eef1f5;
+            color: #4a90d9;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            padding: 4px 10px;
+            min-width: 34px;
+        }
+        QPushButton#_browse_btn:hover {
+            background-color: #e3e9f1;
+        }
+        QTabWidget::pane {
+            border: 1px solid #dfe3e8;
+            border-radius: 8px;
+            top: -1px;
+            background-color: #f5f6f8;
+        }
+        QTabBar::tab {
+            background: #e4e8ed;
+            color: #5a6b7b;
+            padding: 8px 18px;
+            border-top-left-radius: 6px;
+            border-top-right-radius: 6px;
+            margin-right: 2px;
+        }
+        QTabBar::tab:selected {
+            background: #ffffff;
+            color: #2c3e50;
+            font-weight: 600;
+        }
+        QTabBar::tab:hover:!selected {
+            background: #eef1f5;
+        }
+        QScrollArea {
+            border: none;
+            background-color: transparent;
+        }
+        QScrollBar:vertical {
+            border: none;
+            background: #e9edf2;
+            width: 10px;
+            border-radius: 5px;
+        }
+        QScrollBar::handle:vertical {
+            background: #c2cad4;
+            border-radius: 5px;
+            min-height: 24px;
+        }
+        QScrollBar::handle:vertical:hover { background: #aab4c0; }
+        QLineEdit[invalid="true"] {
+            border: 1px solid #e74c3c;
+            background-color: #fdecea;
+        }
+    """
+
     def _init_ui(self) -> None:
         self.setWindowTitle("编辑配置")
         self.setWindowFlags(
@@ -835,8 +1036,9 @@ class ConfigEditorDialog(QDialog):
             | Qt.WindowType.WindowMinMaxButtonsHint
             | Qt.WindowType.WindowMaximizeButtonHint
         )
-        self.resize(600, 560)
-        self.setMinimumSize(480, 360)
+        self.setStyleSheet(self._STYLE_SHEET)
+        self.resize(720, 640)
+        self.setMinimumSize(520, 400)
         available = self.screen().availableGeometry() if self.screen() else None
         if available is not None:
             max_h = int(available.height() * 0.85)
@@ -844,6 +1046,8 @@ class ConfigEditorDialog(QDialog):
                 self.resize(self.width(), max_h)
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
 
         self.tab_widget = QTabWidget()
         layout.addWidget(self.tab_widget, 1)
@@ -854,6 +1058,12 @@ class ConfigEditorDialog(QDialog):
         # device 与 compute_type 联动: 选择 cpu 时禁用 float16
         self._setup_device_compute_links()
 
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setFrameShadow(QFrame.Shadow.Sunken)
+        sep.setStyleSheet("color: #dfe3e8;")
+        layout.addWidget(sep)
+
         btn_box = QDialogButtonBox()
         self._btn_box = btn_box
         self._save_btn = btn_box.addButton(
@@ -862,7 +1072,9 @@ class ConfigEditorDialog(QDialog):
         self._reset_btn = btn_box.addButton(
             "重置", QDialogButtonBox.ButtonRole.ResetRole
         )
-        btn_box.addButton("取消", QDialogButtonBox.ButtonRole.RejectRole)
+        self._reset_btn.setObjectName("_secondary_btn")
+        cancel_btn = btn_box.addButton("取消", QDialogButtonBox.ButtonRole.RejectRole)
+        cancel_btn.setObjectName("_secondary_btn")
         btn_box.clicked.connect(self._on_button_clicked)
         layout.addWidget(btn_box)
 
@@ -881,11 +1093,14 @@ class ConfigEditorDialog(QDialog):
         groups = _SECTION_GROUPS.get(section)
         if groups:
             tab_layout = QVBoxLayout(content)
-            tab_layout.setContentsMargins(8, 8, 8, 8)
-            tab_layout.setSpacing(12)
+            tab_layout.setContentsMargins(6, 6, 6, 6)
+            tab_layout.setSpacing(14)
         else:
             form = QFormLayout(content)
-            form.setContentsMargins(8, 8, 8, 8)
+            form.setContentsMargins(10, 12, 10, 12)
+            form.setSpacing(10)
+            form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+            form.setHorizontalSpacing(14)
 
         section_edits: dict[str, QWidget] = {}
         items = self.settings.config.items(section)
@@ -896,8 +1111,10 @@ class ConfigEditorDialog(QDialog):
             for group_name, keys in groups.items():
                 gb = QGroupBox(group_name)
                 gb_form = QFormLayout(gb)
-                gb_form.setContentsMargins(8, 8, 8, 8)
-                gb_form.setSpacing(4)
+                gb_form.setContentsMargins(10, 14, 10, 12)
+                gb_form.setSpacing(10)
+                gb_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+                gb_form.setHorizontalSpacing(14)
                 for key in keys:
                     full_key = f"{section}.{key}"
                     if full_key in _SKIP_KEYS:
@@ -918,7 +1135,10 @@ class ConfigEditorDialog(QDialog):
             if extra_keys:
                 gb = QGroupBox("其他")
                 gb_form = QFormLayout(gb)
-                gb_form.setContentsMargins(8, 8, 8, 8)
+                gb_form.setContentsMargins(10, 14, 10, 12)
+                gb_form.setSpacing(10)
+                gb_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+                gb_form.setHorizontalSpacing(14)
                 for key in extra_keys:
                     full_key = f"{section}.{key}"
                     value = dict(items).get(key, "")
@@ -1023,8 +1243,11 @@ class ConfigEditorDialog(QDialog):
                 widget.setToolTip(tooltip)
             row = QHBoxLayout()
             row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(6)
             row.addWidget(widget, 1)
-            browse_btn = QPushButton("浏览")
+            browse_btn = QPushButton("📁")
+            browse_btn.setObjectName("_browse_btn")
+            browse_btn.setToolTip("选择目录")
             browse_btn.setProperty("_path_edit", widget)
             browse_btn.clicked.connect(self._browse_dir)
             row.addWidget(browse_btn)
@@ -1037,8 +1260,11 @@ class ConfigEditorDialog(QDialog):
                 widget.setToolTip(tooltip)
             row = QHBoxLayout()
             row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(6)
             row.addWidget(widget, 1)
-            browse_btn = QPushButton("浏览")
+            browse_btn = QPushButton("📁")
+            browse_btn.setObjectName("_browse_btn")
+            browse_btn.setToolTip("选择背景图片")
             browse_btn.setProperty("_path_edit", widget)
             browse_btn.clicked.connect(self._browse_file)
             row.addWidget(browse_btn)

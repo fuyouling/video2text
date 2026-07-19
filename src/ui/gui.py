@@ -685,7 +685,7 @@ class MainWindow(QMainWindow):
         clear_output_action.triggered.connect(self._clear_all_output_dirs)
 
         tools_menu = menu_bar.addMenu("工具")
-        voice_action = tools_menu.addAction("VoiceToText(声音转文本)")
+        voice_action = tools_menu.addAction("声音转文本")
         voice_action.triggered.connect(self._on_show_voice_to_text)
 
         help_menu = menu_bar.addMenu("帮助")
@@ -703,13 +703,6 @@ class MainWindow(QMainWindow):
             f"<p style='color:#666;margin-top:0'>版本 {APP_VERSION} · 音视频转文本工具</p>"
             "<hr>"
             "<p>基于 <b>faster-whisper</b> 的高精度语音转写和智能总结工具。</p>"
-            "<p><b>核心功能：</b></p>"
-            "<ul style='margin-top:2px'>"
-            "<li>支持视频和音频格式转写,长音频自动分段</li>"
-            "<li>转写和总结的模型都可切换</li>"
-            "<li>图形化配置编辑和收藏目录管理</li>"
-            "<li>总结结果markdown格式查看和书签功能</li>"
-            "</ul>"
             "<hr>"
             "<table style='font-size:13px'>"
             "<tr><td style='padding:2px 12px 2px 0;color:#888'>作者</td><td>喵王龙</td></tr>"

@@ -252,3 +252,5 @@ voice/
 # faster-whisper依赖
 libs/*
 !libs/readme.md
+
+usage_command.md

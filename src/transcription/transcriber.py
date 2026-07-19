@@ -189,25 +189,19 @@ class Transcriber:
         if self.device == "cuda":
             return True
         if self.device == "auto":
-            try:
-                import torch
-
-                return torch.cuda.is_available()
-            except Exception:
-                # 无法判定时按可能使用 CUDA 处理，交由后续加载报错
-                return True
+            return True
         return False
 
     def _check_cuda_dlls(self) -> None:
-        """在加载 CUDA 模型前预先检查 cuBLAS/cuDNN 依赖是否完整。
+        """在加载 CUDA 模型前预先检查 cuBLAS/cuDNN 依赖文件是否存在。
 
         缺失时 faster-whisper 会在转写阶段（而非加载阶段）挂起且**不抛异常**，
         导致后台 worker 线程无法结束、GUI 转写按钮卡死。此处主动快速失败，
         让上层捕获错误后正常结束并恢复界面。
 
-        检查策略：
-        1. 文件存在性检查（快速路径）
-        2. 使用 ctypes.CDLL 实际加载每个 DLL，验证可加载性（兜底）
+        注意：仅检查文件存在性，不实际加载 DLL。ctypes.CDLL 预加载会导致
+        libs/ 的 cuBLAS/cuDNN 先于 PyTorch 自带的 DLL 进入进程内存，
+        引发版本冲突（WinError 127），见 _do_load_model 中的二次验证。
         """
         if not self._is_cuda_requested():
             return
@@ -231,9 +225,20 @@ class Transcriber:
                 "将设备切换为 CPU。"
             )
 
-        # 二次检查：使用 ctypes 实际加载 DLL，验证可加载性
-        # faster-whisper 在转写阶段 C 层加载 DLL，若版本不匹配或依赖不完整
-        # 会挂起不抛异常。此处提前加载验证，快速失败。
+    def _verify_dlls_loadable(self) -> None:
+        """在 PyTorch 导入后尝试验证 libs/ 的 DLL 可加载性，仅警告不阻塞。
+
+        此方法仅在 import faster_whisper（含 torch）之后调用。ctypes.CDLL 逐一
+        加载 libs/ DLL 时可能因缺少 CUDA Runtime 驱动（cuda.dll）而失败，但
+        这不一定意味着 ctranslate2 无法工作——它可能使用系统已安装的 CUDA
+        Runtime 或 PyTorch 自带的 cuBLAS/cuDNN。因此仅记录警告，不阻止加载。
+        """
+        if not DLL_REQUIRED_FILES:
+            return
+
+        from src.utils.dll_downloader import DllDownloader
+
+        downloader = DllDownloader()
         import ctypes
 
         bad_dlls: list[str] = []
@@ -246,15 +251,10 @@ class Transcriber:
 
         if bad_dlls:
             logger.warning(
-                "Transcriber: ⚠ CUDA DLL 加载验证失败 (%s)，"
-                "请通过「设置」重新下载依赖或切换为 CPU",
+                "Transcriber: ⚠ libs/ DLL 预检失败 (%s)，"
+                "ctranslate2 将尝试使用系统/PyTorch 自带的 CUDA 库。"
+                "若后续转写失败，请通过「设置」重新下载依赖或切换为 CPU",
                 "、".join(bad_dlls),
-            )
-            raise TranscriptionError(
-                "CUDA 依赖加载失败（DLL 无法加载）："
-                + "、".join(bad_dlls)
-                + "。请通过「设置」重新下载依赖，或在转写设置中"
-                "将设备切换为 CPU。"
             )
 
     def _do_load_model(self, progress_callback: Optional[Callable] = None) -> None:
@@ -272,6 +272,11 @@ class Transcriber:
 
         try:
             from faster_whisper import WhisperModel
+
+            # PyTorch 已在此处导入完成，其自带的 cuDNN/cuBLAS DLL 已安全加载。
+            # 此时再验证 libs/ 的 DLL 可加载性，不会与 PyTorch 的 DLL 冲突。
+            if self.device != "cpu":
+                self._verify_dlls_loadable()
 
             logger.debug("开始加载模型")
             logger.debug(

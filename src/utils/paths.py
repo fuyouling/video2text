@@ -28,5 +28,7 @@ def ensure_cuda_libs() -> None:
             pass
         # 修改 PATH：CUDA Runtime 内部使用 LoadLibrary 加载 cublas/cudnn，
         # 该方式不识别 os.add_dll_directory，因此必须通过 PATH 确保找到。
+        # 注意：libs/ 追加到末尾而非开头，避免覆盖 PyTorch 自带的 cuDNN/cuBLAS
+        # 优先级，防止因版本冲突导致 "WinError 127 找不到指定的程序"。
         if libs_str not in os.environ.get("PATH", ""):
-            os.environ["PATH"] = libs_str + os.pathsep + os.environ.get("PATH", "")
+            os.environ["PATH"] = os.environ.get("PATH", "") + os.pathsep + libs_str
