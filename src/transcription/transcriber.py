@@ -13,6 +13,13 @@ from src.utils.paths import get_base_dir as _get_base_dir
 
 logger = get_logger(__name__)
 
+# 加载模型前需要预先确认可用的 CUDA/cuDNN 依赖，缺失会导致
+# faster-whisper 在转写时挂起（不抛异常）而非快速失败。
+try:
+    from src.utils.dll_downloader import DLL_REQUIRED_FILES
+except Exception:  # pragma: no cover - 极端导入异常兜底
+    DLL_REQUIRED_FILES = []
+
 # 禁用 Hugging Face Hub 的警告
 os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
 os.environ["HF_HUB_OFFLINE"] = "1"
@@ -177,6 +184,49 @@ class Transcriber:
 
             self._do_load_model(progress_callback)
 
+    def _is_cuda_requested(self) -> bool:
+        """判断本次加载是否会使用 CUDA 设备。"""
+        if self.device == "cuda":
+            return True
+        if self.device == "auto":
+            try:
+                import torch
+
+                return torch.cuda.is_available()
+            except Exception:
+                # 无法判定时按可能使用 CUDA 处理，交由后续加载报错
+                return True
+        return False
+
+    def _check_cuda_dlls(self) -> None:
+        """在加载 CUDA 模型前预先检查 cuBLAS/cuDNN 依赖是否完整。
+
+        缺失时 faster-whisper 会在转写阶段（而非加载阶段）挂起且**不抛异常**，
+        导致后台 worker 线程无法结束、GUI 转写按钮卡死。此处主动快速失败，
+        让上层捕获错误后正常结束并恢复界面。
+        """
+        if not self._is_cuda_requested():
+            return
+        if not DLL_REQUIRED_FILES:
+            return
+
+        from src.utils.dll_downloader import DllDownloader
+
+        downloader = DllDownloader()
+        if not downloader.is_dlls_complete():
+            missing = [
+                name
+                for name in DLL_REQUIRED_FILES
+                if not (downloader.libs_dir / name).exists()
+                or (downloader.libs_dir / name).stat().st_size == 0
+            ]
+            raise TranscriptionError(
+                "CUDA 依赖缺失（cuBLAS/cuDNN DLL 未找到）："
+                + "、".join(missing)
+                + "。无法启用 GPU 转写：请通过「设置」下载依赖，或在转写设置中"
+                "将设备切换为 CPU。"
+            )
+
     def _do_load_model(self, progress_callback: Optional[Callable] = None) -> None:
         """实际加载模型的内部实现（调用方需持有 _model_lock）。
 
@@ -185,6 +235,10 @@ class Transcriber:
         """
         self._original_device = self.device
         self._original_compute_type = self.compute_type
+
+        # 加载 CUDA 模型前先确认 cuBLAS/cuDNN 依赖，缺失会导致转写阶段挂起。
+        if self.device != "cpu":
+            self._check_cuda_dlls()
 
         try:
             from faster_whisper import WhisperModel
@@ -360,6 +414,10 @@ class Transcriber:
         """
         if not self._loaded:
             self.load_model()
+
+        # 即使模型已加载，CUDA 依赖缺失也会在推理阶段挂起，故每次转写前都确认。
+        if self.device != "cpu":
+            self._check_cuda_dlls()
 
         audio_file = Path(audio_path)
         if not audio_file.exists():

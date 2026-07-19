@@ -35,12 +35,18 @@ Requires: Python 3.8+, PyInstaller, requests
     # 构建后直接部署，不生成 ZIP
     python build_portable.py --no-zip --copy C:\\dev\\windowsTools\\video2text
     # 完全清理 + 构建 + 部署，不生成 ZIP
-    python build_portable.py --clean --no-zip --copy C:\\dev\\windowsTools\\video2text
+    python build_portable.py --clean --no-zip --copy --not-copy-dll C:\\dev\\windowsTools\\video2text
+
+    python build_portable.py --clean --no-zip --not-copy-dll
+    python build_portable.py --clean --not-copy-dll
 
     # 仅复制已有构建到安装目录 DIR（不做构建/ZIP）
     python build_portable.py --only-copy DIR
     # 仅复制示例（部署到安装目录）
     python build_portable.py --only-copy C:\\dev\\windowsTools\\video2text
+
+    # github Actions 构建示例：
+    python build_portable.py --clean --not-copy-dll
 
 """
 
@@ -433,7 +439,9 @@ def main():
     step_log(5, "Creating portable directory structure...")
     if args.dry_run:
         log("  [dry-run] Would create portable directory structure", "white")
-        log("  [dry-run] Would copy: assets/, docs/, config.ini, README.md", "white")
+        log("  [dry-run] Would copy: assets/, docs/", "white")
+        log("  [dry-run] Would copy config_realease.ini -> config.ini (release defaults)", "white")
+        log("  [dry-run] Would copy README.md", "white")
         log("  [dry-run] Would copy ffmpeg/ (内置 FFmpeg)", "white")
     else:
         assets_src = root / "assets"
@@ -452,13 +460,15 @@ def main():
             except Exception as e:
                 log(f"  Warning: Failed to copy docs/: {e}", "yellow")
 
-        config_src = root / "config.ini"
-        if config_src.exists():
-            try:
+        config_src = root / "config_realease.ini"
+        try:
+            if config_src.exists():
                 shutil.copy2(config_src, portable_dir / "config.ini")
-                log("  Copied: config.ini", "green")
-            except Exception as e:
-                log(f"  Warning: Failed to copy config.ini: {e}", "yellow")
+                log("  Copied: config_realease.ini -> config.ini (release defaults)", "green")
+            else:
+                log("  Warning: config_realease.ini not found, skipped", "yellow")
+        except Exception as e:
+            log(f"  Warning: Failed to copy config.ini: {e}", "yellow")
 
         readme_src = root / "README.md"
         if readme_src.exists():
@@ -487,6 +497,22 @@ start "" "%~dp0video2text.exe" %*
                     if p.suffix.lower() == ".dll":
                         shutil.copy2(p, dst / p.name)
                 log("  Copied: libs/ (CUDA/cuDNN DLLs, loaded at runtime)", "green")
+
+        # 7za.exe：用于解压 BCJ2 压缩的 7z 包（py7zr 不支持 BCJ2）。
+        # 将 7z/7za.exe 随包分发，确保 DLL 解压在目标机器上可靠运行。
+        seven_zip_src = root / "7z" / "7za.exe"
+        if seven_zip_src.is_file():
+            try:
+                shutil.copy2(seven_zip_src, portable_dir / "7za.exe")
+                log("  Copied: 7za.exe (7z 解压器，支持 BCJ2)", "green")
+            except Exception as e:
+                log(f"  Warning: Failed to copy 7za.exe: {e}", "yellow")
+        else:
+            log(
+                "  Note: 7z/7za.exe 未找到，DLL 解压将失败"
+                "（需 BCJ2 支持，py7zr 不可用）",
+                "yellow",
+            )
 
         ffmpeg_src = root / "ffmpeg"
         if ffmpeg_src.exists():

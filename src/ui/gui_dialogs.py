@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMenu,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QTabWidget,
     QTreeWidget,
@@ -573,7 +574,8 @@ _KEY_LABELS: dict[str, str] = {
     "app.version": "版本号",
     "app.log_level": "日志级别",
     "app.incremental_mode": "增量模式",
-    "app.is_check_model_file": "模型检测",
+    "app.is_check_model_file": "模型检查",
+    "app.is_check_dll_file": "依赖检查",
     "app.proxy": "代理地址",
     "app.result_image_path": "结果查看图片路径",
     "app.result_transparency": "结果查看透明度",
@@ -642,6 +644,7 @@ _KEY_TOOLTIPS: dict[str, str] = {
     "app.log_level": "日志级别: DEBUG / INFO / WARNING / ERROR",
     "app.incremental_mode": "启用后，若输出目录中已存在该视频的转写文件和摘要文件，则跳过该文件不再处理: true / false",
     "app.is_check_model_file": "程序启动时是否检测模型文件完整性（缺失则自动下载）。首次通过后自动置为 false 以跳过后续检测: true / false",
+    "app.is_check_dll_file": "程序启动时是否检测 cuBLAS/cuDNN DLL 依赖的完整性（缺失则从 GitHub 下载）。首次通过后自动置为 false 以跳过后续检测: true / false",
     "app.proxy": "HTTP 代理地址 (如 http://127.0.0.1:7890)，用于访问外部 API，留空不使用",
     "transcription.model_path": "Whisper 模型目录,填写目录名称",
     "transcription.device": "推理设备: cuda (NVIDIA GPU), cpu, auto (自动选择)",
@@ -650,7 +653,7 @@ _KEY_TOOLTIPS: dict[str, str] = {
     "transcription.temperature": "采样温度：逗号分隔多个值(如 0.0,0.2,0.4)可在失败时逐级升温重采样；只填单值则不回退。0 为贪心解码(最确定)",
     "transcription.condition_on_previous_text": "是否基于前文上下文条件生成。长音频切片场景建议 False(切片间不共享上下文)；单文件短音频可设 True 提高连贯性: True / False",
     "transcription.best_of": "采样候选数量，仅当 temperature 含 >0 的值(采样)时生效；纯贪心(单值 0.0)时不生效",
-    "transcription.compute_type": "计算精度: float16, int8, float32。int8 显存占用最少，float16 精度最佳",
+    "transcription.compute_type": "计算精度: float16, int8, float32。int8 显存占用最少，float16 精度最佳。注意: CPU 不支持 float16，仅可选 int8 / float32",
     "transcription.num_workers": "CTranslate2 推理引擎线程数 (1~CPU核心数)，增大可加速单次转写推理",
     "transcription.vad_filter": "是否启用 VAD 语音活动检测，过滤静音段可减少幻觉: True / False",
     "transcription.word_timestamps": "是否生成词级时间戳，启用后可精确定位每个词的时间: True / False",
@@ -684,7 +687,7 @@ _KEY_TOOLTIPS: dict[str, str] = {
     "voice_to_text.realtime_auto_send_interval": "实时录入模式下自动分段转写并发送的间隔 (秒)",
     "voice_to_text.model_path": "Whisper 模型目录名称或路径",
     "voice_to_text.device": "推理设备: cuda (NVIDIA GPU), cpu, auto (自动选择)",
-    "voice_to_text.compute_type": "计算精度: float16, int8, float32",
+    "voice_to_text.compute_type": "计算精度: float16, int8, float32。注意: CPU 不支持 float16，仅可选 int8 / float32",
     "voice_to_text.language": "转写语言代码: zh (中文), en (英文), ja (日文) 等，留空或 auto 自动检测",
     "voice_to_text.num_workers": "CTranslate2 推理引擎线程数 (1~CPU核心数)",
     "voice_to_text.audio_sample_rate": "音频采样率 (Hz)，Whisper 推荐 16000",
@@ -708,7 +711,7 @@ _KEY_TOOLTIPS: dict[str, str] = {
 
 _SECTION_GROUPS: dict[str, dict[str, list[str]]] = {
     "app": {
-        "通用配置": ["log_level", "incremental_mode", "is_check_model_file", "proxy"],
+        "通用配置": ["log_level", "incremental_mode", "is_check_model_file", "is_check_dll_file", "proxy"],
         "背景图片配置": [
             "main_image_path",
             "main_transparency",
@@ -726,6 +729,7 @@ _FILE_KEYS: set[str] = {
 _BOOL_COMBO_KEYS: set[str] = {
     "app.incremental_mode",
     "app.is_check_model_file",
+    "app.is_check_dll_file",
     "transcription.vad_filter",
     "transcription.condition_on_previous_text",
     "transcription.word_timestamps",
@@ -744,7 +748,6 @@ _COMBO_KEYS: set[str] = set(_BOOL_COMBO_KEYS) | {
     "transcription.compute_type",
     "voice_to_text.device",
     "voice_to_text.compute_type",
-    "voice_to_text.language",
 }
 
 _COMBO_OPTIONS: dict[str, list[str]] = {
@@ -780,7 +783,6 @@ _COMBO_OPTIONS.update(
         "transcription.compute_type": ["float16", "int8", "float32"],
         "voice_to_text.device": ["cuda", "cpu", "auto"],
         "voice_to_text.compute_type": ["float16", "int8", "float32"],
-        "voice_to_text.language": ["zh", "en", "ja", "auto"],
     }
 )
 
@@ -812,12 +814,6 @@ _COMBO_VALUE_MAP.update(
             "int8": "int8",
             "float32": "float32",
         },
-        "voice_to_text.language": {
-            "zh": "zh",
-            "en": "en",
-            "ja": "ja",
-            "auto": "auto",
-        },
     }
 )
 
@@ -834,15 +830,29 @@ class ConfigEditorDialog(QDialog):
 
     def _init_ui(self) -> None:
         self.setWindowTitle("编辑配置")
+        self.setWindowFlags(
+            self.windowFlags()
+            | Qt.WindowType.WindowMinMaxButtonsHint
+            | Qt.WindowType.WindowMaximizeButtonHint
+        )
         self.resize(600, 560)
+        self.setMinimumSize(480, 360)
+        available = self.screen().availableGeometry() if self.screen() else None
+        if available is not None:
+            max_h = int(available.height() * 0.85)
+            if self.height() > max_h:
+                self.resize(self.width(), max_h)
 
         layout = QVBoxLayout(self)
 
         self.tab_widget = QTabWidget()
-        layout.addWidget(self.tab_widget)
+        layout.addWidget(self.tab_widget, 1)
 
         for section in self.settings.config.sections():
             self._add_section_tab(section)
+
+        # device 与 compute_type 联动: 选择 cpu 时禁用 float16
+        self._setup_device_compute_links()
 
         btn_box = QDialogButtonBox()
         self._btn_box = btn_box
@@ -860,17 +870,21 @@ class ConfigEditorDialog(QDialog):
         if section == "summarization":
             self._summarization_tab = SummarizationTab(self.settings)
             self._edits["summarization"] = self._summarization_tab.get_section_edits()
-            self.tab_widget.addTab(self._summarization_tab, "总结")
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setWidget(self._summarization_tab)
+            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            self.tab_widget.addTab(scroll, "总结")
             return
 
-        tab = QWidget()
+        content = QWidget()
         groups = _SECTION_GROUPS.get(section)
         if groups:
-            tab_layout = QVBoxLayout(tab)
+            tab_layout = QVBoxLayout(content)
             tab_layout.setContentsMargins(8, 8, 8, 8)
             tab_layout.setSpacing(12)
         else:
-            form = QFormLayout(tab)
+            form = QFormLayout(content)
             form.setContentsMargins(8, 8, 8, 8)
 
         section_edits: dict[str, QWidget] = {}
@@ -930,9 +944,67 @@ class ConfigEditorDialog(QDialog):
 
         self._edits[section] = section_edits
 
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(content)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         tab_label = _SECTION_LABELS.get(section, section)
-        self.tab_widget.addTab(tab, tab_label)
+        self.tab_widget.addTab(scroll, tab_label)
 
+
+    def _setup_device_compute_links(self) -> None:
+        """建立 device 与 compute_type 联动: 选择 cpu 时 compute_type 仅保留 int8 / float32。
+
+        CTranslate2/faster-whisper 在 CPU 上不支持 float16，故 device=cpu 时
+        动态移除 compute_type 下拉中的 float16 选项，切回 cuda/auto 时恢复。
+        """
+        pairs = [
+            ("transcription", "device", "compute_type"),
+            ("voice_to_text", "device", "compute_type"),
+        ]
+        for section, device_key, compute_key in pairs:
+            edits = self._edits.get(section, {})
+            device_widget = edits.get(device_key)
+            compute_widget = edits.get(compute_key)
+            if not isinstance(device_widget, QComboBox) or not isinstance(
+                compute_widget, QComboBox
+            ):
+                continue
+
+            def _make_handler(
+                dev: QComboBox = device_widget, comp: QComboBox = compute_widget
+            ):
+                def _on_device_changed(_text: str = "") -> None:
+                    self._update_compute_options(dev, comp)
+
+                return _on_device_changed
+
+            handler = _make_handler()
+            device_widget.currentTextChanged.connect(handler)
+            # 初始化一次, 使加载配置后即刻应用限制
+            handler()
+
+    @staticmethod
+    def _update_compute_options(
+        device_widget: QComboBox, compute_widget: QComboBox
+    ) -> None:
+        """根据当前 device 刷新 compute_type 可选项。"""
+        device = device_widget.currentText().strip().lower()
+        if device == "cpu":
+            allowed = ["int8", "float32"]
+        else:
+            allowed = ["float16", "int8", "float32"]
+
+        current = compute_widget.currentText().strip()
+        compute_widget.blockSignals(True)
+        compute_widget.clear()
+        compute_widget.addItems(allowed)
+        if current in allowed:
+            compute_widget.setCurrentText(current)
+        else:
+            # 原值不可用(如 cpu 下的 float16), 回退到 int8
+            compute_widget.setCurrentText("int8")
+        compute_widget.blockSignals(False)
 
     def _create_edit_widget(
         self, full_key: str, value: str, tooltip: Optional[str]

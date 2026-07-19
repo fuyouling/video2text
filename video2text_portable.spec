@@ -69,6 +69,8 @@ a = Analysis(
     datas=[
         ('config.ini', '.'),
         ('src/ui/styles/voice_to_text.qss', 'src/ui/styles'),
+        # 7za.exe 用于解压 BCJ2 压缩的 7z 包（py7zr 不支持 BCJ2）
+        ('7z/7za.exe', '.'),
     ] + pyside6_data + faster_whisper_data + ctranslate2_data + tokenizers_data + huggingface_hub_data,
     hiddenimports=[
         'typing_extensions',

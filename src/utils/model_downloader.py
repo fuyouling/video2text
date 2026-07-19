@@ -208,12 +208,12 @@ class ModelDownloader:
                                 file_progress_callback(downloaded, total_size)
                                 last_reported = downloaded
 
-                if (
-                    file_progress_callback
-                    and total_size > 0
-                    and last_reported < downloaded
-                ):
-                    file_progress_callback(downloaded, total_size)
+                if file_progress_callback:
+                    if total_size > 0 and last_reported < downloaded:
+                        file_progress_callback(downloaded, total_size)
+                    elif total_size == 0 and downloaded - last_reported >= throttle_step:
+                        # 未知总量的文件仍实时上报已下载字节（GUI 以无限滚动展示）
+                        file_progress_callback(downloaded, 0)
 
                 if total_size > 0 and downloaded != total_size:
                     logger.warning(
@@ -286,14 +286,22 @@ class ModelDownloader:
             self._clean_incomplete_core_files()
             return False
 
-        logger.info("  └─ 下载文件 (%d 个 -> %s)", len(files), self.models_dir)
+        # logger.info("  └─ 下载文件 (%d 个 -> %s)", len(files), self.models_dir)
 
         total_downloaded = 0
 
-        def _make_file_cb(filename: str, base_downloaded: int):
+        def _make_file_cb(filename: str, base_downloaded: int, file_index: int):
             def _file_cb(downloaded: int, file_total: int):
                 if progress_callback:
-                    progress_callback(base_downloaded + downloaded, -1)
+                    # 进度条展示「当前文件」的完成度：downloaded/file_total。
+                    # 若该文件总量未知(file_total<=0)则传 0 让 GUI 以无限滚动显示。
+                    # current_item/total_items 用于 label 显示「第 N 个 / 共 M 个」。
+                    progress_callback(
+                        downloaded,
+                        file_total if file_total > 0 else 0,
+                        file_index,
+                        len(files),
+                    )
 
             return _file_cb
 
@@ -320,7 +328,9 @@ class ModelDownloader:
                 url,
                 dest,
                 proxy=proxy,
-                file_progress_callback=_make_file_cb(filename, total_downloaded),
+                file_progress_callback=_make_file_cb(
+                    filename, total_downloaded, i + 1
+                ),
             )
             if ok:
                 if dest.exists():
@@ -343,7 +353,7 @@ class ModelDownloader:
                 return False
 
         self.close()
-        logger.info("下载完成")
+        logger.info("  └─ 下载完成")
         return True
 
     def _clean_incomplete_core_files(self) -> None:
