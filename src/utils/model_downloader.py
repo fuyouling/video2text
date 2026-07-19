@@ -6,6 +6,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
 
+from src.ui.startup_log import dlog
 from src.utils.logger import get_logger
 from src.utils.paths import get_base_dir
 
@@ -280,7 +281,7 @@ class ModelDownloader:
 
         proxy = self._get_proxy()
 
-        logger.info("模型下载 (%s)", self.model_name)
+        logger.info("  ├─ 模型下载 (%s)", self.model_name)
         logger.info("  ├─ 检查网络连接")
         if proxy:
             logger.info("  │  ├─ 使用代理（%s）", self._proxy_source_hint())
@@ -429,10 +430,10 @@ def check_models_integrity(
     """
     do_check = settings.get_bool("app.is_check_model_file", True)
     if not do_check:
-        logger.info("模型完整性检测: 已跳过 (is_check_model_file=false)")
+        dlog.model_check_skipped()
         return True
 
-    logger.info("模型完整性检测: 启动检测")
+    dlog.model_check_start()
 
     model_keys = ["transcription.model_path"]
     all_ok = True
@@ -452,10 +453,10 @@ def check_models_integrity(
             logger.info("模型完整性检测: ✓ 完整 (%s)", model_name)
             continue
 
-        logger.info("模型完整性检测: 文件不完整 (%s)，尝试下载...", model_name)
+        dlog.model_missing(model_name)
         ok = downloader.download_model(progress_callback, confirm_callback)
         if ok and downloader.is_model_exists():
-            logger.info("模型完整性检测: ✓ 已补齐 (%s)", model_name)
+            dlog.model_check_complete(model_name)
         else:
             all_ok = False
             logger.error("模型完整性检测: ✗ 失败 (%s)", model_name)
@@ -466,7 +467,7 @@ def check_models_integrity(
     try:
         settings.set("app.is_check_model_file", "false")
         if all_ok:
-            logger.info("模型完整性检测: ✓ 通过，已关闭后续检测")
+            dlog.model_check_passed()
         else:
             logger.info(
                 "模型完整性检测: 未通过（多为网络不可达），已关闭后续自动检测。"

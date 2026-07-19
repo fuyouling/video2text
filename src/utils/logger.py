@@ -129,6 +129,73 @@ def setup_logger(
     return logger
 
 
+def setup_dependency_logger(
+    name: str,
+    log_dir: str = "logs",
+    level: str = "INFO",
+    log_to_file: bool = True,
+    log_to_console: bool = True,
+) -> logging.Logger:
+    """配置「启动依赖检测」专用 logger，输出干净、带对齐树状的日志。
+
+    与 setup_logger 不同：本 logger **不**沿用 ``asctime - name - levelname``
+    的冗余前缀，且关闭向父 logger 的传播（propagate=False），避免同一行日志
+    被 video2text 根 logger 的 handler 再打印一次（带前缀）。
+
+    输出格式示例::
+
+        ▸ 启动依赖检测：开始
+          ├─ 模型 ✗ 不完整 (faster-whisper-large-v3-turbo-ct2)
+          ├─ DLL 依赖 ✗ 不完整
+          └─ 用户确认下载，启动后台线程…
+
+    日志面板（log_panel.py）的树状正则可直接对 ``  ├─ `` / ``  └─ `` 着色。
+    """
+    level_upper = level.upper()
+    level_int = logging.getLevelName(level_upper)
+    if not isinstance(level_int, int):
+        raise ValueError(f"无效的日志级别: {level}")
+
+    logger = logging.getLogger(name)
+
+    with _CONFIGURE_LOCK:
+        if name in _CONFIGURED_LOGGERS:
+            logger.setLevel(level_int)
+            return logger
+
+        logger.setLevel(level_int)
+        logger.propagate = False
+        logger.handlers.clear()
+
+        # 干净格式：仅时间 + 级别 + 消息，无 logger 名与冗余分隔。
+        formatter = logging.Formatter(
+            "%(asctime)s  %(levelname)-5s  %(message)s",
+            datefmt="%H:%M:%S",
+        )
+
+        if log_to_file:
+            log_path = Path(log_dir)
+            log_path.mkdir(parents=True, exist_ok=True)
+            dep_handler = RotatingFileHandler(
+                log_path / "dependency.log",
+                maxBytes=5 * 1024 * 1024,
+                backupCount=3,
+                encoding="utf-8",
+            )
+            dep_handler.setLevel(logging.INFO)
+            dep_handler.setFormatter(formatter)
+            logger.addHandler(dep_handler)
+
+        if log_to_console:
+            console_handler = logging.StreamHandler()
+            console_handler.setLevel(level_int)
+            console_handler.setFormatter(formatter)
+            logger.addHandler(console_handler)
+
+        _CONFIGURED_LOGGERS.add(name)
+    return logger
+
+
 def get_logger(name: str) -> logging.Logger:
     """获取日志记录器
 

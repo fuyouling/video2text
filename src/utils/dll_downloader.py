@@ -8,8 +8,9 @@ cuBLAS.and.cuDNN_CUDA12_win_v3.7z 压缩包并解压到 libs/ 目录。
 import time
 from typing import Optional
 
+from src.ui.startup_log import dlog
 from src.utils.logger import get_logger
-from src.utils.paths import get_base_dir
+from src.utils.paths import ensure_cuda_libs, get_base_dir
 
 logger = get_logger("video2text")
 
@@ -393,7 +394,7 @@ class DllDownloader:
         返回 True 表示 DLL 已就绪（完整或已补齐），False 表示失败。
         """
         if self.is_dlls_complete():
-            logger.info("DLL 依赖: ✓ 已完整，无需下载")
+            dlog.dll_already_complete()
             return True
 
         if confirm_callback and not confirm_callback():
@@ -405,16 +406,16 @@ class DllDownloader:
         self._get_session()
         self._apply_proxy(proxy)
         if proxy:
-            logger.info("DLL 依赖: 使用代理 %s (%s)", proxy, self._proxy_source_hint())
+            dlog.dll_use_proxy(proxy, self._proxy_source_hint())
         else:
-            logger.info("DLL 依赖: 直连下载")
+            dlog.dll_direct()
 
         # 网络探测（使用已设置的代理）
         if not self._check_github_accessible():
             logger.error("DLL 依赖: ✗ 无法访问下载地址（GitHub），下载终止")
             return False
 
-        logger.info("DLL 依赖: 开始检测与补齐（下载 → 解压）")
+        dlog.dll_start()
         ok = self._download_archive(progress_callback)
         if not ok:
             logger.error("DLL 依赖: ✗ 下载失败")
@@ -425,7 +426,11 @@ class DllDownloader:
             logger.error("DLL 依赖: ✗ 解压失败")
             return False
 
-        logger.info("DLL 依赖: ✓ 全部就绪（共 %d 个 DLL）", len(DLL_REQUIRED_FILES))
+        # DLL 已补齐，立即把 libs/ 加入 DLL 搜索路径，
+        # 这样后续 ctranslate2 加载 CUDA/cuDNN 时无需重启即可生效。
+        ensure_cuda_libs()
+
+        dlog.dll_ready(len(DLL_REQUIRED_FILES))
         return True
 
     def cleanup_archive(self) -> None:

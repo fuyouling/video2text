@@ -62,7 +62,7 @@ class LogPanel(QWidget):
 
     def _attach_handlers(self) -> None:
         """将 UiLogHandler 附加到 video2text 和 src 命名空间的 logger。"""
-        for name in ("video2text", "src"):
+        for name in ("video2text", "src", "video2text.dependency"):
             lg = logging.getLogger(name)
             lg.setLevel(logging.INFO)
             if self._ui_handler not in lg.handlers:
@@ -70,7 +70,7 @@ class LogPanel(QWidget):
 
     def cleanup(self) -> None:
         """移除日志处理器，应在窗口关闭时调用。"""
-        for name in ("video2text", "src"):
+        for name in ("video2text", "src", "video2text.dependency"):
             lg = logging.getLogger(name)
             if self._ui_handler in lg.handlers:
                 lg.removeHandler(self._ui_handler)
