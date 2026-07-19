@@ -508,7 +508,7 @@ start "" "%~dp0video2text.exe" %*
         if seven_zip_src.is_file():
             try:
                 shutil.copy2(seven_zip_src, portable_dir / "7za.exe")
-                log("  Copied: 7za.exe (7z 解压器，支持 BCJ2)", "green")
+                log("  Copied: 7za.exe", "green")
             except Exception as e:
                 log(f"  Warning: Failed to copy 7za.exe: {e}", "yellow")
         else:
@@ -529,7 +529,7 @@ start "" "%~dp0video2text.exe" %*
             presets_src = ffmpeg_src / "presets"
             if presets_src.exists():
                 shutil.copytree(presets_src, dst / "presets", dirs_exist_ok=True)
-            log("  Copied: ffmpeg/ (内置 FFmpeg)", "green")
+            log("  Copied: ffmpeg", "green")
 
     # 步骤 6：打包 ZIP
     zip_path = None
