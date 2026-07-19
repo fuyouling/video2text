@@ -204,6 +204,10 @@ class Transcriber:
         缺失时 faster-whisper 会在转写阶段（而非加载阶段）挂起且**不抛异常**，
         导致后台 worker 线程无法结束、GUI 转写按钮卡死。此处主动快速失败，
         让上层捕获错误后正常结束并恢复界面。
+
+        检查策略：
+        1. 文件存在性检查（快速路径）
+        2. 使用 ctypes.CDLL 实际加载每个 DLL，验证可加载性（兜底）
         """
         if not self._is_cuda_requested():
             return
@@ -224,6 +228,32 @@ class Transcriber:
                 "CUDA 依赖缺失（cuBLAS/cuDNN DLL 未找到）："
                 + "、".join(missing)
                 + "。无法启用 GPU 转写：请通过「设置」下载依赖，或在转写设置中"
+                "将设备切换为 CPU。"
+            )
+
+        # 二次检查：使用 ctypes 实际加载 DLL，验证可加载性
+        # faster-whisper 在转写阶段 C 层加载 DLL，若版本不匹配或依赖不完整
+        # 会挂起不抛异常。此处提前加载验证，快速失败。
+        import ctypes
+
+        bad_dlls: list[str] = []
+        for name in DLL_REQUIRED_FILES:
+            dll_path = downloader.libs_dir / name
+            try:
+                ctypes.CDLL(str(dll_path))
+            except OSError:
+                bad_dlls.append(name)
+
+        if bad_dlls:
+            logger.warning(
+                "Transcriber: ⚠ CUDA DLL 加载验证失败 (%s)，"
+                "请通过「设置」重新下载依赖或切换为 CPU",
+                "、".join(bad_dlls),
+            )
+            raise TranscriptionError(
+                "CUDA 依赖加载失败（DLL 无法加载）："
+                + "、".join(bad_dlls)
+                + "。请通过「设置」重新下载依赖，或在转写设置中"
                 "将设备切换为 CPU。"
             )
 

@@ -107,7 +107,7 @@ class DllDownloader:
             settings_proxy = ""
         if settings_proxy and settings_proxy.strip():
             return "config.ini [app] proxy"
-        return "本机系统代理(自动探测)"
+        return "本机系统代理"
 
     def _get_session(self):
         """获取（或创建）requests Session，仅在首次调用时初始化。

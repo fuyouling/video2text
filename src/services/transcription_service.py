@@ -1,5 +1,6 @@
 """转写服务 —— 统一 CLI / GUI 的转写逻辑，支持断点续传"""
 
+import concurrent.futures
 import hashlib
 import os
 import shutil
@@ -239,8 +240,9 @@ class TranscriptionService:
                     temp_audio, video_name, video_path, output_dir
                 )
             else:
-                segments = self.transcriber.transcribe(
-                    str(temp_audio),
+                segments = self._transcribe_with_timeout(
+                    temp_audio,
+                    timeout=1800,
                     language=self.language,
                     beam_size=self.beam_size,
                     best_of=self.best_of,
@@ -285,6 +287,37 @@ class TranscriptionService:
             raise
         finally:
             temp_audio.unlink(missing_ok=True)
+
+    def _transcribe_with_timeout(self, audio_path: Path, timeout: int = 1800, **kwargs) -> list:
+        """带超时保护的转写调用，防止 faster-whisper 在 DLL 缺失时挂起。
+
+        faster-whisper 在 cuBLAS/cuDNN DLL 缺失或版本不匹配时，C 层加载
+        DLL 可能挂起（不抛异常），导致 Worker 线程永远阻塞。此方法使用
+        ThreadPoolExecutor 加超时兜底，超时后抛出 TranscriptionError。
+
+        Args:
+            audio_path: 音频/切片路径
+            timeout: 超时秒数（默认 1800 秒 = 30 分钟）
+            **kwargs: 传递给 transcriber.transcribe() 的参数
+
+        Returns:
+            TranscriptSegment 列表
+
+        Raises:
+            TranscriptionError: 转写失败或超时
+        """
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        try:
+            future = executor.submit(
+                self.transcriber.transcribe, str(audio_path), **kwargs
+            )
+            return list(future.result(timeout=timeout))
+        except concurrent.futures.TimeoutError:
+            raise TranscriptionError(
+                f"转写超时（{timeout}秒），请检查 CUDA 依赖是否正常"
+            )
+        finally:
+            executor.shutdown(wait=False)  # 不等待，主线程继续
 
     def _transcribe_chunked(
         self,
@@ -404,8 +437,9 @@ class TranscriptionService:
 
                 chunk_t0 = time.monotonic()
                 try:
-                    chunk_segments = self.transcriber.transcribe(
-                        str(chunk_path),
+                    chunk_segments = self._transcribe_with_timeout(
+                        chunk_path,
+                        timeout=1800,
                         language=self.language,
                         beam_size=self.beam_size,
                         best_of=self.best_of,

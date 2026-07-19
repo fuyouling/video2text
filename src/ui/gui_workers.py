@@ -3,6 +3,8 @@
 import os
 import threading
 import time
+import traceback
+from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -27,6 +29,32 @@ from src.utils.rate_limit import RateLimiter
 # ---------------------------------------------------------------------------
 # 模块级辅助类与函数
 # ---------------------------------------------------------------------------
+
+
+def _log_worker_error(phase: str, exc: Exception, log_dir: str = "logs") -> None:
+    """将 Worker 级别异常的完整堆栈写入日志文件。
+
+    与 ``logger.exception()`` 不同，此函数将完整 traceback 以标准格式
+    写入 ``logs/worker_error.log``，便于用户直接查看错误详情，
+    避免控制台输出被 GUI 界面遮挡。
+
+    Args:
+        phase: 出错阶段（如 "转写线程"、"总结线程"、"管道线程"）
+        exc: 异常对象
+        log_dir: 日志目录，默认 "logs"
+    """
+    log_path = Path(log_dir)
+    log_path.mkdir(parents=True, exist_ok=True)
+    error_file = log_path / "worker_error.log"
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    tb_lines = traceback.format_exception(type(exc), exc, exc.__traceback__)
+    try:
+        with open(error_file, "a", encoding="utf-8") as f:
+            f.write(f"[{timestamp}] {phase}\n")
+            f.writelines(tb_lines)
+            f.write("\n")
+    except OSError:
+        pass  # 日志写入失败不影响主流程
 
 
 class _ProgressTracker:
@@ -332,6 +360,7 @@ class TranscribeWorker(QObject):
             logger.info("用户取消了模型下载")
         except Exception as exc:
             logger.exception("转写线程异常")
+            _log_worker_error("转写线程", exc)
             self.error.emit(str(exc))
         finally:
             with self._service_lock:
@@ -476,6 +505,7 @@ class SummarizeWorker(QObject):
 
         except Exception as exc:
             logger.exception("总结线程异常")
+            _log_worker_error("总结线程", exc)
             self.error.emit(str(exc))
         finally:
             self.finished.emit()
@@ -769,6 +799,7 @@ class PipelineWorker(QObject):
             logger.info("用户取消了模型下载")
         except Exception as exc:
             logger.exception("管道线程异常")
+            _log_worker_error("管道线程", exc)
             self.error.emit(str(exc))
         finally:
             with self._tx_service_lock:

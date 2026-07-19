@@ -1462,19 +1462,38 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage("正在等待当前音频/切片转写完成后暂停…")
 
     def _on_stop(self) -> None:
-        """立即停止当前的转写或总结任务：请求取消并退出工作线程。"""
+        """立即停止当前的转写或总结任务：请求取消并退出工作线程。
+
+        策略：
+        1. 立即设置取消标志，让 Worker 在下次检查时退出
+        2. 解除暂停状态（避免 Worker 卡在暂停循环中）
+        3. 等待线程自然退出（超时 5 秒）
+        4. 若仍卡死（faster-whisper 在 C 层挂起），使用 terminate() 强行终止
+        """
         if self._worker is None or self._worker_thread is None:
             return
-        get_logger("video2text").info("  ├─ ⏹ 停止请求已接收，等待当前任务完成…")
+        get_logger("video2text").info("  ├─ ⏹ 停止请求已接收，尝试终止任务…")
         self.status_bar.showMessage("正在停止任务…")
         if hasattr(self._worker, "cancel"):
             self._worker.cancel()
         if hasattr(self._worker, "unpause"):
             self._worker.unpause()
         if self._worker_thread.isRunning():
+            # 先等待 5 秒让 Worker 自然退出（检查取消标志后退出循环）
             self._worker_thread.quit()
+            if not self._worker_thread.wait(5000):
+                get_logger("video2text").warning(
+                    "  ├─ ⚠ Worker 线程未响应退出请求，强制终止…"
+                )
+                self._worker_thread.terminate()
+                self._worker_thread.wait(3000)
+        self._worker = None
+        self._worker_thread = None
         self.stop_btn.setEnabled(False)
         self.pause_btn.setEnabled(False)
+        # 确保界面从忙碌状态恢复
+        self._set_busy_state(False)
+        self.status_bar.showMessage("任务已停止")
 
     # ── 仅转写 ──
 

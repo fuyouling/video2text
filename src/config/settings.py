@@ -148,7 +148,7 @@ class Settings:
                         pass
                     raise
 
-            logger.info("Settings: ✓ 配置保存 (%s)", Path(self.config_path).name)
+            # logger.info("Settings: ✓ 配置保存 (%s)", Path(self.config_path).name)
         except ConfigurationError:
             raise
         except Exception as e:
