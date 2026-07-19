@@ -1,2 +1,2 @@
 APP_NAME = "video2text"
-APP_VERSION = "2.4.6"
+APP_VERSION = "2.4.7"
