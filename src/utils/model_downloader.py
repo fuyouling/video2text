@@ -98,9 +98,25 @@ class ModelDownloader:
             from src.config.settings import Settings
 
             s = Settings()
-            return s.get("app.proxy", "")
+            settings_proxy = s.get("app.proxy", "")
         except Exception:
-            return ""
+            settings_proxy = ""
+        from src.utils.proxy_detect import resolve_proxy
+
+        return resolve_proxy(settings_proxy)
+
+    def _proxy_source_hint(self) -> str:
+        """返回代理来源说明（config.ini 或 系统自动探测），用于日志提示。"""
+        try:
+            from src.config.settings import Settings
+
+            s = Settings()
+            settings_proxy = s.get("app.proxy", "")
+        except Exception:
+            settings_proxy = ""
+        if settings_proxy and settings_proxy.strip():
+            return "config.ini [app] proxy"
+        return "本机系统代理(自动探测)"
 
     def _get_session(self, proxy: str = ""):
         import requests
@@ -266,6 +282,8 @@ class ModelDownloader:
 
         logger.info("模型下载 (%s)", self.model_name)
         logger.info("  ├─ 检查网络连接")
+        if proxy:
+            logger.info("  │  ├─ 使用代理（%s）", self._proxy_source_hint())
 
         if self._check_hf_accessible():
             logger.info("  │  └─ 直连 HuggingFace ... OK")
@@ -276,7 +294,7 @@ class ModelDownloader:
                 logger.info("  │  │  └─ 代理连接 ... OK")
             else:
                 logger.error("  │  │  └─ 代理连接失败")
-                logger.error("  │  │     请检查 config.ini 的 [app] proxy 是否可用")
+                logger.error("  │  │     请检查 %s 的代理是否可用", self._proxy_source_hint())
                 return False
         else:
             logger.error("  │  └─ 无法访问 HuggingFace（直连不通且未配置代理）")

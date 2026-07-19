@@ -86,13 +86,27 @@ class DllDownloader:
     # ── 代理 / Session 管理 ───────────────────────────────
 
     def _get_proxy(self) -> str:
-        """从 config.ini 读取代理配置。"""
+        """从 config.ini 读取代理配置；未配置时自动探测本机系统代理。"""
+        from src.config.settings import Settings
+        from src.utils.proxy_detect import resolve_proxy
+
+        try:
+            settings_proxy = Settings().get("app.proxy", "")
+        except Exception:
+            settings_proxy = ""
+        return resolve_proxy(settings_proxy)
+
+    def _proxy_source_hint(self) -> str:
+        """返回代理来源说明（config.ini 或 系统自动探测），用于日志提示。"""
         from src.config.settings import Settings
 
         try:
-            return Settings().get("app.proxy", "")
+            settings_proxy = Settings().get("app.proxy", "")
         except Exception:
-            return ""
+            settings_proxy = ""
+        if settings_proxy and settings_proxy.strip():
+            return "config.ini [app] proxy"
+        return "本机系统代理(自动探测)"
 
     def _get_session(self):
         """获取（或创建）requests Session，仅在首次调用时初始化。
@@ -391,7 +405,7 @@ class DllDownloader:
         self._get_session()
         self._apply_proxy(proxy)
         if proxy:
-            logger.info("DLL 依赖: 使用代理 %s", proxy)
+            logger.info("DLL 依赖: 使用代理 %s (%s)", proxy, self._proxy_source_hint())
         else:
             logger.info("DLL 依赖: 直连下载")
 
