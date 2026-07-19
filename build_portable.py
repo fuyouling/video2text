@@ -75,7 +75,11 @@ def log(msg, color="white"):
     }
     reset = "\033[0m"
     prefix = colors.get(color, colors["white"])
-    print(f"{prefix}{msg}{reset}")
+    try:
+        print(f"{prefix}{msg}{reset}")
+    except UnicodeEncodeError:
+        sys.stdout.reconfigure(encoding="utf-8")
+        print(f"{prefix}{msg}{reset}")
 
 
 def step_log(step_num, msg):
