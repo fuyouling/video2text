@@ -15,7 +15,7 @@ _RE_TAG_STEP = re.compile(r"^(\[\d+/\d+\])(.*?)( ✓| ✗)(.*)$")
 _RE_STEP = re.compile(r"^(  [├└]─ )(.+?)( ✓| ✗)(.*)$")
 _RE_PROG = re.compile(r"^(  [├└]─ )(.+?)( …)(.*)$")
 _RE_STATE = re.compile(r"^(  [├└]─ )(⏸|▶|⏹)(.*)$")
-_RE_TREE = re.compile(r"^(  [├└]─ )(.*)$")
+_RE_TREE = re.compile(r"^(  (?:[├└]─|│)[ ─│]*(?:[├└]─ )?)(.*)$")
 
 _LOG_COLOR_RULES = [
     (re.compile(r"失败|错误|异常|✘|✗"), QColor("#F44336")),

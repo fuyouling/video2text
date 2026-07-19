@@ -181,9 +181,8 @@ class MainWindow(QMainWindow):
             ModelDownloader,
         )
         from src.utils.dll_downloader import DllDownloader
-        from src.ui.startup_log import dlog
 
-        dlog.phase_startup_check()
+        logger = get_logger("video2text")
 
         do_check_model = self.settings.get_bool("app.is_check_model_file", True)
         do_check_dll = self.settings.get_bool("app.is_check_dll_file", True)
@@ -191,6 +190,7 @@ class MainWindow(QMainWindow):
         if not do_check_model and not do_check_dll:
             return
 
+        logger.info("启动依赖检测：开始")
         model_missing = False
         dll_missing = False
 
@@ -205,26 +205,26 @@ class MainWindow(QMainWindow):
                 except ValueError:
                     downloader = None
                 if downloader and downloader.is_model_exists():
-                    dlog.model_complete(model_name)
+                    logger.info("模型已完整 (%s)", model_name)
                     self.settings.set("app.is_check_model_file", "false")
                 else:
                     model_missing = True
-                    dlog.model_missing(model_name)
+                    logger.info("模型不完整 (%s)", model_name)
 
         # ── 检查 DLL ──
         if do_check_dll:
             dll_downloader = DllDownloader()
             if dll_downloader.is_dlls_complete():
-                dlog.dll_complete()
+                logger.info("DLL 依赖已完整")
                 self.settings.set("app.is_check_dll_file", "false")
             else:
                 dll_missing = True
-                dlog.dll_missing()
+                logger.info("DLL 依赖不完整")
 
         # 两者都完整 → 保存并返回
         if not model_missing and not dll_missing:
             self.settings.save()
-            dlog.all_ready()
+            logger.info("所有依赖已就绪，无需下载")
             return
 
         # ── Phase 1: 弹窗确认 ──
@@ -234,11 +234,11 @@ class MainWindow(QMainWindow):
             self.settings.set("app.is_check_model_file", "false")
             self.settings.set("app.is_check_dll_file", "false")
             self.settings.save()
-            dlog.user_cancelled()
+            logger.info("用户取消下载，已关闭后续自动检测")
             return
 
         # ── Phase 2: 确认下载 → 启动后台线程 ──
-        dlog.user_confirmed()
+        logger.info("用户确认下载，启动后台线程…")
         result = dialog.get_result()
         self._start_dependency_download_thread(
             download_model=result["download_model"],
@@ -250,9 +250,11 @@ class MainWindow(QMainWindow):
         self, download_model: bool, download_dll: bool, keep_archive: bool
     ) -> None:
         """启动统一的依赖下载后台线程（串行执行模型 → DLL）。"""
-        from src.ui.startup_log import dlog
-
-        dlog.phase_download_thread(download_model, download_dll, keep_archive)
+        logger = get_logger("video2text")
+        logger.info(
+            "启动依赖下载：model=%s, dll=%s, keep_archive=%s",
+            download_model, download_dll, keep_archive,
+        )
         self._wait_async_thread("_startup_dependency_thread")
         thread = QThread()
         worker = StartupDependencyWorker(download_model, download_dll, keep_archive)
@@ -339,23 +341,22 @@ class MainWindow(QMainWindow):
         引用清除交由 _on_dependency_thread_finished 槽处理。
         """
         _log = get_logger("video2text")
-        from src.ui.startup_log import dlog
 
         try:
             self.settings.set("app.is_check_model_file", "false")
             self.settings.set("app.is_check_dll_file", "false")
             self.settings.save()
-            dlog.config_saved()
+            _log.info("依赖检测：配置已保存")
         except Exception:
             _log.warning("依赖检测: 配置保存失败（不影响使用）")
         if ok:
-            dlog.phase_done(True)
+            _log.info("依赖检测通过，应用就绪")
             self.progress_bar.setMaximum(1)
             self.progress_bar.setValue(1)
             self.progress_label.setText("完成")
             self.status_bar.showMessage("依赖检测: ✓ 通过", 5000)
         else:
-            dlog.phase_done(False)
+            _log.warning("依赖检测未通过")
             self.progress_bar.setMaximum(1)
             self.progress_bar.setValue(0)
             self.progress_label.setText("失败")

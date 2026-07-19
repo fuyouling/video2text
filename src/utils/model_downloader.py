@@ -6,7 +6,6 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
 
-from src.ui.startup_log import dlog
 from src.utils.logger import get_logger
 from src.utils.paths import get_base_dir
 
@@ -117,7 +116,7 @@ class ModelDownloader:
             settings_proxy = ""
         if settings_proxy and settings_proxy.strip():
             return "config.ini [app] proxy"
-        return "本机系统代理(自动探测)"
+        return "本机系统代理"
 
     def _get_session(self, proxy: str = ""):
         import requests
@@ -181,7 +180,7 @@ class ModelDownloader:
                 headers = {}
                 if existing_size > 0:
                     headers["Range"] = f"bytes={existing_size}-"
-                    logger.info("  │  ├─ 续传: 已有 %s", self._fmt_size(existing_size))
+                    logger.info("续传：已有 %s", self._fmt_size(existing_size))
 
                 response = session.get(
                     url,
@@ -191,7 +190,7 @@ class ModelDownloader:
                 )
 
                 if response.status_code == 416:
-                    logger.info("  │  └─ 已完整，跳过")
+                    logger.info("下载完成 (%s)", self._fmt_size(existing_size))
                     return True
 
                 is_resume = response.status_code == 206
@@ -234,7 +233,7 @@ class ModelDownloader:
 
                 if total_size > 0 and downloaded != total_size:
                     logger.warning(
-                        "  │  └─ 大小不匹配: 期望 %s, 实际 %s",
+                        "大小不匹配：期望 %s，实际 %s",
                         self._fmt_size(total_size),
                         self._fmt_size(downloaded),
                     )
@@ -243,21 +242,21 @@ class ModelDownloader:
                 return True
 
             except requests.exceptions.Timeout:
-                logger.warning("  │  ├─ 超时 (%d/%d)", attempt, max_retries)
+                logger.warning("超时（%d/%d）", attempt, max_retries)
             except requests.exceptions.ConnectionError:
-                logger.warning("  │  ├─ 连接失败 (%d/%d)", attempt, max_retries)
+                logger.warning("连接失败（%d/%d）", attempt, max_retries)
             except Exception as e:
-                logger.warning("  │  ├─ 失败 (%d/%d): %s", attempt, max_retries, e)
+                logger.warning("失败（%d/%d）：%s", attempt, max_retries, e)
             finally:
                 if response is not None:
                     response.close()
 
             if attempt < max_retries:
                 wait = min(2**attempt, 30)
-                logger.info("  │  ├─ %d 秒后重试...", wait)
+                logger.info("%d 秒后重试…", wait)
                 time.sleep(wait)
 
-        logger.error("  │  └─ 下载失败 (已重试 %d 次)", max_retries)
+        logger.error("下载失败（已重试 %d 次）：%s", max_retries, dest.name)
         return False
 
     @staticmethod
@@ -281,26 +280,27 @@ class ModelDownloader:
 
         proxy = self._get_proxy()
 
-        logger.info("  ├─ 模型下载 (%s)", self.model_name)
-        logger.info("  ├─ 检查网络连接")
+        logger.info("模型下载 (%s)", self.model_name)
+        logger.info("检查网络连接")
         if proxy:
-            logger.info("  │  ├─ 使用代理（%s）", self._proxy_source_hint())
+            logger.info("使用代理 %s（%s）", proxy, self._proxy_source_hint())
 
         if self._check_hf_accessible():
-            logger.info("  │  └─ 直连 HuggingFace ... OK")
+            logger.info("直连 HuggingFace 成功")
             proxy = ""
         elif proxy:
-            logger.info("  │  ├─ 直连失败，尝试代理 %s", proxy)
+            logger.info("直连失败，尝试代理 %s", proxy)
             if self._check_hf_accessible(proxy=proxy):
-                logger.info("  │  │  └─ 代理连接 ... OK")
+                logger.info("代理连接成功")
             else:
-                logger.error("  │  │  └─ 代理连接失败")
-                logger.error("  │  │     请检查 %s 的代理是否可用", self._proxy_source_hint())
+                logger.error(
+                    "代理连接失败，请检查 %s 的代理是否可用", self._proxy_source_hint()
+                )
+                self._clean_incomplete_core_files()
                 return False
         else:
-            logger.error("  │  └─ 无法访问 HuggingFace（直连不通且未配置代理）")
-            logger.error("  │     请在 config.ini 的 [app] 节设置 proxy 后重试")
-            logger.error("  │     或从网盘下载已打包好的模型文件放入 models 目录")
+            logger.error("无法访问 HuggingFace（直连不通且未配置代理）")
+            logger.error("请在 config.ini 的 [app] 节设置 proxy，或从网盘下载模型放入 models 目录")
             # 清理可能残留的不完整核心文件，避免转写时 'model.bin is incomplete'
             self._clean_incomplete_core_files()
             return False
@@ -325,30 +325,21 @@ class ModelDownloader:
             return _file_cb
 
         failed: list[str] = []
-        for i, filename in enumerate(files):
-            is_last = i == len(files) - 1
-            connector = "  └─" if is_last else "  ├─"
-            branch = "     " if is_last else "  │  "
-
+        for file_index, filename in enumerate(files, start=1):
             url = f"{base_url}/{filename}?download=true"
             dest = self.models_dir / filename
 
             if dest.exists() and dest.stat().st_size > 0:
-                logger.info(
-                    "%s %s (%s, 已有)",
-                    connector,
-                    filename,
-                    self._fmt_size(dest.stat().st_size),
-                )
+                logger.info("%s 已存在 (%s)，跳过", filename, self._fmt_size(dest.stat().st_size))
             else:
-                logger.info("%s %s", connector, filename)
+                logger.info("下载 %s", filename)
 
             ok = self._download_file(
                 url,
                 dest,
                 proxy=proxy,
                 file_progress_callback=_make_file_cb(
-                    filename, total_downloaded, i + 1
+                    filename, total_downloaded, file_index
                 ),
             )
             if ok:
@@ -361,18 +352,16 @@ class ModelDownloader:
             core_failed = [f for f in failed if f in core_files]
             opt_failed = [f for f in failed if f not in core_files]
             if opt_failed:
-                logger.warning(
-                    "可选文件下载失败（不影响使用）: %s", ", ".join(opt_failed)
-                )
+                logger.warning("可选文件下载失败（不影响使用）：%s", ", ".join(opt_failed))
             if core_failed:
-                logger.error("核心文件下载失败: %s", ", ".join(core_failed))
+                logger.error("核心文件下载失败：%s", ", ".join(core_failed))
                 # 清理可能残留的不完整核心文件，避免转写时 'model.bin is incomplete'
                 self._clean_incomplete_core_files()
                 self.close()
                 return False
 
         self.close()
-        logger.info("  └─ 下载完成")
+        logger.info("模型下载完成")
         return True
 
     def _clean_incomplete_core_files(self) -> None:
@@ -386,18 +375,27 @@ class ModelDownloader:
             try:
                 if fp.exists() and fp.stat().st_size == 0:
                     fp.unlink()
-                    logger.warning("  │  └─ 已清理空文件: %s", f)
+                    logger.warning("已清理空文件：%s", f)
             except OSError as e:
-                logger.warning("  │  └─ 清理失败 %s: %s", f, e)
+                logger.warning("清理失败 %s：%s", f, e)
 
     def ensure_model_available(
         self, progress_callback=None, confirm_callback=None
     ) -> bool:
         if self.is_model_exists():
-            logger.info("模型已就绪: %s", self.models_dir)
+            logger.info(
+                "下载完成 (%s)",
+                self._fmt_size(
+                    sum(
+                        (self.models_dir / cf).stat().st_size
+                        for cf in self.model_config["core_files"]
+                        if (self.models_dir / cf).exists()
+                    )
+                ),
+            )
             return True
 
-        logger.info("模型文件不完整，开始下载...")
+        logger.info("模型不完整 (%s)", self.model_name)
         return self.download_model(progress_callback, confirm_callback)
 
     @staticmethod
@@ -430,10 +428,10 @@ def check_models_integrity(
     """
     do_check = settings.get_bool("app.is_check_model_file", True)
     if not do_check:
-        dlog.model_check_skipped()
+        logger.info("模型完整性检测已跳过 (is_check_model_file=false)")
         return True
 
-    dlog.model_check_start()
+    logger.info("模型完整性检测：启动")
 
     model_keys = ["transcription.model_path"]
     all_ok = True
@@ -450,15 +448,16 @@ def check_models_integrity(
             continue
 
         if downloader.is_model_exists():
-            logger.info("模型完整性检测: ✓ 完整 (%s)", model_name)
+            logger.info("模型已完整 (%s)", model_name)
             continue
 
-        dlog.model_missing(model_name)
+        logger.info("模型不完整 (%s)", model_name)
         ok = downloader.download_model(progress_callback, confirm_callback)
         if ok and downloader.is_model_exists():
-            dlog.model_check_complete(model_name)
+            logger.info("模型完整性检测已补齐 (%s)", model_name)
         else:
             all_ok = False
+            logger.info("模型完整性检测已跳过 (is_check_model_file=false)")
             logger.error("模型完整性检测: ✗ 失败 (%s)", model_name)
 
     # 无论本次检测结果如何，只标记内存中的配置值，不写磁盘。
@@ -467,7 +466,7 @@ def check_models_integrity(
     try:
         settings.set("app.is_check_model_file", "false")
         if all_ok:
-            dlog.model_check_passed()
+            logger.info("模型完整性检测通过，已关闭后续检测")
         else:
             logger.info(
                 "模型完整性检测: 未通过（多为网络不可达），已关闭后续自动检测。"
