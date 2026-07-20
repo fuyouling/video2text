@@ -92,6 +92,176 @@ class VideoSelectionDialog(QDialog):
 
         self._init_ui()
 
+    _STYLE_SHEET = """
+        QDialog {
+            background-color: #f5f6f8;
+            font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
+            font-size: 13px;
+        }
+        QLabel { color: #34495e; }
+
+        #_info_bar {
+            background-color: #eaf2fb;
+            border: 1px solid #cfe0f5;
+            border-radius: 8px;
+            padding: 10px 14px;
+            color: #2c3e50;
+            font-size: 13px;
+        }
+
+        #_toolbar {
+            background-color: #ffffff;
+            border: 1px solid #dfe3e8;
+            border-radius: 8px;
+            padding: 10px 12px;
+        }
+        #_toolbar QLabel {
+            color: #5a6b7b;
+            font-size: 12px;
+            padding-right: 2px;
+        }
+
+        QTreeWidget {
+            background-color: #ffffff;
+            border: 1px solid #dfe3e8;
+            border-radius: 8px;
+            font-size: 13px;
+            padding: 4px;
+        }
+        QTreeWidget::item {
+            padding: 4px 2px;
+            border-radius: 4px;
+        }
+        QTreeWidget::item:hover {
+            background-color: #f0f5fb;
+        }
+        QTreeWidget::item:selected {
+            background-color: #dbe9f9;
+            color: #1f3a5f;
+        }
+        QTreeWidget::branch:closed:has-children {
+            image: url(assets/tree_closed.png);
+        }
+        QTreeWidget::branch:open:has-children {
+            image: url(assets/tree_open.png);
+        }
+        QHeaderView::section {
+            background-color: #eef1f5;
+            color: #2c3e50;
+            border: none;
+            border-bottom: 1px solid #dfe3e8;
+            padding: 8px 10px;
+            font-weight: 600;
+        }
+        QHeaderView::section:hover {
+            background-color: #e3e9f1;
+            cursor: pointer;
+        }
+
+        QLineEdit, QComboBox {
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            padding: 5px 8px;
+            background-color: #ffffff;
+            min-height: 22px;
+            color: #2c3e50;
+        }
+        QLineEdit:focus, QComboBox:focus {
+            border: 1px solid #4a90d9;
+        }
+        QLineEdit:hover, QComboBox:hover {
+            border: 1px solid #aac4e4;
+        }
+        QLineEdit::clear-button {
+            subcontrol-origin: padding;
+            subcontrol-position: center right;
+            padding-right: 4px;
+        }
+        QComboBox QAbstractItemView {
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            selection-background-color: #4a90d9;
+        }
+        QComboBox::drop-down {
+            width: 24px;
+            border-left: none;
+            subcontrol-origin: padding;
+            subcontrol-position: center right;
+            padding-right: 4px;
+        }
+        QComboBox::down-arrow {
+            image: url(assets/arrow_down.png);
+            width: 16px;
+            height: 16px;
+        }
+
+        QPushButton {
+            background-color: #4a90d9;
+            color: #ffffff;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 16px;
+            min-height: 22px;
+        }
+        QPushButton:hover { background-color: #357abd; }
+        QPushButton:pressed { background-color: #2c639b; }
+
+        QPushButton#_secondary_btn {
+            background-color: #ffffff;
+            color: #4a90d9;
+            border: 1px solid #4a90d9;
+        }
+        QPushButton#_secondary_btn:hover { background-color: #eaf2fb; }
+
+        QPushButton#_ghost_btn {
+            background-color: #eef1f5;
+            color: #5a6b7b;
+            border: 1px solid #dfe3e8;
+        }
+        QPushButton#_ghost_btn:hover { background-color: #e3e9f1; }
+
+        QCheckBox {
+            color: #34495e;
+            spacing: 6px;
+        }
+        QCheckBox::indicator {
+            width: 18px;
+            height: 18px;
+            border: 1px solid #b7c0cc;
+            border-radius: 4px;
+            background-color: #ffffff;
+        }
+        QCheckBox::indicator:checked {
+            image: url(assets/check.png);
+            background-color: #4a90d9;
+            border: 1px solid #4a90d9;
+        }
+
+        QSpinBox {
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            padding: 4px 6px;
+            background-color: #ffffff;
+            min-height: 22px;
+            color: #2c3e50;
+        }
+        QSpinBox:focus { border: 1px solid #4a90d9; }
+        QSpinBox::up-button, QSpinBox::down-button {
+            subcontrol-origin: border;
+            width: 16px;
+            border: none;
+        }
+        QSpinBox::up-arrow { image: url(assets/arrow_up.png); width: 10px; height: 10px; }
+        QSpinBox::down-arrow { image: url(assets/arrow_down.png); width: 10px; height: 10px; }
+
+        #_bottom_bar {
+            background-color: #ffffff;
+            border: 1px solid #dfe3e8;
+            border-radius: 8px;
+            padding: 10px 12px;
+        }
+    """
+
     def _init_ui(self) -> None:
         self.setWindowTitle("选择音视频文件")
         self.setWindowFlags(
@@ -100,27 +270,42 @@ class VideoSelectionDialog(QDialog):
             | Qt.WindowType.WindowMaximizeButtonHint
         )
         self.resize(1000, 600)
+        self.setStyleSheet(self._STYLE_SHEET)
+        self.setMinimumSize(760, 480)
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(12)
 
         self._info_label = QLabel(
             f"共找到 {len(self._file_metas)} 个音视频文件，请选择需要处理的文件："
         )
+        self._info_label.setObjectName("_info_bar")
+        self._info_label.setTextFormat(Qt.TextFormat.PlainText)
+        self._info_label.setMinimumHeight(40)
         layout.addWidget(self._info_label)
 
         toolbar = QHBoxLayout()
-        toolbar.addWidget(QLabel("音视频文件:"))
+        toolbar.setContentsMargins(0, 0, 0, 0)
+        toolbar.setSpacing(8)
+        toolbar.setObjectName("_toolbar")
+        toolbar_widget = QWidget()
+        toolbar_widget.setObjectName("_toolbar")
+        toolbar_widget.setLayout(toolbar)
+
+        toolbar.addWidget(QLabel("类型:"))
         self._file_type_combo = QComboBox()
         self._file_type_combo.addItems(["全部", "仅视频", "仅音频"])
+        self._file_type_combo.setMinimumWidth(90)
         self._file_type_combo.currentIndexChanged.connect(self._apply_filters)
         toolbar.addWidget(self._file_type_combo)
-        toolbar.addSpacing(16)
+        toolbar.addSpacing(8)
         toolbar.addWidget(QLabel("后缀:"))
         self._suffix_combo = QComboBox()
         self._suffix_combo.setMinimumWidth(80)
         self._suffix_combo.currentIndexChanged.connect(self._apply_filters)
         toolbar.addWidget(self._suffix_combo)
-        toolbar.addSpacing(16)
+        toolbar.addSpacing(8)
         toolbar.addWidget(QLabel("大小:"))
         self._size_combo = QComboBox()
         self._size_combo.setMinimumWidth(120)
@@ -136,18 +321,18 @@ class VideoSelectionDialog(QDialog):
             self._size_combo.addItem(label)
         self._size_combo.currentIndexChanged.connect(self._apply_filters)
         toolbar.addWidget(self._size_combo)
-        toolbar.addSpacing(16)
+        toolbar.addStretch()
         toolbar.addWidget(QLabel("搜索:"))
         self._search_edit = QLineEdit()
         self._search_edit.setPlaceholderText("输入文件名关键字...")
         self._search_edit.setClearButtonEnabled(True)
+        self._search_edit.setMinimumWidth(180)
         self._search_timer = QTimer()
         self._search_timer.setSingleShot(True)
         self._search_timer.timeout.connect(self._apply_filters)
         self._search_edit.textChanged.connect(self._on_search_changed)
         toolbar.addWidget(self._search_edit)
-        toolbar.addStretch()
-        layout.addLayout(toolbar)
+        layout.addWidget(toolbar_widget)
 
         self._tree = QTreeWidget()
         self._tree.setHeaderLabels(["文件名", "类型", "大小", "输出目录拼接"])
@@ -156,6 +341,7 @@ class VideoSelectionDialog(QDialog):
         self._tree.setSortingEnabled(False)
         self._tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._tree.customContextMenuRequested.connect(self._show_context_menu)
+        self._tree.setAlternatingRowColors(False)
         self._tree.header().setMinimumSectionSize(50)
         self._tree.header().setStretchLastSection(False)
         self._tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
@@ -172,22 +358,33 @@ class VideoSelectionDialog(QDialog):
         self._sort_order: dict[int, Qt.SortOrder] = {}
         self._tree.header().sectionClicked.connect(self._on_header_clicked)
         self._tree.itemChanged.connect(self._update_info_label)
-        layout.addWidget(self._tree)
+        layout.addWidget(self._tree, 1)
 
         bottom_layout = QHBoxLayout()
+        bottom_layout.setContentsMargins(0, 0, 0, 0)
+        bottom_layout.setSpacing(8)
+        bottom_widget = QWidget()
+        bottom_widget.setObjectName("_bottom_bar")
+        bottom_widget.setLayout(bottom_layout)
+
         select_all_btn = QPushButton("全选")
+        select_all_btn.setObjectName("_ghost_btn")
         select_all_btn.clicked.connect(self._select_all)
         bottom_layout.addWidget(select_all_btn)
         deselect_all_btn = QPushButton("取消全选")
+        deselect_all_btn.setObjectName("_ghost_btn")
         deselect_all_btn.clicked.connect(self._deselect_all)
         bottom_layout.addWidget(deselect_all_btn)
         invert_btn = QPushButton("反选")
+        invert_btn.setObjectName("_ghost_btn")
         invert_btn.clicked.connect(self._invert_selection)
         bottom_layout.addWidget(invert_btn)
         expand_all_btn = QPushButton("展开文件夹")
+        expand_all_btn.setObjectName("_ghost_btn")
         expand_all_btn.clicked.connect(self._tree.expandAll)
         bottom_layout.addWidget(expand_all_btn)
         collapse_all_btn = QPushButton("收缩文件夹")
+        collapse_all_btn.setObjectName("_ghost_btn")
         collapse_all_btn.clicked.connect(self._tree.collapseAll)
         bottom_layout.addWidget(collapse_all_btn)
         bottom_layout.addStretch()
@@ -213,24 +410,11 @@ class VideoSelectionDialog(QDialog):
         ok_btn.clicked.connect(self.accept)
         bottom_layout.addWidget(ok_btn)
         cancel_btn = QPushButton("取消")
+        cancel_btn.setObjectName("_secondary_btn")
         cancel_btn.clicked.connect(self.reject)
         bottom_layout.addWidget(cancel_btn)
-        layout.addLayout(bottom_layout)
+        layout.addWidget(bottom_widget)
 
-        self.setStyleSheet("""
-            QComboBox::drop-down {
-                width: 24px;
-                border-left: none;
-                subcontrol-origin: padding;
-                subcontrol-position: center right;
-                padding-right: 4px;
-            }
-            QComboBox::down-arrow {
-                image: url(assets/arrow_down.png);
-                width: 16px;
-                height: 16px;
-            }
-        """)
         QTimer.singleShot(0, self._deferred_populate)
 
     def _deferred_populate(self) -> None:

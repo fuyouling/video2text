@@ -441,6 +441,60 @@ def gen_arrow_up(output_dir: Optional[Path] = None) -> Path:
     return path
 
 
+def gen_tree_closed(output_dir: Optional[Path] = None) -> Path:
+    """生成树形控件折叠状态（右向三角）图标 PNG。"""
+    if output_dir is None:
+        output_dir = Path(__file__).resolve().parent.parent.parent / "assets"
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    size = 512
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    c = (90, 107, 123, 255)
+    draw.polygon([(170, 120), (170, 392), (370, 256)], fill=c)
+    path = output_dir / "tree_closed.png"
+    img.save(path)
+    logger.info("已生成树形折叠图标: %s", path)
+    return path
+
+
+def gen_tree_open(output_dir: Optional[Path] = None) -> Path:
+    """生成树形控件展开状态（向下三角）图标 PNG。"""
+    if output_dir is None:
+        output_dir = Path(__file__).resolve().parent.parent.parent / "assets"
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    size = 512
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    c = (90, 107, 123, 255)
+    draw.polygon([(120, 170), (392, 170), (256, 370)], fill=c)
+    path = output_dir / "tree_open.png"
+    img.save(path)
+    logger.info("已生成树形展开图标: %s", path)
+    return path
+
+
+def gen_check(output_dir: Optional[Path] = None) -> Path:
+    """生成复选框勾选标记（白色对勾）图标 PNG。"""
+    if output_dir is None:
+        output_dir = Path(__file__).resolve().parent.parent.parent / "assets"
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    size = 512
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    w = 56
+    draw.line([(130, 270), (230, 380), (400, 140)], fill=(255, 255, 255, 255), width=w)
+    path = output_dir / "check.png"
+    img.save(path)
+    logger.info("已生成勾选标记图标: %s", path)
+    return path
+
+
 def gen_close(output_dir: Optional[Path] = None) -> Path:
     """生成关闭符号 PNG。
 
@@ -511,15 +565,19 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="图标生成工具")
     parser.add_argument("--arrows", action="store_true", help="仅生成箭头/关闭符号图标")
+    parser.add_argument("--widgets", action="store_true", help="仅生成控件图标（树形折叠/展开、勾选标记）")
     parser.add_argument("--main", action="store_true", help="仅生成主图标")
     parser.add_argument("--all", action="store_true", help="生成所有图标（默认行为）")
     args = parser.parse_args()
 
-    if not args.arrows and not args.main:
+    if not args.arrows and not args.main and not args.widgets:
         generate_icon_files()
         gen_arrow_down()
         gen_arrow_up()
         gen_close()
+        gen_tree_closed()
+        gen_tree_open()
+        gen_check()
     else:
         if args.main or args.all:
             generate_icon_files()
@@ -527,3 +585,7 @@ if __name__ == "__main__":
             gen_arrow_down()
             gen_arrow_up()
             gen_close()
+        if args.widgets or args.all:
+            gen_tree_closed()
+            gen_tree_open()
+            gen_check()
