@@ -537,7 +537,7 @@ class ResultViewerWindow(QMainWindow):
 
         bg_menu.addSeparator()
 
-        transparency_action = bg_menu.addAction("调整不透明度")
+        transparency_action = bg_menu.addAction("透明度")
         transparency_action.triggered.connect(self._adjust_bg_transparency)
 
         self._bg_btn.setMenu(bg_menu)
@@ -1906,12 +1906,12 @@ class ResultViewerWindow(QMainWindow):
         self.status_bar.showMessage("背景图片已清除")
 
     def _adjust_bg_transparency(self) -> None:
-        """弹出输入框修改背景不透明度 (0~255)"""
+        """弹出输入框修改背景透明度 (0~255)"""
         current_val = round(self._bg_opacity * 255)
         value, ok = QInputDialog.getInt(
             self,
-            "调整背景不透明度",
-            "请输入背景不透明度 (0~255)：\n0=完全透明（背景图不可见），255=完全不透明（背景图最明显）",
+            "调整背景透明度",
+            "请输入背景透明度 (0~255)：\n0=完全透明（背景图不可见），255=完全不透明（背景图最明显）",
             current_val,
             0,
             255,

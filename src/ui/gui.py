@@ -381,7 +381,7 @@ class MainWindow(QMainWindow):
 
     def _init_ui(self) -> None:
         """初始化主窗口 UI 布局：菜单栏、输入输出行、进度条、日志面板、结果面板。"""
-        self.setWindowTitle("Video2Text - 音视频转文本工具")
+        self.setWindowTitle("Video2Text")
         self.resize(1200, 800)
 
         icon_path = (
@@ -668,7 +668,7 @@ class MainWindow(QMainWindow):
         bg_change_action.triggered.connect(self._change_bg_image)
         bg_clear_action = bg_menu.addAction("清除背景")
         bg_clear_action.triggered.connect(self._clear_bg_image)
-        bg_transparency_action = bg_menu.addAction("不透明度")
+        bg_transparency_action = bg_menu.addAction("透明度")
         bg_transparency_action.triggered.connect(self._adjust_bg_transparency)
 
         fav_menu = settings_menu.addMenu("收藏")
