@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import List, Literal, Optional
 
 from src.config.settings import Settings
+from src.i18n import t
 from src.utils.exceptions import Video2TextError
 from src.utils.json_utils import atomic_write_json
 from src.utils.logger import get_logger
@@ -82,7 +83,7 @@ class VoiceConversationStore:
             ],
         )
         self._save(conv)
-        logger.info("VoiceConversationStore: 新建会话 %s", conv_id)
+        logger.info(t("storage.voice_store.create_conv"), conv_id)
         return conv_id
 
     def append_message(
@@ -90,7 +91,7 @@ class VoiceConversationStore:
     ) -> None:
         conv = self.get_conversation(conv_id)
         if conv is None:
-            raise Video2TextError(f"会话不存在: {conv_id}")
+            raise Video2TextError(t("storage.voice_store.conv_not_found", conv_id=conv_id))
         conv.messages.append(msg)
         conv.updated_at = datetime.now().timestamp()
         self._save(conv)
@@ -123,7 +124,7 @@ class VoiceConversationStore:
                 version=data.get("version", "1.0"),
             )
         except Exception as exc:
-            logger.error("读取会话失败 %s: %s", conv_id, exc)
+            logger.error(t("storage.voice_store.read_conv_fail"), conv_id, exc)
             return None
 
     def list_conversations(self) -> List[dict]:
@@ -144,19 +145,19 @@ class VoiceConversationStore:
                     }
                 )
             except Exception as exc:
-                logger.warning("读取会话列表失败 %s: %s", f.name, exc)
+                logger.warning(t("storage.voice_store.read_list_fail"), f.name, exc)
         return results
 
     def delete_conversation(self, conv_id: str) -> None:
         path = self._conv_path(conv_id)
         if path.exists():
             path.unlink()
-            logger.info("VoiceConversationStore: 删除会话 %s", conv_id)
+            logger.info(t("storage.voice_store.delete_conv"), conv_id)
 
     def update_summary_path(self, conv_id: str, path: str) -> None:
         conv = self.get_conversation(conv_id)
         if conv is None:
-            raise Video2TextError(f"会话不存在: {conv_id}")
+            raise Video2TextError(t("storage.voice_store.conv_not_found", conv_id=conv_id))
         conv.summary_md_path = path
         conv.updated_at = datetime.now().timestamp()
         self._save(conv)

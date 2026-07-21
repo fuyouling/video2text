@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.config.settings import Settings
+from src.i18n import available_languages, language_meta, t
 from src.ui.summarization_tab import SummarizationTab
 
 
@@ -263,7 +264,7 @@ class VideoSelectionDialog(QDialog):
     """
 
     def _init_ui(self) -> None:
-        self.setWindowTitle("选择音视频文件")
+        self.setWindowTitle(t("dialogs.file_select.title"))
         self.setWindowFlags(
             self.windowFlags()
             | Qt.WindowType.WindowMinMaxButtonsHint
@@ -278,7 +279,7 @@ class VideoSelectionDialog(QDialog):
         layout.setSpacing(12)
 
         self._info_label = QLabel(
-            f"共找到 {len(self._file_metas)} 个音视频文件，请选择需要处理的文件："
+            t("dialogs.file_select.info_prefix", count=len(self._file_metas))
         )
         self._info_label.setObjectName("_info_bar")
         self._info_label.setTextFormat(Qt.TextFormat.PlainText)
@@ -293,24 +294,24 @@ class VideoSelectionDialog(QDialog):
         toolbar_widget.setObjectName("_toolbar")
         toolbar_widget.setLayout(toolbar)
 
-        toolbar.addWidget(QLabel("类型:"))
+        toolbar.addWidget(QLabel(t("dialogs.file_select.type_label")))
         self._file_type_combo = QComboBox()
-        self._file_type_combo.addItems(["全部", "仅视频", "仅音频"])
+        self._file_type_combo.addItems([t("dialogs.file_select.type_all"), t("dialogs.file_select.type_video"), t("dialogs.file_select.type_audio")])
         self._file_type_combo.setMinimumWidth(90)
         self._file_type_combo.currentIndexChanged.connect(self._apply_filters)
         toolbar.addWidget(self._file_type_combo)
         toolbar.addSpacing(8)
-        toolbar.addWidget(QLabel("后缀:"))
+        toolbar.addWidget(QLabel(t("dialogs.file_select.suffix_label")))
         self._suffix_combo = QComboBox()
         self._suffix_combo.setMinimumWidth(80)
         self._suffix_combo.currentIndexChanged.connect(self._apply_filters)
         toolbar.addWidget(self._suffix_combo)
         toolbar.addSpacing(8)
-        toolbar.addWidget(QLabel("大小:"))
+        toolbar.addWidget(QLabel(t("dialogs.file_select.size_label")))
         self._size_combo = QComboBox()
         self._size_combo.setMinimumWidth(120)
         self._size_tiers = [
-            ("全部", 0, None),
+            (t("dialogs.file_select.type_all"), 0, None),
             ("< 10 MB", 0, 10 * 1024 * 1024),
             ("10 - 100 MB", 10 * 1024 * 1024, 100 * 1024 * 1024),
             ("100 MB - 1 GB", 100 * 1024 * 1024, 1024 * 1024 * 1024),
@@ -322,9 +323,9 @@ class VideoSelectionDialog(QDialog):
         self._size_combo.currentIndexChanged.connect(self._apply_filters)
         toolbar.addWidget(self._size_combo)
         toolbar.addStretch()
-        toolbar.addWidget(QLabel("搜索:"))
+        toolbar.addWidget(QLabel(t("dialogs.file_select.search_label")))
         self._search_edit = QLineEdit()
-        self._search_edit.setPlaceholderText("输入文件名关键字...")
+        self._search_edit.setPlaceholderText(t("dialogs.file_select.search_placeholder"))
         self._search_edit.setClearButtonEnabled(True)
         self._search_edit.setMinimumWidth(180)
         self._search_timer = QTimer()
@@ -335,7 +336,7 @@ class VideoSelectionDialog(QDialog):
         layout.addWidget(toolbar_widget)
 
         self._tree = QTreeWidget()
-        self._tree.setHeaderLabels(["文件名", "类型", "大小", "输出目录拼接"])
+        self._tree.setHeaderLabels([t("dialogs.file_select.header_filename"), t("dialogs.file_select.header_type"), t("dialogs.file_select.header_size"), t("dialogs.file_select.header_output")])
         self._tree.setSelectionMode(QTreeWidget.SelectionMode.NoSelection)
         self._tree.setAnimated(True)
         self._tree.setSortingEnabled(False)
@@ -367,36 +368,34 @@ class VideoSelectionDialog(QDialog):
         bottom_widget.setObjectName("_bottom_bar")
         bottom_widget.setLayout(bottom_layout)
 
-        select_all_btn = QPushButton("全选")
+        select_all_btn = QPushButton(t("common.select_all"))
         select_all_btn.setObjectName("_ghost_btn")
         select_all_btn.clicked.connect(self._select_all)
         bottom_layout.addWidget(select_all_btn)
-        deselect_all_btn = QPushButton("取消全选")
+        deselect_all_btn = QPushButton(t("common.deselect_all"))
         deselect_all_btn.setObjectName("_ghost_btn")
         deselect_all_btn.clicked.connect(self._deselect_all)
         bottom_layout.addWidget(deselect_all_btn)
-        invert_btn = QPushButton("反选")
+        invert_btn = QPushButton(t("common.invert"))
         invert_btn.setObjectName("_ghost_btn")
         invert_btn.clicked.connect(self._invert_selection)
         bottom_layout.addWidget(invert_btn)
-        expand_all_btn = QPushButton("展开文件夹")
+        expand_all_btn = QPushButton(t("common.expand_all"))
         expand_all_btn.setObjectName("_ghost_btn")
         expand_all_btn.clicked.connect(self._tree.expandAll)
         bottom_layout.addWidget(expand_all_btn)
-        collapse_all_btn = QPushButton("收缩文件夹")
+        collapse_all_btn = QPushButton(t("common.collapse_all"))
         collapse_all_btn.setObjectName("_ghost_btn")
         collapse_all_btn.clicked.connect(self._tree.collapseAll)
         bottom_layout.addWidget(collapse_all_btn)
         bottom_layout.addStretch()
 
-        self._mirror_checkbox = QCheckBox("输出目录拼接")
-        self._mirror_checkbox.setToolTip(
-            "启用后，输出文件将按照输入目录的子目录结构组织"
-        )
+        self._mirror_checkbox = QCheckBox(t("dialogs.file_select.mirror_cb"))
+        self._mirror_checkbox.setToolTip(t("dialogs.file_select.mirror_tooltip"))
         self._mirror_checkbox.toggled.connect(self._on_mirror_changed)
         bottom_layout.addWidget(self._mirror_checkbox)
 
-        bottom_layout.addWidget(QLabel("层级:"))
+        bottom_layout.addWidget(QLabel(t("dialogs.file_select.depth_label")))
         self._depth_spin = QSpinBox()
         self._depth_spin.setRange(1, 10)
         default_depth = Settings().get_int("output.mirror_depth", 1)
@@ -405,11 +404,11 @@ class VideoSelectionDialog(QDialog):
         self._depth_spin.valueChanged.connect(self._on_depth_changed)
         bottom_layout.addWidget(self._depth_spin)
 
-        ok_btn = QPushButton("确定")
+        ok_btn = QPushButton(t("common.ok"))
         ok_btn.setDefault(True)
         ok_btn.clicked.connect(self.accept)
         bottom_layout.addWidget(ok_btn)
-        cancel_btn = QPushButton("取消")
+        cancel_btn = QPushButton(t("common.cancel"))
         cancel_btn.setObjectName("_secondary_btn")
         cancel_btn.clicked.connect(self.reject)
         bottom_layout.addWidget(cancel_btn)
@@ -446,15 +445,21 @@ class VideoSelectionDialog(QDialog):
             common = None
         self._common_path = str(common) if common else None
 
+        _t_video = t("dialogs.file_select.type_video_short")
+        _t_audio = t("dialogs.file_select.type_audio_short")
+        _t_av = t("dialogs.file_select.type_av_short")
+        self._type_video_short = _t_video
+        self._type_audio_short = _t_audio
+        self._type_av_short = _t_av
         suffix_map: dict[str, str] = {}
         for p in paths:
             ext = p.suffix.lower()
             if ext in self._video_exts:
-                suffix_map[ext] = "视频"
+                suffix_map[ext] = _t_video
             elif ext in self._audio_exts:
-                suffix_map[ext] = "音频"
+                suffix_map[ext] = _t_audio
             else:
-                suffix_map[ext] = "音视频"
+                suffix_map[ext] = _t_av
 
         rel_pairs: list[tuple[Path, Path]] = []
         for p in paths:
@@ -512,7 +517,7 @@ class VideoSelectionDialog(QDialog):
 
         present_suffixes = {p.suffix.lower() for p in paths}
         self._suffix_combo.clear()
-        self._suffix_combo.addItem("全部")
+        self._suffix_combo.addItem(t("dialogs.file_select.type_all"))
         for ext in sorted(present_suffixes):
             self._suffix_combo.addItem(ext)
 
@@ -524,8 +529,8 @@ class VideoSelectionDialog(QDialog):
     ) -> _SortTreeWidgetItem:
         abs_path_str = str(abs_p)
         ext = abs_p.suffix.lower()
-        file_type = suffix_map.get(ext, "音视频")
-        icon = "🎬" if file_type == "视频" else "🎵" if file_type == "音频" else "📄"
+        file_type = suffix_map.get(ext, self._type_av_short)
+        icon = "🎬" if file_type == self._type_video_short else "🎵" if file_type == self._type_audio_short else "📄"
         size_bytes = self._path_to_size.get(abs_path_str, -1)
         size_str = _format_file_size(size_bytes) if size_bytes >= 0 else "-"
         name_stem = abs_p.stem.lower()
@@ -578,7 +583,7 @@ class VideoSelectionDialog(QDialog):
                     checked_size += size_bytes
         size_str = _format_file_size(checked_size) if checked_size > 0 else "0 B"
         self._info_label.setText(
-            f"共找到 {total} 个音视频文件，已选择 {checked} 个，共 {size_str}："
+            t("dialogs.file_select.info_selected", total=total, checked=checked, size=size_str)
         )
 
     def _apply_filters(self) -> None:
@@ -610,7 +615,7 @@ class VideoSelectionDialog(QDialog):
             match = True
             if input_exts is not None and ext not in input_exts:
                 match = False
-            if suffix_target and suffix_target != "全部" and ext != suffix_target:
+            if suffix_target and suffix_target != t("dialogs.file_select.type_all") and ext != suffix_target:
                 match = False
             if size_idx > 0:
                 if size_bytes < 0:
@@ -665,8 +670,8 @@ class VideoSelectionDialog(QDialog):
             return
 
         menu = QMenu(self)
-        open_dir_action = menu.addAction("打开所在目录")
-        copy_path_action = menu.addAction("复制路径")
+        open_dir_action = menu.addAction(t("dialogs.file_select.context_opendir"))
+        copy_path_action = menu.addAction(t("dialogs.file_select.context_copypath"))
         action = menu.exec(QCursor.pos())
         if action == open_dir_action:
             folder = str(Path(file_path).parent)
@@ -691,7 +696,7 @@ class VideoSelectionDialog(QDialog):
             self._mirror_checkbox.setEnabled(False)
             self._depth_spin.setEnabled(False)
             for item in self._iter_leaves():
-                item.setText(3, "—")
+                item.setText(3, t("dialogs.file_select.mirror_disabled"))
         else:
             saved_enabled = settings.get_bool("output.mirror_enabled", True)
             self._mirror_checkbox.blockSignals(True)
@@ -709,7 +714,7 @@ class VideoSelectionDialog(QDialog):
             else:
                 self._depth_spin.setEnabled(False)
                 for item in self._iter_leaves():
-                    item.setText(3, "—")
+                    item.setText(3, t("dialogs.file_select.mirror_disabled"))
 
     def _on_mirror_changed(self, checked: bool) -> None:
         settings = Settings()
@@ -723,7 +728,7 @@ class VideoSelectionDialog(QDialog):
             self._depth_spin.setEnabled(False)
             self._tree.blockSignals(True)
             for item in self._iter_leaves():
-                item.setText(3, "—")
+                item.setText(3, t("dialogs.file_select.mirror_disabled"))
             self._tree.blockSignals(False)
 
     def _on_depth_changed(self, value: int) -> None:
@@ -742,8 +747,8 @@ class VideoSelectionDialog(QDialog):
                 item.setText(3, text)
                 item.setToolTip(3, text)
             else:
-                item.setText(3, "（根目录）")
-                item.setToolTip(3, "（根目录）")
+                item.setText(3, t("dialogs.file_select.root_dir"))
+                item.setToolTip(3, t("dialogs.file_select.root_dir"))
         self._tree.blockSignals(False)
 
     def get_mirror_subdirs(self) -> bool:
@@ -756,168 +761,170 @@ class VideoSelectionDialog(QDialog):
         return self._common_path
 
 
-_SECTION_LABELS: dict[str, str] = {
-    "app": "应用",
-    "transcription": "转写",
-    "summarization": "总结",
-    "preprocessing": "预处理",
-    "output": "输出",
-    "paths": "路径",
-    "tools": "工具",
-    "text_processing": "文本处理",
-    "voice_to_text": "声音转文本",
+_SECTION_LABEL_KEYS: dict[str, str] = {
+    "app": "config.section.app",
+    "transcription": "config.section.transcription",
+    "summarization": "config.section.summarization",
+    "preprocessing": "config.section.preprocessing",
+    "output": "config.section.output",
+    "paths": "config.section.paths",
+    "tools": "config.section.tools",
+    "text_processing": "config.section.text_processing",
+    "voice_to_text": "config.section.voice_to_text",
 }
 
-_KEY_LABELS: dict[str, str] = {
-    "app.name": "软件名称",
-    "app.version": "版本号",
-    "app.log_level": "日志级别",
-    "app.incremental_mode": "增量模式",
-    "app.is_check_model_file": "模型检查",
-    "app.is_check_dll_file": "依赖检查",
-    "app.proxy": "代理地址",
-    "app.result_image_path": "结果查看图片路径",
-    "app.result_transparency": "结果查看透明度",
-    "app.main_image_path": "主界面图片路径",
-    "app.main_transparency": "主界面透明度",
-    "transcription.model_path": "模型路径",
-    "transcription.device": "设备",
-    "transcription.language": "语言",
-    "transcription.beam_size": "束搜索宽度",
-    "transcription.best_of": "候选数量",
-    "transcription.temperature": "温度",
-    "transcription.compute_type": "计算类型",
-    "transcription.num_workers": "推理线程数",
-    "transcription.vad_filter": "VAD过滤",
-    "transcription.condition_on_previous_text": "基于前文条件",
-    "transcription.word_timestamps": "词级时间戳",
-    "transcription.compression_ratio_threshold": "压缩比阈值",
-    "transcription.log_prob_threshold": "对数概率阈值",
-    "transcription.no_speech_threshold": "无语音阈值",
-    "transcription.repetition_penalty": "重复惩罚",
-    "transcription.no_repeat_ngram_size": "N-gram 去重",
-    "transcription.vad_threshold": "VAD 语音阈值",
-    "transcription.vad_min_silence_ms": "VAD 最小静音时长",
-    "transcription.vad_speech_pad_ms": "VAD 语音补齐",
-    "transcription.vad_max_speech_s": "VAD 单段最长时长",
-    "preprocessing.audio_sample_rate": "音频采样率",
-    "preprocessing.audio_channels": "音频声道数",
-    "preprocessing.max_chunk_duration": "最大分段时长",
-    "preprocessing.supported_video_formats": "支持的视频格式",
-    "preprocessing.supported_audio_formats": "支持的音频格式",
-    "output.output_dir": "输出目录",
-    "output.transcript_format": "转写格式",
-    "output.summary_format": "摘要格式",
-    "output.mirror_enabled": "目录拼接开关",
-    "output.mirror_depth": "目录拼接层级",
-    "paths.models_dir": "模型目录",
-    "paths.logs_dir": "日志目录",
-    "paths.video_dir": "视频目录",
-    "text_processing.max_gap": "合并最大间隔",
-    "text_processing.min_length": "最小合并长度",
-    "text_processing.filler_words": "填充词列表",
-    "voice_to_text.voice_dir": "语音存储目录",
-    "voice_to_text.summary_dir": "摘要存储目录",
-    "voice_to_text.realtime_auto_send_interval": "实时录入自动发送间隔",
-    "voice_to_text.model_path": "转写模型路径",
-    "voice_to_text.device": "推理设备",
-    "voice_to_text.compute_type": "计算精度",
-    "voice_to_text.language": "转写语言",
-    "voice_to_text.num_workers": "推理线程数",
-    "voice_to_text.audio_sample_rate": "音频采样率",
-    "voice_to_text.audio_channels": "音频声道数",
-    "voice_to_text.vad_filter": "VAD 过滤",
-    "voice_to_text.vad_threshold": "VAD 阈值",
-    "voice_to_text.vad_min_silence_ms": "VAD 静音断句(毫秒)",
-    "voice_to_text.vad_speech_pad_ms": "VAD 首尾补静音(毫秒)",
-    "voice_to_text.vad_max_speech_s": "VAD 单段最长时长",
-    "voice_to_text.initial_prompt": "初始提示词",
-    "voice_to_text.bg_image_path": "背景图片路径",
-    "voice_to_text.bg_transparency": "背景透明度",
-    "voice_to_text.vad_endpoint_detection": "VAD 端点检测",
-    "voice_to_text.vad_energy_threshold": "VAD 能量阈值",
-    "voice_to_text.vad_silence_frames": "VAD 静音帧数",
-    "voice_to_text.vad_min_speech_frames": "VAD 最小语音帧数",
-    "voice_to_text.vad_calibration_frames": "VAD 校准帧数",
-    "voice_to_text.context_max_chars": "上下文最大字符数",
+_KEY_LABEL_KEYS: dict[str, str] = {
+    "app.name": "config.label.app.name",
+    "app.version": "config.label.app.version",
+    "app.log_level": "config.label.app.log_level",
+    "app.incremental_mode": "config.label.app.incremental_mode",
+    "app.is_check_model_file": "config.label.app.is_check_model_file",
+    "app.is_check_dll_file": "config.label.app.is_check_dll_file",
+    "app.proxy": "config.label.app.proxy",
+    "app.ui_language": "config.label.app.ui_language",
+    "app.result_image_path": "config.label.app.result_image_path",
+    "app.result_transparency": "config.label.app.result_transparency",
+    "app.main_image_path": "config.label.app.main_image_path",
+    "app.main_transparency": "config.label.app.main_transparency",
+    "transcription.model_path": "config.label.transcription.model_path",
+    "transcription.device": "config.label.transcription.device",
+    "transcription.language": "config.label.transcription.language",
+    "transcription.beam_size": "config.label.transcription.beam_size",
+    "transcription.best_of": "config.label.transcription.best_of",
+    "transcription.temperature": "config.label.transcription.temperature",
+    "transcription.compute_type": "config.label.transcription.compute_type",
+    "transcription.num_workers": "config.label.transcription.num_workers",
+    "transcription.vad_filter": "config.label.transcription.vad_filter",
+    "transcription.condition_on_previous_text": "config.label.transcription.condition_on_previous_text",
+    "transcription.word_timestamps": "config.label.transcription.word_timestamps",
+    "transcription.compression_ratio_threshold": "config.label.transcription.compression_ratio_threshold",
+    "transcription.log_prob_threshold": "config.label.transcription.log_prob_threshold",
+    "transcription.no_speech_threshold": "config.label.transcription.no_speech_threshold",
+    "transcription.repetition_penalty": "config.label.transcription.repetition_penalty",
+    "transcription.no_repeat_ngram_size": "config.label.transcription.no_repeat_ngram_size",
+    "transcription.vad_threshold": "config.label.transcription.vad_threshold",
+    "transcription.vad_min_silence_ms": "config.label.transcription.vad_min_silence_ms",
+    "transcription.vad_speech_pad_ms": "config.label.transcription.vad_speech_pad_ms",
+    "transcription.vad_max_speech_s": "config.label.transcription.vad_max_speech_s",
+    "preprocessing.audio_sample_rate": "config.label.preprocessing.audio_sample_rate",
+    "preprocessing.audio_channels": "config.label.preprocessing.audio_channels",
+    "preprocessing.max_chunk_duration": "config.label.preprocessing.max_chunk_duration",
+    "preprocessing.supported_video_formats": "config.label.preprocessing.supported_video_formats",
+    "preprocessing.supported_audio_formats": "config.label.preprocessing.supported_audio_formats",
+    "output.output_dir": "config.label.output.output_dir",
+    "output.transcript_format": "config.label.output.transcript_format",
+    "output.summary_format": "config.label.output.summary_format",
+    "output.mirror_enabled": "config.label.output.mirror_enabled",
+    "output.mirror_depth": "config.label.output.mirror_depth",
+    "paths.models_dir": "config.label.paths.models_dir",
+    "paths.logs_dir": "config.label.paths.logs_dir",
+    "paths.video_dir": "config.label.paths.video_dir",
+    "text_processing.max_gap": "config.label.text_processing.max_gap",
+    "text_processing.min_length": "config.label.text_processing.min_length",
+    "text_processing.filler_words": "config.label.text_processing.filler_words",
+    "voice_to_text.voice_dir": "config.label.voice_to_text.voice_dir",
+    "voice_to_text.summary_dir": "config.label.voice_to_text.summary_dir",
+    "voice_to_text.realtime_auto_send_interval": "config.label.voice_to_text.realtime_auto_send_interval",
+    "voice_to_text.model_path": "config.label.voice_to_text.model_path",
+    "voice_to_text.device": "config.label.voice_to_text.device",
+    "voice_to_text.compute_type": "config.label.voice_to_text.compute_type",
+    "voice_to_text.language": "config.label.voice_to_text.language",
+    "voice_to_text.num_workers": "config.label.voice_to_text.num_workers",
+    "voice_to_text.audio_sample_rate": "config.label.voice_to_text.audio_sample_rate",
+    "voice_to_text.audio_channels": "config.label.voice_to_text.audio_channels",
+    "voice_to_text.vad_filter": "config.label.voice_to_text.vad_filter",
+    "voice_to_text.vad_threshold": "config.label.voice_to_text.vad_threshold",
+    "voice_to_text.vad_min_silence_ms": "config.label.voice_to_text.vad_min_silence_ms",
+    "voice_to_text.vad_speech_pad_ms": "config.label.voice_to_text.vad_speech_pad_ms",
+    "voice_to_text.vad_max_speech_s": "config.label.voice_to_text.vad_max_speech_s",
+    "voice_to_text.initial_prompt": "config.label.voice_to_text.initial_prompt",
+    "voice_to_text.bg_image_path": "config.label.voice_to_text.bg_image_path",
+    "voice_to_text.bg_transparency": "config.label.voice_to_text.bg_transparency",
+    "voice_to_text.vad_endpoint_detection": "config.label.voice_to_text.vad_endpoint_detection",
+    "voice_to_text.vad_energy_threshold": "config.label.voice_to_text.vad_energy_threshold",
+    "voice_to_text.vad_silence_frames": "config.label.voice_to_text.vad_silence_frames",
+    "voice_to_text.vad_min_speech_frames": "config.label.voice_to_text.vad_min_speech_frames",
+    "voice_to_text.vad_calibration_frames": "config.label.voice_to_text.vad_calibration_frames",
+    "voice_to_text.context_max_chars": "config.label.voice_to_text.context_max_chars",
 }
 
-_KEY_TOOLTIPS: dict[str, str] = {
-    "app.log_level": "日志级别: DEBUG / INFO / WARNING / ERROR",
-    "app.incremental_mode": "启用后，若输出目录中已存在该视频的转写文件和摘要文件，则跳过该文件不再处理: true / false",
-    "app.is_check_model_file": "程序启动时是否检测模型文件完整性（缺失则自动下载）。首次通过后自动置为 false 以跳过后续检测: true / false",
-    "app.is_check_dll_file": "程序启动时是否检测 cuBLAS/cuDNN DLL 依赖的完整性（缺失则从 GitHub 下载）。首次通过后自动置为 false 以跳过后续检测: true / false",
-    "app.proxy": "HTTP 代理地址 (如 http://127.0.0.1:7890)，用于访问外部 API，留空不使用",
-    "transcription.model_path": "Whisper 模型目录,填写目录名称",
-    "transcription.device": "推理设备: cuda (NVIDIA GPU), cpu, auto (自动选择)",
-    "transcription.language": "转写语言代码: zh (中文), en (英文), ja (日文) 等，留空或 auto 自动检测",
-    "transcription.beam_size": "束搜索宽度 (1~10)，越大越准确但越慢",
-    "transcription.temperature": "采样温度：逗号分隔多个值(如 0.0,0.2,0.4)可在失败时逐级升温重采样；只填单值则不回退。0 为贪心解码(最确定)",
-    "transcription.condition_on_previous_text": "是否基于前文上下文条件生成。长音频切片场景建议 False(切片间不共享上下文)；单文件短音频可设 True 提高连贯性: True / False",
-    "transcription.best_of": "采样候选数量，仅当 temperature 含 >0 的值(采样)时生效；纯贪心(单值 0.0)时不生效",
-    "transcription.compute_type": "计算精度: float16, int8, float32。int8 显存占用最少，float16 精度最佳。注意: CPU 不支持 float16，仅可选 int8 / float32",
-    "transcription.num_workers": "CTranslate2 推理引擎线程数 (1~CPU核心数)，增大可加速单次转写推理",
-    "transcription.vad_filter": "是否启用 VAD 语音活动检测，过滤静音段可减少幻觉: True / False",
-    "transcription.word_timestamps": "是否生成词级时间戳，启用后可精确定位每个词的时间: True / False",
-    "transcription.compression_ratio_threshold": "gzip 压缩比超过此值判为重复文本(幻觉)并重采样，默认 2.4，出现大段重复可降到 1.8~2.0",
-    "transcription.log_prob_threshold": "平均对数概率低于此值判为低置信并重采样，默认 -1.0，可放宽到 -1.5",
-    "transcription.no_speech_threshold": "无语音概率高于此值判为静音段，默认 0.6",
-    "transcription.repetition_penalty": "对已生成 token 的惩罚，>1 抑制重复，默认 1.0",
-    "transcription.no_repeat_ngram_size": "禁止重复的 N-gram 大小，0 关闭，出现重复循环可设 3",
-    "transcription.vad_threshold": "VAD 语音判定阈值(0~1)，嘈杂/有背景音乐时调高(0.6~0.7)，默认 0.5",
-    "transcription.vad_min_silence_ms": "静音持续多久才断句(毫秒)，调小断句更细，默认 2000",
-    "transcription.vad_speech_pad_ms": "每段语音首尾补静音(毫秒)，防止吞字，建议 300~500，默认 400",
-    "transcription.vad_max_speech_s": "VAD 单段最长秒数，0 表示不限制",
-    "preprocessing.audio_sample_rate": "音频采样率 (Hz)，Whisper 推荐 16000",
-    "preprocessing.audio_channels": "音频声道数: 1=单声道 (推荐), 2=立体声",
-    "preprocessing.max_chunk_duration": "长音频分段时长 (秒)，超过此值自动分段处理",
-    "preprocessing.supported_video_formats": "支持的视频文件后缀，逗号分隔",
-    "preprocessing.supported_audio_formats": "支持的音频文件后缀，逗号分隔",
-    "output.output_dir": "输出目录，支持相对路径 (相对程序目录) 和绝对路径",
-    "output.transcript_format": "转写输出格式: txt, srt, vtt, json (可选多种，逗号分隔)",
-    "output.summary_format": "摘要输出格式: txt (纯文本), md (Markdown)",
-    "output.mirror_enabled": "是否启用输出目录拼接: True / False",
-    "output.mirror_depth": "输出目录拼接的默认层级深度 (1~10)，控制取输入目录的前几层子目录",
-    "paths.models_dir": "模型文件存储目录，支持相对路径和绝对路径",
-    "paths.logs_dir": "日志文件存储目录",
-    "paths.video_dir": "视频文件默认目录",
-    "text_processing.max_gap": "段落合并最大时间间隔 (秒)，间隔超过此值的段落不会合并",
-    "text_processing.min_length": "最小文本长度，短于此长度的段落会尝试与相邻段落合并",
-    "text_processing.filler_words": "需要清除的填充词，逗号分隔",
-    "voice_to_text.voice_dir": "语音录入与对话记录存储目录，支持相对路径 (相对程序目录) 和绝对路径",
-    "voice_to_text.summary_dir": "语音转写摘要的存储目录，支持相对路径和绝对路径",
-    "voice_to_text.realtime_auto_send_interval": "实时录入模式下自动分段转写并发送的间隔 (秒)",
-    "voice_to_text.model_path": "Whisper 模型目录名称或路径",
-    "voice_to_text.device": "推理设备: cuda (NVIDIA GPU), cpu, auto (自动选择)",
-    "voice_to_text.compute_type": "计算精度: float16, int8, float32。注意: CPU 不支持 float16，仅可选 int8 / float32",
-    "voice_to_text.language": "转写语言代码: zh (中文), en (英文), ja (日文) 等，留空或 auto 自动检测",
-    "voice_to_text.num_workers": "CTranslate2 推理引擎线程数 (1~CPU核心数)",
-    "voice_to_text.audio_sample_rate": "音频采样率 (Hz)，Whisper 推荐 16000",
-    "voice_to_text.audio_channels": "音频声道数: 1=单声道 (推荐), 2=立体声",
-    "voice_to_text.vad_filter": "是否启用 VAD 语音活动检测，过滤静音段可减少幻觉: True / False",
-    "voice_to_text.vad_threshold": "VAD 语音判定阈值(0~1)，嘈杂/有背景音乐时调高(0.6~0.7)，默认 0.5",
-    "voice_to_text.vad_min_silence_ms": "静音持续多久才断句(毫秒)，调小断句更细，默认 2000",
-    "voice_to_text.vad_speech_pad_ms": "每段语音首尾补静音(毫秒)，防止吞字，建议 300~500，默认 400",
-    "voice_to_text.vad_max_speech_s": "VAD 单段最长秒数，0 表示不限制",
-    "voice_to_text.initial_prompt": "转写初始提示词，可用于上下文增强",
-    "voice_to_text.bg_image_path": "声音转文本界面背景图片路径，可填写相对路径（相对于程序目录）或绝对路径，留空则不使用背景图片",
-    "voice_to_text.bg_transparency": "声音转文本界面背景图片透明度 (0~255)，0=完全透明，255=完全不透明",
-    "voice_to_text.vad_endpoint_detection": "是否启用实时 VAD 端点检测，语音结束后自动发送转写: True / False",
-    "voice_to_text.vad_energy_threshold": "手动指定 VAD 噪底能量阈值 (0~N)，设为 0 自动校准",
-    "voice_to_text.vad_silence_frames": "VAD 判定语音结束的连续静音帧数 (每帧约32ms)",
-    "voice_to_text.vad_min_speech_frames": "VAD 判定为有效语音的最小帧数 (每帧约32ms)",
-    "voice_to_text.vad_calibration_frames": "VAD 自动校准噪底时采集的静音帧数 (每帧约10ms)",
-    "voice_to_text.context_max_chars": "连续转写时保留的上文最大字符数",
-    "app.result_image_path": "背景图片路径，可填写相对路径（相对于程序目录）或绝对路径，留空则不使用背景图片",
-    "app.result_transparency": "背景图片透明度 (0~255)，0=完全透明，255=完全不透明",
-    "app.main_image_path": "主界面背景图片路径，可填写相对路径（相对于程序目录）或绝对路径，留空则不使用背景图片",
-    "app.main_transparency": "主界面背景图片透明度 (0~255)，0=完全透明，255=完全不透明",
+_KEY_TOOLTIP_KEYS: dict[str, str] = {
+    "app.log_level": "config.tooltip.app.log_level",
+    "app.incremental_mode": "config.tooltip.app.incremental_mode",
+    "app.is_check_model_file": "config.tooltip.app.is_check_model_file",
+    "app.is_check_dll_file": "config.tooltip.app.is_check_dll_file",
+    "app.proxy": "config.tooltip.app.proxy",
+    "app.ui_language": "config.tooltip.app.ui_language",
+    "transcription.model_path": "config.tooltip.transcription.model_path",
+    "transcription.device": "config.tooltip.transcription.device",
+    "transcription.language": "config.tooltip.transcription.language",
+    "transcription.beam_size": "config.tooltip.transcription.beam_size",
+    "transcription.temperature": "config.tooltip.transcription.temperature",
+    "transcription.condition_on_previous_text": "config.tooltip.transcription.condition_on_previous_text",
+    "transcription.best_of": "config.tooltip.transcription.best_of",
+    "transcription.compute_type": "config.tooltip.transcription.compute_type",
+    "transcription.num_workers": "config.tooltip.transcription.num_workers",
+    "transcription.vad_filter": "config.tooltip.transcription.vad_filter",
+    "transcription.word_timestamps": "config.tooltip.transcription.word_timestamps",
+    "transcription.compression_ratio_threshold": "config.tooltip.transcription.compression_ratio_threshold",
+    "transcription.log_prob_threshold": "config.tooltip.transcription.log_prob_threshold",
+    "transcription.no_speech_threshold": "config.tooltip.transcription.no_speech_threshold",
+    "transcription.repetition_penalty": "config.tooltip.transcription.repetition_penalty",
+    "transcription.no_repeat_ngram_size": "config.tooltip.transcription.no_repeat_ngram_size",
+    "transcription.vad_threshold": "config.tooltip.transcription.vad_threshold",
+    "transcription.vad_min_silence_ms": "config.tooltip.transcription.vad_min_silence_ms",
+    "transcription.vad_speech_pad_ms": "config.tooltip.transcription.vad_speech_pad_ms",
+    "transcription.vad_max_speech_s": "config.tooltip.transcription.vad_max_speech_s",
+    "preprocessing.audio_sample_rate": "config.tooltip.preprocessing.audio_sample_rate",
+    "preprocessing.audio_channels": "config.tooltip.preprocessing.audio_channels",
+    "preprocessing.max_chunk_duration": "config.tooltip.preprocessing.max_chunk_duration",
+    "preprocessing.supported_video_formats": "config.tooltip.preprocessing.supported_video_formats",
+    "preprocessing.supported_audio_formats": "config.tooltip.preprocessing.supported_audio_formats",
+    "output.output_dir": "config.tooltip.output.output_dir",
+    "output.transcript_format": "config.tooltip.output.transcript_format",
+    "output.summary_format": "config.tooltip.output.summary_format",
+    "output.mirror_enabled": "config.tooltip.output.mirror_enabled",
+    "output.mirror_depth": "config.tooltip.output.mirror_depth",
+    "paths.models_dir": "config.tooltip.paths.models_dir",
+    "paths.logs_dir": "config.tooltip.paths.logs_dir",
+    "paths.video_dir": "config.tooltip.paths.video_dir",
+    "text_processing.max_gap": "config.tooltip.text_processing.max_gap",
+    "text_processing.min_length": "config.tooltip.text_processing.min_length",
+    "text_processing.filler_words": "config.tooltip.text_processing.filler_words",
+    "voice_to_text.voice_dir": "config.tooltip.voice_to_text.voice_dir",
+    "voice_to_text.summary_dir": "config.tooltip.voice_to_text.summary_dir",
+    "voice_to_text.realtime_auto_send_interval": "config.tooltip.voice_to_text.realtime_auto_send_interval",
+    "voice_to_text.model_path": "config.tooltip.voice_to_text.model_path",
+    "voice_to_text.device": "config.tooltip.voice_to_text.device",
+    "voice_to_text.compute_type": "config.tooltip.voice_to_text.compute_type",
+    "voice_to_text.language": "config.tooltip.voice_to_text.language",
+    "voice_to_text.num_workers": "config.tooltip.voice_to_text.num_workers",
+    "voice_to_text.audio_sample_rate": "config.tooltip.voice_to_text.audio_sample_rate",
+    "voice_to_text.audio_channels": "config.tooltip.voice_to_text.audio_channels",
+    "voice_to_text.vad_filter": "config.tooltip.voice_to_text.vad_filter",
+    "voice_to_text.vad_threshold": "config.tooltip.voice_to_text.vad_threshold",
+    "voice_to_text.vad_min_silence_ms": "config.tooltip.voice_to_text.vad_min_silence_ms",
+    "voice_to_text.vad_speech_pad_ms": "config.tooltip.voice_to_text.vad_speech_pad_ms",
+    "voice_to_text.vad_max_speech_s": "config.tooltip.voice_to_text.vad_max_speech_s",
+    "voice_to_text.initial_prompt": "config.tooltip.voice_to_text.initial_prompt",
+    "voice_to_text.bg_image_path": "config.tooltip.voice_to_text.bg_image_path",
+    "voice_to_text.bg_transparency": "config.tooltip.voice_to_text.bg_transparency",
+    "voice_to_text.vad_endpoint_detection": "config.tooltip.voice_to_text.vad_endpoint_detection",
+    "voice_to_text.vad_energy_threshold": "config.tooltip.voice_to_text.vad_energy_threshold",
+    "voice_to_text.vad_silence_frames": "config.tooltip.voice_to_text.vad_silence_frames",
+    "voice_to_text.vad_min_speech_frames": "config.tooltip.voice_to_text.vad_min_speech_frames",
+    "voice_to_text.vad_calibration_frames": "config.tooltip.voice_to_text.vad_calibration_frames",
+    "voice_to_text.context_max_chars": "config.tooltip.voice_to_text.context_max_chars",
+    "app.result_image_path": "config.tooltip.app.result_image_path",
+    "app.result_transparency": "config.tooltip.app.result_transparency",
+    "app.main_image_path": "config.tooltip.app.main_image_path",
+    "app.main_transparency": "config.tooltip.app.main_transparency",
 }
 
-_SECTION_GROUPS: dict[str, dict[str, list[str]]] = {
+_SECTION_GROUP_KEYS: dict[str, dict[str, list[str]]] = {
     "app": {
-        "通用配置": ["log_level", "incremental_mode", "is_check_model_file", "is_check_dll_file", "proxy"],
-        "背景图片配置": [
+        "config.group.app.general": ["log_level", "incremental_mode", "is_check_model_file", "is_check_dll_file", "proxy", "ui_language"],
+        "config.group.app.background": [
             "main_image_path",
             "main_transparency",
             "result_image_path",
@@ -925,38 +932,38 @@ _SECTION_GROUPS: dict[str, dict[str, list[str]]] = {
         ],
     },
     "transcription": {
-        "基础参数": ["model_path", "device", "language", "compute_type", "num_workers"],
-        "解码参数": ["beam_size", "best_of", "temperature"],
-        "VAD 语音检测": [
+        "config.group.transcription.basic": ["model_path", "device", "language", "compute_type", "num_workers"],
+        "config.group.transcription.decode": ["beam_size", "best_of", "temperature"],
+        "config.group.transcription.vad": [
             "vad_filter",
             "vad_threshold",
             "vad_min_silence_ms",
             "vad_speech_pad_ms",
             "vad_max_speech_s",
         ],
-        "质量控制": [
+        "config.group.transcription.quality": [
             "condition_on_previous_text",
             "word_timestamps",
             "compression_ratio_threshold",
             "log_prob_threshold",
             "no_speech_threshold",
         ],
-        "重复抑制": ["repetition_penalty", "no_repeat_ngram_size"],
+        "config.group.transcription.repeat": ["repetition_penalty", "no_repeat_ngram_size"],
     },
     "preprocessing": {
-        "音频处理": ["audio_sample_rate", "audio_channels", "max_chunk_duration"],
-        "支持格式": ["supported_video_formats", "supported_audio_formats"],
+        "config.group.preprocessing.audio": ["audio_sample_rate", "audio_channels", "max_chunk_duration"],
+        "config.group.preprocessing.format": ["supported_video_formats", "supported_audio_formats"],
     },
     "output": {
-        "输出设置": ["output_dir", "transcript_format", "summary_format"],
-        "目录拼接": ["mirror_enabled", "mirror_depth"],
+        "config.group.output.settings": ["output_dir", "transcript_format", "summary_format"],
+        "config.group.output.mirror": ["mirror_enabled", "mirror_depth"],
     },
     "text_processing": {
-        "合并与清理": ["max_gap", "min_length", "filler_words"],
+        "config.group.text_processing.merge": ["max_gap", "min_length", "filler_words"],
     },
     "voice_to_text": {
-        "基础参数": ["voice_dir", "summary_dir", "realtime_auto_send_interval", "model_path", "device", "compute_type", "language", "num_workers"],
-        "音频与 VAD": [
+        "config.group.voice_to_text.basic": ["voice_dir", "summary_dir", "realtime_auto_send_interval", "model_path", "device", "compute_type", "language", "num_workers"],
+        "config.group.voice_to_text.audio_vad": [
             "audio_sample_rate",
             "audio_channels",
             "vad_filter",
@@ -965,7 +972,7 @@ _SECTION_GROUPS: dict[str, dict[str, list[str]]] = {
             "vad_speech_pad_ms",
             "vad_max_speech_s",
         ],
-        "实时端点检测": [
+        "config.group.voice_to_text.endpoint": [
             "vad_endpoint_detection",
             "vad_energy_threshold",
             "vad_silence_frames",
@@ -973,8 +980,8 @@ _SECTION_GROUPS: dict[str, dict[str, list[str]]] = {
             "vad_calibration_frames",
             "context_max_chars",
         ],
-        "提示词": ["initial_prompt"],
-        "背景图片配置": ["bg_image_path", "bg_transparency"],
+        "config.group.voice_to_text.prompt": ["initial_prompt"],
+        "config.group.voice_to_text.background": ["bg_image_path", "bg_transparency"],
     },
 }
 
@@ -997,6 +1004,7 @@ _BOOL_COMBO_KEYS: set[str] = {
 }
 
 _COMBO_KEYS: set[str] = set(_BOOL_COMBO_KEYS) | {
+    "app.ui_language",
     "summarization.nvidia_stream",
     "summarization.zhipu_stream",
     "summarization.nvidia_mode",
@@ -1009,28 +1017,28 @@ _COMBO_KEYS: set[str] = set(_BOOL_COMBO_KEYS) | {
 }
 
 _COMBO_OPTIONS: dict[str, list[str]] = {
-    key: ["是", "否"]
+    key: ["common.yes", "common.no"]
     for key in _BOOL_COMBO_KEYS
 }
 _COMBO_OPTIONS.update(
     {
-        "summarization.nvidia_stream": ["是", "否"],
-        "summarization.zhipu_stream": ["是", "否"],
-        "summarization.nvidia_mode": ["单线程", "多线程"],
-        "summarization.zhipu_mode": ["单线程", "多线程"],
+        "summarization.nvidia_stream": ["common.yes", "common.no"],
+        "summarization.zhipu_stream": ["common.yes", "common.no"],
+        "summarization.nvidia_mode": ["config.combo.mode_single", "config.combo.mode_multi"],
+        "summarization.zhipu_mode": ["config.combo.mode_single", "config.combo.mode_multi"],
     }
 )
 
 _COMBO_VALUE_MAP: dict[str, dict[str, str]] = {
-    key: {"是": "True", "否": "False"}
+    key: {"common.yes": "True", "common.no": "False"}
     for key in _BOOL_COMBO_KEYS
 }
 _COMBO_VALUE_MAP.update(
     {
-        "summarization.nvidia_stream": {"是": "True", "否": "False"},
-        "summarization.zhipu_stream": {"是": "True", "否": "False"},
-        "summarization.nvidia_mode": {"单线程": "single", "多线程": "multi"},
-        "summarization.zhipu_mode": {"单线程": "single", "多线程": "multi"},
+        "summarization.nvidia_stream": {"common.yes": "True", "common.no": "False"},
+        "summarization.zhipu_stream": {"common.yes": "True", "common.no": "False"},
+        "summarization.nvidia_mode": {"config.combo.mode_single": "single", "config.combo.mode_multi": "multi"},
+        "summarization.zhipu_mode": {"config.combo.mode_single": "single", "config.combo.mode_multi": "multi"},
     }
 )
 
@@ -1074,6 +1082,18 @@ _COMBO_VALUE_MAP.update(
         },
     }
 )
+
+# ---- 界面语言选择（从 i18n 注册表动态生成） ----
+_COMBO_OPTIONS["app.ui_language"] = [
+    "config.combo.auto_language",  # i18n key，渲染时延迟翻译
+] + [
+    language_meta(code).get("name", code) for code in available_languages()
+]
+_COMBO_VALUE_MAP["app.ui_language"] = {
+    "config.combo.auto_language": "auto",
+} | {
+    language_meta(code).get("name", code): code for code in available_languages()
+}
 
 
 
@@ -1214,14 +1234,14 @@ class ConfigEditorDialog(QDialog):
     """
 
     def _init_ui(self) -> None:
-        self.setWindowTitle("编辑配置")
+        self.setWindowTitle(t("dialogs.config_editor.title"))
         self.setWindowFlags(
             self.windowFlags()
             | Qt.WindowType.WindowMinMaxButtonsHint
             | Qt.WindowType.WindowMaximizeButtonHint
         )
         self.setStyleSheet(self._STYLE_SHEET)
-        self.resize(720, 640)
+        self.resize(960, 640)
         self.setMinimumSize(520, 400)
         available = self.screen().availableGeometry() if self.screen() else None
         if available is not None:
@@ -1251,13 +1271,13 @@ class ConfigEditorDialog(QDialog):
         btn_box = QDialogButtonBox()
         self._btn_box = btn_box
         self._save_btn = btn_box.addButton(
-            "保存", QDialogButtonBox.ButtonRole.AcceptRole
+            t("dialogs.config_editor.save"), QDialogButtonBox.ButtonRole.AcceptRole
         )
         self._reset_btn = btn_box.addButton(
-            "重置", QDialogButtonBox.ButtonRole.ResetRole
+            t("dialogs.config_editor.reset"), QDialogButtonBox.ButtonRole.ResetRole
         )
         self._reset_btn.setObjectName("_secondary_btn")
-        cancel_btn = btn_box.addButton("取消", QDialogButtonBox.ButtonRole.RejectRole)
+        cancel_btn = btn_box.addButton(t("dialogs.config_editor.cancel"), QDialogButtonBox.ButtonRole.RejectRole)
         cancel_btn.setObjectName("_secondary_btn")
         btn_box.clicked.connect(self._on_button_clicked)
         layout.addWidget(btn_box)
@@ -1270,11 +1290,11 @@ class ConfigEditorDialog(QDialog):
             scroll.setWidgetResizable(True)
             scroll.setWidget(self._summarization_tab)
             scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-            self.tab_widget.addTab(scroll, "总结")
+            self.tab_widget.addTab(scroll, t("config.section.summarization"))
             return
 
         content = QWidget()
-        groups = _SECTION_GROUPS.get(section)
+        groups = _SECTION_GROUP_KEYS.get(section)
         if groups:
             tab_layout = QVBoxLayout(content)
             tab_layout.setContentsMargins(6, 6, 6, 6)
@@ -1292,8 +1312,8 @@ class ConfigEditorDialog(QDialog):
         _SKIP_KEYS = {"summarization.custom_prompt"}
 
         if groups:
-            for group_name, keys in groups.items():
-                gb = QGroupBox(group_name)
+            for group_key, keys in groups.items():
+                gb = QGroupBox(t(group_key))
                 gb_form = QFormLayout(gb)
                 gb_form.setContentsMargins(10, 14, 10, 12)
                 gb_form.setSpacing(10)
@@ -1304,9 +1324,10 @@ class ConfigEditorDialog(QDialog):
                     if full_key in _SKIP_KEYS:
                         continue
                     value = dict(items).get(key, "")
-                    tooltip = _KEY_TOOLTIPS.get(full_key)
-                    label = _KEY_LABELS.get(full_key, key)
-                    widget = self._create_edit_widget(full_key, value, tooltip)
+                    tooltip = _KEY_TOOLTIP_KEYS.get(full_key)
+                    label_key = _KEY_LABEL_KEYS.get(full_key)
+                    label = t(label_key) if label_key else key
+                    widget = self._create_edit_widget(full_key, value, t(tooltip) if tooltip else None)
                     if widget is not None:
                         gb_form.addRow(f"{label}:", widget)
                         section_edits[key] = widget
@@ -1317,7 +1338,7 @@ class ConfigEditorDialog(QDialog):
                 grouped_keys.update(keys)
             extra_keys = [k for k in dict(items) if k not in grouped_keys and f"{section}.{k}" not in _SKIP_KEYS]
             if extra_keys:
-                gb = QGroupBox("其他")
+                gb = QGroupBox(t("dialogs.config_editor.other_group"))
                 gb_form = QFormLayout(gb)
                 gb_form.setContentsMargins(10, 14, 10, 12)
                 gb_form.setSpacing(10)
@@ -1326,9 +1347,10 @@ class ConfigEditorDialog(QDialog):
                 for key in extra_keys:
                     full_key = f"{section}.{key}"
                     value = dict(items).get(key, "")
-                    tooltip = _KEY_TOOLTIPS.get(full_key)
-                    label = _KEY_LABELS.get(full_key, key)
-                    widget = self._create_edit_widget(full_key, value, tooltip)
+                    tooltip = _KEY_TOOLTIP_KEYS.get(full_key)
+                    label_key = _KEY_LABEL_KEYS.get(full_key)
+                    label = t(label_key) if label_key else key
+                    widget = self._create_edit_widget(full_key, value, t(tooltip) if tooltip else None)
                     if widget is not None:
                         gb_form.addRow(f"{label}:", widget)
                         section_edits[key] = widget
@@ -1339,9 +1361,10 @@ class ConfigEditorDialog(QDialog):
                 full_key = f"{section}.{key}"
                 if full_key in _SKIP_KEYS:
                     continue
-                tooltip = _KEY_TOOLTIPS.get(full_key)
-                label = _KEY_LABELS.get(full_key, key)
-                widget = self._create_edit_widget(full_key, value, tooltip)
+                tooltip = _KEY_TOOLTIP_KEYS.get(full_key)
+                label_key = _KEY_LABEL_KEYS.get(full_key)
+                label = t(label_key) if label_key else key
+                widget = self._create_edit_widget(full_key, value, t(tooltip) if tooltip else None)
                 if widget is not None:
                     form.addRow(f"{label}:", widget)
                     section_edits[key] = widget
@@ -1352,7 +1375,8 @@ class ConfigEditorDialog(QDialog):
         scroll.setWidgetResizable(True)
         scroll.setWidget(content)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        tab_label = _SECTION_LABELS.get(section, section)
+        label_key = _SECTION_LABEL_KEYS.get(section)
+        tab_label = t(label_key) if label_key else section
         self.tab_widget.addTab(scroll, tab_label)
 
 
@@ -1416,7 +1440,8 @@ class ConfigEditorDialog(QDialog):
         """根据 key 类型创建对应的编辑控件"""
         if full_key in _COMBO_KEYS:
             widget = QComboBox()
-            widget.addItems(_COMBO_OPTIONS.get(full_key, []))
+            widget.setProperty("_combo_key", full_key)
+            widget.addItems(self._get_combo_options(full_key))
             ConfigEditorDialog._set_widget_text(widget, value)
             if tooltip:
                 widget.setToolTip(tooltip)
@@ -1431,7 +1456,7 @@ class ConfigEditorDialog(QDialog):
             row.addWidget(widget, 1)
             browse_btn = QPushButton("📁")
             browse_btn.setObjectName("_browse_btn")
-            browse_btn.setToolTip("选择目录")
+            browse_btn.setToolTip(t("dialogs.config_editor.browse_tooltip_dir"))
             browse_btn.setProperty("_path_edit", widget)
             browse_btn.clicked.connect(self._browse_dir)
             row.addWidget(browse_btn)
@@ -1448,7 +1473,7 @@ class ConfigEditorDialog(QDialog):
             row.addWidget(widget, 1)
             browse_btn = QPushButton("📁")
             browse_btn.setObjectName("_browse_btn")
-            browse_btn.setToolTip("选择背景图片")
+            browse_btn.setToolTip(t("dialogs.config_editor.browse_tooltip_image"))
             browse_btn.setProperty("_path_edit", widget)
             browse_btn.clicked.connect(self._browse_file)
             row.addWidget(browse_btn)
@@ -1461,6 +1486,35 @@ class ConfigEditorDialog(QDialog):
                 widget.setToolTip(tooltip)
             return widget
 
+    @staticmethod
+    def _get_combo_options(full_key: str) -> list[str]:
+        """根据 full_key 获取翻译后的 ComboBox 选项列表"""
+        options = _COMBO_OPTIONS.get(full_key, [])
+        if not options:
+            return options
+        # app.ui_language: 第一项是 i18n key，其余是语言名称（普通文本）
+        if full_key == "app.ui_language":
+            return [t(options[0])] + options[1:]
+        # 通用：全部是 i18n key
+        if isinstance(options[0], str) and (options[0].startswith("common.") or options[0].startswith("config.")):
+            return [t(o) for o in options]
+        return options
+
+    @staticmethod
+    def _get_combo_value_map(full_key: str) -> dict[str, str]:
+        """获取 ComboBox 显示文本到配置值的映射（以当前语言为键）"""
+        mapping = _COMBO_VALUE_MAP.get(full_key, {})
+        if not mapping:
+            return mapping
+        # app.ui_language: 键可能是 i18n key 或普通语言名称
+        if full_key == "app.ui_language":
+            return {t(k) if k.startswith("config.") else k: v for k, v in mapping.items()}
+        # 通用：全部是 i18n key
+        first_key = next(iter(mapping), "")
+        if first_key.startswith("common.") or first_key.startswith("config."):
+            return {t(k): v for k, v in mapping.items()}
+        return mapping
+
     def _browse_dir(self) -> None:
         btn = self.sender()
         if btn is None:
@@ -1469,7 +1523,7 @@ class ConfigEditorDialog(QDialog):
         if edit is None:
             return
         current = edit.text().strip()
-        folder = QFileDialog.getExistingDirectory(self, "选择目录", current)
+        folder = QFileDialog.getExistingDirectory(self, t("dialogs.config_editor.browse_dir"), current)
         if folder:
             edit.setText(folder)
 
@@ -1484,9 +1538,9 @@ class ConfigEditorDialog(QDialog):
         current = edit.text().strip()
         file_path, _ = QFileDialog.getOpenFileName(
             self,
-            "选择背景图片",
+            t("dialogs.config_editor.browse_image"),
             current,
-            "图片文件 (*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp);;所有文件 (*.*)",
+            t("dialogs.config_editor.image_filter"),
         )
         if file_path:
             from src.utils.paths import get_base_dir as _get_base_dir
@@ -1515,6 +1569,11 @@ class ConfigEditorDialog(QDialog):
     def _widget_text(widget: QWidget) -> str:
         if isinstance(widget, QComboBox):
             display = widget.currentText()
+            full_key = widget.property("_combo_key")
+            if full_key:
+                mapping = ConfigEditorDialog._get_combo_value_map(full_key)
+                if display in mapping:
+                    return mapping[display]
             for mapping in _COMBO_VALUE_MAP.values():
                 if display in mapping:
                     return mapping[display]
@@ -1531,6 +1590,15 @@ class ConfigEditorDialog(QDialog):
     def _set_widget_text(widget: QWidget, value: str) -> None:
         if isinstance(widget, QComboBox):
             value = value.strip()
+            full_key = widget.property("_combo_key")
+            if full_key:
+                mapping = ConfigEditorDialog._get_combo_value_map(full_key)
+                for display_text, config_value in mapping.items():
+                    if config_value.lower() == value.lower():
+                        index = widget.findText(display_text, Qt.MatchFlag.MatchFixedString)
+                        if index >= 0:
+                            widget.setCurrentIndex(index)
+                            return
             for mapping in _COMBO_VALUE_MAP.values():
                 for display_text, config_value in mapping.items():
                     if config_value.lower() == value.lower():

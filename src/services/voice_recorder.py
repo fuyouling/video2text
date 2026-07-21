@@ -10,8 +10,11 @@ import numpy as np
 from PySide6.QtCore import QObject, Signal
 
 from src.config.settings import Settings
+from src.i18n import t
 from src.utils.exceptions import Video2TextError
 from src.utils.logger import get_logger
+
+_NO_AUDIO_MARKER = "__NO_AUDIO_DATA__"
 
 logger = get_logger(__name__)
 
@@ -111,7 +114,7 @@ class VoiceRecorder(QObject):
             self._calibrated = True
             self._calibration_frames = []
             logger.info(
-                "VoiceRecorder VAD 校准完成, noise_floor=%.6f", self._noise_floor
+                t("services.voice_recorder.vad_calibrated", value=self._noise_floor)
             )
 
     def _detect_speech_end(self, frame: np.ndarray) -> bool:
@@ -166,7 +169,7 @@ class VoiceRecorder(QObject):
                 wf.writeframes(audio_int16.tobytes())
             return str(wav_path)
         except Exception as exc:
-            logger.error("VAD chunk 保存失败: %s", exc)
+            logger.error(t("services.voice_recorder.vad_chunk_save_failed", error=exc))
             return None
 
     def start(self) -> None:
@@ -189,7 +192,7 @@ class VoiceRecorder(QObject):
         try:
             import sounddevice as sd
         except ImportError as exc:
-            self.error_occurred.emit(f"缺少 sounddevice 库: {exc}")
+            self.error_occurred.emit(t("services.voice_recorder.missing_sounddevice", error=exc))
             return
 
         try:
@@ -204,7 +207,7 @@ class VoiceRecorder(QObject):
                     time.sleep(0.05)
         except Exception as exc:
             # CallbackAbort 被 sd.InputStream 内部消化，不会到达此处
-            self.error_occurred.emit(f"录音异常: {exc}")
+            self.error_occurred.emit(t("services.voice_recorder.recording_exception", error=exc))
             return
         finally:
             self._stream = None
@@ -218,14 +221,14 @@ class VoiceRecorder(QObject):
             wav_path = self.save_to_wav()
             self.finished.emit(wav_path)
         except Exception as exc:
-            self.error_occurred.emit(f"保存录音失败: {exc}")
+            self.error_occurred.emit(t("services.voice_recorder.save_recording_failed", error=exc))
 
     def _audio_callback(
         self, indata, frames, time_info, status
     ) -> None:
         """sounddevice 音频回调（在 PortAudio 线程中执行）"""
         if status:
-            logger.warning("VoiceRecorder 回调状态: %s", status)
+            logger.warning(t("services.voice_recorder.callback_status", status=status))
         if not self._running:
             import sounddevice as sd
             raise sd.CallbackAbort()  # 立即停止 InputStream，避免音频流关闭延迟
@@ -256,7 +259,7 @@ class VoiceRecorder(QObject):
         """将当前缓冲区音频保存为 WAV 文件，返回路径"""
         with self._lock:
             if not self._frames:
-                raise Video2TextError("没有录制到音频数据")
+                raise Video2TextError(_NO_AUDIO_MARKER + " " + t("services.voice_recorder.no_audio_data"))
             audio = np.concatenate(self._frames, axis=0)
             self._frames = []
 
@@ -271,7 +274,7 @@ class VoiceRecorder(QObject):
                 wf.setframerate(self._sample_rate)
                 wf.writeframes(audio_int16.tobytes())
         except Exception as exc:
-            raise Video2TextError(f"保存 WAV 失败: {exc}") from exc
+            raise Video2TextError(t("services.voice_recorder.save_wav_failed", error=exc)) from exc
 
         return str(wav_path)
 

@@ -1,9 +1,10 @@
-"""提示词模板管理器 —— 管理用户自定义提示词模板，支持持久化"""
+"""Prompt template manager — manages user-defined prompt templates with persistence"""
 
 import threading
 from pathlib import Path
 from typing import Optional
 
+from src.i18n import t
 from src.utils.exceptions import ConfigurationError
 from src.utils.json_utils import atomic_write_json, safe_read_json
 from src.utils.logger import get_logger
@@ -19,15 +20,15 @@ _DEFAULT_MARKDOWN_PROMPT = (
 
 
 class PromptManager:
-    """提示词模板管理器 - 将用户自定义提示词保存为命名模板，支持持久化
+    """Prompt template manager — saves user-defined prompt templates with persistence
 
-    数据存储在 prompts.json 文件中（与 config.ini 同目录），格式：
+    Data is stored in prompts.json (same directory as config.ini), format:
     {
-        "templates": {"模板名": "提示词内容", ...},
-        "last_used": "模板名"
+        "templates": {"template_name": "prompt_content", ...},
+        "last_used": "template_name"
     }
 
-    第一次运行时文件不存在，模板列表为空。
+    On first run, the file does not exist and the template list is empty.
     """
 
     _instance: Optional["PromptManager"] = None
@@ -58,7 +59,7 @@ class PromptManager:
 
     @classmethod
     def _reset(cls) -> None:
-        """重置单例（仅供测试使用）"""
+        """Reset singleton (for testing only)"""
         with cls._lock:
             cls._instance = None
 
@@ -67,13 +68,13 @@ class PromptManager:
             return
         data = safe_read_json(self._file_path)
         if data is None:
-            logger.warning("PromptManager: ✗ 加载失败 (%s)", self._file_path.name)
+            logger.warning("PromptManager: ✗ %s", t("services.summarization.prompt_load_failed", name=self._file_path.name))
             return
         self._templates = data.get("templates", {})
         self._last_used = data.get("last_used", "")
         self._markdown_prompt = data.get("markdown_prompt", _DEFAULT_MARKDOWN_PROMPT)
         self._markdown_enabled = data.get("markdown_enabled", True)
-        logger.info("PromptManager: ✓ 加载 (%s)", self._file_path.name)
+        logger.info("PromptManager: ✓ %s", t("services.summarization.prompt_loaded", name=self._file_path.name))
 
     def save(self) -> None:
         try:
@@ -88,8 +89,8 @@ class PromptManager:
         except ConfigurationError:
             raise
         except Exception as e:
-            logger.error("PromptManager: ✗ 保存失败 (%s)", e)
-            raise ConfigurationError(f"提示词模板保存失败: {e}")
+            logger.error("PromptManager: ✗ %s", t("services.summarization.prompt_save_error", error=e))
+            raise ConfigurationError(t("services.summarization.prompt_save_failed", error=str(e)))
 
     def get_names(self) -> list[str]:
         return list(self._templates.keys())
@@ -134,10 +135,10 @@ class PromptManager:
         self.save()
 
     def build_prompt(self, text: str, custom_prompt: str = "", is_use_gui_markdown_flag: bool = True) -> str:
-        """构建完整的用户提示词
+        """Build the complete user prompt
 
-        包含默认 system prompt、Markdown 格式指令（如果启用）、用户文本。
-        如果 custom_prompt 非空则替换默认 system prompt。
+        Includes default system prompt, Markdown formatting instruction (if enabled), and user text.
+        If custom_prompt is non-empty, it replaces the default system prompt.
         """
         if custom_prompt and custom_prompt.strip():
             base = custom_prompt.strip()

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from src.transcription.transcriber import TranscriptSegment
 from src.utils.logger import get_logger
 from src.utils.time_format import format_time_hms
+from src.i18n import t
 
 logger = get_logger(__name__)
 
@@ -54,7 +55,7 @@ class SegmentMerger:
         if not segments:
             return []
 
-        logger.debug("开始%s，原始段落数: %d", label, len(segments))
+        logger.debug(t("text_processing.segment_merger.merge_start", label=label, count=len(segments)))
 
         merged: List[MergedSegment] = []
         current: Optional[MergedSegment] = None
@@ -82,7 +83,7 @@ class SegmentMerger:
         if current:
             merged.append(current)
 
-        logger.debug("%s完成，合并后段落数: %d", label, len(merged))
+        logger.debug(t("text_processing.segment_merger.merge_done", label=label, count=len(merged)))
         return merged
 
     def merge_segments(self, segments: List[TranscriptSegment]) -> List[MergedSegment]:
@@ -101,7 +102,7 @@ class SegmentMerger:
             gap = seg.start - cur.end
             return gap <= self.max_gap and seg.language == cur.language
 
-        return self._merge(segments, _should_merge, "合并段落")
+        return self._merge(segments, _should_merge, t("text_processing.segment_merger.label_merge"))
 
     def merge_by_length(
         self, segments: List[TranscriptSegment], target_length: int = 200
@@ -120,7 +121,7 @@ class SegmentMerger:
             return len(cur.text) < target_length and seg.language == cur.language
 
         return self._merge(
-            segments, _should_merge, f"按长度合并段落(目标{target_length})"
+            segments, _should_merge, t("text_processing.segment_merger.label_merge_length", target=target_length)
         )
 
     def merge_by_time(
@@ -139,7 +140,7 @@ class SegmentMerger:
         def _should_merge(cur: MergedSegment, seg: TranscriptSegment) -> bool:
             return seg.start - cur.start < interval and seg.language == cur.language
 
-        return self._merge(segments, _should_merge, f"按时间合并段落({interval}s)")
+        return self._merge(segments, _should_merge, t("text_processing.segment_merger.label_merge_time", interval=interval))
 
     def filter_short_segments(
         self, segments: List[MergedSegment], min_length: Optional[int] = None
@@ -156,7 +157,7 @@ class SegmentMerger:
         threshold = min_length if min_length is not None else self.min_length
         filtered = [seg for seg in segments if len(seg.text.strip()) >= threshold]
 
-        logger.info("过滤短段落，保留: %d/%d", len(filtered), len(segments))
+        logger.info(t("text_processing.segment_merger.filter_summary", kept=len(filtered), total=len(segments)))
         return filtered
 
     def format_segments_as_text(

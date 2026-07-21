@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 from typing import List
 
+from src.i18n import t
 from src.utils.exceptions import OutputError
 from src.utils.logger import get_logger
 
@@ -48,7 +49,7 @@ def validate_output_file(
 
     if not path.exists():
         raise OutputValidationError(
-            f"输出文件未生成: {file_path}",
+            t("output_validator.file.not_generated", path=file_path),
             step="output_file_check",
             file_path=file_path,
         )
@@ -56,7 +57,7 @@ def validate_output_file(
     file_size = path.stat().st_size
     if file_size < min_size:
         raise OutputValidationError(
-            f"输出文件为空或过小 ({file_size} bytes): {file_path}",
+            t("output_validator.file.too_small", size=file_size, path=file_path),
             step="output_file_check",
             file_path=file_path,
         )
@@ -66,7 +67,7 @@ def validate_output_file(
             f.read(8192)
     except UnicodeDecodeError as e:
         raise OutputValidationError(
-            f"输出文件编码错误 (预期 {encoding}): {file_path} - {e}",
+            t("output_validator.file.encoding_error", encoding=encoding, path=file_path, error=e),
             step="encoding_check",
             file_path=file_path,
         )
@@ -94,7 +95,7 @@ def validate_srt_content(content: str) -> List[str]:
 
     if not content.strip():
         raise OutputValidationError(
-            "SRT 内容为空",
+            t("output_validator.srt.empty"),
             step="srt_content_check",
         )
 
@@ -104,18 +105,16 @@ def validate_srt_content(content: str) -> List[str]:
     for block_idx, block in enumerate(blocks, 1):
         lines = block.strip().split("\n")
         if len(lines) < 3:
-            errors.append(f"块 {block_idx}: 行数不足 (期望 >=3, 实际 {len(lines)})")
+            errors.append(t("output_validator.srt.block_lines", index=block_idx, expected=3, actual=len(lines)))
             continue
 
         expected_seq = str(block_idx)
         if lines[0].strip() != expected_seq:
-            errors.append(
-                f"块 {block_idx}: 序号不连续 (期望 {expected_seq}, 实际 '{lines[0].strip()}')"
-            )
+            errors.append(t("output_validator.srt.block_seq", index=block_idx, expected=expected_seq, actual=lines[0].strip()))
 
         match = SRT_TIMESTAMP_RE.match(lines[1].strip())
         if not match:
-            errors.append(f"块 {block_idx}: 时间戳格式错误 '{lines[1].strip()}'")
+            errors.append(t("output_validator.srt.block_timestamp", index=block_idx, timestamp=lines[1].strip()))
             continue
 
         start_str, end_str = match.group(1), match.group(2)
@@ -123,15 +122,15 @@ def validate_srt_content(content: str) -> List[str]:
             start_sec = _parse_srt_timestamp(start_str)
             end_sec = _parse_srt_timestamp(end_str)
         except ValueError as e:
-            errors.append(f"块 {block_idx}: {e}")
+            errors.append(t("output_validator.srt.block_error", index=block_idx, error=e))
             continue
 
         if start_sec >= end_sec:
-            errors.append(f"块 {block_idx}: start ({start_str}) >= end ({end_str})")
+            errors.append(t("output_validator.srt.block_start_end", index=block_idx, start=start_str, end=end_str))
 
     if errors:
         raise OutputValidationError(
-            f"SRT 格式校验失败 ({len(errors)} 处错误):\n" + "\n".join(errors[:10]),
+            t("output_validator.srt.check_failed", count=len(errors), details="\n".join(errors[:10])),
             step="srt_content_check",
         )
 
@@ -153,10 +152,10 @@ def validate_vtt_content(content: str) -> List[str]:
     content = content.replace("\r\n", "\n").replace("\r", "\n")
 
     if not content.strip():
-        raise OutputValidationError("VTT 内容为空", step="vtt_content_check")
+        raise OutputValidationError(t("output_validator.vtt.empty"), step="vtt_content_check")
 
     if not content.strip().startswith("WEBVTT"):
-        raise OutputValidationError("VTT 文件缺少 WEBVTT 头", step="vtt_content_check")
+        raise OutputValidationError(t("output_validator.vtt.no_header"), step="vtt_content_check")
 
     cue_blocks = re.split(r"\n\s*\n", content.strip())
     cue_blocks = [
@@ -173,28 +172,26 @@ def validate_vtt_content(content: str) -> List[str]:
                 break
 
         if not timestamp_line:
-            errors.append(f"Cue {idx}: 缺少时间戳行")
+            errors.append(t("output_validator.vtt.cue_no_timestamp", index=idx))
             continue
 
         match = VTT_TIMESTAMP_RE.match(timestamp_line)
         if not match:
-            errors.append(f"Cue {idx}: 时间戳格式错误 '{timestamp_line}'")
+            errors.append(t("output_validator.vtt.cue_timestamp_error", index=idx, timestamp=timestamp_line))
             continue
 
         try:
             start_sec = _parse_vtt_timestamp(match.group(1))
             end_sec = _parse_vtt_timestamp(match.group(2))
         except ValueError as e:
-            errors.append(f"Cue {idx}: {e}")
+            errors.append(t("output_validator.vtt.cue_error", index=idx, error=e))
             continue
         if start_sec >= end_sec:
-            errors.append(
-                f"Cue {idx}: start ({match.group(1)}) >= end ({match.group(2)})"
-            )
+            errors.append(t("output_validator.vtt.cue_start_end", index=idx, start=match.group(1), end=match.group(2)))
 
     if errors:
         raise OutputValidationError(
-            f"VTT 格式校验失败 ({len(errors)} 处错误):\n" + "\n".join(errors[:10]),
+            t("output_validator.vtt.check_failed", count=len(errors), details="\n".join(errors[:10])),
             step="vtt_content_check",
         )
 
@@ -214,12 +211,12 @@ def validate_json_content(content: str) -> list:
         OutputValidationError: JSON 解析失败或结构错误
     """
     if not content.strip():
-        raise OutputValidationError("JSON 内容为空", step="json_content_check")
+        raise OutputValidationError(t("output_validator.json.empty"), step="json_content_check")
 
     try:
         data = json.loads(content)
     except json.JSONDecodeError as e:
-        raise OutputValidationError(f"JSON 解析失败: {e}", step="json_content_check")
+        raise OutputValidationError(t("output_validator.json.parse_failed", error=e), step="json_content_check")
 
     if isinstance(data, list):
         sample_size = min(len(data), 10)
@@ -227,13 +224,13 @@ def validate_json_content(content: str) -> list:
             item = data[idx]
             if not isinstance(item, dict):
                 raise OutputValidationError(
-                    f"JSON 数组元素 [{idx}] 不是对象",
+                    t("output_validator.json.not_object", index=idx),
                     step="json_content_check",
                 )
             for field in ("start", "end", "text"):
                 if field not in item:
                     raise OutputValidationError(
-                        f"JSON 数组元素 [{idx}] 缺少字段 '{field}'",
+                        t("output_validator.json.missing_field", index=idx, field=field),
                         step="json_content_check",
                     )
 
@@ -254,21 +251,19 @@ def validate_transcript_segments(segments: list) -> List[str]:
     for idx, seg in enumerate(segments):
         if hasattr(seg, "start") and hasattr(seg, "end"):
             if seg.start >= seg.end:
-                warnings.append(f"段 {idx}: start ({seg.start}) >= end ({seg.end})")
+                warnings.append(t("output_validator.segment.start_ge_end", index=idx, start=seg.start, end=seg.end))
             if seg.start < 0:
-                warnings.append(f"段 {idx}: start 为负值 ({seg.start})")
+                warnings.append(t("output_validator.segment.start_negative", index=idx, start=seg.start))
 
         if hasattr(seg, "text") and not seg.text.strip():
-            warnings.append(f"段 {idx}: 文本为空")
+            warnings.append(t("output_validator.segment.text_empty", index=idx))
 
         if hasattr(seg, "confidence"):
             if not (0 <= seg.confidence <= 100):
-                warnings.append(f"段 {idx}: confidence 超出范围 ({seg.confidence})")
+                warnings.append(t("output_validator.segment.confidence_range", index=idx, confidence=seg.confidence))
 
     if warnings:
-        logger.warning(
-            "转写段数据校验发现 %d 处问题:\n%s", len(warnings), "\n".join(warnings[:10])
-        )
+        logger.warning(t("output_validator.segment.warnings", count=len(warnings), details="\n".join(warnings[:10])))
 
     return warnings
 
@@ -286,7 +281,7 @@ def validate_output_content(file_path: str, fmt: str) -> None:
     path = Path(file_path)
     if not path.exists():
         raise OutputValidationError(
-            f"文件不存在: {file_path}",
+            t("output_validator.content.file_not_found", path=file_path),
             step="content_check",
             file_path=file_path,
         )
@@ -302,13 +297,13 @@ def validate_output_content(file_path: str, fmt: str) -> None:
     elif fmt == "txt":
         if not content.strip():
             raise OutputValidationError(
-                f"TXT 文件内容为空: {file_path}",
+                t("output_validator.content.txt_empty", path=file_path),
                 step="content_check",
                 file_path=file_path,
             )
     else:
         raise OutputValidationError(
-            f"不支持的输出格式: {fmt}",
+            t("output_validator.content.unsupported_format", fmt=fmt),
             step="content_check",
             file_path=file_path,
         )
@@ -320,7 +315,7 @@ def _parse_srt_timestamp(ts: str) -> float:
     s, ms = rest.split(",")
     h, m, s, ms = int(h), int(m), int(s), int(ms)
     if h >= 100 or m >= 60 or s >= 60 or ms >= 1000:
-        raise ValueError(f"时间戳值越界: {ts}")
+        raise ValueError(t("output_validator.timestamp.out_of_range", timestamp=ts))
     return h * 3600 + m * 60 + s + ms / 1000
 
 
@@ -330,5 +325,5 @@ def _parse_vtt_timestamp(ts: str) -> float:
     s, ms = rest.split(".")
     h, m, s, ms = int(h), int(m), int(s), int(ms)
     if h >= 100 or m >= 60 or s >= 60 or ms >= 1000:
-        raise ValueError(f"时间戳值越界: {ts}")
+        raise ValueError(t("output_validator.timestamp.out_of_range", timestamp=ts))
     return h * 3600 + m * 60 + s + ms / 1000

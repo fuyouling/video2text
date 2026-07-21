@@ -3,6 +3,7 @@
 import threading
 from pathlib import Path
 
+from src.i18n import t
 from src.utils.json_utils import atomic_write_json, safe_read_json
 from src.utils.logger import get_logger
 
@@ -90,7 +91,7 @@ class BookmarkManager:
             return []
         data = safe_read_json(self._file_path)
         if data is None:
-            logger.warning("BookmarkManager: ✗ 读取失败 (%s)", self._file_path.name)
+            logger.warning(t("storage.log.load_fail"), self._file_path.name)
             return []
         items = data.get("bookmarks", [])
         return [BookmarkItem.from_dict(d) for d in items]
@@ -101,7 +102,7 @@ class BookmarkManager:
         try:
             atomic_write_json(self._file_path, data)
         except OSError as exc:
-            logger.error("BookmarkManager: ✗ 写入失败 (%s)", exc)
+            logger.error(t("storage.log.save_fail"), exc)
 
     def add(self, bookmark: BookmarkItem) -> None:
         """添加一个书签并持久化。"""

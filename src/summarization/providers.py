@@ -1,10 +1,11 @@
-"""Provider 抽象层 —— 统一 Ollama / NVIDIA / 智谱等在线总结提供商的调用接口"""
+"""Provider abstraction layer — unified interface for Ollama / NVIDIA / Zhipu summarization providers"""
 
 import os
 import threading
 from typing import Callable, Optional, Protocol
 
 from src.config.settings import Settings
+from src.i18n import t
 from src.summarization.prompt_manager import PromptManager
 from src.summarization.nvidia_client import NvidiaClient
 from src.summarization.ollama_client import OllamaClient
@@ -15,11 +16,10 @@ logger = get_logger(__name__)
 
 
 class SummarizationProvider(Protocol):
-    """总结提供商协议 —— 所有 Provider 必须实现这三个方法"""
+    """Provider protocol — all providers must implement these three methods"""
 
     def check_connection(self) -> bool:
-        """检查提供商 API 是否可用"""
-        ...
+        """Check if the provider API is available"""
 
     def summarize(
         self,
@@ -31,16 +31,14 @@ class SummarizationProvider(Protocol):
         pause_event: Optional[threading.Event] = None,
         is_use_gui_markdown_flag: bool = True
     ) -> str:
-        """将文本转为总结"""
-        ...
+        """Summarize the given text"""
 
     def close(self) -> None:
-        """释放底层 HTTP 连接等资源"""
-        ...
+        """Release underlying HTTP connections etc."""
 
 
 class OllamaProvider:
-    """Ollama 提供商 —— 本地模型总结"""
+    """Ollama provider — local model summarization"""
 
     def __init__(self, settings: Settings) -> None:
         ollama_url = settings.get("summarization.ollama_url", "http://127.0.0.1:11434")
@@ -85,7 +83,7 @@ class OllamaProvider:
 
 
 class NvidiaProvider:
-    """NVIDIA 提供商 —— 在线 API 总结"""
+    """NVIDIA provider — online API summarization"""
 
     def __init__(self, settings: Settings) -> None:
         nvidia_timeout = settings.get_int("summarization.nvidia_timeout", 600)
@@ -143,7 +141,7 @@ class NvidiaProvider:
 
 
 class ZhipuProvider:
-    """智谱提供商 —— 在线 API 总结"""
+    """Zhipu provider — online API summarization"""
 
     def __init__(self, settings: Settings) -> None:
         zhipu_timeout = settings.get_int("summarization.zhipu_timeout", 600)
@@ -187,12 +185,12 @@ class ZhipuProvider:
 
 
 def create_provider(settings: Settings) -> SummarizationProvider:
-    """工厂函数 —— 根据配置创建对应的 Provider 实例"""
+    """Factory function — creates the appropriate provider based on config"""
     provider_name = settings.get("summarization.provider", "ollama")
     if provider_name == "nvidia":
         return NvidiaProvider(settings)
     if provider_name == "zhipu":
         return ZhipuProvider(settings)
     if provider_name != "ollama":
-        logger.warning("未知的总结提供商 '%s'，回退到 Ollama", provider_name)
+        logger.warning(t("services.summarization.unknown_provider", provider=provider_name))
     return OllamaProvider(settings)

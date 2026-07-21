@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass
 from src.config.settings import Settings
+from src.i18n import t
 from src.preprocessing.ffmpeg import ensure_ffmpeg, ensure_ffprobe
 from src.utils.exceptions import VideoFileError
 from src.utils.logger import get_logger
@@ -77,15 +78,22 @@ class VideoProcessor:
         path = Path(video_path)
 
         if not path.exists():
-            raise VideoFileError(f"音视频文件不存在: {video_path}")
+            raise VideoFileError(
+                t("preprocessing.errors.file_not_found", path=video_path)
+            )
 
         if not path.is_file():
-            raise VideoFileError(f"路径不是文件: {video_path}")
+            raise VideoFileError(
+                t("preprocessing.errors.not_a_file", path=video_path)
+            )
 
         if path.suffix.lower() not in self.supported_input_formats:
             raise VideoFileError(
-                f"不支持的音视频格式: {path.suffix}. "
-                f"支持的格式: {', '.join(self.supported_input_formats)}"
+                t(
+                    "preprocessing.errors.unsupported_format",
+                    suffix=path.suffix,
+                    formats=", ".join(self.supported_input_formats),
+                )
             )
 
         cmd = [
@@ -112,17 +120,23 @@ class VideoProcessor:
 
             if result.returncode != 0:
                 error_msg = result.stderr or result.stdout
-                raise VideoFileError(f"音视频文件损坏: {error_msg}")
+                raise VideoFileError(
+                    t("preprocessing.errors.file_corrupt", error=error_msg)
+                )
 
-            logger.debug("音视频文件验证通过: %s", path.name)
+            logger.debug(
+                t("preprocessing.log.validation_passed"), path.name
+            )
             return True
 
         except subprocess.TimeoutExpired:
-            raise VideoFileError("音视频验证超时")
+            raise VideoFileError(t("preprocessing.errors.timeout"))
         except VideoFileError:
             raise
         except Exception as e:
-            raise VideoFileError(f"音视频验证失败: {e}")
+            raise VideoFileError(
+                t("preprocessing.errors.validation_failed", error=e)
+            )
 
     def get_video_info(self, video_path: str) -> VideoInfo:
         """获取音视频信息
@@ -160,7 +174,10 @@ class VideoProcessor:
 
             if result.returncode != 0:
                 raise VideoFileError(
-                    f"获取音视频信息失败: {result.stderr or result.stdout}"
+                    t(
+                        "preprocessing.errors.info_failed",
+                        error=result.stderr or result.stdout,
+                    )
                 )
 
             data = json.loads(result.stdout)
@@ -192,7 +209,8 @@ class VideoProcessor:
                         fps = float(r_frame_rate)
                 except (ValueError, ZeroDivisionError):
                     logger.warning(
-                        "VideoProcessor: ⚠ 帧率解析失败 (%s)，默认 0", r_frame_rate
+                        t("preprocessing.log.frame_rate_parse_failed"),
+                        r_frame_rate,
                     )
                     fps = 0.0
 
@@ -214,11 +232,15 @@ class VideoProcessor:
             )
 
         except json.JSONDecodeError as e:
-            raise VideoFileError(f"解析音视频信息失败: {e}")
+            raise VideoFileError(
+                t("preprocessing.errors.parse_failed", error=e)
+            )
         except VideoFileError:
             raise
         except Exception as e:
-            raise VideoFileError(f"获取音视频信息失败: {e}")
+            raise VideoFileError(
+                t("preprocessing.errors.info_failed", error=e)
+            )
 
     def extract_audio(
         self,
@@ -256,10 +278,20 @@ class VideoProcessor:
             if video_info is None:
                 video_info = self.get_video_info(video_path)
             if not video_info.has_audio:
-                raise VideoFileError(f"音视频文件没有音轨，无法提取音频: {video_path}")
+                raise VideoFileError(
+                    t("preprocessing.errors.no_audio", path=video_path)
+                )
 
-        label = "转换音频" if self.is_audio_file(video_path) else "提取音频"
-        logger.debug("开始%s: %s", label, Path(video_path).name)
+        label = (
+            t("preprocessing.log.convert_audio")
+            if self.is_audio_file(video_path)
+            else t("preprocessing.log.extract_audio")
+        )
+        logger.debug(
+            t("preprocessing.log.extract_start"),
+            label,
+            Path(video_path).name,
+        )
 
         return self._run_ffmpeg_pcm_extract(
             video_path, str(output_file), sample_rate, channels, label
@@ -289,7 +321,9 @@ class VideoProcessor:
             "-y",
             str(output_file),
         ]
-        logger.debug("FFmpeg命令: %s", " ".join(cmd))
+        logger.debug(
+            t("preprocessing.log.ffmpeg_command"), " ".join(cmd)
+        )
 
         try:
             result = subprocess.run(
@@ -304,33 +338,39 @@ class VideoProcessor:
 
             if result.returncode != 0:
                 error_msg = result.stderr or result.stdout
-                logger.warning("VideoProcessor: ⚠ pcm_s16le 失败，回退 libmp3lame")
+                logger.warning(t("preprocessing.log.fallback_pcm_failed"))
                 return self._extract_audio_fallback(
                     input_path, str(output_file), sample_rate, channels
                 )
 
             if not output_file.exists():
-                logger.warning("VideoProcessor: ⚠ 音频未生成，回退")
+                logger.warning(t("preprocessing.log.fallback_audio_not_generated"))
                 return self._extract_audio_fallback(
                     input_path, str(output_file), sample_rate, channels
                 )
 
-            logger.debug("音频%s成功: %s", label, output_file.name)
+            logger.debug(
+                t("preprocessing.log.extract_success"), label, output_file.name
+            )
             return str(output_file)
 
         except subprocess.TimeoutExpired:
-            raise VideoFileError(f"音频{label}超时")
+            raise VideoFileError(
+                t("preprocessing.errors.extract_timeout", label=label)
+            )
         except VideoFileError:
             raise
         except Exception as e:
-            logger.warning("VideoProcessor: ⚠ %s异常，回退 (%s)", label, e)
+            logger.warning(
+                t("preprocessing.log.fallback_exception"), label, e
+            )
             try:
                 return self._extract_audio_fallback(
                     input_path, str(output_file), sample_rate, channels
                 )
             except VideoFileError as fallback_err:
                 raise VideoFileError(
-                    f"音频{label}失败（含回退）: {e}"
+                    t("preprocessing.errors.extract_failed", label=label, error=e)
                 ) from fallback_err
 
     def _extract_audio_fallback(
@@ -364,8 +404,10 @@ class VideoProcessor:
             str(temp_mp3),
         ]
 
-        logger.info("VideoProcessor: ⚠ pcm_s16le 失败，回退 libmp3lame")
-        logger.debug("FFmpeg命令: %s", " ".join(cmd))
+        logger.info(t("preprocessing.log.fallback_pcm_failed"))
+        logger.debug(
+            t("preprocessing.log.ffmpeg_command"), " ".join(cmd)
+        )
 
         try:
             result = subprocess.run(
@@ -380,10 +422,14 @@ class VideoProcessor:
 
             if result.returncode != 0:
                 error_msg = result.stderr or result.stdout
-                raise VideoFileError(f"音频提取回退方案也失败: {error_msg}")
+                raise VideoFileError(
+                    t("preprocessing.errors.fallback_also_failed", error=error_msg)
+                )
 
             if not temp_mp3.exists():
-                raise VideoFileError("回退方案: MP3 文件未生成")
+                raise VideoFileError(
+                    t("preprocessing.errors.mp3_not_generated")
+                )
 
             convert_cmd = [
                 self.ffmpeg_path,
@@ -409,15 +455,24 @@ class VideoProcessor:
             )
 
             if convert_result.returncode != 0:
-                raise VideoFileError(f"MP3 转 WAV 失败: {convert_result.stderr}")
+                raise VideoFileError(
+                    t(
+                        "preprocessing.errors.mp3_to_wav_failed",
+                        error=convert_result.stderr,
+                    )
+                )
 
-            logger.info("VideoProcessor: ✓ 回退成功 (%s)", output_file.name)
+            logger.info(
+                t("preprocessing.log.fallback_success"), output_file.name
+            )
             return str(output_file)
 
         except VideoFileError:
             raise
         except Exception as e:
-            raise VideoFileError(f"音频提取回退方案失败: {e}")
+            raise VideoFileError(
+                t("preprocessing.errors.fallback_failed", error=e)
+            )
         finally:
             temp_mp3.unlink(missing_ok=True)
 
@@ -438,7 +493,9 @@ class VideoProcessor:
             VideoFileError: 音频文件不支持生成缩略图
         """
         if self.is_audio_file(video_path):
-            raise VideoFileError("不支持对音频文件生成缩略图")
+            raise VideoFileError(
+                t("preprocessing.errors.audio_thumbnail_unsupported")
+            )
         output_file = Path(output_path)
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -446,12 +503,17 @@ class VideoProcessor:
             parts = timestamp.split(":")
             ts_seconds = float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
         except (ValueError, IndexError):
-            raise VideoFileError(f"无效的时间戳格式: {timestamp}，应为 HH:MM:SS")
+            raise VideoFileError(
+                t(
+                    "preprocessing.errors.invalid_timestamp",
+                    timestamp=timestamp,
+                )
+            )
 
         video_info = self.get_video_info(video_path)
         if video_info.duration > 0 and ts_seconds > video_info.duration:
             logger.warning(
-                "VideoProcessor: ⚠ 时间戳 %.1fs 超过时长 %.1fs，使用第一帧",
+                t("preprocessing.log.timestamp_exceeds_duration"),
                 ts_seconds,
                 video_info.duration,
             )
@@ -482,12 +544,18 @@ class VideoProcessor:
 
             if result.returncode != 0:
                 error_msg = result.stderr or result.stdout
-                raise VideoFileError(f"缩略图生成失败: {error_msg}")
+                raise VideoFileError(
+                    t("preprocessing.errors.thumbnail_failed", error=error_msg)
+                )
 
-            logger.info("VideoProcessor: ✓ 缩略图 (%s)", output_file.name)
+            logger.info(
+                t("preprocessing.log.thumbnail_success"), output_file.name
+            )
             return str(output_file)
 
         except VideoFileError:
             raise
         except Exception as e:
-            raise VideoFileError(f"缩略图生成失败: {e}")
+            raise VideoFileError(
+                t("preprocessing.errors.thumbnail_failed", error=e)
+            )

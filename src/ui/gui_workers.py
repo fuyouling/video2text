@@ -23,6 +23,7 @@ from src.text_processing.text_cleaner import TextCleaner
 from src.transcription.transcriber import get_cached_transcriber
 from src.utils.env_loader import get_api_key
 from src.utils.exceptions import DownloadCancelledError
+from src.i18n import t
 from src.utils.logger import get_logger
 from src.utils.rate_limit import RateLimiter
 
@@ -98,12 +99,12 @@ class PauseController:
         if self._event.is_set():
             return
         _logger = get_logger("video2text")
-        _logger.info("  ├─ ✅ 已暂停 — 等待恢复…")
+        _logger.info(t("gui_workers.paused_waiting"))
         while not self._event.wait(timeout=0.5):
             if cancel_check and cancel_check():
                 break
         if not (cancel_check and cancel_check()):
-            _logger.info("  └─ ▶ 已继续")
+            _logger.info(t("gui_workers.resumed"))
 
     @property
     def is_paused(self) -> bool:
@@ -125,7 +126,7 @@ def _get_online_cfg(settings: Settings, suffix: str, default):
 
 
 def _get_provider_label(provider: str) -> str:
-    return {"ollama": "Ollama", "nvidia": "NVIDIA API", "zhipu": "智谱 API"}.get(
+    return {"ollama": "Ollama", "nvidia": "NVIDIA API", "zhipu": t("gui_workers.provider_zhipu")}.get(
         provider, provider
     )
 
@@ -140,17 +141,17 @@ def _check_summarization_connection(
         ollama_model = settings.get("summarization.ollama_model", "")
         ok = OllamaClient.full_check(ollama_url, ollama_model or "")
         if not ok:
-            logger.warning("Ollama 服务不可用")
+            logger.warning(t("gui_workers.check_ollama_unavailable"))
     else:
         provider = create_provider(settings)
         try:
             ok = provider.check_connection()
             if not ok:
-                logger.warning("%s 连接: ✗ 失败", provider_label)
+                logger.warning(t("gui_workers.provider_connect_fail", provider=provider_label))
         finally:
             provider.close()
     status = "✓" if ok else "✗"
-    logger.info("[总结] %s: %s", provider_label, status)
+    logger.info(t("gui_workers.check_status", provider=provider_label, status=status))
     return ok
 
 
@@ -174,7 +175,7 @@ def _build_transcription_service(
     initial_prompt = cfg.initial_prompt if initial_prompt is None else initial_prompt
     hotwords = cfg.hotwords if hotwords is None else hotwords
 
-    logger.info("正在加载转写模型...")
+    logger.info(t("gui_workers.loading_model"))
     transcriber = get_cached_transcriber(
         model_path=cfg.model_path,
         device=cfg.device,
@@ -183,15 +184,10 @@ def _build_transcription_service(
     )
     transcriber.confirm_download_callback = confirm_download_callback
     transcriber.load_model()
-    logger.info("转写模型加载完成")
+    logger.info(t("gui_workers.model_loaded"))
 
     model_name = Path(cfg.model_path).name
-    logger.info(
-        "[转写] 模型: %s | 设备: %s (%s) ✓ ",
-        model_name,
-        transcriber.device,
-        transcriber.compute_type,
-    )
+    logger.info(t("gui_workers.transcribe_params", model=model_name, device=transcriber.device, compute=transcriber.compute_type))
 
     return TranscriptionService(
         transcriber=transcriber,
@@ -357,10 +353,10 @@ class TranscribeWorker(QObject):
             service.run(self.video_files, self.output_dir)
 
         except DownloadCancelledError:
-            logger.info("用户取消了模型下载")
+            logger.info(t("gui_workers.user_cancelled_download"))
         except Exception as exc:
-            logger.exception("转写线程异常")
-            _log_worker_error("转写线程", exc)
+            logger.exception(t("gui_workers.exception_transcribe"))
+            _log_worker_error(t("gui_workers.phase_transcribe"), exc)
             self.error.emit(str(exc))
         finally:
             with self._service_lock:
@@ -417,7 +413,7 @@ class SummarizeWorker(QObject):
 
     def pause(self) -> None:
         self._pause_ctrl.pause()
-        get_logger("video2text").info("  ├─ ⏸ 总结暂停请求已接收，等待当前任务完成…")
+        get_logger("video2text").info(t("gui_workers.pause_requested"))
 
     def resume(self) -> None:
         self._pause_ctrl.resume()
@@ -442,7 +438,7 @@ class SummarizeWorker(QObject):
                 self.settings, logger, provider_name
             ):
                 provider_label = _get_provider_label(provider_name)
-                self.error.emit(f"{provider_label} 服务不可用")
+                self.error.emit(t("gui_workers.provider_unavailable", provider_label=provider_label))
                 return
 
             items = self._prepare_items(file_writer)
@@ -455,7 +451,7 @@ class SummarizeWorker(QObject):
             for item in items:
                 if item.get("_skip"):
                     tracker.tick()
-                    self.video_error.emit(item["video_name"], "转写文件不可用")
+                    self.video_error.emit(item["video_name"], t("gui_workers.transcript_unavailable"))
                     continue
                 valid_items.append(item)
 
@@ -504,8 +500,8 @@ class SummarizeWorker(QObject):
                 provider_inst.close()
 
         except Exception as exc:
-            logger.exception("总结线程异常")
-            _log_worker_error("总结线程", exc)
+            logger.exception(t("gui_workers.exception_summarize"))
+            _log_worker_error(t("gui_workers.phase_summarize"), exc)
             self.error.emit(str(exc))
         finally:
             self.finished.emit()
@@ -524,7 +520,7 @@ class SummarizeWorker(QObject):
             per_fw = FileWriter(file_output_dir) if self.input_folder else file_writer
             transcript_path = per_fw.find_transcript_file(video_name)
             if transcript_path is None:
-                logger.warning("未找到转写文件: %s", video_name)
+                logger.warning(t("gui_workers.transcript_file_not_found", name=video_name))
                 items.append(
                     {
                         "video_name": video_name,
@@ -536,7 +532,7 @@ class SummarizeWorker(QObject):
                 continue
             text = transcript_path.read_text(encoding="utf-8-sig")
             if not text.strip():
-                logger.warning("转写文件为空: %s", video_name)
+                logger.warning(t("gui_workers.transcript_file_empty", name=video_name))
                 items.append(
                     {
                         "video_name": video_name,
@@ -631,7 +627,7 @@ class PipelineWorker(QObject):
 
     def sum_pause(self) -> None:
         self._sum_pause_ctrl.pause()
-        get_logger("video2text").info("  ├─ ⏸ 总结暂停请求已接收，等待当前任务完成…")
+        get_logger("video2text").info(t("gui_workers.pause_requested"))
 
     def sum_resume(self) -> None:
         self._sum_pause_ctrl.resume()
@@ -793,13 +789,13 @@ class PipelineWorker(QObject):
                         provider_inst.close()
             else:
                 provider_label = _get_provider_label(provider_name)
-                logger.warning("%s 服务不可用，跳过总结", provider_label)
+                logger.warning(t("gui_workers.service_unavailable_skip", provider=provider_label))
 
         except DownloadCancelledError:
-            logger.info("用户取消了模型下载")
+            logger.info(t("gui_workers.user_cancelled_download"))
         except Exception as exc:
-            logger.exception("管道线程异常")
-            _log_worker_error("管道线程", exc)
+            logger.exception(t("gui_workers.exception_pipeline"))
+            _log_worker_error(t("gui_workers.phase_pipeline"), exc)
             self.error.emit(str(exc))
         finally:
             with self._tx_service_lock:
@@ -971,7 +967,7 @@ class OllamaListModelWorker(QObject):
                 client.close()
             self.result.emit(models)
         except Exception as exc:
-            get_logger(__name__).warning("Ollama 模型列表: ✗ 获取失败 %s", exc)
+            get_logger(__name__).warning(t("gui_workers.ollama_list_failed", error=exc))
             self.result.emit([])
         finally:
             self.finished.emit()

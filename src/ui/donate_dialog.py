@@ -5,6 +5,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QGuiApplication, QPixmap
 from PySide6.QtWidgets import QDialog, QLabel, QVBoxLayout
 
+from src.i18n import t
+
 ASSETS_DIR = Path(__file__).resolve().parent.parent.parent / "assets"
 if not ASSETS_DIR.exists() and getattr(sys, "frozen", False):
     ASSETS_DIR = Path(sys.executable).parent / "assets"
@@ -15,7 +17,7 @@ class DonateDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("捐赠支持")
+        self.setWindowTitle(t("donate.title"))
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMaximizeButtonHint)
         self._pixmap = QPixmap(str(ASSETS_DIR / "donate.png"))
 
@@ -56,7 +58,7 @@ class DonateDialog(QDialog):
 
         self._img_label = QLabel()
         if self._pixmap.isNull():
-            self._img_label.setText("图片未找到: assets/donate.png")
+            self._img_label.setText(t("donate.image_not_found", path="assets/donate.png"))
             self._img_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         else:
             self._img_label.setPixmap(self._pixmap)

@@ -8,6 +8,7 @@ cuBLAS.and.cuDNN_CUDA12_win_v3.7z 压缩包并解压到 libs/ 目录。
 import time
 from typing import Optional
 
+from src.i18n import t
 from src.utils.logger import get_logger
 from src.utils.paths import ensure_cuda_libs, get_base_dir
 
@@ -106,7 +107,7 @@ class DllDownloader:
             settings_proxy = ""
         if settings_proxy and settings_proxy.strip():
             return "config.ini [app] proxy"
-        return "本机系统代理"
+        return t("dll_downloader.proxy_source.system")
 
     def _get_session(self):
         """获取（或创建）requests Session，仅在首次调用时初始化。
@@ -183,9 +184,9 @@ class DllDownloader:
             else 0
         )
         if existing_size > 0:
-            logger.info("检测到已有 %s（%s），尝试断点续传", DLL_ARCHIVE_NAME, _fmt_size(existing_size))
+            logger.info(t("dll_downloader.download.existing", archive=DLL_ARCHIVE_NAME, size=_fmt_size(existing_size)))
         else:
-            logger.info("开始下载 %s", DLL_ARCHIVE_NAME)
+            logger.info(t("dll_downloader.download.start", archive=DLL_ARCHIVE_NAME))
 
         for attempt in range(1, max_retries + 1):
             response = None
@@ -204,44 +205,39 @@ class DllDownloader:
 
                 # 416 Range Not Satisfiable：文件已完整
                 if response.status_code == 416:
-                    logger.info("文件已完整（HTTP 416），无需下载")
+                    logger.info(t("dll_downloader.download.complete_416"))
                     return True
 
                 is_resume = response.status_code == 206
 
                 if resume_requested and not is_resume:
                     # 服务器不支持断点续传 → 放弃已有部分，从头下载
-                    logger.warning("服务器不支持断点续传，从头下载")
+                    logger.warning(t("dll_downloader.download.no_resume"))
                     existing_size = 0
 
                 if response.status_code >= 400:
                     if 400 <= response.status_code < 500:
                         # 4xx 不可重试（如 404 资源不存在）
-                        logger.error("下载失败：HTTP %s（不可重试）", response.status_code)
+                        logger.error(t("dll_downloader.download.http_error_no_retry", code=response.status_code))
                         return False
                     # 5xx：服务器临时错误，进入下一次重试
-                    logger.warning(
-                        "HTTP %s（第 %d/%d 次尝试）",
-                        response.status_code,
-                        attempt,
-                        max_retries,
-                    )
+                    logger.warning(t("dll_downloader.download.http_error", code=response.status_code, attempt=attempt, max_retries=max_retries))
                     continue
 
                 if is_resume:
-                    logger.info("断点续传中（第 %d 次尝试）", attempt)
+                    logger.info(t("dll_downloader.download.resuming", attempt=attempt))
                 elif attempt > 1:
-                    logger.info("第 %d/%d 次尝试", attempt, max_retries)
+                    logger.info(t("dll_downloader.download.attempt", attempt=attempt, max_retries=max_retries))
 
                 content_length = response.headers.get("content-length")
                 if content_length is not None:
                     total_size = existing_size + int(content_length)
                     if attempt == 1:
-                        logger.info("总大小 %s", _fmt_size(total_size))
+                        logger.info(t("dll_downloader.download.total_size", size=_fmt_size(total_size)))
                 elif is_resume:
                     # 断点续传但没有 content-length → 无法校验完整性，
                     # 放弃已下载部分用 wb 模式从头下载
-                    logger.warning("断点续传响应缺失 content-length，从头下载")
+                    logger.warning(t("dll_downloader.download.no_content_length"))
                     existing_size = 0
                     total_size = 0
                     is_resume = False
@@ -266,31 +262,27 @@ class DllDownloader:
 
                 # 校验下载完整性（仅当已知总量时）
                 if total_size > 0 and downloaded != total_size:
-                    logger.warning(
-                        "大小校验失败（预期 %s，实际 %s），重试",
-                        _fmt_size(total_size),
-                        _fmt_size(downloaded),
-                    )
+                    logger.warning(t("dll_downloader.download.size_mismatch", expected=_fmt_size(total_size), actual=_fmt_size(downloaded)))
                     continue
-                logger.info("下载完成 (%s)", _fmt_size(downloaded))
+                logger.info(t("dll_downloader.download.completed", size=_fmt_size(downloaded)))
                 return True
 
             except requests.exceptions.Timeout:
-                logger.warning("超时（第 %d/%d 次尝试）", attempt, max_retries)
+                logger.warning(t("dll_downloader.download.timeout", attempt=attempt, max_retries=max_retries))
             except requests.exceptions.ConnectionError:
-                logger.warning("连接错误（第 %d/%d 次尝试）", attempt, max_retries)
+                logger.warning(t("dll_downloader.download.connection_error", attempt=attempt, max_retries=max_retries))
             except Exception:
-                logger.warning("未知错误（第 %d/%d 次尝试）", attempt, max_retries)
+                logger.warning(t("dll_downloader.download.unknown_error", attempt=attempt, max_retries=max_retries))
             finally:
                 if response is not None:
                     response.close()
 
             if attempt < max_retries:
                 wait = min(2**attempt, 30)
-                logger.info("%d 秒后重试…", wait)
+                logger.info(t("dll_downloader.download.retry_in", seconds=wait))
                 time.sleep(wait)
 
-        logger.error("下载失败（已重试 %d 次）", max_retries)
+        logger.error(t("dll_downloader.download.failed_retries", max_retries=max_retries))
         return False
 
     # ── 解压 ──────────────────────────────────────────────
@@ -335,7 +327,7 @@ class DllDownloader:
             f"-o{self.libs_dir}",
             str(self.archive_path),
         ]
-        logger.info("解压 %s（使用 %s）", DLL_ARCHIVE_NAME, binary)
+        logger.info(t("dll_downloader.extract.extracting", archive=DLL_ARCHIVE_NAME, binary=binary))
         # CREATE_NO_WINDOW 隐藏打包 exe 运行时弹出的黑窗口（仅 Windows 有效）
         startup_flags = 0
         if hasattr(subprocess, "CREATE_NO_WINDOW"):
@@ -350,12 +342,12 @@ class DllDownloader:
                 creationflags=startup_flags,
             )
         except Exception:
-            logger.error("解压失败：调用 7z 失败")
+            logger.error(t("dll_downloader.extract.call_failed"))
             return False
         if proc.returncode != 0:
-            logger.error("解压失败：%s", (proc.stderr or "").strip()[-500:])
+            logger.error(t("dll_downloader.extract.failed", error=(proc.stderr or "").strip()[-500:]))
             return False
-        logger.info("解压完成")
+        logger.info(t("dll_downloader.extract.done"))
         return True
 
     def _extract_archive(self) -> bool:
@@ -367,10 +359,7 @@ class DllDownloader:
         """
         seven_zip = self._find_7z_binary()
         if not seven_zip:
-            logger.error(
-                "未找到 7z 解压器（7za.exe / 7z.exe）。"
-                "请将 7za.exe 放到程序根目录、7z/ 子目录或安装 7-Zip 后重试。"
-            )
+            logger.error(t("dll_downloader.extract.no_7z"))
             return False
         return self._extract_with_7z(seven_zip)
 
@@ -384,11 +373,11 @@ class DllDownloader:
         返回 True 表示 DLL 已就绪（完整或已补齐），False 表示失败。
         """
         if self.is_dlls_complete():
-            logger.info("DLL 依赖已完整，无需下载")
+            logger.info(t("dll_downloader.status.already_complete"))
             return True
 
         if confirm_callback and not confirm_callback():
-            logger.info("用户取消 DLL 下载")
+            logger.info(t("dll_downloader.status.cancelled"))
             return False
 
         proxy = self._get_proxy()
@@ -397,41 +386,41 @@ class DllDownloader:
         # 复用同一 session：_check_github_accessible 会按传入的 proxy 设置会话代理。
         self._get_session()
         if self._check_github_accessible():
-            logger.info("直连 GitHub 成功")
+            logger.info(t("dll_downloader.status.direct_ok"))
             proxy = ""
         elif proxy:
-            logger.info("直连失败，尝试代理 %s", proxy)
+            logger.info(t("dll_downloader.status.direct_fail_proxy", proxy=proxy))
             if self._check_github_accessible(proxy=proxy):
-                logger.info("代理连接成功")
+                logger.info(t("dll_downloader.status.proxy_ok"))
             else:
-                logger.error("代理连接失败，请检查代理设置后重试")
+                logger.error(t("dll_downloader.status.proxy_fail"))
                 return False
         else:
-            logger.error("无法访问下载地址（GitHub 直连不通且未配置代理）")
-            logger.error("请在 config.ini 的 [app] 节设置 proxy 后重试")
+            logger.error(t("dll_downloader.status.no_access"))
+            logger.error(t("dll_downloader.status.config_hint"))
             return False
 
         if proxy:
-            logger.info("DLL 依赖：使用代理 %s (%s)", proxy, self._proxy_source_hint())
+            logger.info(t("dll_downloader.status.using_proxy", proxy=proxy, source=self._proxy_source_hint()))
         else:
-            logger.info("DLL 依赖：直连下载")
+            logger.info(t("dll_downloader.status.direct_download"))
 
-        logger.info("DLL 依赖：开始检测与补齐（下载 → 解压）")
+        logger.info(t("dll_downloader.status.check_and_fill"))
         ok = self._download_archive(progress_callback, proxy=proxy)
         if not ok:
-            logger.error("DLL 下载失败")
+            logger.error(t("dll_downloader.status.download_fail"))
             return False
 
         ok = self._extract_archive()
         if not ok:
-            logger.error("DLL 解压失败")
+            logger.error(t("dll_downloader.status.extract_fail"))
             return False
 
         # DLL 已补齐，立即把 libs/ 加入 DLL 搜索路径，
         # 这样后续 ctranslate2 加载 CUDA/cuDNN 时无需重启即可生效。
         ensure_cuda_libs()
 
-        logger.info("DLL 依赖全部就绪（共 %d 个）", len(DLL_REQUIRED_FILES))
+        logger.info(t("dll_downloader.status.all_ready", count=len(DLL_REQUIRED_FILES)))
         return True
 
     def cleanup_archive(self) -> None:

@@ -9,6 +9,7 @@ from typing import List, Optional
 from src.transcription.transcriber import TranscriptSegment
 from src.text_processing.segment_merger import MergedSegment
 from src.storage.output_formatter import OutputFormatter
+from src.i18n import t
 from src.utils.exceptions import TranscriptionError, OutputError
 from src.utils.json_utils import atomic_write_json
 from src.utils.logger import get_logger
@@ -77,7 +78,7 @@ class FileWriter:
 
         if not segments:
             raise TranscriptionError(
-                f"转写结果为空（未检测到语音内容），无法写入 {fmt.upper()} 文件: {filename}"
+                t("storage.file_writer.empty_transcript", fmt=fmt.upper(), filename=filename)
             )
 
         if fmt == "txt":
@@ -91,11 +92,11 @@ class FileWriter:
                 [asdict(segment) for segment in segments], ensure_ascii=False, indent=2
             )
         else:
-            raise ValueError(f"不支持的格式: {fmt}")
+            raise ValueError(t("storage.file_writer.unsupported_format", fmt=fmt))
 
         if not content or not content.strip():
             raise TranscriptionError(
-                f"格式化后的内容为空，无法写入 {fmt.upper()} 文件: {filename}"
+                t("storage.file_writer.empty_content", fmt=fmt.upper(), filename=filename)
             )
 
         try:
@@ -105,10 +106,10 @@ class FileWriter:
                 validate_output_file(str(output_path))
                 validate_output_content(str(output_path), fmt)
 
-            logger.debug("FileWriter: ✓ 转写文本 (%s)", output_path.name)
+            logger.debug(t("storage.file_writer.tx_success"), output_path.name)
             return str(output_path)
         except Exception as e:
-            logger.error("FileWriter: ✗ 转写文本 (%s)", e)
+            logger.error(t("storage.file_writer.tx_fail"), output_path.name, e)
             raise
 
     def write_merged_transcript(
@@ -130,7 +131,7 @@ class FileWriter:
             输出文件路径
         """
         if not segments:
-            raise OutputError(f"合并段落为空，无法写入文件: {filename}")
+            raise OutputError(t("storage.file_writer.empty_merged", filename=filename))
 
         output_path = self.output_dir / f"{filename}.txt"
         content = self.formatter.format_merged_transcript(segments, include_timestamps)
@@ -141,10 +142,10 @@ class FileWriter:
             if validate:
                 validate_output_file(str(output_path))
 
-            logger.debug("FileWriter: ✓ 合并文本 (%s)", output_path.name)
+            logger.debug(t("storage.file_writer.merge_success"), output_path.name)
             return str(output_path)
         except Exception as e:
-            logger.error("FileWriter: ✗ 合并文本 (%s)", e)
+            logger.error(t("storage.file_writer.merge_fail"), output_path.name, e)
             raise
 
     SUPPORTED_SUMMARY_FORMATS = ("txt", "md")
@@ -170,7 +171,7 @@ class FileWriter:
         fmt_clean = fmt.lower().strip()
         if fmt_clean not in self.SUPPORTED_SUMMARY_FORMATS:
             raise ValueError(
-                f"不支持的摘要格式: {fmt}，支持: {', '.join(self.SUPPORTED_SUMMARY_FORMATS)}"
+                t("storage.file_writer.unsupported_summary_format", fmt=fmt, formats=", ".join(self.SUPPORTED_SUMMARY_FORMATS))
             )
         output_path = self.output_dir / f"{filename}_summary.{fmt_clean}"
         content = self.formatter.format_summary(summary)
@@ -181,10 +182,10 @@ class FileWriter:
             if validate:
                 validate_output_file(str(output_path))
 
-            logger.debug("FileWriter: ✓ 摘要 (%s)", output_path.name)
+            logger.debug(t("storage.file_writer.summary_success"), output_path.name)
             return str(output_path)
         except Exception as e:
-            logger.error("FileWriter: ✗ 摘要 (%s)", e)
+            logger.error(t("storage.file_writer.summary_fail"), output_path.name, e)
             raise
 
     def find_summary_file(self, filename: str) -> Optional[Path]:
@@ -239,10 +240,10 @@ class FileWriter:
                 validate_output_file(str(output_path))
                 validate_output_content(str(output_path), "json")
 
-            logger.info("FileWriter: ✓ JSON (%s)", output_path.name)
+            logger.info(t("storage.file_writer.json_success"), output_path.name)
             return str(output_path)
         except Exception as e:
-            logger.error("FileWriter: ✗ JSON (%s)", e)
+            logger.error(t("storage.file_writer.json_fail"), output_path.name, e)
             raise
 
     def write_text(self, text: str, filename: str, validate: bool = True) -> str:
@@ -264,10 +265,10 @@ class FileWriter:
             if validate:
                 validate_output_file(str(output_path))
 
-            logger.info("FileWriter: ✓ 文本 (%s)", output_path.name)
+            logger.info(t("storage.file_writer.text_success"), output_path.name)
             return str(output_path)
         except Exception as e:
-            logger.error("FileWriter: ✗ 文本 (%s)", e)
+            logger.error(t("storage.file_writer.text_fail"), output_path.name, e)
             raise
 
     def write_keywords(
@@ -284,7 +285,7 @@ class FileWriter:
             输出文件路径
         """
         if not keywords:
-            raise OutputError(f"关键词列表为空，无法写入文件: {filename}")
+            raise OutputError(t("storage.file_writer.empty_keywords", filename=filename))
 
         output_path = self.output_dir / f"{filename}_keywords.txt"
         content = "\n".join(keywords)
@@ -295,8 +296,8 @@ class FileWriter:
             if validate:
                 validate_output_file(str(output_path))
 
-            logger.info("FileWriter: ✓ 关键词 (%s)", output_path.name)
+            logger.info(t("storage.file_writer.keywords_success"), output_path.name)
             return str(output_path)
         except Exception as e:
-            logger.error("FileWriter: ✗ 关键词 (%s)", e)
+            logger.error(t("storage.file_writer.keywords_fail"), output_path.name, e)
             raise

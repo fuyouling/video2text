@@ -1,12 +1,15 @@
 """主题管理器 —— 支持浅色/深色主题切换"""
 
 
+from src.i18n import t
+
+
 class ThemeManager:
     """主题管理器 —— 维护浅色/深色两套配色方案。"""
 
     THEMES = {
         "light": {
-            "name": "浅色",
+            "name": t("theme.light"),
             "bg_color": "#ffffff",
             "text_color": "#333333",
             "secondary_bg": "#f4f4f4",
@@ -20,7 +23,7 @@ class ThemeManager:
             "muted_color": "#888888",
         },
         "dark": {
-            "name": "深色",
+            "name": t("theme.dark"),
             "bg_color": "#1e1e1e",
             "text_color": "#d4d4d4",
             "secondary_bg": "#2d2d2d",

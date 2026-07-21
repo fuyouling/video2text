@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.config.settings import Settings
+from src.i18n import t
 from src.summarization.ollama_client import OllamaClient
 from src.ui.gui_workers import (
     CheckWorker,
@@ -28,55 +29,55 @@ from src.ui.gui_workers import (
 from src.utils.logger import get_logger
 
 _SUMM_KEY_LABELS: dict[str, str] = {
-    "summarization.ollama_url": "Ollama服务地址",
-    "summarization.model_name": "模型名称",
-    "summarization.max_length": "最大长度",
-    "summarization.temperature": "温度",
-    "summarization.timeout": "超时时间",
-    "summarization.nvidia_api_url": "NVIDIA API 地址",
-    "summarization.nvidia_model": "NVIDIA 模型",
-    "summarization.nvidia_max_tokens": "最大 Token 数",
-    "summarization.nvidia_temperature": "温度",
-    "summarization.nvidia_top_p": "Top P",
-    "summarization.nvidia_frequency_penalty": "频率惩罚",
-    "summarization.nvidia_presence_penalty": "存在惩罚",
-    "summarization.nvidia_timeout": "NVIDIA 超时时间",
-    "summarization.nvidia_mode": "NVIDIA 模式",
-    "summarization.nvidia_thread_count": "NVIDIA 线程数",
-    "summarization.nvidia_stream": "NVIDIA 流式输出",
-    "summarization.zhipu_model": "智谱模型",
-    "summarization.zhipu_max_tokens": "最大 Token 数",
-    "summarization.zhipu_temperature": "温度",
-    "summarization.zhipu_timeout": "智谱超时时间",
-    "summarization.zhipu_mode": "智谱模式",
-    "summarization.zhipu_thread_count": "智谱线程数",
-    "summarization.zhipu_stream": "智谱流式输出",
+    "summarization.ollama_url": "summ_labels.ollama_url",
+    "summarization.model_name": "summ_labels.model_name",
+    "summarization.max_length": "summ_labels.max_length",
+    "summarization.temperature": "summ_labels.temperature",
+    "summarization.timeout": "summ_labels.timeout",
+    "summarization.nvidia_api_url": "summ_labels.nvidia_api_url",
+    "summarization.nvidia_model": "summ_labels.nvidia_model",
+    "summarization.nvidia_max_tokens": "summ_labels.nvidia_max_tokens",
+    "summarization.nvidia_temperature": "summ_labels.nvidia_temperature",
+    "summarization.nvidia_top_p": "summ_labels.nvidia_top_p",
+    "summarization.nvidia_frequency_penalty": "summ_labels.nvidia_frequency_penalty",
+    "summarization.nvidia_presence_penalty": "summ_labels.nvidia_presence_penalty",
+    "summarization.nvidia_timeout": "summ_labels.nvidia_timeout",
+    "summarization.nvidia_mode": "summ_labels.nvidia_mode",
+    "summarization.nvidia_thread_count": "summ_labels.nvidia_thread_count",
+    "summarization.nvidia_stream": "summ_labels.nvidia_stream",
+    "summarization.zhipu_model": "summ_labels.zhipu_model",
+    "summarization.zhipu_max_tokens": "summ_labels.zhipu_max_tokens",
+    "summarization.zhipu_temperature": "summ_labels.zhipu_temperature",
+    "summarization.zhipu_timeout": "summ_labels.zhipu_timeout",
+    "summarization.zhipu_mode": "summ_labels.zhipu_mode",
+    "summarization.zhipu_thread_count": "summ_labels.zhipu_thread_count",
+    "summarization.zhipu_stream": "summ_labels.zhipu_stream",
 }
 
 _SUMM_KEY_TOOLTIPS: dict[str, str] = {
-    "summarization.ollama_url": "Ollama 服务地址，默认 http://127.0.0.1:11434",
-    "summarization.model_name": "Ollama 模型名称，点击「刷新模型列表」获取可用模型",
-    "summarization.max_length": "生成摘要的最大 token 数，长文本建议 10000+",
-    "summarization.temperature": "生成温度 (0~2)，越低越确定性，建议 0.3~0.8",
-    "summarization.timeout": "请求超时时间 (秒)，长文本建议 600+",
-    "summarization.nvidia_api_url": "NVIDIA API 端点地址",
-    "summarization.nvidia_model": "NVIDIA 模型标识，如 openai/gpt-oss-120b",
-    "summarization.nvidia_max_tokens": "最大生成 token 数",
-    "summarization.nvidia_temperature": "生成温度 (0~2)",
-    "summarization.nvidia_top_p": "核采样概率阈值 (0~1)，控制输出多样性",
-    "summarization.nvidia_frequency_penalty": "频率惩罚 (-2.0~2.0)，降低重复用词概率",
-    "summarization.nvidia_presence_penalty": "存在惩罚 (-2.0~2.0)，鼓励谈论新话题",
-    "summarization.nvidia_timeout": "NVIDIA 请求超时时间 (秒)，长文本建议 600+",
-    "summarization.nvidia_mode": "NVIDIA 模式: single (单线程，支持流式), multi (多线程并发)",
-    "summarization.nvidia_thread_count": "多线程模式下的并发线程数",
-    "summarization.nvidia_stream": "是否启用流式输出 (仅单线程模式有效): true / false",
-    "summarization.zhipu_model": "智谱模型标识，如 glm-4.7",
-    "summarization.zhipu_max_tokens": "最大生成 token 数",
-    "summarization.zhipu_temperature": "生成温度 (0~2)",
-    "summarization.zhipu_timeout": "智谱请求超时时间 (秒)，长文本建议 600+",
-    "summarization.zhipu_mode": "智谱模式: single (单线程，支持流式), multi (多线程并发)",
-    "summarization.zhipu_thread_count": "多线程模式下的并发线程数",
-    "summarization.zhipu_stream": "是否启用流式输出 (仅单线程模式有效): true / false",
+    "summarization.ollama_url": "summ_tooltips.ollama_url",
+    "summarization.model_name": "summ_tooltips.model_name",
+    "summarization.max_length": "summ_tooltips.max_length",
+    "summarization.temperature": "summ_tooltips.temperature",
+    "summarization.timeout": "summ_tooltips.timeout",
+    "summarization.nvidia_api_url": "summ_tooltips.nvidia_api_url",
+    "summarization.nvidia_model": "summ_tooltips.nvidia_model",
+    "summarization.nvidia_max_tokens": "summ_tooltips.nvidia_max_tokens",
+    "summarization.nvidia_temperature": "summ_tooltips.nvidia_temperature",
+    "summarization.nvidia_top_p": "summ_tooltips.nvidia_top_p",
+    "summarization.nvidia_frequency_penalty": "summ_tooltips.nvidia_frequency_penalty",
+    "summarization.nvidia_presence_penalty": "summ_tooltips.nvidia_presence_penalty",
+    "summarization.nvidia_timeout": "summ_tooltips.nvidia_timeout",
+    "summarization.nvidia_mode": "summ_tooltips.nvidia_mode",
+    "summarization.nvidia_thread_count": "summ_tooltips.nvidia_thread_count",
+    "summarization.nvidia_stream": "summ_tooltips.nvidia_stream",
+    "summarization.zhipu_model": "summ_tooltips.zhipu_model",
+    "summarization.zhipu_max_tokens": "summ_tooltips.zhipu_max_tokens",
+    "summarization.zhipu_temperature": "summ_tooltips.zhipu_temperature",
+    "summarization.zhipu_timeout": "summ_tooltips.zhipu_timeout",
+    "summarization.zhipu_mode": "summ_tooltips.zhipu_mode",
+    "summarization.zhipu_thread_count": "summ_tooltips.zhipu_thread_count",
+    "summarization.zhipu_stream": "summ_tooltips.zhipu_stream",
 }
 
 
@@ -113,6 +114,7 @@ class SummarizationTab(QWidget):
             "_ollama_check_thread",
             "_ollama_list_thread",
             "_ollama_start_thread",
+            "_ollama_stop_thread",
             "_nvidia_check_thread",
             "_zhipu_check_thread",
         ):
@@ -132,11 +134,11 @@ class SummarizationTab(QWidget):
         main_layout.setContentsMargins(8, 8, 8, 8)
 
         # ---- 服务商选择 ----
-        provider_group = QGroupBox("总结服务")
+        provider_group = QGroupBox(t("summarization_tab.provider_group"))
         provider_layout = QHBoxLayout(provider_group)
-        self._radio_ollama = QRadioButton("本地 Ollama 模型")
-        self._radio_nvidia = QRadioButton("在线 NVIDIA 模型")
-        self._radio_zhipu = QRadioButton("在线智谱模型")
+        self._radio_ollama = QRadioButton(t("summarization_tab.radio_ollama"))
+        self._radio_nvidia = QRadioButton(t("summarization_tab.radio_nvidia"))
+        self._radio_zhipu = QRadioButton(t("summarization_tab.radio_zhipu"))
         current_provider = self._settings.get("summarization.provider", "ollama")
         if current_provider == "nvidia":
             self._radio_nvidia.setChecked(True)
@@ -150,7 +152,7 @@ class SummarizationTab(QWidget):
         main_layout.addWidget(provider_group)
 
         # ---- Ollama 区域 ----
-        self._ollama_group = QGroupBox("Ollama 配置")
+        self._ollama_group = QGroupBox(t("summarization_tab.ollama_group"))
         ollama_form = QFormLayout(self._ollama_group)
         ollama_form.setContentsMargins(8, 8, 8, 8)
 
@@ -170,18 +172,19 @@ class SummarizationTab(QWidget):
                 widget = self._create_model_combo(value, ollama_form)
             else:
                 widget = QLineEdit(value)
-                label = _SUMM_KEY_LABELS.get(full_key, key)
+                label_key = _SUMM_KEY_LABELS.get(full_key)
+                label = t(label_key) if label_key else key
                 ollama_form.addRow(f"{label}:", widget)
-            tooltip = _SUMM_KEY_TOOLTIPS.get(full_key)
-            if tooltip:
-                widget.setToolTip(tooltip)
+            tooltip_key = _SUMM_KEY_TOOLTIPS.get(full_key)
+            if tooltip_key:
+                widget.setToolTip(t(tooltip_key))
             self._section_edits[key] = widget
 
         self._add_ollama_service_buttons(ollama_form)
         main_layout.addWidget(self._ollama_group)
 
         # ---- NVIDIA 区域 ----
-        self._nvidia_group = QGroupBox("NVIDIA 配置")
+        self._nvidia_group = QGroupBox(t("summarization_tab.nvidia_group"))
         nvidia_form = QFormLayout(self._nvidia_group)
         nvidia_form.setContentsMargins(8, 8, 8, 8)
 
@@ -212,38 +215,37 @@ class SummarizationTab(QWidget):
         for key, value in nvidia_items.items():
             full_key = f"summarization.{key}"
             widget = QLineEdit(value)
-            tooltip = _SUMM_KEY_TOOLTIPS.get(full_key)
-            if tooltip:
-                widget.setToolTip(tooltip)
-            label = _SUMM_KEY_LABELS.get(full_key, key)
+            tooltip_key = _SUMM_KEY_TOOLTIPS.get(full_key)
+            if tooltip_key:
+                widget.setToolTip(t(tooltip_key))
+            label_key = _SUMM_KEY_LABELS.get(full_key)
+            label = t(label_key) if label_key else key
             nvidia_form.addRow(f"{label}:", widget)
             self._section_edits[key] = widget
 
-        nvidia_mode = self._settings.get("summarization.nvidia_mode", "single")
-
         self._nvidia_mode_combo = QComboBox()
-        self._nvidia_mode_combo.addItem("单线程", "single")
-        self._nvidia_mode_combo.addItem("多线程", "multi")
+        self._nvidia_mode_combo.addItem(t("summarization_tab.mode_single"), "single")
+        self._nvidia_mode_combo.addItem(t("summarization_tab.mode_multi"), "multi")
         nvidia_mode_val = self._settings.get("summarization.nvidia_mode", "single")
         from src.ui.gui_dialogs import ConfigEditorDialog
         ConfigEditorDialog._set_widget_text(self._nvidia_mode_combo, nvidia_mode_val)
         self._nvidia_mode_combo.setToolTip(
             _SUMM_KEY_TOOLTIPS.get("summarization.nvidia_mode", "")
         )
-        nvidia_form.addRow("NVIDIA 模式:", self._nvidia_mode_combo)
+        nvidia_form.addRow(t("summarization_tab.nvidia_mode_label"), self._nvidia_mode_combo)
         self._section_edits["nvidia_mode"] = self._nvidia_mode_combo
 
         self._nvidia_stream_combo = QComboBox()
-        self._nvidia_stream_combo.addItem("是")
-        self._nvidia_stream_combo.addItem("否")
+        self._nvidia_stream_combo.addItem(t("common.yes"))
+        self._nvidia_stream_combo.addItem(t("common.no"))
         nvidia_stream_val = self._settings.get("summarization.nvidia_stream", "true")
         from src.ui.gui_dialogs import ConfigEditorDialog
         ConfigEditorDialog._set_widget_text(self._nvidia_stream_combo, nvidia_stream_val)
         self._nvidia_stream_combo.setToolTip(
             _SUMM_KEY_TOOLTIPS.get("summarization.nvidia_stream", "")
         )
-        self._nvidia_stream_row_label = QLabel("NVIDIA 流式输出:")
-        self._nvidia_stream_row = nvidia_form.addRow(
+        self._nvidia_stream_row_label = QLabel(t("summarization_tab.nvidia_stream_label"))
+        nvidia_form.addRow(
             self._nvidia_stream_row_label, self._nvidia_stream_combo
         )
         self._section_edits["nvidia_stream"] = self._nvidia_stream_combo
@@ -255,8 +257,8 @@ class SummarizationTab(QWidget):
         self._nvidia_thread_edit.setToolTip(
             _SUMM_KEY_TOOLTIPS.get("summarization.nvidia_thread_count", "")
         )
-        self._nvidia_thread_row_label = QLabel("NVIDIA 线程数:")
-        self._nvidia_thread_row = nvidia_form.addRow(
+        self._nvidia_thread_row_label = QLabel(t("summarization_tab.nvidia_threads_label"))
+        nvidia_form.addRow(
             self._nvidia_thread_row_label, self._nvidia_thread_edit
         )
         self._section_edits["nvidia_thread_count"] = self._nvidia_thread_edit
@@ -270,7 +272,7 @@ class SummarizationTab(QWidget):
         main_layout.addWidget(self._nvidia_group)
 
         # ---- 智谱区域 ----
-        self._zhipu_group = QGroupBox("智谱配置")
+        self._zhipu_group = QGroupBox(t("summarization_tab.zhipu_group"))
         zhipu_form = QFormLayout(self._zhipu_group)
         zhipu_form.setContentsMargins(8, 8, 8, 8)
 
@@ -288,38 +290,37 @@ class SummarizationTab(QWidget):
         for key, value in zhipu_items.items():
             full_key = f"summarization.{key}"
             widget = QLineEdit(value)
-            tooltip = _SUMM_KEY_TOOLTIPS.get(full_key)
-            if tooltip:
-                widget.setToolTip(tooltip)
-            label = _SUMM_KEY_LABELS.get(full_key, key)
+            tooltip_key = _SUMM_KEY_TOOLTIPS.get(full_key)
+            if tooltip_key:
+                widget.setToolTip(t(tooltip_key))
+            label_key = _SUMM_KEY_LABELS.get(full_key)
+            label = t(label_key) if label_key else key
             zhipu_form.addRow(f"{label}:", widget)
             self._section_edits[key] = widget
 
-        zhipu_mode = self._settings.get("summarization.zhipu_mode", "single")
-
         self._zhipu_mode_combo = QComboBox()
-        self._zhipu_mode_combo.addItem("单线程", "single")
-        self._zhipu_mode_combo.addItem("多线程", "multi")
+        self._zhipu_mode_combo.addItem(t("summarization_tab.mode_single"), "single")
+        self._zhipu_mode_combo.addItem(t("summarization_tab.mode_multi"), "multi")
         zhipu_mode_val = self._settings.get("summarization.zhipu_mode", "single")
         from src.ui.gui_dialogs import ConfigEditorDialog
         ConfigEditorDialog._set_widget_text(self._zhipu_mode_combo, zhipu_mode_val)
         self._zhipu_mode_combo.setToolTip(
             _SUMM_KEY_TOOLTIPS.get("summarization.zhipu_mode", "")
         )
-        zhipu_form.addRow("智谱模式:", self._zhipu_mode_combo)
+        zhipu_form.addRow(t("summarization_tab.zhipu_mode_label"), self._zhipu_mode_combo)
         self._section_edits["zhipu_mode"] = self._zhipu_mode_combo
 
         self._zhipu_stream_combo = QComboBox()
-        self._zhipu_stream_combo.addItem("是")
-        self._zhipu_stream_combo.addItem("否")
+        self._zhipu_stream_combo.addItem(t("common.yes"))
+        self._zhipu_stream_combo.addItem(t("common.no"))
         zhipu_stream_val = self._settings.get("summarization.zhipu_stream", "true")
         from src.ui.gui_dialogs import ConfigEditorDialog
         ConfigEditorDialog._set_widget_text(self._zhipu_stream_combo, zhipu_stream_val)
         self._zhipu_stream_combo.setToolTip(
             _SUMM_KEY_TOOLTIPS.get("summarization.zhipu_stream", "")
         )
-        self._zhipu_stream_row_label = QLabel("智谱流式输出:")
-        self._zhipu_stream_row = zhipu_form.addRow(
+        self._zhipu_stream_row_label = QLabel(t("summarization_tab.zhipu_stream_label"))
+        zhipu_form.addRow(
             self._zhipu_stream_row_label, self._zhipu_stream_combo
         )
         self._section_edits["zhipu_stream"] = self._zhipu_stream_combo
@@ -329,8 +330,8 @@ class SummarizationTab(QWidget):
         self._zhipu_thread_edit.setToolTip(
             _SUMM_KEY_TOOLTIPS.get("summarization.zhipu_thread_count", "")
         )
-        self._zhipu_thread_row_label = QLabel("智谱线程数:")
-        self._zhipu_thread_row = zhipu_form.addRow(
+        self._zhipu_thread_row_label = QLabel(t("summarization_tab.zhipu_threads_label"))
+        zhipu_form.addRow(
             self._zhipu_thread_row_label, self._zhipu_thread_edit
         )
         self._section_edits["zhipu_thread_count"] = self._zhipu_thread_edit
@@ -374,7 +375,7 @@ class SummarizationTab(QWidget):
     def _add_nvidia_test_button(self, form: QFormLayout) -> None:
         """添加 NVIDIA 测试连接按钮"""
         btn_row = QHBoxLayout()
-        self._nvidia_test_btn = QPushButton("测试连接")
+        self._nvidia_test_btn = QPushButton(t("summarization_tab.test_btn"))
         self._nvidia_test_btn.clicked.connect(self._test_nvidia)
         btn_row.addWidget(self._nvidia_test_btn)
         self._nvidia_status_label = QLabel("")
@@ -395,7 +396,7 @@ class SummarizationTab(QWidget):
         model_edit = self._section_edits.get("nvidia_model")
         model = model_edit.text().strip() if model_edit else ""
 
-        self._nvidia_status_label.setText("测试中...")
+        self._nvidia_status_label.setText(t("summarization_tab.testing"))
         self._nvidia_status_label.setStyleSheet("color: orange")
         self._nvidia_test_btn.setEnabled(False)
 
@@ -406,19 +407,16 @@ class SummarizationTab(QWidget):
 
         def _on_result(ok: bool, latency_ms: float, _detail: str = ""):
             if ok:
-                self._nvidia_status_label.setText(f"连接成功 ({latency_ms:.0f}ms)")
+                self._nvidia_status_label.setText(t("summarization_tab.status_connected", latency_ms=latency_ms))
                 self._nvidia_status_label.setStyleSheet("color: green")
                 get_logger("video2text").info(
-                    "NVIDIA API 连接: ✓ 成功 (%.0fms) | url=%s model=%s",
-                    latency_ms,
-                    url,
-                    model,
+                    t("summarization_tab.log_nvidia_ok", latency_ms=latency_ms, url=url, model=model)
                 )
             else:
-                self._nvidia_status_label.setText("连接失败，请检查 API Key 和网络")
+                self._nvidia_status_label.setText(t("summarization_tab.status_connect_fail"))
                 self._nvidia_status_label.setStyleSheet("color: red")
                 get_logger("video2text").warning(
-                    "NVIDIA API 连接: ✗ 失败 | url=%s model=%s", url, model
+                    t("summarization_tab.log_nvidia_fail", url=url, model=model)
                 )
 
         def _cleanup():
@@ -439,7 +437,7 @@ class SummarizationTab(QWidget):
     def _add_zhipu_test_button(self, form: QFormLayout) -> None:
         """添加智谱测试连接按钮"""
         btn_row = QHBoxLayout()
-        self._zhipu_test_btn = QPushButton("测试连接")
+        self._zhipu_test_btn = QPushButton(t("summarization_tab.test_btn"))
         self._zhipu_test_btn.clicked.connect(self._test_zhipu)
         btn_row.addWidget(self._zhipu_test_btn)
         self._zhipu_status_label = QLabel("")
@@ -454,7 +452,7 @@ class SummarizationTab(QWidget):
         model_edit = self._section_edits.get("zhipu_model")
         model = model_edit.text().strip() if model_edit else ""
 
-        self._zhipu_status_label.setText("测试中...")
+        self._zhipu_status_label.setText(t("summarization_tab.testing"))
         self._zhipu_status_label.setStyleSheet("color: orange")
         self._zhipu_test_btn.setEnabled(False)
 
@@ -465,18 +463,16 @@ class SummarizationTab(QWidget):
 
         def _on_result(ok: bool, latency_ms: float, _detail: str = ""):
             if ok:
-                self._zhipu_status_label.setText(f"连接成功 ({latency_ms:.0f}ms)")
+                self._zhipu_status_label.setText(t("summarization_tab.status_connected", latency_ms=latency_ms))
                 self._zhipu_status_label.setStyleSheet("color: green")
                 get_logger("video2text").info(
-                    "智谱 API 连接: ✓ 成功 (%.0fms) | model=%s",
-                    latency_ms,
-                    model,
+                    t("summarization_tab.log_zhipu_ok", latency_ms=latency_ms, model=model)
                 )
             else:
-                self._zhipu_status_label.setText("连接失败，请检查 API Key 和网络")
+                self._zhipu_status_label.setText(t("summarization_tab.status_connect_fail"))
                 self._zhipu_status_label.setStyleSheet("color: red")
                 get_logger("video2text").warning(
-                    "智谱 API 连接: ✗ 失败 | model=%s", model
+                    t("summarization_tab.log_zhipu_fail", model=model)
                 )
 
         def _cleanup():
@@ -501,10 +497,10 @@ class SummarizationTab(QWidget):
         combo.setCurrentText(current_value)
         row = QHBoxLayout()
         row.addWidget(combo, 1)
-        refresh_btn = QPushButton("刷新模型列表")
+        refresh_btn = QPushButton(t("summarization_tab.refresh_btn"))
         refresh_btn.clicked.connect(self._refresh_model_list)
         row.addWidget(refresh_btn)
-        label = _SUMM_KEY_LABELS.get("summarization.model_name", "model_name")
+        label = t("summarization_tab.model_label")
         form.addRow(f"{label}:", row)
         self._model_combo = combo
         self._refresh_models_btn = refresh_btn
@@ -512,7 +508,7 @@ class SummarizationTab(QWidget):
 
     def _refresh_model_list(self) -> None:
         url = self._get_ollama_url()
-        self._set_ollama_status("刷新中...", "orange")
+        self._set_ollama_status(t("summarization_tab.refreshing"), "orange")
         self._refresh_models_btn.setEnabled(False)
         self._wait_async_thread("_ollama_list_thread")
         thread = QThread()
@@ -545,19 +541,19 @@ class SummarizationTab(QWidget):
             elif current_text.strip():
                 self._model_combo.insertItem(0, current_text)
                 self._model_combo.setCurrentIndex(0)
-            self._set_ollama_status(f"找到 {len(models)} 个模型", "green")
+            self._set_ollama_status(t("summarization_tab.status_models_found", count=len(models)), "green")
         else:
-            self._set_ollama_status("未找到模型或连接失败", "red")
+            self._set_ollama_status(t("summarization_tab.status_no_models"), "red")
 
     def _add_ollama_service_buttons(self, form: QFormLayout) -> None:
         btn_row = QHBoxLayout()
-        self._ollama_start_btn = QPushButton("启动服务")
+        self._ollama_start_btn = QPushButton(t("summarization_tab.start_btn"))
         self._ollama_start_btn.clicked.connect(self._start_ollama_service)
         btn_row.addWidget(self._ollama_start_btn)
-        self._ollama_stop_btn = QPushButton("关闭服务")
+        self._ollama_stop_btn = QPushButton(t("summarization_tab.stop_btn"))
         self._ollama_stop_btn.clicked.connect(self._stop_ollama_service)
         btn_row.addWidget(self._ollama_stop_btn)
-        self._ollama_test_btn = QPushButton("测试连接")
+        self._ollama_test_btn = QPushButton(t("summarization_tab.test_btn"))
         self._ollama_test_btn.clicked.connect(self._test_ollama)
         btn_row.addWidget(self._ollama_test_btn)
         self._ollama_status_label = QLabel("")
@@ -586,7 +582,7 @@ class SummarizationTab(QWidget):
     def _test_ollama(self) -> None:
         url = self._get_ollama_url()
         model = self._model_combo.currentText().strip() if self._model_combo else ""
-        self._set_ollama_status("测试中...", "orange")
+        self._set_ollama_status(t("summarization_tab.testing"), "orange")
         self._wait_async_thread("_ollama_check_thread")
         thread = QThread()
         worker = CheckWorker("ollama", url=url, model=model)
@@ -605,33 +601,27 @@ class SummarizationTab(QWidget):
         url = self._get_ollama_url()
         model = self._model_combo.currentText().strip() if self._model_combo else ""
         if ok:
-            self._set_ollama_status(f"连接成功 ({latency_ms:.0f}ms)", "green")
+            self._set_ollama_status(t("summarization_tab.status_connected", latency_ms=latency_ms), "green")
             get_logger("video2text").info(
-                "Ollama 连接: ✓ 成功 (%.0fms) | url=%s model=%s",
-                latency_ms,
-                url,
-                model,
+                t("summarization_tab.log_ollama_ok", latency_ms=latency_ms, url=url, model=model)
             )
         else:
             if reason == "connection_failed":
-                status_text = "连接失败，请检查 Ollama 服务是否已启动"
+                status_text = t("summarization_tab.status_connect_fail_ollama")
             elif reason == "model_not_found":
-                status_text = f"连接成功，但模型 '{model}' 不存在"
+                status_text = t("summarization_tab.status_model_not_found", model=model)
             elif reason == "error":
-                status_text = "检测异常，请查看日志"
+                status_text = t("summarization_tab.status_check_error")
             else:
-                status_text = "连接失败"
-            self._set_ollama_status("连接失败", "red")
+                status_text = t("summarization_tab.status_connect_fail")
+            self._set_ollama_status(status_text, "red")
             get_logger("video2text").warning(
-                "Ollama 连接: ✗ 失败 | reason=%s url=%s model=%s",
-                status_text,
-                url,
-                model,
+                t("summarization_tab.log_ollama_fail", reason=status_text, url=url, model=model)
             )
 
     def _start_ollama_service(self) -> None:
         url = self._get_ollama_url()
-        self._set_ollama_status("正在启动...", "orange")
+        self._set_ollama_status(t("summarization_tab.starting"), "orange")
         self._ollama_start_btn.setEnabled(False)
         self._wait_async_thread("_ollama_start_thread")
         thread = QThread()
@@ -657,30 +647,29 @@ class SummarizationTab(QWidget):
         logger = get_logger("video2text")
         if ok:
             if status == "already_running":
-                self._set_ollama_status("Ollama 服务已在运行中", "green")
-                logger.info("Ollama 服务启动: ✓ 已在运行")
+                self._set_ollama_status(t("summarization_tab.status_already_running"), "green")
+                logger.info(t("summarization_tab.log_ollama_start_already"))
             else:
-                self._set_ollama_status("Ollama 服务已启动", "green")
-                logger.info("Ollama 服务启动: ✓ 成功")
+                self._set_ollama_status(t("summarization_tab.status_started"), "green")
+                logger.info(t("summarization_tab.log_ollama_start_ok"))
         elif status == "not_found":
-            self._set_ollama_status("未找到ollama命令", "red")
-            logger.warning("Ollama 服务启动: ✗ 未找到ollama命令")
+            self._set_ollama_status(t("summarization_tab.status_cmd_not_found"), "red")
+            logger.warning(t("summarization_tab.log_ollama_start_not_found"))
             QMessageBox.warning(
                 self,
-                "提示",
-                "未找到ollama命令，请确保已安装Ollama。\n"
-                "可以从 https://ollama.com/download 下载安装。",
+                t("summarization_tab.ollama_not_found_title"),
+                t("summarization_tab.ollama_not_found_msg"),
             )
         elif status == "timeout":
-            self._set_ollama_status("启动超时，请稍后测试连接", "orange")
-            logger.warning("Ollama 服务启动: ✗ 超时")
+            self._set_ollama_status(t("summarization_tab.status_start_timeout"), "orange")
+            logger.warning(t("summarization_tab.log_ollama_start_timeout"))
         else:
-            self._set_ollama_status("启动失败", "red")
-            logger.error("Ollama 服务启动: ✗ 失败")
+            self._set_ollama_status(t("summarization_tab.status_start_failed"), "red")
+            logger.error(t("summarization_tab.log_ollama_start_fail"))
 
     def _stop_ollama_service(self) -> None:
         url = self._get_ollama_url()
-        self._set_ollama_status("正在关闭...", "orange")
+        self._set_ollama_status(t("summarization_tab.stopping"), "orange")
         self._ollama_stop_btn.setEnabled(False)
         self._wait_async_thread("_ollama_stop_thread")
         is_external = OllamaClient._service_process is None
@@ -705,13 +694,13 @@ class SummarizationTab(QWidget):
 
     def _on_stop_result(self, ok: bool, status: str) -> None:
         if status == "external":
-            self._set_ollama_status("Ollama 非本程序启动，无法关闭", "orange")
+            self._set_ollama_status(t("summarization_tab.status_stop_external"), "orange")
         elif ok:
-            self._set_ollama_status("Ollama 服务已关闭", "green")
+            self._set_ollama_status(t("summarization_tab.status_stopped"), "green")
         elif status == "still_running":
-            self._set_ollama_status("关闭失败，服务仍在运行", "red")
+            self._set_ollama_status(t("summarization_tab.status_stop_failed"), "red")
         else:
-            self._set_ollama_status("关闭失败", "red")
+            self._set_ollama_status(t("summarization_tab.status_stop_error"), "red")
 
     def _wait_async_thread(self, attr_name: str, timeout_ms: int = 3000) -> None:
         old_thread = getattr(self, attr_name, None)

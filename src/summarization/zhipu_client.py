@@ -1,10 +1,11 @@
-"""智谱 API 客户端 —— 使用 zai-sdk 调用 GLM 模型"""
+"""Zhipu API client — calling GLM models via zai-sdk"""
 
 import os
 import threading
 import time
 from typing import Callable, Optional
 
+from src.i18n import t
 from src.utils.env_loader import ensure_env_loaded
 from src.utils.exceptions import SummarizationError
 from src.utils.logger import get_logger
@@ -13,13 +14,12 @@ logger = get_logger(__name__)
 
 
 class CancelledError(SummarizationError):
-    """用户取消操作"""
-
+    """User cancelled operation"""
     pass
 
 
 class ZhipuClient:
-    """智谱 API 客户端 —— 通过 zai-sdk 调用 GLM 模型"""
+    """Zhipu API client — calling GLM models via zai-sdk"""
 
     def __init__(
         self,
@@ -78,12 +78,12 @@ class ZhipuClient:
 
     def check_connection(self) -> bool:
         if not self._api_key:
-            logger.error("ZhipuClient: ✗ API Key 未配置")
+            logger.error(t("services.summarization.zhipu.api_key_missing"))
             return False
 
         for attempt in range(1, self.max_retries + 1):
             try:
-                messages = self._build_messages("你好，请回复OK")
+                messages = self._build_messages("Hello, please reply OK")
                 kwargs: dict = dict(
                     model=self._model,
                     messages=messages,
@@ -96,21 +96,18 @@ class ZhipuClient:
                     kwargs["thinking"] = {"type": "enabled"}
                 response = self._client.chat.completions.create(**kwargs)
                 ok = response is not None and len(response.choices) > 0
-                logger.debug("ZhipuClient: 连接检查 %s", "成功" if ok else "失败")
+                logger.debug("ZhipuClient: check %s", t("services.summarization.zhipu.check_ok") if ok else "failed")
                 return ok
             except Exception as e:
                 if self._is_rate_limit(e):
                     wait = self._get_retry_after(e) or 2 ** (attempt + 1)
                     logger.warning(
-                        "ZhipuClient: ⚠ 429 限流 (%d/%d)，等待 %ds",
-                        attempt,
-                        self.max_retries,
-                        wait,
+                        t("services.summarization.zhipu.rate_limited_log", attempt=attempt, max=self.max_retries, wait=wait),
                     )
                     if attempt < self.max_retries:
                         time.sleep(wait)
                         continue
-                logger.error("ZhipuClient: ✗ 连接失败 (%s)", e)
+                logger.error(t("services.summarization.zhipu.check_fail", error=e))
                 return False
         return False
 
@@ -126,7 +123,7 @@ class ZhipuClient:
         pause_event: Optional[threading.Event] = None,
     ) -> str:
         logger.debug(
-            "智谱 API 请求参数: model=%s, temperature=%s, max_tokens=%s, stream=%s",
+            "Zhipu API request: model=%s, temperature=%s, max_tokens=%s, stream=%s",
             model,
             temperature,
             max_tokens,
@@ -136,7 +133,7 @@ class ZhipuClient:
         last_exc = None
         for attempt in range(1, self.max_retries + 1):
             if cancel_check and cancel_check():
-                raise CancelledError("用户取消")
+                raise CancelledError(t("services.summarization.zhipu.user_cancelled"))
 
             try:
                 if stream:
@@ -161,33 +158,30 @@ class ZhipuClient:
                 if self._is_rate_limit(e):
                     wait = self._get_retry_after(e) or 2 ** (attempt + 1)
                     last_exc = SummarizationError(
-                        f"智谱 API 限流 (429), {wait}s 后重试"
+                        t("services.summarization.zhipu.rate_limited", wait=wait)
                     )
                     logger.warning(
-                        "ZhipuClient: ⚠ 429 限流 (%d/%d)，等待 %ds",
-                        attempt,
-                        self.max_retries,
-                        wait,
+                        t("services.summarization.zhipu.rate_limited_log", attempt=attempt, max=self.max_retries, wait=wait),
                     )
                     if attempt < self.max_retries:
                         for _ in range(wait):
                             if cancel_check and cancel_check():
-                                raise CancelledError("用户取消")
+                                raise CancelledError(t("services.summarization.zhipu.user_cancelled"))
                             time.sleep(1)
                         continue
                     raise last_exc
-                last_exc = SummarizationError(f"智谱 API 请求失败: {e}")
-                logger.error("ZhipuClient: ✗ 请求异常 (%s)", e)
+                last_exc = SummarizationError(t("services.summarization.zhipu.request_failed", error=e))
+                logger.error("ZhipuClient: request exception (%s)", e)
 
             if attempt < self.max_retries:
                 wait = 2**attempt
-                logger.info("ZhipuClient: %ds 后重试...", wait)
+                logger.info(t("services.summarization.zhipu.retry_log", wait=wait))
                 for _ in range(wait):
                     if cancel_check and cancel_check():
-                        raise CancelledError("用户取消")
+                        raise CancelledError(t("services.summarization.zhipu.user_cancelled"))
                     time.sleep(1)
 
-        raise last_exc or SummarizationError("智谱 API 请求失败（未知错误）")
+        raise last_exc or SummarizationError(t("services.summarization.zhipu.unknown_error"))
 
     def _build_messages(self, prompt: str) -> list[dict]:
         if self._is_thinking_model():
@@ -242,7 +236,7 @@ class ZhipuClient:
             response = self._client.chat.completions.create(**kwargs)
             for chunk in response:
                 if cancel_check and cancel_check():
-                    logger.info("ZhipuClient: 用户取消流式生成")
+                    logger.info(t("services.summarization.zhipu.user_cancelled_stream"))
                     break
                 if not chunk.choices:
                     continue
@@ -257,8 +251,8 @@ class ZhipuClient:
         except Exception as e:
             if full_text:
                 logger.warning(
-                    "ZhipuClient: ⚠ 流式中断，已接收 %d 字符", len(full_text)
+                    t("services.summarization.zhipu.stream_interrupted", count=len(full_text)),
                 )
             else:
-                raise SummarizationError(f"智谱 流式连接失败: {e}") from e
+                raise SummarizationError(t("services.summarization.zhipu.stream_connection_failed", error=e)) from e
         return full_text

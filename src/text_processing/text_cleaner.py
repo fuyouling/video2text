@@ -3,6 +3,7 @@
 import re
 from typing import Optional
 from src.utils.logger import get_logger
+from src.i18n import t
 
 logger = get_logger(__name__)
 
@@ -22,7 +23,7 @@ class TextCleaner:
         self.filler_words = sorted(
             self.config.get(
                 "filler_words",
-                ["嗯", "啊", "呃", "嗯嗯", "啊啊"],
+                [],
             ),
             key=len,
             reverse=True,
@@ -58,7 +59,7 @@ class TextCleaner:
         cleaned = self.normalize_quotes(cleaned)
         cleaned = self.remove_repeated_chars(cleaned)
 
-        logger.debug("文本清理完成: %d -> %d 字符", len(text), len(cleaned))
+        logger.debug(t("text_processing.text_cleaner.clean_done", before=len(text), after=len(cleaned)))
         return cleaned.strip()
 
     def remove_fillers(self, text: str) -> str:

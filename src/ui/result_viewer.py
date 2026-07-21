@@ -12,6 +12,7 @@ from src.storage.bookmark_manager import BookmarkItem, BookmarkManager
 from src.storage.file_writer import FileWriter
 from src.ui.markdown_renderer import MarkdownRenderer
 from src.utils.paths import get_base_dir as _get_base_dir
+from src.i18n import t
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import (
@@ -99,7 +100,7 @@ class ResultViewerWindow(QMainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.Window)
-        self.setWindowTitle("结果查看 - Video2Text")
+        self.setWindowTitle(t("dialogs.result_viewer.title"))
         self.resize(1400, 900)
         # showMaximized() 由调用方 _open_result_viewer 执行，确保内容先加载完成再显示
 
@@ -188,11 +189,11 @@ class ResultViewerWindow(QMainWindow):
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(5, 5, 5, 5)
 
-        left_layout.addWidget(QLabel("文件列表:"))
+        left_layout.addWidget(QLabel(t("viewer.file_list_label")))
 
         # 文件过滤输入框
         self._file_filter = QLineEdit()
-        self._file_filter.setPlaceholderText("过滤文件名...")
+        self._file_filter.setPlaceholderText(t("viewer.file_filter_placeholder"))
         self._file_filter.textChanged.connect(self._filter_file_list)
         left_layout.addWidget(self._file_filter)
 
@@ -222,22 +223,22 @@ class ResultViewerWindow(QMainWindow):
         # 转写文本标签页
         self.transcript_view = QTextEdit()
         self.transcript_view.setFont(QFont("Consolas", 14))
-        self.transcript_view.setPlaceholderText("转写文本将显示在此处")
+        self.transcript_view.setPlaceholderText(t("viewer.transcript_placeholder_viewer"))
         self.transcript_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.transcript_view.customContextMenuRequested.connect(
             self._show_content_context_menu
         )
-        self.tabs.addTab(self.transcript_view, "转写文本")
+        self.tabs.addTab(self.transcript_view, t("viewer.transcript_tab"))
 
         # 摘要标签页（支持Markdown）
         self.summary_view = QTextBrowser()
         self.summary_view.setOpenExternalLinks(True)
-        self.summary_view.setPlaceholderText("摘要将显示在此处")
+        self.summary_view.setPlaceholderText(t("viewer.summary_placeholder_viewer"))
         self.summary_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.summary_view.customContextMenuRequested.connect(
             self._show_content_context_menu
         )
-        self.tabs.addTab(self.summary_view, "摘要结果")
+        self.tabs.addTab(self.summary_view, t("viewer.summary_tab"))
 
         right_layout.addWidget(self.tabs)
 
@@ -466,7 +467,7 @@ class ResultViewerWindow(QMainWindow):
 
     def _create_toolbar(self):
         """创建工具栏"""
-        toolbar = QToolBar("主工具栏")
+        toolbar = QToolBar(t("viewer.main_toolbar"))
         toolbar.setObjectName("MainToolBar")
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
@@ -474,7 +475,7 @@ class ResultViewerWindow(QMainWindow):
         toolbar.addSeparator()
 
         # 字体控制
-        toolbar.addWidget(QLabel("字体:"))
+        toolbar.addWidget(QLabel(t("viewer.font_label")))
         self.font_size_spin = QSpinBox()
         self.font_size_spin.setRange(8, 32)
         self.font_size_spin.setValue(14)
@@ -487,24 +488,24 @@ class ResultViewerWindow(QMainWindow):
         toolbar.addSeparator()
 
         # 书签按钮
-        add_bookmark_action = QAction("添加书签", self)
+        add_bookmark_action = QAction(t("viewer.add_bookmark"), self)
         add_bookmark_action.setShortcut(QKeySequence("Ctrl+B"))
-        add_bookmark_action.setToolTip("添加书签 (Ctrl+B)")
+        add_bookmark_action.setToolTip(t("viewer.add_bookmark_tooltip"))
         add_bookmark_action.triggered.connect(self._add_bookmark)
         toolbar.addAction(add_bookmark_action)
 
-        toggle_bookmark_action = QAction("书签面板", self)
+        toggle_bookmark_action = QAction(t("viewer.toggle_bookmark_panel"), self)
         toggle_bookmark_action.setShortcut(QKeySequence("Ctrl+Shift+B"))
-        toggle_bookmark_action.setToolTip("显示/隐藏书签面板 (Ctrl+Shift+B)")
+        toggle_bookmark_action.setToolTip(t("viewer.toggle_bookmark_tooltip"))
         toggle_bookmark_action.triggered.connect(self._toggle_bookmark_dock)
         toolbar.addAction(toggle_bookmark_action)
 
         toolbar.addSeparator()
 
         # 文件夹模式按钮
-        self._folder_mode_action = QAction("文件夹模式", self)
+        self._folder_mode_action = QAction(t("viewer.folder_mode"), self)
         self._folder_mode_action.setShortcut(QKeySequence("Ctrl+D"))
-        self._folder_mode_action.setToolTip("切换文件夹模式 (Ctrl+D)")
+        self._folder_mode_action.setToolTip(t("viewer.folder_mode_tooltip"))
         self._folder_mode_action.setCheckable(True)
         self._folder_mode_action.setChecked(False)
         self._folder_mode_action.triggered.connect(self._toggle_folder_mode)
@@ -513,9 +514,9 @@ class ResultViewerWindow(QMainWindow):
         toolbar.addSeparator()
 
         # 重新加载按钮
-        reload_action = QAction("重新加载", self)
+        reload_action = QAction(t("viewer.reload"), self)
         reload_action.setShortcut(QKeySequence("Ctrl+R"))
-        reload_action.setToolTip("重新加载当前文件内容 (Ctrl+R)")
+        reload_action.setToolTip(t("viewer.reload_tooltip"))
         reload_action.triggered.connect(self._reload_content)
         toolbar.addAction(reload_action)
 
@@ -523,21 +524,21 @@ class ResultViewerWindow(QMainWindow):
 
         # 背景图片（合成按钮：更换 / 清除 / 透明度）
         self._bg_btn = QToolButton()
-        self._bg_btn.setText("背景图片")
-        self._bg_btn.setToolTip("背景图片设置")
+        self._bg_btn.setText(t("viewer.bg_image"))
+        self._bg_btn.setToolTip(t("viewer.bg_image_tooltip"))
         self._bg_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self._bg_btn.setStyleSheet("QToolButton::menu-indicator { image: none; }")
         bg_menu = QMenu(self)
 
-        change_action = bg_menu.addAction("更换图片")
+        change_action = bg_menu.addAction(t("viewer.change_bg_image"))
         change_action.triggered.connect(self._change_bg_image)
 
-        clear_action = bg_menu.addAction("清除背景")
+        clear_action = bg_menu.addAction(t("viewer.clear_bg_image"))
         clear_action.triggered.connect(self._clear_bg_image)
 
         bg_menu.addSeparator()
 
-        transparency_action = bg_menu.addAction("透明度")
+        transparency_action = bg_menu.addAction(t("viewer.bg_transparency"))
         transparency_action.triggered.connect(self._adjust_bg_transparency)
 
         self._bg_btn.setMenu(bg_menu)
@@ -553,7 +554,7 @@ class ResultViewerWindow(QMainWindow):
 
     def _create_bookmark_dock(self):
         """创建书签停靠窗口"""
-        self.bookmark_dock = QDockWidget("书签", self)
+        self.bookmark_dock = QDockWidget(t("viewer.bookmark_dock"), self)
         self.bookmark_dock.setObjectName("BookmarkDock")
         self.bookmark_dock.setMinimumWidth(220)
         self.bookmark_dock.setAllowedAreas(
@@ -564,7 +565,7 @@ class ResultViewerWindow(QMainWindow):
         title_bar.setObjectName("BookmarkDockTitleBar")
         title_layout = QHBoxLayout(title_bar)
         title_layout.setContentsMargins(10, 4, 4, 4)
-        title_label = QLabel("书签")
+        title_label = QLabel(t("viewer.bookmark_dock"))
         title_label.setObjectName("BookmarkTitleLabel")
         self._bookmark_preserved_styles["BookmarkTitleLabel"] = "font-weight: 600;"
         title_label.setStyleSheet(self._bookmark_preserved_styles["BookmarkTitleLabel"])
@@ -581,7 +582,7 @@ class ResultViewerWindow(QMainWindow):
             dock_close_btn.setObjectName("BookmarkCloseBtn")
             self._bookmark_preserved_styles["BookmarkCloseBtn"] = style_close
             dock_close_btn.setStyleSheet(style_close)
-        dock_close_btn.setToolTip("关闭书签面板")
+        dock_close_btn.setToolTip(t("viewer.close_bookmark_tooltip"))
         dock_close_btn.clicked.connect(self.bookmark_dock.close)
         title_layout.addWidget(dock_close_btn)
         self.bookmark_dock.setTitleBarWidget(title_bar)
@@ -591,7 +592,7 @@ class ResultViewerWindow(QMainWindow):
         bookmark_layout.setContentsMargins(6, 6, 6, 6)
         bookmark_layout.setSpacing(4)
 
-        self._bookmark_count_label = QLabel("共 0 个书签")
+        self._bookmark_count_label = QLabel(t("viewer.bookmark_count", count=0))
         self._bookmark_count_label.setObjectName("BookmarkCountLabel")
         bookmark_layout.addWidget(self._bookmark_count_label)
 
@@ -601,12 +602,12 @@ class ResultViewerWindow(QMainWindow):
         filter_row.setSpacing(4)
 
         self._bookmark_filter = QLineEdit()
-        self._bookmark_filter.setPlaceholderText("过滤书签...")
+        self._bookmark_filter.setPlaceholderText(t("viewer.bookmark_filter_placeholder"))
         self._bookmark_filter.textChanged.connect(self._filter_bookmarks)
         filter_row.addWidget(self._bookmark_filter, 1)
 
         self._bookmark_date_combo = QComboBox()
-        self._bookmark_date_combo.addItem("全部日期", "")
+        self._bookmark_date_combo.addItem(t("viewer.all_dates"), "")
         self._bookmark_date_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToContents
         )
@@ -616,7 +617,7 @@ class ResultViewerWindow(QMainWindow):
         filter_row.addWidget(self._bookmark_date_combo)
 
         self._bookmark_sort_combo = QComboBox()
-        self._bookmark_sort_combo.addItems(["按添加时间", "按文件名", "按内容类型"])
+        self._bookmark_sort_combo.addItems([t("viewer.sort_by_time"), t("viewer.sort_by_name"), t("viewer.sort_by_type")])
         self._bookmark_sort_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToContents
         )
@@ -651,7 +652,7 @@ class ResultViewerWindow(QMainWindow):
         )
         bookmark_layout.addWidget(self.bookmark_list)
 
-        self._bookmark_empty_label = QLabel("暂无书签\nCtrl+B 添加书签")
+        self._bookmark_empty_label = QLabel(t("viewer.no_bookmarks"))
         self._bookmark_empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         style_empty = "color: #aaa; font-size: 12px; padding: 20px 0;"
         self._bookmark_empty_label.setObjectName("BookmarkEmptyLabel")
@@ -665,21 +666,21 @@ class ResultViewerWindow(QMainWindow):
         bookmark_btn_layout.setContentsMargins(0, 0, 0, 0)
         bookmark_btn_layout.setSpacing(4)
 
-        delete_bookmark_btn = QPushButton("删除")
+        delete_bookmark_btn = QPushButton(t("common.delete"))
         delete_bookmark_btn.setObjectName("BookmarkDeleteBtn")
-        delete_bookmark_btn.setToolTip("删除选中书签")
+        delete_bookmark_btn.setToolTip(t("viewer.delete_bookmark_tooltip"))
         delete_bookmark_btn.clicked.connect(self._delete_bookmark)
         bookmark_btn_layout.addWidget(delete_bookmark_btn)
 
-        batch_delete_btn = QPushButton("批量删除")
+        batch_delete_btn = QPushButton(t("viewer.batch_delete"))
         batch_delete_btn.setObjectName("BookmarkDeleteBtn")
-        batch_delete_btn.setToolTip("删除所有选中的书签")
+        batch_delete_btn.setToolTip(t("viewer.batch_delete_tooltip"))
         batch_delete_btn.clicked.connect(self._batch_delete_bookmarks)
         bookmark_btn_layout.addWidget(batch_delete_btn)
 
-        clear_bookmarks_btn = QPushButton("清空")
+        clear_bookmarks_btn = QPushButton(t("viewer.clear_bookmarks"))
         clear_bookmarks_btn.setObjectName("BookmarkDeleteBtn")
-        clear_bookmarks_btn.setToolTip("清空所有书签")
+        clear_bookmarks_btn.setToolTip(t("viewer.clear_bookmarks_tooltip"))
         clear_bookmarks_btn.clicked.connect(self._clear_bookmarks)
         bookmark_btn_layout.addWidget(clear_bookmarks_btn)
 
@@ -711,12 +712,13 @@ class ResultViewerWindow(QMainWindow):
             self._scan_and_build_tree()
             self._folder_tree.setFocus()
         else:
+            self._folder_mode_action.setChecked(False)
+            self._folder_mode = False
+            self.file_list.setVisible(True)
+            self._file_filter.setVisible(True)
+            self._folder_tree.setVisible(False)
             self._populate_file_list(self._all_video_names)
-            if self._folder_mode:
-                self._scan_and_build_tree()
-                self._folder_tree.setFocus()
-            else:
-                self.file_list.setFocus()
+            self.file_list.setFocus()
 
     def _populate_file_list(self, names: list[str]):
         """填充文件列表（blockSignals 防止逐项触发选择事件）"""
@@ -991,9 +993,9 @@ class ResultViewerWindow(QMainWindow):
                     transcript_path.read_text(encoding="utf-8-sig")
                 )
             except Exception as exc:
-                self.transcript_view.setPlainText(f"读取失败: {exc}")
+                self.transcript_view.setPlainText(t("viewer.read_failed", error=exc))
         else:
-            self.transcript_view.setPlainText("(未找到转写文件)")
+            self.transcript_view.setPlainText(t("viewer.transcript_not_found"))
 
         # 加载摘要（Markdown渲染）
         summary_path = _find_summary_path(output_dir, video_name)
@@ -1002,11 +1004,11 @@ class ResultViewerWindow(QMainWindow):
                 summary_text = summary_path.read_text(encoding="utf-8-sig")
                 self._display_markdown(summary_text)
             except Exception as exc:
-                self.summary_view.setPlainText(f"读取失败: {exc}")
+                self.summary_view.setPlainText(t("viewer.read_failed", error=exc))
         else:
-            self.summary_view.setPlainText("(未找到摘要文件)")
+            self.summary_view.setPlainText(t("viewer.summary_not_found"))
 
-        self.status_bar.showMessage(f"已加载: {video_name}")
+        self.status_bar.showMessage(t("viewer.loaded", name=video_name))
 
     def _on_file_selected(
         self, current: Optional[QListWidgetItem], previous: Optional[QListWidgetItem]
@@ -1022,17 +1024,17 @@ class ResultViewerWindow(QMainWindow):
     def _reload_content(self) -> None:
         """重新加载当前文件内容"""
         if not self._current_video_name:
-            QMessageBox.information(self, "提示", "请先选择一个文件")
+            QMessageBox.information(self, t("common.hint"), t("viewer.select_file_first"))
             return
         self.load_content(self._current_video_name, self._output_dir)
-        self.status_bar.showMessage("已重新加载文件内容")
+        self.status_bar.showMessage(t("viewer.reloaded"))
 
     # ─── 内容区右键菜单 ──────────────────────────────────────────
 
     def _show_content_context_menu(self, pos) -> None:
         """内容查看区右键菜单"""
         menu = QMenu(self)
-        reload_action = menu.addAction("刷新")
+        reload_action = menu.addAction(t("viewer.refresh"))
         reload_action.setShortcut(QKeySequence("Ctrl+R"))
         reload_action.triggered.connect(self._reload_content)
         menu.exec(self.sender().mapToGlobal(pos))
@@ -1100,9 +1102,9 @@ class ResultViewerWindow(QMainWindow):
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(0, 4, 0, 0)
 
-        layout.addWidget(QLabel("查找:"))
+        layout.addWidget(QLabel(t("search.find_label")))
         self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("输入搜索内容…")
+        self.search_edit.setPlaceholderText(t("search.find_placeholder"))
         self.search_edit.setClearButtonEnabled(True)
         self.search_edit.returnPressed.connect(self._search_next)
         self.search_edit.textChanged.connect(self._on_search_text_changed)
@@ -1110,7 +1112,7 @@ class ResultViewerWindow(QMainWindow):
 
         self.search_prev_btn = QPushButton()
         self.search_prev_btn.setFixedWidth(32)
-        self.search_prev_btn.setToolTip("上一个")
+        self.search_prev_btn.setToolTip(t("search.prev_tooltip"))
         prev_icon = _asset_path("arrow_up.png")
         if prev_icon:
             self.search_prev_btn.setIcon(QIcon(prev_icon))
@@ -1121,7 +1123,7 @@ class ResultViewerWindow(QMainWindow):
 
         self.search_next_btn = QPushButton()
         self.search_next_btn.setFixedWidth(32)
-        self.search_next_btn.setToolTip("下一个 (Enter)")
+        self.search_next_btn.setToolTip(t("search.next_tooltip"))
         next_icon = _asset_path("arrow_down.png")
         if next_icon:
             self.search_next_btn.setIcon(QIcon(next_icon))
@@ -1136,7 +1138,7 @@ class ResultViewerWindow(QMainWindow):
 
         close_btn = QPushButton()
         close_btn.setFixedWidth(28)
-        close_btn.setToolTip("关闭搜索栏 (Esc)")
+        close_btn.setToolTip(t("search.close_tooltip"))
         close_icon = _asset_path("close.png")
         if close_icon:
             close_btn.setIcon(QIcon(close_icon))
@@ -1314,7 +1316,7 @@ class ResultViewerWindow(QMainWindow):
     def _add_bookmark(self):
         """添加书签"""
         if not self._current_video_name:
-            QMessageBox.warning(self, "提示", "请先选择一个文件")
+            QMessageBox.warning(self, t("common.hint"), t("viewer.select_file_first"))
             return
 
         current_view = self.tabs.currentWidget()
@@ -1361,8 +1363,8 @@ class ResultViewerWindow(QMainWindow):
             if b.file_path == file_path_str and b.position == position:
                 reply = QMessageBox.question(
                     self,
-                    "重复书签",
-                    "该位置已存在书签，是否仍要添加？",
+                    t("viewer.duplicate_bookmark"),
+                    t("viewer.duplicate_bookmark_confirm"),
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 )
                 if reply != QMessageBox.StandardButton.Yes:
@@ -1371,7 +1373,7 @@ class ResultViewerWindow(QMainWindow):
 
         self._bookmark_mgr.add(bookmark)
         self._refresh_bookmark_list()
-        self.status_bar.showMessage("书签已添加")
+        self.status_bar.showMessage(t("viewer.bookmark_added"))
 
     def _delete_bookmark(self):
         """删除当前选中书签"""
@@ -1385,8 +1387,8 @@ class ResultViewerWindow(QMainWindow):
 
         reply = QMessageBox.question(
             self,
-            "确认删除",
-            "确定要删除该书签吗？",
+            t("common.confirm"),
+            t("viewer.confirm_delete_bookmark"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -1394,20 +1396,20 @@ class ResultViewerWindow(QMainWindow):
 
         self._bookmark_mgr.remove([index])
         self._refresh_bookmark_list()
-        self.status_bar.showMessage("书签已删除")
+        self.status_bar.showMessage(t("viewer.bookmark_deleted"))
 
     def _clear_bookmarks(self):
         """清空书签"""
         reply = QMessageBox.question(
             self,
-            "确认",
-            "确定要清空所有书签吗？",
+            t("common.confirm"),
+            t("viewer.confirm_clear_bookmarks"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
             self._bookmark_mgr.clear()
             self._refresh_bookmark_list()
-            self.status_bar.showMessage("书签已清空")
+            self.status_bar.showMessage(t("viewer.bookmarks_cleared"))
 
     def _refresh_bookmark_list(self, bookmarks: Optional[list[BookmarkItem]] = None):
         """刷新书签列表
@@ -1433,9 +1435,13 @@ class ResultViewerWindow(QMainWindow):
         showing = len(display_bookmarks)
 
         if (bookmarks is not None and showing != total) or selected_date:
-            self._bookmark_count_label.setText(f"显示 {showing} / 共 {total} 个书签")
+            self._bookmark_count_label.setText(
+                t("viewer.bookmark_count_showing", showing=showing, total=total)
+            )
         else:
-            self._bookmark_count_label.setText(f"共 {total} 个书签")
+            self._bookmark_count_label.setText(
+                t("viewer.bookmark_count", count=total)
+            )
         self._bookmark_empty_label.setVisible(total == 0)
         self.bookmark_list.setVisible(total > 0)
         self._bookmark_count_label.setVisible(total > 0)
@@ -1446,7 +1452,7 @@ class ResultViewerWindow(QMainWindow):
             (b.file_path, b.position, b.created_at): i
             for i, b in enumerate(all_bookmarks)
         }
-        type_labels = {"transcript": "转写", "summary": "摘要"}
+        type_labels = {"transcript": t("viewer.type_transcript"), "summary": t("viewer.type_summary")}
         # 标签内容详情
         for bookmark in display_bookmarks:
             key = (bookmark.file_path, bookmark.position, bookmark.created_at)
@@ -1473,7 +1479,7 @@ class ResultViewerWindow(QMainWindow):
 
         self._bookmark_date_combo.blockSignals(True)
         self._bookmark_date_combo.clear()
-        self._bookmark_date_combo.addItem("全部日期", "")
+        self._bookmark_date_combo.addItem(t("viewer.all_dates"), "")
         for d in sorted(dates, reverse=True):
             self._bookmark_date_combo.addItem(d, d)
 
@@ -1527,10 +1533,8 @@ class ResultViewerWindow(QMainWindow):
             file_dir = resolved.parent
             reply = QMessageBox.question(
                 self,
-                "文件不在当前列表",
-                f"该书签对应的文件不在当前加载列表中。\n\n"
-                f"文件实际存在于：\n{resolved}\n\n"
-                f"是否切换到该文件所在目录并加载？",
+                t("viewer.bookmark_not_in_list"),
+                t("viewer.bookmark_not_in_list_msg", path=resolved),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if reply == QMessageBox.StandardButton.Yes:
@@ -1538,16 +1542,14 @@ class ResultViewerWindow(QMainWindow):
         else:
             reply = QMessageBox.question(
                 self,
-                "书签失效",
-                f"书签对应的文件已被删除：\n"
-                f"{bookmark.file_path or bookmark.video_name}\n\n"
-                f"是否删除该书签？",
+                t("viewer.bookmark_invalid"),
+                t("viewer.bookmark_invalid_msg", name=bookmark.file_path or bookmark.video_name),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if reply == QMessageBox.StandardButton.Yes:
                 self._bookmark_mgr.remove([index])
                 self._refresh_bookmark_list()
-                self.status_bar.showMessage("已删除失效书签")
+                self.status_bar.showMessage(t("viewer.deleted_invalid_bookmark"))
 
     def _resolve_bookmark_file(self, bookmark: BookmarkItem) -> Optional[Path]:
         """解析书签对应的实际文件路径，返回第一个存在的路径或 None"""
@@ -1590,7 +1592,7 @@ class ResultViewerWindow(QMainWindow):
 
         if not video_names:
             QMessageBox.information(
-                self, "提示", f"目录 {target_dir} 下未找到任何转写文件"
+                self, t("common.hint"), t("viewer.no_transcript_in_dir", dir=target_dir)
             )
             return
 
@@ -1615,7 +1617,7 @@ class ResultViewerWindow(QMainWindow):
             self.file_list.setFocus()
 
         self._navigate_to_bookmark(bookmark)
-        self.status_bar.showMessage(f"已切换到目录: {target_dir}")
+        self.status_bar.showMessage(t("viewer.switched_dir", dir=target_dir))
 
     def _navigate_to_bookmark(self, bookmark: BookmarkItem):
         """定位到书签对应的标签页和文本位置"""
@@ -1637,14 +1639,14 @@ class ResultViewerWindow(QMainWindow):
         """批量删除选中的书签"""
         selected_items = self.bookmark_list.selectedItems()
         if not selected_items:
-            QMessageBox.information(self, "提示", "请先选择要删除的书签")
+            QMessageBox.information(self, t("common.hint"), t("viewer.select_bookmarks_to_delete"))
             return
 
         count = len(selected_items)
         reply = QMessageBox.question(
             self,
-            "确认批量删除",
-            f"确定要删除选中的 {count} 个书签吗？",
+            t("common.confirm"),
+            t("viewer.confirm_batch_delete", count=count),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -1658,21 +1660,21 @@ class ResultViewerWindow(QMainWindow):
 
         self._bookmark_mgr.remove(indices)
         self._refresh_bookmark_list()
-        self.status_bar.showMessage(f"已删除 {count} 个书签")
+        self.status_bar.showMessage(t("viewer.deleted_count", count=count))
 
     def _show_bookmark_context_menu(self, pos):
         """书签右键上下文菜单"""
         item = self.bookmark_list.itemAt(pos)
         menu = QMenu(self)
 
-        goto_action = menu.addAction("跳转到位置")
-        copy_action = menu.addAction("复制书签信息")
-        edit_note_action = menu.addAction("编辑备注")
+        goto_action = menu.addAction(t("viewer.goto_position"))
+        copy_action = menu.addAction(t("viewer.copy_bookmark_info"))
+        edit_note_action = menu.addAction(t("viewer.edit_note"))
         menu.addSeparator()
-        select_all_action = menu.addAction("全选")
-        invert_action = menu.addAction("反选")
+        select_all_action = menu.addAction(t("viewer.select_all"))
+        invert_action = menu.addAction(t("viewer.invert_selection"))
         menu.addSeparator()
-        delete_action = menu.addAction("删除选中")
+        delete_action = menu.addAction(t("viewer.delete_selected"))
 
         action = menu.exec(self.bookmark_list.mapToGlobal(pos))
         if action is None:
@@ -1700,23 +1702,24 @@ class ResultViewerWindow(QMainWindow):
         if not (0 <= index < len(all_bookmarks)):
             return
         bookmark = all_bookmarks[index]
-        type_labels = {"transcript": "转写", "summary": "摘要"}
+        type_labels = {"transcript": t("viewer.type_transcript"), "summary": t("viewer.type_summary")}
         type_label = type_labels.get(bookmark.content_type, bookmark.content_type)
         info = (
-            f"文件: {bookmark.video_name}\n"
-            f"类型: {type_label}\n"
-            f"位置: {bookmark.position}\n"
-            f"预览: {bookmark.text}"
+            t("viewer.copy_info_format",
+              name=bookmark.video_name,
+              type_label=type_label,
+              position=bookmark.position,
+              preview=bookmark.text)
         )
         if bookmark.file_path:
-            info += f"\n路径: {bookmark.file_path}"
+            info += "\n" + t("viewer.copy_info_path", path=bookmark.file_path)
         if bookmark.note:
-            info += f"\n备注: {bookmark.note}"
+            info += "\n" + t("viewer.copy_info_note", note=bookmark.note)
 
         clipboard = QApplication.clipboard()
         if clipboard:
             clipboard.setText(info)
-        self.status_bar.showMessage("书签信息已复制到剪贴板")
+        self.status_bar.showMessage(t("viewer.copied_to_clipboard"))
 
     def _edit_bookmark_note(self, item: QListWidgetItem):
         """编辑书签备注"""
@@ -1728,8 +1731,8 @@ class ResultViewerWindow(QMainWindow):
 
         note, ok = QInputDialog.getText(
             self,
-            "编辑备注",
-            "请输入备注:",
+            t("viewer.edit_note_title"),
+            t("viewer.edit_note_label"),
             QLineEdit.EchoMode.Normal,
             bookmark.note,
         )
@@ -1747,7 +1750,7 @@ class ResultViewerWindow(QMainWindow):
             self._bookmark_mgr.remove([index])
             self._bookmark_mgr.add(updated)
             self._refresh_bookmark_list()
-            self.status_bar.showMessage("备注已更新")
+            self.status_bar.showMessage(t("viewer.note_updated"))
 
     def _on_bookmark_sort_changed(self, index: int):
         """书签排序变更"""
@@ -1770,7 +1773,7 @@ class ResultViewerWindow(QMainWindow):
 
     def _filter_bookmarks(self, text: str):
         """根据输入过滤书签列表"""
-        type_labels = {"transcript": "转写", "summary": "摘要"}
+        type_labels = {"transcript": t("viewer.type_transcript"), "summary": t("viewer.type_summary")}
         all_bookmarks = self._bookmark_mgr.get_all()
         total_visible = 0
         for i in range(self.bookmark_list.count()):
@@ -1797,10 +1800,12 @@ class ResultViewerWindow(QMainWindow):
         total = len(all_bookmarks)
         if text or self._selected_bookmark_date:
             self._bookmark_count_label.setText(
-                f"显示 {total_visible} / 共 {total} 个书签"
+                t("viewer.bookmark_count_showing", showing=total_visible, total=total)
             )
         else:
-            self._bookmark_count_label.setText(f"共 {total} 个书签")
+            self._bookmark_count_label.setText(
+                t("viewer.bookmark_count", count=total)
+            )
 
     def _load_bookmarks(self):
         """加载书签"""
@@ -1873,16 +1878,16 @@ class ResultViewerWindow(QMainWindow):
         )
         file_path, _ = QFileDialog.getOpenFileName(
             self,
-            "选择背景图片",
+            t("viewer.choose_bg_image"),
             initial_dir,
-            "图片文件 (*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp);;所有文件 (*.*)",
+            t("viewer.image_filter"),
         )
         if not file_path:
             return
 
         pixmap = QPixmap(file_path)
         if pixmap.isNull():
-            QMessageBox.warning(self, "提示", "无法加载该图片文件，请选择其他图片。")
+            QMessageBox.warning(self, t("common.hint"), t("viewer.load_image_failed"))
             return
 
         self._bg_pixmap = pixmap
@@ -1892,7 +1897,7 @@ class ResultViewerWindow(QMainWindow):
         self._apply_bg_transparency()
         self._save_bg_config()
         self.update()
-        self.status_bar.showMessage(f"背景图片已更换: {Path(file_path).name}")
+        self.status_bar.showMessage(t("viewer.bg_changed", name=Path(file_path).name))
 
     def _clear_bg_image(self) -> None:
         """清除背景图片"""
@@ -1903,15 +1908,15 @@ class ResultViewerWindow(QMainWindow):
         self._apply_bg_transparency()
         self._save_bg_config()
         self.update()
-        self.status_bar.showMessage("背景图片已清除")
+        self.status_bar.showMessage(t("viewer.bg_cleared"))
 
     def _adjust_bg_transparency(self) -> None:
         """弹出输入框修改背景透明度 (0~255)"""
         current_val = round(self._bg_opacity * 255)
         value, ok = QInputDialog.getInt(
             self,
-            "调整背景透明度",
-            "请输入背景透明度 (0~255)：\n0=完全透明（背景图不可见），255=完全不透明（背景图最明显）",
+            t("viewer.bg_transparency_title"),
+            t("viewer.bg_transparency_label"),
             current_val,
             0,
             255,
@@ -1923,7 +1928,7 @@ class ResultViewerWindow(QMainWindow):
                 self._bg_content.set_bg_opacity(self._bg_opacity)
             self._save_bg_config()
             self.update()
-            self.status_bar.showMessage(f"背景不透明度已设置为: {value} (0~255)")
+            self.status_bar.showMessage(t("viewer.bg_opacity_set", value=value))
 
     # ─── 标签页切换 ────────────────────────────────────────────
 

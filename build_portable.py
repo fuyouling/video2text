@@ -446,7 +446,7 @@ def main():
         log("  [dry-run] Would copy: assets/, docs/", "white")
         log("  [dry-run] Would copy config_realease.ini -> config.ini (release defaults)", "white")
         log("  [dry-run] Would copy README.md", "white")
-        log("  [dry-run] Would copy ffmpeg/ (内置 FFmpeg)", "white")
+        log("  [dry-run] Would copy ffmpeg/ (bundled FFmpeg)", "white")
     else:
         assets_src = root / "assets"
         if assets_src.exists():
@@ -513,8 +513,8 @@ start "" "%~dp0video2text.exe" %*
                 log(f"  Warning: Failed to copy 7za.exe: {e}", "yellow")
         else:
             log(
-                "  Note: 7z/7za.exe 未找到，DLL 解压将失败"
-                "（需 BCJ2 支持，py7zr 不可用）",
+                "  Note: 7z/7za.exe not found; DLL extraction will fail"
+                " (BCJ2 required, py7zr does not support it)",
                 "yellow",
             )
 

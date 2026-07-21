@@ -8,6 +8,7 @@ from PySide6.QtCore import QTimer
 from PySide6.QtGui import QColor, QFont, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import QGroupBox, QTextEdit, QVBoxLayout, QWidget
 
+from src.i18n import t
 from src.ui.ui_log_bridge import UiLogHandler, UiLogSignal
 
 _RE_TAG = re.compile(r"^(\[[\u4e00-\u9fa5\d/]+\])(.*)$")
@@ -49,7 +50,7 @@ class LogPanel(QWidget):
 
     def _init_ui(self) -> None:
         """初始化日志面板 UI：带标题的分组框内嵌只读文本编辑器。"""
-        group = QGroupBox("日志输出")
+        group = QGroupBox(t("main.log_panel_title"))
         layout = QVBoxLayout(group)
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)

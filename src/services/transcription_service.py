@@ -20,6 +20,7 @@ from src.storage.file_writer import FileWriter
 from src.transcription.transcriber import TranscriptSegment, Transcriber
 from src.utils.exceptions import TranscriptionError, Video2TextError
 from src.utils.json_utils import atomic_write_json, safe_read_json
+from src.i18n import t
 from src.utils.logger import get_logger
 from src.utils.subprocess_compat import CREATE_NO_WINDOW
 
@@ -120,7 +121,7 @@ class TranscriptionService:
     def pause(self) -> None:
         """暂停转写。当前切片完成后会阻塞，直到调用 resume()。"""
         self._pause_event.clear()
-        logger.info("  ├─ ⏸ 转写暂停请求已接收，等待当前任务完成…")
+        logger.info("  ├─ ⏸ " + t("services.transcription.pause_requested"))
 
     def resume(self) -> None:
         """继续被暂停的转写。"""
@@ -135,12 +136,12 @@ class TranscriptionService:
         """如果处于暂停状态，则阻塞直到恢复。"""
         if self._pause_event.is_set():
             return
-        logger.info("  ├─ ✅ 转写已暂停 — 等待恢复…")
+        logger.info("  ├─ ✅ " + t("services.transcription.paused_waiting"))
         while not self._pause_event.wait(timeout=0.5):
             if self.cancel_check and self.cancel_check():
                 break
         if not (self.cancel_check and self.cancel_check()):
-            logger.info("  └─ ▶ 转写已继续")
+            logger.info("  └─ ▶ " + t("services.transcription.resumed"))
 
     # ------------------------------------------------------------------
     # 公开 API
@@ -165,12 +166,12 @@ class TranscriptionService:
 
         for idx, video_path in enumerate(video_files):
             if self.cancel_check and self.cancel_check():
-                logger.info("  └─ 用户取消转写")
+                logger.info("  └─ " + t("services.transcription.user_cancelled"))
                 break
 
             self._wait_if_paused()
             if self.cancel_check and self.cancel_check():
-                logger.info("  └─ 用户取消转写")
+                logger.info("  └─ " + t("services.transcription.user_cancelled"))
                 break
 
             video_name = Path(video_path).stem
@@ -187,11 +188,11 @@ class TranscriptionService:
                     self.on_video_done(result)
 
             except Video2TextError as e:
-                logger.info("  └─ 转写失败: %s", e)
+                logger.info("  └─ " + t("services.transcription.failed", error=e))
                 if self.on_video_error:
                     self.on_video_error(video_name, str(e))
             except Exception as e:
-                logger.exception("  └─ 未知错误: %s", e)
+                logger.exception("  └─ " + t("services.transcription.unknown_error", error=e))
                 if self.on_video_error:
                     self.on_video_error(video_name, str(e))
 
@@ -218,12 +219,12 @@ class TranscriptionService:
                 video_info=video_info,
             )
             elapsed = time.monotonic() - t0
-            logger.info("  ├─ 音频提取 ✓ (%.1fs)", elapsed)
+            logger.info("  ├─ " + t("services.transcription.audio_extracted", elapsed=round(elapsed, 1)))
 
             duration_str = self._format_duration(video_info.duration)
             est = self._estimate_transcribe_time(video_info.duration)
             est_str = self._format_duration(est) if est is not None else "-"
-            logger.info("  ├─ 音频时长: %s | 预估转写时间: %s", duration_str, est_str)
+            logger.info("  ├─ " + t("services.transcription.audio_duration", duration=duration_str, estimate=est_str))
 
             t0 = time.monotonic()
             last_progress_ts = [t0]
@@ -233,7 +234,7 @@ class TranscriptionService:
                 if now - last_progress_ts[0] >= 30:
                     last_progress_ts[0] = now
                     elapsed = now - t0
-                    logger.info("  ├─ 语音转写 … (%d 段, %.0fs)", count, elapsed)
+                    logger.info("  ├─ " + t("services.transcription.transcribing_progress", count=count, elapsed=round(elapsed)))
 
             if video_info.duration > self.max_chunk_duration:
                 segments = self._transcribe_chunked(
@@ -263,8 +264,7 @@ class TranscriptionService:
             elapsed = time.monotonic() - t0
             lang = segments[0].language if segments else self.language
             logger.info(
-                "  ├─ 语音转写 ✓ (%d 段, 语言: %s, 耗时 %s)",
-                len(segments), lang, self._format_duration(elapsed),
+                "  ├─ " + t("services.transcription.transcribe_done", count=len(segments), lang=lang, duration=self._format_duration(elapsed)),
             )
             self._save_history_record(video_info.duration, elapsed)
 
@@ -274,7 +274,7 @@ class TranscriptionService:
                 p = file_fw.write_transcript(segments, video_name, fmt=fmt)
                 output_paths.append(p)
             formats = ", ".join(f".{fmt}" for fmt in self.output_formats)
-            logger.info("  └─ 保存完成 ✓ (%s)", formats)
+            logger.info("  └─ " + t("services.transcription.save_done", formats=formats))
 
             return TranscribeResult(
                 video_name=video_name,
@@ -314,7 +314,7 @@ class TranscriptionService:
             return list(future.result(timeout=timeout))
         except concurrent.futures.TimeoutError:
             raise TranscriptionError(
-                f"转写超时（{timeout}秒），请检查 CUDA 依赖是否正常"
+                t("services.transcription.timeout", timeout=timeout)
             )
         finally:
             executor.shutdown(wait=False)  # 不等待，主线程继续
@@ -358,20 +358,19 @@ class TranscriptionService:
                     errors="ignore",
                 )
             except subprocess.CalledProcessError as e:
-                raise TranscriptionError(
-                    f"FFmpeg 音频切片失败: {e.stderr or e.stdout}"
-                ) from e
+                    raise TranscriptionError(
+                        t("services.transcription.ffmpeg_chunk_fail", error=e.stderr or e.stdout)
+                    ) from e
             chunk_files = sorted(chunk_dir.glob("chunk_*.wav"))
             total_chunks = len(chunk_files)
 
             if total_chunks == 0:
                 raise TranscriptionError(
-                    f"FFmpeg 音频切片失败，未生成任何切片文件: {audio_path}"
+                    t("services.transcription.ffmpeg_no_chunks", path=audio_path)
                 )
 
             logger.info(
-                "  ├─ 音频切片: %d 个切片 (每段 ≤ %s)",
-                total_chunks, self._format_duration(self.max_chunk_duration),
+                "  ├─ " + t("services.transcription.chunk_info", count=total_chunks, duration=self._format_duration(self.max_chunk_duration)),
             )
 
             # 加载已完成的切片结果（断点续传）
@@ -382,14 +381,14 @@ class TranscriptionService:
                     done_chunks = loaded
                 else:
                     if loaded is not None:
-                        logger.info("  ├─ ⚠ 断点文件格式异常，忽略: %s", checkpoint_file.name)
+                        logger.info("  ├─ ⚠ " + t("services.transcription.checkpoint_format_abnormal", name=checkpoint_file.name))
                     done_chunks = {}
                 n_done = (
                     len(done_chunks)
                     - sum(1 for v in done_chunks.values() if "error" in v)
                 )
                 n_fail = sum(1 for v in done_chunks.values() if "error" in v)
-                logger.info("  ├─ 断点续传: %d/%d 已完成, %d 待重试", n_done, total_chunks, n_fail)
+                logger.info("  ├─ " + t("services.transcription.checkpoint_resume", done=n_done, total=total_chunks, fail=n_fail))
 
             all_segments: List[TranscriptSegment] = []
             cumulative_offset = 0.0
@@ -410,13 +409,13 @@ class TranscriptionService:
                 if chunk_key in done_chunks:
                     cached = done_chunks[chunk_key]
                     if not isinstance(cached, dict):
-                        logger.info("  ├─ ⚠ 断点数据异常，跳过 %s", chunk_key)
+                        logger.info("  ├─ ⚠ " + t("services.transcription.checkpoint_data_abnormal", key=chunk_key))
                         del done_chunks[chunk_key]
                     elif "error" in cached:
-                        logger.info("  ├─ 切片 %d/%d 重试中…", idx + 1, total_chunks)
+                        logger.info("  ├─ " + t("services.transcription.chunk_retrying", current=idx + 1, total=total_chunks))
                         del done_chunks[chunk_key]
                     elif "segments" not in cached or "duration" not in cached:
-                        logger.info("  ├─ ⚠ 断点数据不完整，重新转写 %s", chunk_key)
+                        logger.info("  ├─ ⚠ " + t("services.transcription.checkpoint_incomplete", key=chunk_key))
                         del done_chunks[chunk_key]
                     else:
                         # 从断点恢复
@@ -430,10 +429,10 @@ class TranscriptionService:
                             )
                             all_segments.append(seg)
                         cumulative_offset += cached["duration"]
-                        logger.info("  ├─ 切片 %d/%d ✓ 跳过", idx + 1, total_chunks)
+                        logger.info("  ├─ " + t("services.transcription.chunk_skipped", current=idx + 1, total=total_chunks))
                         continue
 
-                logger.info("  ├─ 切片 %d/%d 转写中 …", idx + 1, total_chunks)
+                logger.info("  ├─ " + t("services.transcription.chunk_transcribing", current=idx + 1, total=total_chunks))
 
                 chunk_t0 = time.monotonic()
                 try:
@@ -458,7 +457,7 @@ class TranscriptionService:
                     )
                 except Exception as chunk_err:
                     logger.warning(
-                        "  ├─ 切片 %d/%d ✗ 转写失败: %s", idx + 1, total_chunks, chunk_err,
+                        "  ├─ " + t("services.transcription.chunk_failed", current=idx + 1, total=total_chunks, error=chunk_err),
                     )
                     failed_duration = self._get_chunk_duration(chunk_path)
                     done_chunks[chunk_key] = {
@@ -472,7 +471,7 @@ class TranscriptionService:
 
                 chunk_elapsed = time.monotonic() - chunk_t0
                 logger.info(
-                    "  ├─ 切片 %d/%d ✓ (%.1fs)", idx + 1, total_chunks, chunk_elapsed,
+                    "  ├─ " + t("services.transcription.chunk_done", current=idx + 1, total=total_chunks, elapsed=round(chunk_elapsed, 1)),
                 )
 
                 # 计算切片实际时长（用 FFmpeg 获取更精确的值）
@@ -504,8 +503,11 @@ class TranscriptionService:
 
             failed_chunks = [k for k, v in done_chunks.items() if "error" in v]
             if failed_chunks or cancelled:
-                reason = f"{len(failed_chunks)} 个失败" + (", 已取消" if cancelled else "")
-                logger.info("  ├─ ⚠ %d/%d 切片失败，断点已保留 (%s)", len(failed_chunks), total_chunks, reason)
+                if cancelled:
+                    reason = t("services.transcription.chunks_failed", count=len(failed_chunks)) + ", " + t("services.transcription.cancelled")
+                else:
+                    reason = t("services.transcription.chunks_failed", count=len(failed_chunks))
+                logger.info("  ├─ ⚠ " + t("services.transcription.chunks_failed_retained", done=len(failed_chunks), total=total_chunks, reason=reason))
             else:
                 checkpoint_file.unlink(missing_ok=True)
 
@@ -551,12 +553,12 @@ class TranscriptionService:
             if duration_str:
                 return float(duration_str)
         except Exception:
-            logger.info("  ├─ ⚠ ffprobe 失效，尝试备用估算")
+            logger.info("  ├─ ⚠ " + t("services.transcription.ffprobe_failed"))
 
         if segments:
             max_end = max(seg.end for seg in segments)
             if max_end > 0:
-                logger.info("  ├─ 使用转写段末尾时间估算: %.1fs", max_end)
+                logger.info("  ├─ " + t("services.transcription.estimate_from_segments", value=round(max_end, 1)))
                 return max_end
 
         try:
@@ -565,12 +567,12 @@ class TranscriptionService:
             if wav_data_size > 0:
                 byte_rate = 16000 * 1 * 2  # sample_rate * channels * sample_width
                 duration_from_size = wav_data_size / byte_rate
-                logger.info("  ├─ 使用文件大小估算: %.1fs", duration_from_size)
+                logger.info("  ├─ " + t("services.transcription.estimate_from_size", value=round(duration_from_size, 1)))
                 return duration_from_size
         except OSError:
             pass
 
-        logger.info("  ├─ ⚠ 切片时长估算失败，回退为 0s（不偏移后续时间戳）")
+        logger.info("  ├─ ⚠ " + t("services.transcription.estimate_fallback"))
         return 0.0
 
 
@@ -596,7 +598,7 @@ class TranscriptionService:
             if stem not in current_stems:
                 try:
                     cp_file.unlink()
-                    logger.info("  ├─ 清理过期断点: %s", cp_file.name)
+                    logger.info("  ├─ " + t("services.transcription.cleanup_stale", name=cp_file.name))
                 except OSError:
                     pass
 
@@ -637,7 +639,7 @@ class TranscriptionService:
             self._history_file.parent.mkdir(parents=True, exist_ok=True)
             atomic_write_json(self._history_file, data)
         except Exception as e:
-            logger.warning("  ├─ ⚠ 保存转写历史失败（不影响主流程）: %s", e)
+            logger.warning("  ├─ ⚠ " + t("services.transcription.history_save_fail", error=e))
 
     def _estimate_transcribe_time(self, audio_duration: float) -> Optional[float]:
         """基于历史记录估算转写耗时。
@@ -697,12 +699,12 @@ class TranscriptionService:
         """将秒数格式化为 'X时X分X秒'、'X分X秒' 或 'X秒' 的中文描述。"""
         total = int(seconds)
         if total < 60:
-            return f"{total}秒"
+            return t("duration.seconds", n=total)
         m, s = divmod(total, 60)
         if m < 60:
-            return f"{m}分{s}秒"
+            return t("duration.min_sec", m=m, s=s)
         h, m = divmod(m, 60)
-        return f"{h}时{m}分{s}秒"
+        return t("duration.hour_min_sec", h=h, m=m, s=s)
 
     @staticmethod
     def get_file_output_dir(

@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, TypeVar
 
+from src.i18n import t
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -29,7 +30,7 @@ def safe_read_json(file_path: Path, default: T = None) -> T:
     except FileNotFoundError:
         return default
     except (json.JSONDecodeError, OSError) as exc:
-        logger.warning("读取 JSON 文件失败 %s: %s", file_path.name, exc)
+        logger.warning(t("storage.json.read_fail", name=file_path.name, error=exc))
         return default
 
 

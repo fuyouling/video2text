@@ -3,6 +3,7 @@
 import shutil
 from pathlib import Path
 from typing import Optional, List
+from src.i18n import t
 from src.utils.exceptions import VideoFileError, ConfigurationError
 
 
@@ -24,16 +25,15 @@ def validate_file_path(
     path = Path(file_path)
 
     if not path.exists():
-        raise VideoFileError(f"文件不存在: {file_path}")
+        raise VideoFileError(t("errors.file_not_found", path=file_path))
 
     if not path.is_file():
-        raise VideoFileError(f"路径不是文件: {file_path}")
+        raise VideoFileError(t("errors.not_a_file", path=file_path))
 
     if allowed_extensions:
         if path.suffix.lower() not in [ext.lower() for ext in allowed_extensions]:
             raise VideoFileError(
-                f"不支持的文件格式: {path.suffix}. "
-                f"支持的格式: {', '.join(allowed_extensions)}"
+                t("errors.unsupported_format", suffix=path.suffix, formats=', '.join(allowed_extensions))
             )
 
     return path
@@ -58,10 +58,10 @@ def validate_directory(dir_path: str, create: bool = False) -> Path:
         if create:
             path.mkdir(parents=True, exist_ok=True)
         else:
-            raise ConfigurationError(f"目录不存在: {dir_path}")
+            raise ConfigurationError(t("errors.dir_not_found", path=dir_path))
 
     if not path.is_dir():
-        raise ConfigurationError(f"路径不是目录: {dir_path}")
+        raise ConfigurationError(t("errors.not_a_dir", path=dir_path))
 
     return path
 
@@ -86,7 +86,7 @@ def validate_language(language: str, supported_languages: List[str]) -> str:
     supported_lower = {lang.lower() for lang in supported_languages}
     if language not in supported_lower:
         raise ConfigurationError(
-            f"不支持的语言: {language}. 支持的语言: {', '.join(supported_languages)}"
+            t("errors.unsupported_lang", lang=language, supported=', '.join(supported_languages))
         )
 
     return language
@@ -108,7 +108,7 @@ def validate_device(device: str) -> str:
 
     if device not in valid_devices:
         raise ConfigurationError(
-            f"不支持的设备类型: {device}. 支持的设备: {', '.join(valid_devices)}"
+            t("errors.unsupported_device", device=device, supported=', '.join(valid_devices))
         )
 
     return device
@@ -128,7 +128,7 @@ def validate_positive_int(value: int, name: str) -> int:
         ConfigurationError: 值不是正整数
     """
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ConfigurationError(f"{name}必须是正整数: {value}")
+        raise ConfigurationError(t("errors.must_be_positive", name=name, value=value))
 
     return value
 
@@ -151,10 +151,10 @@ def validate_float_range(
         ConfigurationError: 值超出范围
     """
     if not isinstance(value, (int, float)):
-        raise ConfigurationError(f"{name}必须是数字: {value}")
+        raise ConfigurationError(t("errors.must_be_number", name=name, value=value))
 
     if not (min_val <= value <= max_val):
-        raise ConfigurationError(f"{name}必须在{min_val}和{max_val}之间: {value}")
+        raise ConfigurationError(t("errors.out_of_range", name=name, min=min_val, max=max_val, value=value))
 
     return float(value)
 
@@ -175,7 +175,7 @@ def validate_executable_path(path: str, name: str = "executable") -> str:
         ConfigurationError: 路径不安全或文件不存在
     """
     if not path or not path.strip():
-        raise ConfigurationError(f"{name}路径不能为空")
+        raise ConfigurationError(t("errors.path_empty", name=name))
 
     path = path.strip()
 
@@ -194,7 +194,7 @@ def validate_executable_path(path: str, name: str = "executable") -> str:
     ]
     for ch in dangerous_chars:
         if ch in path:
-            raise ConfigurationError(f"{name}路径包含不安全字符 '{ch}': {path}")
+            raise ConfigurationError(t("errors.path_unsafe", name=name, ch=ch, path=path))
 
     # 通过 shutil.which 解析（自动检查 PATH 和可执行权限）
     resolved = shutil.which(path)
@@ -206,4 +206,4 @@ def validate_executable_path(path: str, name: str = "executable") -> str:
     if p.exists() and p.is_file():
         return str(p.resolve())
 
-    raise ConfigurationError(f"{name}不可用: {path}")
+    raise ConfigurationError(t("errors.path_unavailable", name=name, path=path))

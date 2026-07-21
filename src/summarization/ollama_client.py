@@ -1,4 +1,4 @@
-"""Ollama客户端"""
+"""Ollama client"""
 
 import os
 import shutil
@@ -9,6 +9,7 @@ import requests
 import json as _json
 import time
 from typing import Callable, List, Optional
+from src.i18n import t
 from src.utils.exceptions import SummarizationError
 from src.utils.logger import get_logger
 from src.utils.subprocess_compat import CREATE_NO_WINDOW
@@ -17,17 +18,17 @@ logger = get_logger(__name__)
 
 
 class OllamaClient:
-    """Ollama客户端 —— 统一管理 Ollama HTTP 通信与服务进程生命周期"""
+    """Ollama client — manages Ollama HTTP communication and service process lifecycle"""
 
-    # 类级别进程引用，所有实例共享同一个 Ollama 服务进程
+    # Class-level process reference, shared across all instances
     _service_process: Optional[subprocess.Popen] = None
 
     def __init__(self, base_url: str = "http://127.0.0.1:11434", timeout: int = 60):
-        """初始化Ollama客户端
+        """Initialize Ollama client
 
         Args:
-            base_url: Ollama服务地址
-            timeout: 请求超时时间（秒）
+            base_url: Ollama service URL
+            timeout: Request timeout (seconds)
         """
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
@@ -44,55 +45,56 @@ class OllamaClient:
         self.close()
 
     def close(self) -> None:
-        """关闭底层 HTTP Session，释放连接池。"""
+        """Close the underlying HTTP Session, releasing the connection pool."""
         self._session.close()
 
     # ------------------------------------------------------------------
-    # 服务进程管理
+    # Service process management
     # ------------------------------------------------------------------
 
     @classmethod
     def start_service(
         cls, url: str = "http://127.0.0.1:11434", quiet: bool = False
     ) -> bool:
-        """启动 Ollama 服务进程（如果尚未运行）。
+        """Start the Ollama service process (if not already running).
 
-        如果 Ollama 已在外部启动（例如用户手动运行了 ``ollama serve``），
-        本方法会通过 HTTP 探测发现它并直接返回 ``True``，**不会**记录进程引用，
-        因此后续调用 ``stop_service()`` 也不会终止外部进程。
+        If Ollama was started externally (e.g. the user ran ``ollama serve`` manually),
+        this method will detect it via HTTP probe and return ``True`` without
+        recording the process reference — subsequent calls to ``stop_service()``
+        will not terminate the external process.
 
         Args:
-            url: Ollama 服务地址
-            quiet: 为 True 时不输出日志（由调用方统一管理）
+            url: Ollama service URL
+            quiet: If True, suppress logs (caller manages logging)
 
         Returns:
-            服务是否已就绪（已在运行或成功启动）
+            Whether the service is ready (already running or successfully started)
         """
-        # 已经在运行？（可能由外部启动，不归本客户端管理）
+        # Already running? (possibly started externally, not managed by this client)
         try:
             resp = requests.get(f"{url.rstrip('/')}/api/tags", timeout=2)
             if resp.status_code == 200:
                 if not quiet:
-                    logger.info("Ollama 服务已在运行中")
+                    logger.info(t("services.summarization.ollama.already_running"))
                 return True
         except Exception:
             pass
 
-        # 已由本客户端启动过且进程仍存活？
+        # Already started by this client and still alive?
         if cls._service_process is not None and cls._service_process.poll() is None:
             if not quiet:
-                logger.info("Ollama 服务进程已存在")
+                logger.info(t("services.summarization.ollama.process_exists"))
             return True
 
         ollama_path = shutil.which("ollama")
         if not ollama_path:
             if not quiet:
-                logger.error("未找到 ollama 命令，请确保已安装 Ollama")
+                logger.error(t("services.summarization.ollama.cmd_not_found"))
             return False
 
         try:
             if not quiet:
-                logger.info("正在启动 Ollama 服务...")
+                logger.info(t("services.summarization.ollama.starting"))
             cls._service_process = subprocess.Popen(
                 [ollama_path, "serve"],
                 creationflags=CREATE_NO_WINDOW,
@@ -102,7 +104,7 @@ class OllamaClient:
             )
             if not quiet:
                 logger.info(
-                    "Ollama 服务启动命令已执行 (PID: %s)", cls._service_process.pid
+                    t("services.summarization.ollama.start_cmd_executed", pid=cls._service_process.pid)
                 )
 
             for _ in range(10):
@@ -110,8 +112,7 @@ class OllamaClient:
                 if cls._service_process.poll() is not None:
                     if not quiet:
                         logger.error(
-                            "Ollama 服务进程已退出，返回码: %s",
-                            cls._service_process.returncode,
+                            t("services.summarization.ollama.process_exited", code=cls._service_process.returncode),
                         )
                     cls._service_process = None
                     return False
@@ -119,23 +120,23 @@ class OllamaClient:
                     resp = requests.get(f"{url.rstrip('/')}/api/tags", timeout=2)
                     if resp.status_code == 200:
                         if not quiet:
-                            logger.info("Ollama 服务已就绪")
+                            logger.info(t("services.summarization.ollama.service_ready"))
                         return True
                 except requests.RequestException:
                     pass
 
             if not quiet:
-                logger.warning("Ollama 服务启动后 5 秒内未响应，继续运行")
+                logger.warning(t("services.summarization.ollama.start_no_response"))
             return True
         except Exception as e:
             if not quiet:
-                logger.error("启动 Ollama 服务失败: %s", e)
+                logger.error(t("services.summarization.ollama.start_failed", error=e))
             cls._service_process = None
             return False
 
     @classmethod
     def stop_service(cls) -> None:
-        """停止由本客户端启动的 Ollama 服务进程（含全部子进程）。"""
+        """Stop the Ollama service process (with all child processes) started by this client."""
         proc = cls._service_process
         if proc is None:
             return
@@ -162,17 +163,17 @@ class OllamaClient:
                 pass
         except Exception:
             pass
-        logger.info("Ollama 服务: ✓ 进程已停止 (PID: %s)", pid)
+        logger.info(t("services.summarization.ollama.stopped", pid=pid))
 
     @classmethod
     def is_service_running(cls, url: str = "http://127.0.0.1:11434") -> bool:
-        """检查 Ollama 服务是否正在运行（通过 HTTP 探测）。
+        """Check if the Ollama service is running (via HTTP probe).
 
         Args:
-            url: Ollama 服务地址
+            url: Ollama service URL
 
         Returns:
-            服务是否可达
+            Whether the service is reachable
         """
         try:
             resp = requests.get(f"{url.rstrip('/')}/api/tags", timeout=2)
@@ -187,48 +188,43 @@ class OllamaClient:
         max_retries: int = 3,
         wait_seconds: float = 5,
     ) -> bool:
-        """确保 Ollama 服务可用：未运行时自动启动，最多重试指定次数。
+        """Ensure Ollama service is available: auto-start if not running, retry up to max_retries.
 
         Args:
-            url: Ollama 服务地址
-            max_retries: 最大重试次数
-            wait_seconds: 每次重试等待秒数
+            url: Ollama service URL
+            max_retries: Maximum number of retries
+            wait_seconds: Seconds to wait between retries
 
         Returns:
-            服务是否最终可用
+            Whether the service is finally available
 
         Raises:
-            RuntimeError: 所有重试后服务仍不可用
+            RuntimeError: If service is still unavailable after all retries
         """
         if cls.is_service_running(url):
-            logger.info("Ollama 服务")
-            logger.info("  └─ 检测: ✓ 运行中")
+            logger.info("Ollama " + t("services.summarization.ollama.status_running"))
             return True
 
-        logger.info("Ollama 服务")
-        logger.info("  ├─ 检测: ▶ 未运行")
+        logger.info("Ollama " + t("services.summarization.ollama.status_not_running"))
 
         if not cls.start_service(url, quiet=True):
-            logger.info("  └─ 启动: ✗ 未找到 ollama 命令")
-            raise RuntimeError("Ollama 服务: ✗ 未找到 ollama 命令")
+            logger.info("  └─ " + t("services.summarization.ollama.start_executed") + " ✗ " + t("services.summarization.ollama.cmd_not_found"))
+            raise RuntimeError(t("services.summarization.ollama.service_cmd_not_found"))
 
-        logger.info("  ├─ 启动: ✓ 已执行")
+        logger.info("  ├─ " + t("services.summarization.ollama.start_executed"))
 
         for attempt in range(1, max_retries + 1):
             logger.info(
-                "  ├─ 等待: ⏳ (%d/%d，%.0f 秒)",
-                attempt,
-                max_retries,
-                wait_seconds,
+                "  ├─ " + t("services.summarization.ollama.waiting", attempt=attempt, max=max_retries, seconds=wait_seconds),
             )
             time.sleep(wait_seconds)
             if cls.is_service_running(url):
-                logger.info("  └─ 就绪: ✓ (第 %d 次检测)", attempt)
+                logger.info("  └─ " + t("services.summarization.ollama.ready_ok", attempt=attempt))
                 return True
 
-        logger.info("  └─ 就绪: ✗ %d 次检测均无法连接", max_retries)
+        logger.info("  └─ " + t("services.summarization.ollama.ready_fail", count=max_retries))
         raise RuntimeError(
-            f"Ollama 服务: ✗ 已启动但 {max_retries} 次检测均无法连接 ({url})"
+            t("services.summarization.ollama.service_unreachable", count=max_retries, url=url)
         )
 
     @classmethod
@@ -239,85 +235,81 @@ class OllamaClient:
         max_retries: int = 3,
         wait_seconds: float = 5,
     ) -> bool:
-        """一站式检查：启动服务 → 连接检测 → 列出模型 → 验证模型。
+        """All-in-one check: start service → connection test → list models → verify model.
 
-        所有日志统一输出在 ``Ollama 服务`` 树下。
+        All logs are grouped under the ``Ollama `` prefix.
 
         Args:
-            url: Ollama 服务地址
-            model_name: 需要验证的模型名（为空则跳过模型验证）
-            max_retries: 启动重试次数
-            wait_seconds: 每次重试等待秒数
+            url: Ollama service URL
+            model_name: Model name to verify (skip if empty)
+            max_retries: Startup retry count
+            wait_seconds: Seconds to wait between retries
 
         Returns:
-            服务是否可用（连接成功且模型存在，若指定了模型）
+            Whether the service is usable (connected and model exists, if specified)
         """
-        logger.info("Ollama 服务")
+        logger.info("Ollama")
 
-        # ── 1. 确保服务运行 ──────────────────────────────────────
+        # ── 1. Ensure service is running ──────────────────────────
         if cls.is_service_running(url):
-            logger.info("  ├─ 检测: ✓ 运行中")
+            logger.info("  ├─ " + t("services.summarization.ollama.status_running"))
         else:
-            logger.info("  ├─ 检测: ▶ 未运行")
+            logger.info("  ├─ " + t("services.summarization.ollama.status_not_running"))
             if not cls.start_service(url, quiet=True):
-                logger.info("  └─ 启动: ✗ 未找到 ollama 命令")
+                logger.info("  └─ " + t("services.summarization.ollama.cmd_not_found"))
                 return False
-            logger.info("  ├─ 启动: ✓ 已执行")
+            logger.info("  ├─ " + t("services.summarization.ollama.start_executed"))
             ready = False
             for attempt in range(1, max_retries + 1):
                 logger.info(
-                    "  ├─ 等待: ⏳ (%d/%d，%.0f 秒)",
-                    attempt,
-                    max_retries,
-                    wait_seconds,
+                    "  ├─ " + t("services.summarization.ollama.waiting", attempt=attempt, max=max_retries, seconds=wait_seconds),
                 )
                 time.sleep(wait_seconds)
                 if cls.is_service_running(url):
-                    logger.info("  ├─ 就绪: ✓ (第 %d 次检测)", attempt)
+                    logger.info("  ├─ " + t("services.summarization.ollama.ready_ok", attempt=attempt))
                     ready = True
                     break
             if not ready:
-                logger.info("  └─ 就绪: ✗ %d 次检测均无法连接", max_retries)
+                logger.info("  └─ " + t("services.summarization.ollama.ready_fail", count=max_retries))
                 return False
 
-        # ── 2. 连接检查 ──────────────────────────────────────────
+        # ── 2. Connection check ──────────────────────────────────
         client = cls(url)
         try:
             ok = client.check_connection(quiet=True)
             if not ok:
-                logger.info("  └─ 连接: ✗ 失败")
+                logger.info("  └─ " + t("services.summarization.ollama.connection_fail"))
                 return False
 
-            # ── 3. 列出可用模型 ──────────────────────────────────
+            # ── 3. List available models ─────────────────────────
             models = client.list_models(quiet=True)
             has_model_check = bool(model_name)
 
             if models:
-                logger.info("  ├─ 连接: ✓ 成功")
+                logger.info("  ├─ " + t("services.summarization.ollama.connection_ok"))
                 if has_model_check:
-                    logger.info("  ├─ 可用模型:")
+                    logger.info("  ├─ " + t("services.summarization.ollama.available_models"))
                     for i, name in enumerate(models):
                         branch = "├─" if i < len(models) - 1 else "└─"
                         logger.info("  │  %s %s", branch, name)
                 else:
-                    logger.info("  └─ 可用模型:")
+                    logger.info("  └─ " + t("services.summarization.ollama.available_models"))
                     for i, name in enumerate(models):
                         branch = "├─" if i < len(models) - 1 else "└─"
                         logger.info("     %s %s", branch, name)
             else:
                 if has_model_check:
-                    logger.info("  ├─ 连接: ✓ 成功")
-                    logger.info("  ├─ 可用模型: (无)")
+                    logger.info("  ├─ " + t("services.summarization.ollama.connection_ok"))
+                    logger.info("  ├─ " + t("services.summarization.ollama.no_models"))
                 else:
-                    logger.info("  └─ 连接: ✓ 成功")
+                    logger.info("  └─ " + t("services.summarization.ollama.connection_ok"))
 
-            # ── 4. 验证指定模型 ──────────────────────────────────
+            # ── 4. Verify specified model ─────────────────────────
             if has_model_check:
                 exists = client.check_model(model_name, quiet=True)
+                status_key = "services.summarization.ollama.model_exists" if exists else "services.summarization.ollama.model_not_exists"
                 logger.info(
-                    "  └─ 模型 %s: %s",
-                    model_name,
-                    "✓ 存在" if exists else "✗ 不存在",
+                    "  └─ " + t("services.summarization.ollama.model_status", name=model_name, status=t(status_key)),
                 )
                 return exists
 
@@ -328,7 +320,7 @@ class OllamaClient:
     def _post_with_retry(
         self, url: str, json: dict, timeout: int, stream: bool = False
     ) -> requests.Response:
-        """带重试的 POST 请求（仅对非流式请求重试）。"""
+        """POST request with retry (only retries non-streaming requests)."""
         last_exc = None
         for attempt in range(1, self.max_retries + 1):
             try:
@@ -345,58 +337,50 @@ class OllamaClient:
                     raise
                 wait = 2**attempt
                 logger.warning(
-                    "Ollama 请求失败 (尝试 %d/%d): %s，%d 秒后重试...",
-                    attempt,
-                    self.max_retries,
-                    e,
-                    wait,
+                    t("services.summarization.ollama.retry", attempt=attempt, max=self.max_retries, error=e, seconds=wait),
                 )
                 time.sleep(wait)
-        raise last_exc or SummarizationError("Ollama 请求失败（未知错误）")
+        raise last_exc or SummarizationError(t("services.summarization.ollama.unknown_error"))
 
     def check_connection(self, quiet: bool = False) -> bool:
-        """检查Ollama连接
+        """Check Ollama connection
 
         Args:
-            quiet: 为 True 时不输出日志
+            quiet: If True, suppress logs
 
         Returns:
-            是否连接成功
+            Whether connection was successful
         """
         try:
             response = self._session.get(f"{self.base_url}/api/tags", timeout=10)
             success = response.status_code == 200
             if not quiet:
                 if success:
-                    logger.info("Ollama连接检查: 成功")
+                    logger.info(t("services.summarization.ollama.check_connection_ok"))
                 else:
                     try:
                         error_detail = response.json()
                         logger.error(
-                            "Ollama连接检查: 失败 (状态码 %d): %s",
-                            response.status_code,
-                            error_detail,
+                            t("services.summarization.ollama.check_connection_fail_detail", code=response.status_code, detail=error_detail),
                         )
                     except Exception:
                         logger.error(
-                            "Ollama连接检查: 失败 (状态码 %d): %s",
-                            response.status_code,
-                            response.text[:500] if response.text else "(空响应)",
+                            t("services.summarization.ollama.check_connection_fail", code=response.status_code),
                         )
             return success
         except Exception as e:
             if not quiet:
-                logger.error("Ollama连接检查失败: %s", e)
+                logger.error(t("services.summarization.ollama.check_connection_error", error=e))
             return False
 
     def list_models(self, quiet: bool = False) -> List[str]:
-        """列出可用模型
+        """List available models
 
         Args:
-            quiet: 为 True 时不输出日志
+            quiet: If True, suppress logs
 
         Returns:
-            模型名称列表
+            List of model names
         """
         try:
             response = self._session.get(f"{self.base_url}/api/tags", timeout=10)
@@ -406,34 +390,35 @@ class OllamaClient:
             models = [model["name"] for model in data.get("models", [])]
 
             if not quiet:
-                logger.info("可用模型: %s", models)
+                logger.info(t("services.summarization.ollama.available_models_list", models=models))
             return models
         except Exception as e:
             if not quiet:
-                logger.error("获取模型列表失败: %s", e)
+                logger.error(t("services.summarization.ollama.list_models_failed", error=e))
             return []
 
     def check_model(self, model_name: str, quiet: bool = False) -> bool:
-        """检查指定模型是否存在
+        """Check if a specific model exists
 
         Args:
-            model_name: 模型名称
-            quiet: 为 True 时不输出日志
+            model_name: Model name
+            quiet: If True, suppress logs
 
         Returns:
-            模型是否存在
+            Whether the model exists
         """
         try:
             models = self.list_models(quiet=True)
             exists = model_name in models
             if not quiet:
-                logger.error("模型 %s %s", model_name, "存在" if exists else "不存在")
+                status_key = "services.summarization.ollama.model_exists" if exists else "services.summarization.ollama.model_not_exists"
+                logger.info(t("services.summarization.ollama.model_check_log", name=model_name, status=t(status_key)))
                 if not exists:
-                    logger.warning("可用模型: %s", models)
+                    logger.warning(t("services.summarization.ollama.available_models_list", models=models))
             return exists
         except Exception as e:
             if not quiet:
-                logger.error("检查模型失败: %s", e)
+                logger.error(t("services.summarization.ollama.check_model_failed", error=e))
             return False
 
     def generate(
@@ -448,21 +433,21 @@ class OllamaClient:
         cancel_check: Optional[Callable[[], bool]] = None,
         pause_event: Optional[threading.Event] = None,
     ) -> str:
-        """生成文本
+        """Generate text
 
         Args:
-            model: 模型名称
-            prompt: 提示词
-            system_prompt: 系统提示词
-            temperature: 温度参数
-            max_tokens: 最大token数
-            stream: 是否流式输出
-            on_token: 流式输出时的 token 回调函数
-            cancel_check: 取消检查回调，返回 True 时中断生成
-            pause_event: 暂停控制事件，set() 为继续，clear() 为暂停
+            model: Model name
+            prompt: Input prompt
+            system_prompt: System prompt
+            temperature: Temperature parameter
+            max_tokens: Maximum number of tokens
+            stream: Whether to stream output
+            on_token: Token callback for streaming output
+            cancel_check: Cancel check callback, returns True to interrupt
+            pause_event: Pause control event, set() to continue, clear() to pause
 
         Returns:
-            生成的文本
+            Generated text
         """
         payload = {"model": model, "prompt": prompt, "stream": stream}
 
@@ -477,7 +462,7 @@ class OllamaClient:
                 payload["options"] = {}
             payload["options"]["num_predict"] = max_tokens
 
-        logger.debug("Ollama请求参数: %s", payload)
+        logger.debug("Ollama request params: %s", payload)
 
         try:
             response = self._post_with_retry(
@@ -488,15 +473,15 @@ class OllamaClient:
             )
 
             with response:
-                logger.debug("Ollama响应状态: %s", response.status_code)
+                logger.debug("Ollama response status: %s", response.status_code)
 
                 if response.status_code != 200:
-                    error_msg = f"Ollama API错误: {response.status_code}"
+                    error_msg = t("services.summarization.ollama.api_error", code=response.status_code)
                     try:
                         error_detail = response.json()
-                        error_msg += f", 详情: {error_detail}"
+                        error_msg += f", {error_detail}"
                     except Exception:
-                        error_msg += f", 响应: {response.text[:200]}"
+                        error_msg += f", {response.text[:200]}"
                     logger.error("%s", error_msg)
                     raise SummarizationError(error_msg)
 
@@ -504,18 +489,18 @@ class OllamaClient:
                     result = ""
                     for line in response.iter_lines():
                         if cancel_check and cancel_check():
-                            raise SummarizationError("用户取消了摘要")
+                            raise SummarizationError(t("services.summarization.ollama.user_cancelled"))
                         if line:
                             try:
                                 data = _json.loads(line)
                             except _json.JSONDecodeError:
                                 logger.warning(
-                                    "Ollama 流式响应 JSON 解析失败: %s", line[:200]
+                                    t("services.summarization.ollama.stream_json_error", line=line[:200])
                                 )
                                 continue
                             if "error" in data:
                                 raise SummarizationError(
-                                    f"Ollama 流式错误: {data['error']}"
+                                    t("services.summarization.ollama.stream_error", error=data["error"])
                                 )
                             if "response" in data:
                                 token = data["response"]
@@ -530,10 +515,10 @@ class OllamaClient:
                     return data.get("response", "")
 
         except requests.exceptions.Timeout:
-            raise SummarizationError("Ollama请求超时")
+            raise SummarizationError(t("services.summarization.ollama.request_timeout"))
         except requests.exceptions.RequestException as e:
-            raise SummarizationError(f"Ollama请求失败: {e}")
+            raise SummarizationError(t("services.summarization.ollama.request_failed", error=e))
         except SummarizationError:
             raise
         except Exception as e:
-            raise SummarizationError(f"生成文本失败: {e}")
+            raise SummarizationError(t("services.summarization.ollama.generate_failed", error=e))

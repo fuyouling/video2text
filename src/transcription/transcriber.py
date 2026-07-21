@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any, Callable, Tuple
 from dataclasses import dataclass
 from src.utils.exceptions import TranscriptionError
+from src.i18n import t
 from src.utils.logger import get_logger
 from src.utils.paths import get_base_dir as _get_base_dir
 
@@ -47,7 +48,7 @@ def get_cached_transcriber(
             cached = _model_cache[cache_key]
             if cached._loaded:
                 _model_cache.move_to_end(cache_key)
-                logger.info("Transcriber: ✓ 复用缓存")
+                logger.info(t("transcriber.cache_hit"))
                 return cached
             else:
                 del _model_cache[cache_key]
@@ -56,7 +57,7 @@ def get_cached_transcriber(
             evicted_key, evicted = _model_cache.popitem(last=False)
             if evicted._loaded:
                 evicted.unload_model()
-            logger.info("Transcriber: 淘汰旧缓存 (%s)", evicted_key)
+            logger.info(t("transcriber.evict_cache", key=evicted_key))
 
         transcriber = Transcriber(
             model_path=model_path,
@@ -156,13 +157,13 @@ class Transcriber:
             resolved_path = Path(self.download_root) / model_path
 
         if resolved_path.exists():
-            logger.debug("使用本地模型: %s", resolved_path)
+            logger.debug("Using local model: %s", resolved_path)
             missing_files = [f for f in _CORE_FILES if not (resolved_path / f).exists()]
             if missing_files:
-                logger.warning("Transcriber: ⚠ 核心文件不完整 (%s)", missing_files)
+                logger.warning(t("transcriber.core_files_incomplete", files=missing_files))
             return str(resolved_path)
         else:
-            logger.info("Transcriber: ⚠ 模型不存在，将下载 (%s)", resolved_path)
+            logger.info(t("transcriber.model_not_exists_download", path=resolved_path))
             return str(resolved_path)
 
     def load_model(self, progress_callback: Optional[Callable] = None) -> None:
@@ -179,7 +180,7 @@ class Transcriber:
         """
         with self._model_lock:
             if self._loaded:
-                logger.info("Transcriber: ✓ 模型已加载")
+                logger.info(t("transcriber.model_loaded"))
                 return
 
             self._do_load_model(progress_callback)
@@ -218,12 +219,7 @@ class Transcriber:
                 if not (downloader.libs_dir / name).exists()
                 or (downloader.libs_dir / name).stat().st_size == 0
             ]
-            raise TranscriptionError(
-                "CUDA 依赖缺失（cuBLAS/cuDNN DLL 未找到）："
-                + "、".join(missing)
-                + "。无法启用 GPU 转写：请通过「设置」下载依赖，或在转写设置中"
-                "将设备切换为 CPU。"
-            )
+            raise TranscriptionError(t("transcriber.cuda_dll_missing", files="、".join(missing)))
 
     def _verify_dlls_loadable(self) -> None:
         """在 PyTorch 导入后尝试验证 libs/ 的 DLL 可加载性，仅警告不阻塞。
@@ -250,12 +246,7 @@ class Transcriber:
                 bad_dlls.append(name)
 
         if bad_dlls:
-            logger.warning(
-                "Transcriber: ⚠ libs/ DLL 预检失败 (%s)，"
-                "ctranslate2 将尝试使用系统/PyTorch 自带的 CUDA 库。"
-                "若后续转写失败，请通过「设置」重新下载依赖或切换为 CPU",
-                "、".join(bad_dlls),
-            )
+            logger.warning(t("transcriber.dll_precheck_failed", files="、".join(bad_dlls)))
 
     def _do_load_model(self, progress_callback: Optional[Callable] = None) -> None:
         """实际加载模型的内部实现（调用方需持有 _model_lock）。
@@ -278,12 +269,9 @@ class Transcriber:
             if self.device != "cpu":
                 self._verify_dlls_loadable()
 
-            logger.debug("开始加载模型")
+            logger.debug(t("transcriber.loading_model"))
             logger.debug(
-                "设备: %s, 计算类型: %s, 工作线程: %d",
-                self.device,
-                self.compute_type,
-                self.num_workers,
+                t("transcriber.loading_params", device=self.device, ct=self.compute_type, workers=self.num_workers)
             )
 
             self.model = WhisperModel(
@@ -296,12 +284,10 @@ class Transcriber:
             )
 
             self._loaded = True
-            logger.debug("模型加载成功")
+            logger.debug(t("transcriber.model_loaded_success"))
 
         except ImportError:
-            raise TranscriptionError(
-                "faster_whisper未安装，请运行: pip install faster-whisper"
-            )
+            raise TranscriptionError(t("transcriber.faster_whisper_not_installed"))
         except RuntimeError as e:
             error_str = str(e).lower()
             is_oom = (
@@ -311,20 +297,20 @@ class Transcriber:
                 or "cudnn" in error_str
             )
             if is_oom:
-                logger.warning("Transcriber: ⚠ 显存不足，尝试降级")
+                logger.warning(t("transcriber.oom_fallback"))
                 self.model = None
                 self._load_model_fallback()
             else:
-                raise TranscriptionError(f"模型加载失败: {e}")
+                raise TranscriptionError(t("transcriber.transcribe_failed", error=str(e)))
         except Exception as e:
             error_str = str(e).lower()
             is_oom = "out of memory" in error_str or "oom" in error_str
             if is_oom:
-                logger.warning("Transcriber: ⚠ 显存不足，尝试降级")
+                logger.warning(t("transcriber.oom_fallback"))
                 self.model = None
                 self._load_model_fallback()
             else:
-                raise TranscriptionError(f"模型加载失败: {e}")
+                raise TranscriptionError(t("transcriber.transcribe_failed", error=str(e)))
 
     def _load_model_fallback(self) -> None:
         """OOM 回退加载策略。
@@ -343,9 +329,7 @@ class Transcriber:
             if ct == self.compute_type:
                 continue
             try:
-                logger.info(
-                    "Transcriber: 回退加载 device=%s, compute_type=%s", self.device, ct
-                )
+                logger.info(t("transcriber.fallback_loading", device=self.device, ct=ct))
                 self.model = WhisperModel(
                     self.model_path,
                     device=self.device,
@@ -356,21 +340,17 @@ class Transcriber:
                 )
                 self.compute_type = ct
                 self._loaded = True
-                logger.info(
-                    "Transcriber: ✓ 回退成功 device=%s, compute_type=%s",
-                    self.device,
-                    ct,
-                )
+                logger.info(t("transcriber.fallback_success", device=self.device, ct=ct))
                 return
             except Exception as inner_e:
-                logger.debug("回退 %s 失败: %s", ct, inner_e)
+                logger.debug(t("transcriber.fallback_retry_failed", ct=ct, error=inner_e))
                 self.model = None
                 continue
 
         if self.device != "cpu":
             for ct in ["int8", "float32"]:
                 try:
-                    logger.info("Transcriber: 最终回退 cpu, compute_type=%s", ct)
+                    logger.info(t("transcriber.final_fallback_cpu", ct=ct))
                     self.model = WhisperModel(
                         self.model_path,
                         device="cpu",
@@ -382,17 +362,14 @@ class Transcriber:
                     self.device = "cpu"
                     self.compute_type = ct
                     self._loaded = True
-                    logger.info("Transcriber: ✓ CPU 回退成功 compute_type=%s", ct)
+                    logger.info(t("transcriber.cpu_fallback_success", ct=ct))
                     return
                 except Exception as inner_e:
-                    logger.debug("CPU 回退 %s 失败: %s", ct, inner_e)
+                    logger.debug(t("transcriber.cpu_fallback_retry_failed", ct=ct, error=inner_e))
                     self.model = None
                     continue
 
-        raise TranscriptionError(
-            "模型加载失败：GPU 显存不足且回退到 CPU 也失败。"
-            "请关闭其他 GPU 程序，或使用更小的模型。"
-        )
+        raise TranscriptionError(t("transcriber.model_load_failed_oom"))
 
     def transcribe(
         self,
@@ -456,21 +433,18 @@ class Transcriber:
 
         audio_file = Path(audio_path)
         if not audio_file.exists():
-            raise TranscriptionError(f"音频文件不存在: {audio_path}")
+            raise TranscriptionError(t("transcriber.audio_file_not_found", path=audio_path))
 
-        logger.debug("开始转写: %s", audio_file.name)
+        logger.debug(t("transcriber.start_transcribing", name=audio_file.name))
         logger.debug(
-            "语言: %s, beam_size: %d, temperature: %s",
-            language,
-            beam_size,
-            temperature,
+            t("transcriber.transcribe_params", lang=language, beam=beam_size, temp=temperature)
         )
 
         try:
             with self._model_lock:
                 model = self.model
                 if model is None:
-                    raise TranscriptionError("模型未加载或已被卸载")
+                    raise TranscriptionError(t("transcriber.model_not_loaded"))
             segments, info = model.transcribe(
                 audio_path,
                 language=language if language != "auto" else None,
@@ -494,7 +468,7 @@ class Transcriber:
             language_probability = info.language_probability
 
             logger.debug(
-                "检测到语言: %s (置信度: %.2f)", detected_language, language_probability
+                t("transcriber.detected_language", lang=detected_language, prob=f"{language_probability:.2f}")
             )
 
             transcript_segments = []
@@ -514,11 +488,11 @@ class Transcriber:
                         segment.start, segment.end, len(transcript_segments)
                     )
 
-            logger.debug("转写完成，共 %d 个段落", len(transcript_segments))
+            logger.debug(t("transcriber.transcribe_done", count=len(transcript_segments)))
             return transcript_segments
 
         except Exception as e:
-            raise TranscriptionError(f"转写失败: {e}") from e
+            raise TranscriptionError(t("transcriber.transcribe_failed", error=str(e)))
 
     def unload_model(self) -> None:
         """卸载模型并释放 GPU 显存，并恢复原始 device/compute_type。
@@ -527,7 +501,7 @@ class Transcriber:
         避免主线程在窗口关闭时被阻塞（进程退出时操作系统会回收资源）。
         """
         if not self._model_lock.acquire(blocking=False):
-            logger.warning("Transcriber: ⚠ 模型正在加载中，跳过卸载")
+            logger.warning(t("transcriber.skip_unload_loading"))
             return
         try:
             if self.model is not None:
@@ -538,7 +512,7 @@ class Transcriber:
                     self.device = self._original_device
                 if hasattr(self, "_original_compute_type"):
                     self.compute_type = self._original_compute_type
-                logger.info("Transcriber: ✓ 模型已卸载")
+                logger.info(t("transcriber.model_unloaded"))
         finally:
             self._model_lock.release()
 
@@ -552,16 +526,16 @@ class Transcriber:
             RuntimeError: 模型尚未加载
         """
         if not self._loaded:
-            raise RuntimeError("模型尚未加载，请先调用 load_model()")
+            raise RuntimeError(t("transcriber.model_not_loaded_yet"))
 
         try:
             with self._model_lock:
                 model = self.model
                 if model is None:
-                    raise RuntimeError("模型未加载或已被卸载")
+                    raise RuntimeError(t("transcriber.model_not_loaded"))
             return model.supported_languages
         except Exception as e:
-            logger.warning("Transcriber: ✗ 获取语言失败 (%s)", e)
+            logger.warning(t("transcriber.get_languages_failed", error=e))
             return {}
 
     def detect_language(self, audio_path: str) -> Tuple[str, float]:
@@ -581,21 +555,21 @@ class Transcriber:
 
         audio_file = Path(audio_path)
         if not audio_file.exists():
-            raise TranscriptionError(f"音频文件不存在: {audio_path}")
+            raise TranscriptionError(t("transcriber.audio_file_not_found", path=audio_path))
 
         try:
             with self._model_lock:
                 model = self.model
                 if model is None:
-                    raise TranscriptionError("模型未加载或已被卸载")
+                    raise TranscriptionError(t("transcriber.model_not_loaded"))
             language, probability = model.detect_language(audio_path)
 
-            logger.info("Transcriber: 检测语言 %s (置信度 %.2f)", language, probability)
+            logger.info(t("transcriber.language_detected", lang=language, prob=f"{probability:.2f}"))
 
             return language, probability
 
         except Exception as e:
-            raise TranscriptionError(f"语言检测失败: {e}")
+            raise TranscriptionError(t("transcriber.language_detection_failed", error=str(e)))
 
     def get_model_info(self) -> Dict[str, Any]:
         """获取模型信息（不触发模型加载）

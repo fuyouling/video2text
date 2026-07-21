@@ -1,4 +1,4 @@
-"""NVIDIA API 客户端 —— 使用 OpenAI 兼容的 chat/completions 接口"""
+"""NVIDIA API client — using OpenAI-compatible chat/completions interface"""
 
 import json as _json
 import os
@@ -8,6 +8,7 @@ from typing import Callable, Optional
 
 import requests
 
+from src.i18n import t
 from src.utils.env_loader import ensure_env_loaded
 from src.utils.exceptions import SummarizationError
 from src.utils.logger import get_logger
@@ -17,7 +18,7 @@ logger = get_logger(__name__)
 
 
 class NvidiaClient:
-    """NVIDIA API 客户端 —— 通过 OpenAI 兼容接口调用 NVIDIA 模型"""
+    """NVIDIA API client — calling NVIDIA models via OpenAI-compatible interface"""
 
     def __init__(
         self,
@@ -49,12 +50,12 @@ class NvidiaClient:
         self._session.close()
 
     def check_connection(self) -> bool:
-        """检查 NVIDIA API 是否可用。
+        """Check if the NVIDIA API is available.
 
-        参考 test_nvidia.py，发送一个最小请求验证连通性和 API Key。
+        Reference: test_nvidia.py, sends a minimal request to verify connectivity and API Key.
         """
         if not self._api_key:
-            logger.error("NvidiaClient: ✗ API Key 未配置")
+            logger.error(t("services.summarization.nvidia.api_key_missing"))
             env_path = get_base_dir() / ".env"
             if env_path.exists():
                 try:
@@ -62,13 +63,13 @@ class NvidiaClient:
                         content = f.read()
                     if "NVIDIA_API_KEY" not in content:
                         logger.warning(
-                            "NvidiaClient: .env 文件中未找到 NVIDIA_API_KEY，请添加: NVIDIA_API_KEY=your_api_key"
+                            t("services.summarization.nvidia.env_missing_key")
                         )
                 except Exception as e:
-                    logger.debug("NvidiaClient: 读取 .env 文件失败: %s", e)
+                    logger.debug("NvidiaClient: read .env failed: %s", e)
             else:
                 logger.warning(
-                    "NvidiaClient: .env 文件不存在，请创建并配置 NVIDIA_API_KEY"
+                    t("services.summarization.nvidia.env_not_found")
                 )
             return False
 
@@ -83,24 +84,20 @@ class NvidiaClient:
             resp = self._session.post(self.api_url, json=payload, timeout=self.timeout)
             ok = resp.status_code == 200
             if ok:
-                logger.debug("NvidiaClient: 连接检查成功")
+                logger.debug(t("services.summarization.nvidia.check_ok"))
             else:
                 try:
                     error_detail = resp.json()
                     logger.error(
-                        "NvidiaClient: ✗ 连接检查失败 (状态码 %d): %s",
-                        resp.status_code,
-                        error_detail,
+                        t("services.summarization.nvidia.check_fail_detail", code=resp.status_code, detail=error_detail),
                     )
                 except Exception:
                     logger.error(
-                        "NvidiaClient: ✗ 连接检查失败 (状态码 %d): %s",
-                        resp.status_code,
-                        resp.text[:500] if resp.text else "(空响应)",
+                        t("services.summarization.nvidia.check_fail", code=resp.status_code),
                     )
             return ok
         except Exception as e:
-            logger.error("NvidiaClient: ✗ 连接失败 (%s)", e)
+            logger.error(t("services.summarization.nvidia.check_error", error=e))
             return False
 
     def generate(
@@ -129,7 +126,7 @@ class NvidiaClient:
         }
 
         logger.debug(
-            "NVIDIA API 请求参数: %s",
+            "NVIDIA API request params: %s",
             {k: v for k, v in payload.items() if k != "messages"},
         )
 
@@ -150,13 +147,10 @@ class NvidiaClient:
                         retry_after = get_retry_after(dict(response.headers))
                         wait = retry_after if retry_after else 2 ** (attempt + 1)
                         last_exc = SummarizationError(
-                            f"NVIDIA API 限流 (429), {wait} 秒后重试"
+                            t("services.summarization.nvidia.rate_limited", wait=wait)
                         )
                         logger.warning(
-                            "NvidiaClient: ⚠ 429 限流 (%d/%d)，等待 %ds",
-                            attempt,
-                            self.max_retries,
-                            wait,
+                            t("services.summarization.nvidia.rate_limited_log", attempt=attempt, max=self.max_retries, wait=wait),
                         )
                         if attempt < self.max_retries:
                             time.sleep(wait)
@@ -164,12 +158,12 @@ class NvidiaClient:
                         raise last_exc
 
                     if response.status_code != 200:
-                        error_msg = f"NVIDIA API 错误: {response.status_code}"
+                        error_msg = t("services.summarization.nvidia.api_error", code=response.status_code)
                         try:
                             error_detail = response.json()
-                            error_msg += f", 详情: {error_detail}"
+                            error_msg += f", {error_detail}"
                         except Exception:
-                            error_msg += f", 响应: {response.text[:500]}"
+                            error_msg += f", {response.text[:500]}"
                         logger.error("%s", error_msg)
                         raise SummarizationError(error_msg)
 
@@ -185,27 +179,27 @@ class NvidiaClient:
                         return ""
 
             except requests.exceptions.Timeout:
-                last_exc = SummarizationError("NVIDIA API 请求超时")
+                last_exc = SummarizationError(t("services.summarization.nvidia.request_timeout"))
                 logger.warning(
-                    "NvidiaClient: ⚠ 超时 (%d/%d)", attempt, self.max_retries
+                    "NvidiaClient: timeout (%d/%d)", attempt, self.max_retries
                 )
             except requests.exceptions.ConnectionError as e:
-                last_exc = SummarizationError(f"NVIDIA API 连接失败: {e}")
+                last_exc = SummarizationError(t("services.summarization.nvidia.connection_failed", error=e))
                 logger.warning(
-                    "NvidiaClient: ⚠ 连接失败 (%d/%d): %s", attempt, self.max_retries, e
+                    "NvidiaClient: connection failed (%d/%d): %s", attempt, self.max_retries, e
                 )
             except SummarizationError:
                 raise
             except Exception as e:
-                last_exc = SummarizationError(f"NVIDIA API 请求失败: {e}")
-                logger.error("NvidiaClient: ✗ 请求异常 (%s)", e)
+                last_exc = SummarizationError(t("services.summarization.nvidia.request_failed", error=e))
+                logger.error("NvidiaClient: request exception (%s)", e)
 
             if attempt < self.max_retries:
                 wait = 2**attempt
-                logger.info("NvidiaClient: %ds 后重试...", wait)
+                logger.info(t("services.summarization.nvidia.retry_log", wait=wait))
                 time.sleep(wait)
 
-        raise last_exc or SummarizationError("NVIDIA API 请求失败（未知错误）")
+        raise last_exc or SummarizationError(t("services.summarization.nvidia.unknown_error"))
 
     def _handle_streaming(
         self,
@@ -214,12 +208,12 @@ class NvidiaClient:
         cancel_check: Optional[Callable[[], bool]] = None,
         pause_event: Optional[threading.Event] = None,
     ) -> str:
-        """处理流式响应"""
+        """Handle streaming response"""
         full_text = ""
         try:
             for line in response.iter_lines():
                 if cancel_check and cancel_check():
-                    raise SummarizationError("用户取消了摘要")
+                    raise SummarizationError(t("services.summarization.nvidia.user_cancelled"))
                 if not line:
                     continue
                 decoded = line.decode("utf-8")
@@ -231,7 +225,7 @@ class NvidiaClient:
                 try:
                     data = _json.loads(data_str)
                     if "error" in data:
-                        raise SummarizationError(f"NVIDIA 流式错误: {data['error']}")
+                        raise SummarizationError(t("services.summarization.nvidia.stream_error", error=data["error"]))
                     choices = data.get("choices", [])
                     if choices:
                         delta = choices[0].get("delta", {})
@@ -241,7 +235,7 @@ class NvidiaClient:
                             if on_token:
                                 on_token(content)
                 except _json.JSONDecodeError:
-                    logger.warning("NvidiaClient: ⚠ 流式 JSON 解析失败")
+                    logger.warning(t("services.summarization.nvidia.stream_json_error"))
                     continue
         except (
             requests.exceptions.ConnectionError,
@@ -249,9 +243,8 @@ class NvidiaClient:
         ) as e:
             if full_text:
                 logger.warning(
-                    "NvidiaClient: ⚠ 流式中断，已接收 %d 字符",
-                    len(full_text),
+                    t("services.summarization.nvidia.stream_interrupted", count=len(full_text)),
                 )
             else:
-                raise SummarizationError(f"NVIDIA 流式连接失败: {e}") from e
+                raise SummarizationError(t("services.summarization.nvidia.stream_connection_failed", error=e)) from e
         return full_text

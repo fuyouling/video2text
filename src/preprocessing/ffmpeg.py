@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+from src.i18n import t
 from src.utils.exceptions import VideoFileError
 from src.utils.logger import get_logger
 
@@ -27,8 +28,7 @@ def ensure_ffmpeg() -> str:
     path = _get_base_dir() / "ffmpeg" / "bin" / name
     if not path.exists():
         raise VideoFileError(
-            f"FFmpeg未找到: {path}\n"
-            "请确保程序目录下的 ffmpeg/bin/ 目录存在且包含 ffmpeg.exe。"
+            t("errors.ffmpeg_not_found", path=path)
         )
     _ffmpeg_path = str(path)
     logger.debug("FFmpeg: %s", _ffmpeg_path)
@@ -43,8 +43,7 @@ def ensure_ffprobe() -> str:
     path = _get_base_dir() / "ffmpeg" / "bin" / name
     if not path.exists():
         raise VideoFileError(
-            f"ffprobe未找到: {path}\n"
-            "请确保程序目录下的 ffmpeg/bin/ 目录存在且包含 ffprobe.exe。"
+            t("errors.ffprobe_not_found", path=path)
         )
     _ffprobe_path = str(path)
     logger.debug("ffprobe: %s", _ffprobe_path)

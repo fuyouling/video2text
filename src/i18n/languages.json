@@ -1,0 +1,11 @@
+{
+  "zh-CN": {"name": "中文(简体)", "english": "Simplified Chinese", "fallback": null, "qt": "zh_CN", "enabled": true},
+  "zh-TW": {"name": "中文(繁體)", "english": "Traditional Chinese", "fallback": "zh-CN", "qt": "zh_TW", "enabled": true},
+  "en":    {"name": "English",     "english": "English",           "fallback": "zh-CN", "qt": "en",    "enabled": true},
+  "ja":    {"name": "日本語",      "english": "Japanese",          "fallback": "en",     "qt": "ja",    "enabled": true},
+  "ko":    {"name": "한국어",      "english": "Korean",            "fallback": "en",     "qt": "ko",    "enabled": true},
+  "fr":    {"name": "Français",   "english": "French",            "fallback": "en",     "qt": "fr",    "enabled": true},
+  "es":    {"name": "Español",    "english": "Spanish",           "fallback": "en",     "qt": "es",    "enabled": true},
+  "de":    {"name": "Deutsch",     "english": "German",            "fallback": "en",     "qt": "de",    "enabled": true},
+  "ru":    {"name": "Русский",     "english": "Russian",           "fallback": "en",     "qt": "ru",    "enabled": true, "plural": "slavic"}
+}

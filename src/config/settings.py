@@ -11,6 +11,7 @@ import threading
 from pathlib import Path
 from typing import Any, Optional
 
+from src.i18n import t
 from src.utils.exceptions import ConfigurationError
 from src.utils.logger import get_logger
 from src.utils.paths import get_base_dir as _get_base_dir
@@ -57,9 +58,7 @@ class Settings:
             if self._initialized:
                 if config_path and config_path != self.config_path:
                     logger.warning(
-                        "Settings: ⚠ 单例已初始化，忽略 %s (当前: %s)",
-                        config_path,
-                        self.config_path,
+                        t("config_manager.settings_singleton_ignored", config_path=config_path, current=self.config_path)
                     )
                 return
 
@@ -75,8 +74,7 @@ class Settings:
                 self._load()
             else:
                 logger.info(
-                    "Settings: ⚠ 配置不存在 (%s)，使用默认值",
-                    Path(self.config_path).name,
+                    t("config_manager.settings_config_not_found", name=Path(self.config_path).name)
                 )
 
             self._initialized = True
@@ -115,9 +113,9 @@ class Settings:
         """内部加载，首次初始化时调用，输出日志"""
         try:
             self.config.read(self.config_path, encoding="utf-8")
-            logger.info("Settings: ✓ 配置加载 (%s)", Path(self.config_path).name)
+            logger.info(t("config_manager.settings_config_loaded", name=Path(self.config_path).name))
         except Exception as e:
-            raise ConfigurationError(f"加载配置文件失败: {e}")
+            raise ConfigurationError(t("config_manager.settings_load_config_fail", error=e))
 
     def reload(self) -> None:
         """从磁盘重新加载配置文件（不输出日志，供 GUI 刷新用）"""
@@ -127,7 +125,7 @@ class Settings:
             with self._lock:
                 self.config = new_config
         except Exception as e:
-            raise ConfigurationError(f"重新加载配置文件失败: {e}")
+            raise ConfigurationError(t("config_manager.settings_reload_config_fail", error=e))
 
     def save(self) -> None:
         """保存配置文件（原子写入，防止崩溃损坏）"""
@@ -152,7 +150,7 @@ class Settings:
         except ConfigurationError:
             raise
         except Exception as e:
-            raise ConfigurationError(f"保存配置文件失败: {e}")
+            raise ConfigurationError(t("config_manager.settings_save_config_fail", error=e))
 
     def get(self, key: str, default: Any = None) -> Any:
         """获取配置项
@@ -190,9 +188,9 @@ class Settings:
                     self.config.add_section(section)
 
                 self.config.set(section, option, str(value))
-            logger.debug("配置项已更新: %s", key)
+            logger.debug(t("config_manager.settings_config_updated_debug", key=key))
         except ValueError:
-            raise ConfigurationError(f"无效的配置键格式: {key}")
+            raise ConfigurationError(t("config_manager.settings_invalid_key_format", key=key))
 
     def get_int(self, key: str, default: int = 0) -> int:
         """获取整数配置项"""
@@ -256,7 +254,7 @@ class Settings:
                 for key, value in values.items():
                     self.config.set(section, key, str(value))
 
-        logger.info("Settings: ✓ 配置已更新")
+        logger.info(t("config_manager.settings_config_updated"))
 
     def to_dict(self) -> dict:
         """转换为字典，PATH_KEYS 中的路径会自动解析"""

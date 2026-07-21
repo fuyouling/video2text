@@ -1,6 +1,7 @@
 """搜索替换控制器 —— 从 MainWindow 提取的查找/替换逻辑"""
 
 from pathlib import Path
+from src.i18n import t
 from typing import Callable, Optional
 
 from PySide6.QtGui import QColor, QIcon, QTextCursor
@@ -62,9 +63,9 @@ class SearchController(QWidget):
         main_layout.setContentsMargins(0, 4, 0, 0)
 
         search_row = QHBoxLayout()
-        search_row.addWidget(QLabel("查找:"))
+        search_row.addWidget(QLabel(t("search.find_label")))
         self._search_input = QLineEdit()
-        self._search_input.setPlaceholderText("输入搜索内容…")
+        self._search_input.setPlaceholderText(t("search.find_placeholder"))
         self._search_input.setClearButtonEnabled(True)
         self._search_input.returnPressed.connect(self._find_next)
         self._search_input.textChanged.connect(self._find_all_matches)
@@ -72,7 +73,7 @@ class SearchController(QWidget):
 
         prev_btn = QPushButton()
         prev_btn.setFixedWidth(32)
-        prev_btn.setToolTip("上一个")
+        prev_btn.setToolTip(t("search.prev_tooltip"))
         prev_icon = _asset_path("arrow_up.png")
         if prev_icon:
             prev_btn.setIcon(QIcon(prev_icon))
@@ -83,7 +84,7 @@ class SearchController(QWidget):
 
         next_btn = QPushButton()
         next_btn.setFixedWidth(32)
-        next_btn.setToolTip("下一个 (Enter)")
+        next_btn.setToolTip(t("search.next_tooltip"))
         next_icon = _asset_path("arrow_down.png")
         if next_icon:
             next_btn.setIcon(QIcon(next_icon))
@@ -98,7 +99,7 @@ class SearchController(QWidget):
 
         close_btn = QPushButton()
         close_btn.setFixedWidth(28)
-        close_btn.setToolTip("关闭搜索栏")
+        close_btn.setToolTip(t("search.close_tooltip"))
         close_icon = _asset_path("close.png")
         if close_icon:
             close_btn.setIcon(QIcon(close_icon))
@@ -110,17 +111,17 @@ class SearchController(QWidget):
         main_layout.addLayout(search_row)
 
         replace_row = QHBoxLayout()
-        replace_row.addWidget(QLabel("替换:"))
+        replace_row.addWidget(QLabel(t("search.replace_label")))
         self._replace_input = QLineEdit()
-        self._replace_input.setPlaceholderText("替换为…")
+        self._replace_input.setPlaceholderText(t("search.replace_placeholder"))
         replace_row.addWidget(self._replace_input, 1)
 
-        replace_btn = QPushButton("替换")
+        replace_btn = QPushButton(t("search.replace_btn"))
         replace_btn.setMinimumWidth(60)
         replace_btn.clicked.connect(self._replace_current)
         replace_row.addWidget(replace_btn)
 
-        replace_all_btn = QPushButton("全部替换")
+        replace_all_btn = QPushButton(t("search.replace_all_btn"))
         replace_all_btn.setMinimumWidth(80)
         replace_all_btn.clicked.connect(self._replace_all)
         replace_row.addWidget(replace_all_btn)
@@ -193,7 +194,7 @@ class SearchController(QWidget):
 
         count = len(self._match_positions)
         if count == 0:
-            self._count_label.setText("未找到匹配")
+            self._count_label.setText(t("search.no_match"))
             return
 
         current_pos = edit.textCursor().position()
@@ -301,8 +302,8 @@ class SearchController(QWidget):
         self._current_match_index = -1
         self._clear_all_highlights()
         if count > 0:
-            self._count_label.setText(f"已替换 {count} 处")
+            self._count_label.setText(t("search.replaced_count", count=count))
             if self._on_replace_count:
                 self._on_replace_count(count)
         else:
-            self._count_label.setText("未找到匹配")
+            self._count_label.setText(t("search.no_match"))

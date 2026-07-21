@@ -4,6 +4,7 @@ import threading
 from pathlib import Path
 from typing import Optional
 
+from src.i18n import t
 from src.utils.json_utils import atomic_write_json, safe_read_json
 from src.utils.logger import get_logger
 
@@ -60,15 +61,11 @@ class TranscriptionPromptManager:
             return
         data = safe_read_json(self._file_path)
         if data is None:
-            logger.warning(
-                "TranscriptionPromptManager: ✗ 加载失败 (%s)", self._file_path.name
-            )
+            logger.warning(t("transcription_prompt_manager.load_failed", name=self._file_path.name))
             return
         self._templates = data.get("templates", {})
         self._last_used = data.get("last_used", "")
-        logger.info(
-            "TranscriptionPromptManager: ✓ 加载 (%s)", self._file_path.name
-        )
+        logger.info(t("transcription_prompt_manager.loaded", name=self._file_path.name))
 
     def save(self) -> None:
         try:
@@ -79,7 +76,7 @@ class TranscriptionPromptManager:
             self._file_path.parent.mkdir(parents=True, exist_ok=True)
             atomic_write_json(self._file_path, data)
         except Exception as e:
-            logger.error("TranscriptionPromptManager: ✗ 保存失败 (%s)", e)
+            logger.error(t("transcription_prompt_manager.save_failed", error=e))
             raise
 
     def get_names(self) -> list[str]:

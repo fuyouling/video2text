@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable, List, Optional
 
 from src.config.settings import Settings
+from src.i18n import t
 from src.storage.file_writer import FileWriter
 from src.summarization.providers import SummarizationProvider, create_provider
 from src.utils.exceptions import SummarizationError
@@ -76,7 +77,7 @@ class SummarizationService:
 
     def pause(self) -> None:
         self._pause_event.clear()
-        logger.info("  ├─ ⏸ 总结暂停请求已接收，等待当前任务完成…")
+        logger.info("  ├─ ⏸ " + t("services.summarization.pause_requested"))
 
     def resume(self) -> None:
         self._pause_event.set()
@@ -84,12 +85,12 @@ class SummarizationService:
     def _wait_if_paused(self) -> None:
         if self._pause_event.is_set():
             return
-        logger.info("  ├─ ✅ 总结已暂停 — 等待恢复…")
+        logger.info("  ├─ ✅ " + t("services.summarization.paused_waiting"))
         while not self._pause_event.wait(timeout=0.5):
             if self.cancel_check and self.cancel_check():
                 break
         if not (self.cancel_check and self.cancel_check()):
-            logger.info("  └─ ▶ 总结已继续")
+            logger.info("  └─ ▶ " + t("services.summarization.resumed"))
 
     @property
     def is_paused(self) -> bool:
@@ -106,9 +107,9 @@ class SummarizationService:
         file_writer: Optional[FileWriter] = None,
     ) -> str:
         if not text or not text.strip():
-            raise SummarizationError("输入文本为空")
+            raise SummarizationError(t("services.summarization.input_empty"))
 
-        label = video_name or "(未命名)"
+        label = video_name or t("services.summarization.unnamed")
 
         if total > 0:
             logger.info("[%d/%d] %s\n", index, total, label)
@@ -129,14 +130,14 @@ class SummarizationService:
         )
 
         if not summary or not summary.strip():
-            raise SummarizationError("模型返回空总结")
+            raise SummarizationError(t("services.summarization.model_returned_empty"))
 
         writer = file_writer or self.file_writer
         if video_name:
             writer.write_summary(summary, video_name, fmt=self.summary_format)
 
         if total > 0:
-            logger.info("  └─ 文本总结完成 ✓ (.%s)", self.summary_format)
+            logger.info("  └─ " + t("services.summarization.summary_done", format=self.summary_format))
         return summary
 
     def summarize_batch(
@@ -180,7 +181,7 @@ class SummarizationService:
                 if self.on_item_done:
                     self.on_item_done(video_name, summary)
             except Exception as e:
-                logger.info("[%d/%d] 总结失败: %s - %s", idx + 1, total, video_name, e)
+                logger.info(t("services.summarization.summary_failed", current=idx + 1, total=total, video_name=video_name, error=e))
                 if self.on_item_error:
                     self.on_item_error(video_name, str(e))
                 results.append("")
@@ -191,7 +192,7 @@ class SummarizationService:
         self, items: List[dict], stream: bool, total: int, max_workers: int
     ) -> List[str]:
         if stream:
-            logger.warning("并发模式不支持流式输出，自动切换为非流式")
+            logger.warning(t("services.summarization.concurrent_no_stream"))
 
         results: dict[int, str] = {}
 
@@ -212,9 +213,9 @@ class SummarizationService:
             provider = create_provider(self.settings)
             try:
                 if not text or not text.strip():
-                    logger.warning("文本为空: %s", video_name)
+                    logger.warning(t("services.summarization.text_empty", name=video_name))
                     if self.on_item_error:
-                        self.on_item_error(video_name, "文本为空")
+                        self.on_item_error(video_name, t("services.summarization.text_empty_short"))
                     return idx, ""
 
                 prompt_text = text
@@ -231,14 +232,14 @@ class SummarizationService:
 
                 with self._summarize_log_lock:
                     logger.info("[%d/%d] %s", idx + 1, total, video_name)
-                    logger.info("  └─ 文本总结完成 ✓ (.%s)", self.summary_format)
+                    logger.info("  └─ " + t("services.summarization.summary_done", format=self.summary_format))
 
                 if self.on_item_done:
                     self.on_item_done(video_name, summary if summary else "")
 
                 return idx, summary if summary else ""
             except Exception as e:
-                logger.info("[%d/%d] 总结失败: %s - %s", idx + 1, total, video_name, e)
+                logger.info(t("services.summarization.summary_failed", current=idx + 1, total=total, video_name=video_name, error=e))
                 if self.on_item_error:
                     self.on_item_error(video_name, str(e))
                 return idx, ""
@@ -259,7 +260,7 @@ class SummarizationService:
                     results[idx] = summary
                 except Exception as e:
                     idx = futures[future]
-                    logger.error("线程异常 item_%d: %s", idx, e)
+                    logger.error(t("services.summarization.thread_exception", idx=idx, error=e))
                     results[idx] = ""
 
         return [results.get(i, "") for i in range(len(items))]

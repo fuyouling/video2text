@@ -25,6 +25,7 @@ from src.utils.exceptions import (
     SummarizationError,
 )
 from src.utils.logger import setup_logger
+from src.i18n import t
 
 app = typer.Typer(help="Video2Text - 音视频转文本工具")
 console = Console()

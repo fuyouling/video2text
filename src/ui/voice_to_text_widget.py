@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QMenu,
 )
 
+from src.i18n import t
 from src.ui.background_content import BackgroundContent
 from src.config.settings import Settings
 from src.services.voice_recorder import VoiceRecorder
@@ -47,8 +48,8 @@ from src.utils.paths import get_base_dir as _get_base_dir
 
 logger = get_logger(__name__)
 
-_USER_PREFIX = "[用户] "
-_SUMMARY_PREFIX = "[归纳摘要] "
+_USER_PREFIX = t("voice.user_prefix")
+_SUMMARY_PREFIX = t("voice.summary_prefix")
 
 # ── 状态颜色映射 ─────────────────────────────────────────────────
 _STATUS_COLORS = {
@@ -186,7 +187,7 @@ class VoiceToTextWidget(QWidget):
 
         self._init_ui()
         self._refresh_history()
-        self._set_status("● 初始化...", "info")
+        self._set_status(t("voice.status.initializing"), "info")
         self._load_bg_settings()
 
     # ── UI 构建 ────────────────────────────────────────────────────────────
@@ -222,7 +223,7 @@ class VoiceToTextWidget(QWidget):
         bg_layout.addLayout(content_layout, 1)
 
     def _build_sidebar(self) -> QWidget:
-        group = QGroupBox("会话列表")
+        group = QGroupBox(t("voice.sidebar.title"))
         group.setObjectName("sidebarGroup")
         layout = QVBoxLayout(group)
         layout.setContentsMargins(8, 16, 8, 8)
@@ -262,7 +263,7 @@ class VoiceToTextWidget(QWidget):
             self._on_chat_context_menu
         )
         self.chat_display.setPlaceholderText(
-            "点击顶部开始录音，开启语音转写"
+            t("voice.chat.placeholder")
         )
         layout.addWidget(self.chat_display, 1)
 
@@ -276,24 +277,24 @@ class VoiceToTextWidget(QWidget):
         bar_layout.setContentsMargins(12, 8, 12, 8)
         bar_layout.setSpacing(8)
 
-        self.back_btn = QPushButton("返回主界面")
+        self.back_btn = QPushButton(t("voice.back_main"))
         self.back_btn.setObjectName("backBtn")
         self.back_btn.clicked.connect(self._on_back)
         bar_layout.addWidget(self.back_btn)
 
-        new_btn = QPushButton("新建")
+        new_btn = QPushButton(t("voice.new_conv"))
         new_btn.setObjectName("newConvBtn")
         new_btn.clicked.connect(self._on_new_conversation)
         bar_layout.addWidget(new_btn)
 
-        self.record_btn = QPushButton("🎤 开始录音")
+        self.record_btn = QPushButton("🎤 " + t("voice.record_start"))
         self.record_btn.setObjectName("recordBtn")
         self.record_btn.clicked.connect(self._on_record_toggled)
         bar_layout.addWidget(self.record_btn)
 
         bar_layout.addSpacing(12)
 
-        self.status_label = QLabel("● 初始化...")
+        self.status_label = QLabel(t("voice.status.initializing"))
         self.status_label.setObjectName("statusLabel")
         self._apply_status_style("info")
         bar_layout.addWidget(self.status_label)
@@ -362,7 +363,7 @@ class VoiceToTextWidget(QWidget):
         self.chat_display.clear()
         self._recording_seconds = 0
         self.recording_time_label.setText("00:00")
-        self._set_status("● 就绪", "ok")
+        self._set_status(t("voice.status.ready"), "ok")
         self._refresh_history()
 
     # ── 录音控制 ────────────────────────────────────────────────────────────
@@ -376,7 +377,7 @@ class VoiceToTextWidget(QWidget):
     def _start_recording(self) -> None:
         try:
             if not self._model_loaded:
-                self._set_status("● 模型尚未加载完成，请稍候...", "warn")
+                self._set_status(t("voice.status.model_not_ready"), "warn")
                 return
 
             self._recorder = VoiceRecorder(
@@ -395,24 +396,24 @@ class VoiceToTextWidget(QWidget):
             self.waveform.start()
 
             if self._vad_enabled:
-                self._set_status("● 录音中 (VAD)...", "error")
+                self._set_status(t("voice.status.recording_vad"), "error")
             else:
                 self._realtime_timer.start()
-                self._set_status("● 录音中 (定时切片)...", "error")
+                self._set_status(t("voice.status.recording_timer"), "error")
 
-            self.record_btn.setText("⏹ 停止录音")
+            self.record_btn.setText("⏹ " + t("voice.record_stop"))
             self._recorder.start()
 
         except Exception as exc:
             logger.error("启动录音失败: %s", exc)
             QMessageBox.warning(
-                self, "录音失败", f"无法启动录音: {exc}"
+                self, t("voice.dialog.record_fail.title"), t("voice.dialog.record_fail.msg", error=str(exc))
             )
             self._recording = False
-            self.record_btn.setText("🎤 开始录音")
+            self.record_btn.setText("🎤 " + t("voice.record_start"))
             self._recording_timer.stop()
             self.waveform.stop()
-            self._set_status(f"● 录音失败: {exc}", "error")
+            self._set_status(t("voice.status.record_fail", error=str(exc)), "error")
 
     def _stop_recording(self) -> None:
         self._recording = False
@@ -448,29 +449,29 @@ class VoiceToTextWidget(QWidget):
                     # 缓冲区能量太低（静音/噪声），直接丢弃，不送入转写
                     self._recorder.extract_chunk()
 
-        self.record_btn.setText("🎤 开始录音")
-        self._set_status("● 已停止", "info")
+        self.record_btn.setText("🎤 " + t("voice.record_start"))
+        self._set_status(t("voice.status.stopped"), "info")
 
     def _on_record_finished(self, wav_path: str) -> None:
         try:
-            self.record_btn.setText("🎤 开始录音")
+            self.record_btn.setText("🎤 " + t("voice.record_start"))
             self._recording_timer.stop()
             self.waveform.stop()
-            self._set_status("● 录音完成，正在转写...", "busy")
+            self._set_status(t("voice.status.recording_done"), "busy")
             self._transcribe_async(wav_path)
         except Exception:
-            logger.error("on_record_finished 异常:\n%s", traceback.format_exc())
+            logger.error("on_record_finished Exception:\n%s", traceback.format_exc())
 
     def _on_record_error(self, msg: str) -> None:
-        if "没有录制到音频数据" in msg:
+        if "__NO_AUDIO_DATA__" in msg:
             return
         try:
             self._recording = False
-            self.record_btn.setText("🎤 开始录音")
+            self.record_btn.setText("🎤 " + t("voice.record_start"))
             self._realtime_timer.stop()
             self._recording_timer.stop()
             self.waveform.stop()
-            QMessageBox.warning(self, "录音错误", msg)
+            QMessageBox.warning(self, t("voice.dialog.record_error.title"), msg)
         except Exception:
             logger.error("on_record_error 异常:\n%s", traceback.format_exc())
 
@@ -497,7 +498,7 @@ class VoiceToTextWidget(QWidget):
     # ── 转写 (threading.Thread, 无 QThread) ────────────────────────────────
 
     def _transcribe_async(self, wav_path: str, previous_text: str = "") -> None:
-        self._set_status("● 转写中...", "busy")
+        self._set_status(t("voice.status.transcribing"), "busy")
         bridge = _SignalBridge()
 
         def _on_done(text: str) -> None:
@@ -535,8 +536,8 @@ class VoiceToTextWidget(QWidget):
             pass
 
         # 未检测到语音内容不显示在聊天界面
-        if text.startswith("(未检测到"):
-            self._set_status("● 未检测到语音内容", "info")
+        if text.startswith("__NO_SPEECH__"):
+            self._set_status(t("voice.status.no_speech"), "info")
             return
 
         self._last_transcribed_text = text
@@ -559,14 +560,14 @@ class VoiceToTextWidget(QWidget):
 
         self._append_user(text, msg_uuid=msg_uuid)
         self._refresh_history()
-        self._set_status("● 转写完成", "ok")
+        self._set_status(t("voice.status.transcribe_done"), "ok")
 
     def _on_transcribe_error(self, err: str, wav_path: str) -> None:
         try:
             Path(wav_path).unlink(missing_ok=True)
         except Exception:
             pass
-        self._set_status(f"● 转写失败: {err}", "error")
+        self._set_status(t("voice.status.transcribe_fail", error=err), "error")
 
     # ── 对话显示 ────────────────────────────────────────────────────────────
 
@@ -658,7 +659,7 @@ class VoiceToTextWidget(QWidget):
             datetime.fromtimestamp(updated).strftime("%m-%d %H:%M")
             if updated else ""
         )
-        meta = f"{time_str}  ·  {msg_count}条消息"
+        meta = t("voice.conv.meta", time=time_str, count=msg_count)
         meta_label = QLabel(meta)
         meta_label.setObjectName("convItemMeta")
         layout.addWidget(meta_label)
@@ -691,7 +692,7 @@ class VoiceToTextWidget(QWidget):
             self.chat_display.setReadOnly(True)
         if self._multi_select_mode:
             count = len(self.history_list.selectedItems())
-            self._set_status(f"已选中 {count} 个会话")
+            self._set_status(t("voice.status.selected_count", count=count))
             return
         conv_id = item.data(Qt.ItemDataRole.UserRole)
         conv = self._store.get_conversation(conv_id)
@@ -707,21 +708,21 @@ class VoiceToTextWidget(QWidget):
         menu.setObjectName("historyMenu")
 
         if self._multi_select_mode:
-            exit_select_action = menu.addAction("退出多选模式")
-            delete_selected_action = menu.addAction("删除选中的会话")
-            select_all_action = menu.addAction("全选/取消全选")
+            exit_select_action = menu.addAction(t("voice.menu.exit_multi_select"))
+            delete_selected_action = menu.addAction(t("voice.menu.delete_selected"))
+            select_all_action = menu.addAction(t("voice.menu.select_toggle_all"))
             menu.addSeparator()
-            delete_all_action = menu.addAction("全部删除")
+            delete_all_action = menu.addAction(t("voice.menu.delete_all"))
         else:
             item = self.history_list.itemAt(pos)
             if item is None:
-                multi_action = menu.addAction("多选")
-                delete_all_action = menu.addAction("全部删除")
+                multi_action = menu.addAction(t("voice.menu.multi_select"))
+                delete_all_action = menu.addAction(t("voice.menu.delete_all"))
             else:
-                multi_action = menu.addAction("多选")
-                delete_action = menu.addAction("删除此会话")
+                multi_action = menu.addAction(t("voice.menu.multi_select"))
+                delete_action = menu.addAction(t("voice.menu.delete_conv"))
                 menu.addSeparator()
-                delete_all_action = menu.addAction("全部删除")
+                delete_all_action = menu.addAction(t("voice.menu.delete_all"))
 
         action = menu.exec(self.history_list.mapToGlobal(pos))
         if action is None:
@@ -753,8 +754,8 @@ class VoiceToTextWidget(QWidget):
     def _delete_conversation(self, conv_id: str) -> None:
         reply = QMessageBox.question(
             self,
-            "删除会话",
-            "确定要删除此会话吗？\n该操作会同时删除磁盘上的 JSON 文件，且无法恢复。",
+            t("voice.dialog.delete_conv.title"),
+            t("voice.dialog.delete_conv.msg"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -766,12 +767,12 @@ class VoiceToTextWidget(QWidget):
             if self._current_conv_id == conv_id:
                 self._current_conv_id = None
                 self.chat_display.clear()
-                self._set_status("● 就绪", "ok")
+                self._set_status(t("voice.status.ready"), "ok")
             self._refresh_history()
-            self._set_status("会话已删除", "ok")
+            self._set_status(t("voice.status.conv_deleted"), "ok")
         except Exception as exc:
-            logger.error("删除会话失败 %s: %s", conv_id, exc)
-            QMessageBox.warning(self, "删除失败", f"删除会话时出错: {exc}")
+            logger.error(t("voice.log_delete_conv_fail", conv_id=conv_id, error=exc))
+            QMessageBox.warning(self, t("voice.dialog.delete_fail.title"), t("voice.dialog.delete_fail.msg", error=str(exc)))
 
     def _toggle_multi_select(self, enable: bool) -> None:
         self._multi_select_mode = enable
@@ -779,13 +780,13 @@ class VoiceToTextWidget(QWidget):
             self.history_list.setSelectionMode(
                 QListWidget.SelectionMode.MultiSelection
             )
-            self._set_status("多选模式：点击列表项选中，右键菜单可批量删除", "busy")
+            self._set_status(t("voice.status.multi_select"), "busy")
         else:
             self.history_list.setSelectionMode(
                 QListWidget.SelectionMode.SingleSelection
             )
             self.history_list.clearSelection()
-            self._set_status("● 就绪", "ok")
+            self._set_status(t("voice.status.ready"), "ok")
 
     def _toggle_select_all(self) -> None:
         if not self._multi_select_mode:
@@ -803,13 +804,13 @@ class VoiceToTextWidget(QWidget):
     def _delete_selected_conversations(self) -> None:
         selected_items = self.history_list.selectedItems()
         if not selected_items:
-            QMessageBox.information(self, "提示", "请先选择要删除的会话")
+            QMessageBox.information(self, t("common.hint"), t("voice.dialog.no_selection"))
             return
         count = len(selected_items)
         reply = QMessageBox.question(
             self,
-            "批量删除",
-            f"确定要删除选中的 {count} 个会话吗？\n该操作不可恢复。",
+            t("voice.dialog.batch_delete.title"),
+            t("voice.dialog.batch_delete.msg", count=count),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -827,19 +828,19 @@ class VoiceToTextWidget(QWidget):
                     self.chat_display.clear()
                     deleted += 1
             except Exception as exc:
-                logger.error("删除会话失败 %s: %s", conv_id, exc)
+                logger.error(t("voice.log_delete_conv_fail", conv_id=conv_id, error=exc))
         self._refresh_history()
-        self._set_status(f"已删除 {deleted} 个会话", "ok")
+        self._set_status(t("voice.status.deleted_count", count=deleted), "ok")
 
     def _delete_all_conversations(self) -> None:
         count = self.history_list.count()
         if count == 0:
-            QMessageBox.information(self, "提示", "当前没有会话")
+            QMessageBox.information(self, t("common.hint"), t("voice.dialog.no_convs"))
             return
         reply = QMessageBox.question(
             self,
-            "全部删除",
-            f"确定要删除全部 {count} 个会话吗？\n该操作不可恢复。",
+            t("voice.dialog.delete_all.title"),
+            t("voice.dialog.delete_all.msg", count=count),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -852,12 +853,12 @@ class VoiceToTextWidget(QWidget):
                 self._store.delete_conversation(conv["id"])
                 deleted += 1
             except Exception as exc:
-                logger.error("删除会话失败 %s: %s", conv["id"], exc)
+                logger.error(t("voice.log_delete_conv_fail", conv_id=conv["id"], error=exc))
         self._current_conv_id = None
         self.chat_display.clear()
         self._toggle_multi_select(False)
         self._refresh_history()
-        self._set_status(f"已删除 {deleted} 个会话", "ok")
+        self._set_status(t("voice.status.deleted_count", count=deleted), "ok")
 
     # ── 聊天区右键菜单 ──────────────────────────────────────────────────────
 
@@ -887,8 +888,8 @@ class VoiceToTextWidget(QWidget):
         menu.setObjectName("chatMenu")
 
         if self._editing_msg_uuid:
-            save_action = menu.addAction("保存")
-            cancel_action = menu.addAction("取消编辑")
+            save_action = menu.addAction(t("voice.menu.save"))
+            cancel_action = menu.addAction(t("voice.menu.cancel_edit"))
             action = menu.exec(self.chat_display.mapToGlobal(pos))
             if action == save_action:
                 self._save_edited_message()
@@ -896,9 +897,9 @@ class VoiceToTextWidget(QWidget):
                 self._cancel_edit()
             return
 
-        copy_action = menu.addAction("复制")
-        edit_action = menu.addAction("编辑")
-        delete_action = menu.addAction("删除")
+        copy_action = menu.addAction(t("voice.menu.copy"))
+        edit_action = menu.addAction(t("voice.menu.edit"))
+        delete_action = menu.addAction(t("voice.menu.delete"))
 
         if is_assistant:
             action = menu.exec(self.chat_display.mapToGlobal(pos))
@@ -911,8 +912,8 @@ class VoiceToTextWidget(QWidget):
             return
 
         menu.addSeparator()
-        grammar_action = menu.addAction("纠正")
-        summary_action = menu.addAction("总结")
+        grammar_action = menu.addAction(t("voice.menu.grammar"))
+        summary_action = menu.addAction(t("voice.menu.summarize"))
         action = menu.exec(self.chat_display.mapToGlobal(pos))
 
         if action == copy_action:
@@ -932,7 +933,7 @@ class VoiceToTextWidget(QWidget):
         self._editing_msg_uuid = msg_uuid
         self.chat_display.setReadOnly(False)
         self.chat_display.setFocus()
-        self._set_status("编辑模式：修改内容后右键选择[保存]完成", "busy")
+        self._set_status(t("voice.status.edit_mode"), "busy")
 
     def _save_edited_message(self) -> None:
         if not self._editing_msg_uuid or not self._current_conv_id:
@@ -959,7 +960,7 @@ class VoiceToTextWidget(QWidget):
         self.chat_display.setReadOnly(True)
         self._reload_conversation_display(conv=conv)
         self._refresh_history()
-        self._set_status("消息已保存", "ok")
+        self._set_status(t("voice.status.msg_saved"), "ok")
 
     def _get_edited_text(self) -> Optional[str]:
         doc = self.chat_display.document()
@@ -981,15 +982,15 @@ class VoiceToTextWidget(QWidget):
         self._editing_msg_uuid = None
         self.chat_display.setReadOnly(True)
         self._reload_conversation_display()
-        self._set_status("已取消编辑", "info")
+        self._set_status(t("voice.status.edit_cancelled"), "info")
 
     def _copy_message_text(self, text: str) -> None:
         clipboard = QApplication.clipboard()
         clipboard.setText(text)
-        self._set_status("已复制到剪贴板", "ok")
+        self._set_status(t("voice.status.copied"), "ok")
 
     def _run_grammar_correction(self, text: str, original_uuid: str) -> None:
-        self._set_status("正在纠正语法...", "busy")
+        self._set_status(t("voice.status.correcting"), "busy")
         provider = create_provider(self._settings)
         provider_name = self._settings.get("summarization.provider", "ollama")
         conv_id = self._current_conv_id
@@ -1043,15 +1044,15 @@ class VoiceToTextWidget(QWidget):
                 modified_conv = conv
 
         self._reload_conversation_display(conv=modified_conv)
-        self._set_status("语法纠正完成", "ok")
+        self._set_status(t("voice.status.correct_done"), "ok")
 
     def _delete_message(self, msg_uuid: str) -> None:
         if not self._current_conv_id or not msg_uuid:
             return
         reply = QMessageBox.question(
             self,
-            "删除消息",
-            "确定要删除此消息吗？",
+            t("voice.dialog.delete_msg.title"),
+            t("voice.dialog.delete_msg.msg"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -1065,17 +1066,17 @@ class VoiceToTextWidget(QWidget):
         self._store._save(conv)
         self._reload_conversation_display(conv=conv)
         self._refresh_history()
-        self._set_status("消息已删除", "ok")
+        self._set_status(t("voice.status.msg_deleted"), "ok")
 
     def _run_summarization(self) -> None:
         if self._current_conv_id is None:
-            QMessageBox.warning(self, "提示", "请先选择一个对话会话")
+            QMessageBox.warning(self, t("common.hint"), t("voice.dialog.select_conv_first"))
             return
         conv = self._store.get_conversation(self._current_conv_id)
         if conv is None or not conv.messages:
             return
 
-        self._set_status("正在总结...", "busy")
+        self._set_status(t("voice.status.summarizing"), "busy")
         provider = create_provider(self._settings)
 
         replaced_uuids = {m.parent_uuid for m in conv.messages if m.parent_uuid}
@@ -1112,11 +1113,11 @@ class VoiceToTextWidget(QWidget):
         md_path.write_text(md_text, encoding="utf-8")
 
         self._append_assistant(
-            f"总结完成，已保存至: {md_path}", label=_SUMMARY_PREFIX
+            t("voice.summary_saved", path=str(md_path)), label=_SUMMARY_PREFIX
         )
         if self._current_conv_id:
             self._store.update_summary_path(self._current_conv_id, str(md_path))
-        self._set_status("总结完成", "ok")
+        self._set_status(t("voice.status.summary_done"), "ok")
 
     # ── 通用 API 调用 (threading.Thread, 无 QThread) ───────────────────────
 
@@ -1133,7 +1134,7 @@ class VoiceToTextWidget(QWidget):
 
         bridge.result.connect(_wrap_on_done)
         bridge.error.connect(
-            lambda err: self._set_status(f"操作失败: {err}", "error")
+            lambda err: self._set_status(t("voice.status.op_fail", error=err), "error")
         )
         bridge.error.connect(bridge.deleteLater)
 
@@ -1151,9 +1152,9 @@ class VoiceToTextWidget(QWidget):
     def load_model_async(self) -> None:
         """进入 VoiceToText 界面后异步加载模型"""
         if self._model_loaded:
-            self._set_status("● 就绪", "ok")
+            self._set_status(t("voice.status.ready"), "ok")
             return
-        self._set_status("● 加载模型中...", "warn")
+        self._set_status(t("voice.status.loading_model"), "warn")
         self._preload_model()
 
     def _preload_model(self) -> None:
@@ -1161,11 +1162,11 @@ class VoiceToTextWidget(QWidget):
 
         def _on_loaded(_text: str) -> None:
             self._model_loaded = True
-            self._set_status("● 就绪", "ok")
+            self._set_status(t("voice.status.ready"), "ok")
             bridge.deleteLater()
 
         def _on_error(err: str) -> None:
-            self._set_status(f"● 模型加载失败: {err}", "error")
+            self._set_status(t("voice.status.model_load_fail", error=err), "error")
             bridge.deleteLater()
 
         bridge.result.connect(_on_loaded)

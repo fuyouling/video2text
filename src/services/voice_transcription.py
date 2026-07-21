@@ -11,6 +11,8 @@ from src.transcription.transcriber import get_cached_transcriber
 from src.utils.exceptions import TranscriptionError, Video2TextError
 from src.utils.logger import get_logger
 
+_NO_SPEECH_MARKER = "__NO_SPEECH__"
+
 logger = get_logger(__name__)
 
 _converter = None
@@ -128,7 +130,7 @@ class VoiceTranscriptionService(QObject):
         """
         path = Path(wav_path)
         if not path.exists():
-            raise Video2TextError(f"音频文件不存在: {wav_path}")
+            raise Video2TextError(t("services.voice_transcription.audio_file_not_found", path=wav_path))
 
         try:
             transcriber = self._get_transcriber()
@@ -146,9 +148,9 @@ class VoiceTranscriptionService(QObject):
             )
             if context_prompt:
                 if initial_prompt:
-                    initial_prompt = f"{initial_prompt}\n\n上文: {context_prompt}"
+                    initial_prompt = initial_prompt + "\n\n" + t("services.voice_transcription.context_prefix", context=context_prompt)
                 else:
-                    initial_prompt = f"上文: {context_prompt}"
+                    initial_prompt = t("services.voice_transcription.context_prefix", context=context_prompt)
 
             segments = transcriber.transcribe(
                 str(path),
@@ -165,13 +167,13 @@ class VoiceTranscriptionService(QObject):
                 parts.append(seg.text.strip())
             text = " ".join(parts).strip()
             if not text:
-                text = "(未检测到语音内容)"
+                text = _NO_SPEECH_MARKER + t("services.voice_transcription.no_speech_detected")
             text = _to_simplified(text)
             return text
 
         except Exception as exc:
-            logger.error("VoiceTranscriptionService 转写失败: %s", exc)
-            raise TranscriptionError(f"转写失败: {exc}") from exc
+            logger.error(t("services.voice_transcription.transcribe_failed", error=exc))
+            raise TranscriptionError(t("services.voice_transcription.transcribe_failed_short", error=exc)) from exc
 
     def unload(self) -> None:
         """卸载模型（返回主界面时调用）"""

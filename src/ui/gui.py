@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFileDialog,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QInputDialog,
@@ -64,6 +65,12 @@ from src.transcription.transcriber import _model_cache as _transcriber_cache
 from src.transcription.transcription_prompt_manager import TranscriptionPromptManager
 from src.ui.startup_dependency_worker import StartupDependencyWorker
 from src.utils.logger import get_logger, setup_logger
+from src.i18n import (
+    install_qt_translator,
+    resolve_language,
+    set_lang,
+    t,
+)
 
 logger = get_logger(__name__)
 
@@ -126,6 +133,10 @@ class MainWindow(QMainWindow):
             "output.output_dir", _DEFAULT_OUTPUT_DIR
         )
 
+        # 提示词下拉框占位符（实例属性，确保在 set_lang 之后求值）
+        self._TX_PLACEHOLDER_PROMPT = t("main.placeholder_new")
+        self._PLACEHOLDER_PROMPT = t("main.placeholder_new")
+
         # 背景图片
         self._bg_pixmap: Optional[QPixmap] = None
         self._bg_opacity: float = 0.4
@@ -170,7 +181,7 @@ class MainWindow(QMainWindow):
         try:
             self._do_startup_dependency_check()
         except Exception:
-            _log.exception("启动依赖检测异常，已跳过（不影响主界面使用）")
+            _log.exception(t("main.dep_check_skip_warn"))
 
     def _do_startup_dependency_check(self) -> None:
         """_startup_dependency_check 的实际实现，由 try/except 包裹调用。"""
@@ -190,7 +201,7 @@ class MainWindow(QMainWindow):
         if not do_check_model and not do_check_dll:
             return
 
-        logger.info("启动依赖检测：开始")
+        logger.info(t("main.dep_check_start"))
         model_missing = False
         dll_missing = False
 
@@ -205,26 +216,26 @@ class MainWindow(QMainWindow):
                 except ValueError:
                     downloader = None
                 if downloader and downloader.is_model_exists():
-                    logger.info("模型已完整 (%s)", model_name)
+                    logger.info(t("main.dep_model_complete", name=model_name))
                     self.settings.set("app.is_check_model_file", "false")
                 else:
                     model_missing = True
-                    logger.info("模型不完整 (%s)", model_name)
+                    logger.info(t("main.dep_model_missing", name=model_name))
 
         # ── 检查 DLL ──
         if do_check_dll:
             dll_downloader = DllDownloader()
             if dll_downloader.is_dlls_complete():
-                logger.info("DLL 依赖已完整")
+                logger.info(t("main.dep_dll_complete"))
                 self.settings.set("app.is_check_dll_file", "false")
             else:
                 dll_missing = True
-                logger.info("DLL 依赖不完整")
+                logger.info(t("main.dep_dll_missing"))
 
         # 两者都完整 → 保存并返回
         if not model_missing and not dll_missing:
             self.settings.save()
-            logger.info("所有依赖已就绪，无需下载")
+            logger.info(t("main.dep_all_ready"))
             return
 
         # ── Phase 1: 弹窗确认 ──
@@ -234,11 +245,11 @@ class MainWindow(QMainWindow):
             self.settings.set("app.is_check_model_file", "false")
             self.settings.set("app.is_check_dll_file", "false")
             self.settings.save()
-            logger.info("用户取消下载，已关闭后续自动检测")
+            logger.info(t("main.dep_user_cancel"))
             return
 
         # ── Phase 2: 确认下载 → 启动后台线程 ──
-        logger.info("用户确认下载，启动后台线程…")
+        logger.info(t("main.dep_user_confirmed"))
         result = dialog.get_result()
         self._start_dependency_download_thread(
             download_model=result["download_model"],
@@ -252,7 +263,7 @@ class MainWindow(QMainWindow):
         """启动统一的依赖下载后台线程（串行执行模型 → DLL）。"""
         logger = get_logger("video2text")
         logger.info(
-            "启动依赖下载：model=%s, dll=%s, keep_archive=%s",
+            t("main.dep_download_start"),
             download_model, download_dll, keep_archive,
         )
         self._wait_async_thread("_startup_dependency_thread")
@@ -287,9 +298,9 @@ class MainWindow(QMainWindow):
 
     def _on_dependency_phase_changed(self, source: str) -> None:
         """阶段切换时重置进度条 maximum 和标签。"""
-        label = "模型下载" if source == "model" else "DLL 依赖下载"
+        label = t("main.dep_download_label_model") if source == "model" else t("main.dep_download_label_dll")
         self.progress_label.setText("0/0")
-        self.status_bar.showMessage(f"{label}: 准备中…")
+        self.status_bar.showMessage(t("main.dep_progress_prepare", label=label))
         self.progress_bar.setMaximum(0)
         self.progress_bar.setValue(0)
 
@@ -307,7 +318,7 @@ class MainWindow(QMainWindow):
         file_percent 表示该文件自身的下载完成度（downloaded / 该文件大小 = 100%），
         而非所有文件的总进度。
         """
-        name = "模型" if source == "model" else "DLL 依赖"
+        name = t("main.dep_download_phase_model") if source == "model" else t("main.dep_download_phase_dll")
         if total > 0:
             if self.progress_bar.maximum() != total:
                 self.progress_bar.setMaximum(total)
@@ -322,9 +333,7 @@ class MainWindow(QMainWindow):
         )
         remain = total - downloaded if total > 0 else 0
         self.status_bar.showMessage(
-            f"{name}下载中: 第 {current_item}/{total_items} 个文件 "
-            f"{self._fmt_size(downloaded)}/{self._fmt_size(total)} "
-            # f"({file_percent}%, 剩 {self._fmt_size(remain)})"
+            t("main.dep_progress_downloading", name=name, current=current_item, total=total_items, downloaded=self._fmt_size(downloaded), size=self._fmt_size(total))
         )
 
     def _on_dependency_finished(self, ok: bool) -> None:
@@ -346,28 +355,22 @@ class MainWindow(QMainWindow):
             self.settings.set("app.is_check_model_file", "false")
             self.settings.set("app.is_check_dll_file", "false")
             self.settings.save()
-            _log.info("依赖检测：配置已保存")
+            _log.info(t("main.dep_check_saved"))
         except Exception:
-            _log.warning("依赖检测: 配置保存失败（不影响使用）")
+            _log.warning(t("main.dep_check_save_fail"))
         if ok:
-            _log.info("依赖检测通过，应用就绪")
+            _log.info(t("main.dep_check_passed"))
             self.progress_bar.setMaximum(1)
             self.progress_bar.setValue(1)
-            self.progress_label.setText("完成")
-            self.status_bar.showMessage("依赖检测: ✓ 通过", 5000)
+            self.progress_label.setText(t("main.dep_check_label_done"))
+            self.status_bar.showMessage(t("main.dep_check_status_passed"), 5000)
         else:
-            _log.warning("依赖检测未通过")
+            _log.warning(t("main.dep_check_warn_fail"))
             self.progress_bar.setMaximum(1)
             self.progress_bar.setValue(0)
-            self.progress_label.setText("失败")
+            self.progress_label.setText(t("main.dep_check_label_failed"))
             self.status_bar.showMessage(
-                "依赖检测未通过，转写前请先检查；应用可正常使用", 8000
-            )
-            self.progress_bar.setMaximum(1)
-            self.progress_bar.setValue(0)
-            self.progress_label.setText("失败")
-            self.status_bar.showMessage(
-                "依赖检测未通过，转写前请先检查；应用可正常使用", 8000
+                t("main.dep_check_warn_user"), 8000
             )
 
     @staticmethod
@@ -410,9 +413,13 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(8)
 
-        main_layout.addLayout(self._create_input_row())
-        main_layout.addLayout(self._create_output_row())
-        main_layout.addLayout(self._create_run_row())
+        top_grid = QGridLayout()
+        top_grid.setSpacing(8)
+        self._setup_input_row(top_grid, 0)
+        self._setup_output_row(top_grid, 1)
+        self._setup_run_row(top_grid, 2)
+        top_grid.setColumnStretch(1, 1)
+        main_layout.addLayout(top_grid)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         self.log_panel = LogPanel()
@@ -425,8 +432,8 @@ class MainWindow(QMainWindow):
         right_splitter.setStretchFactor(1, 1)
         splitter.addWidget(right_splitter)
 
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 1)
+        splitter.setStretchFactor(0, 6)
+        splitter.setStretchFactor(1, 5)
         main_layout.addWidget(splitter, 1)
 
         root.addWidget(self.main_panel, 1)
@@ -441,7 +448,7 @@ class MainWindow(QMainWindow):
 
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
-        self.status_bar.showMessage(f"配置: {self.settings.config_path}")
+        self.status_bar.showMessage(t("main.config_path_status", path=self.settings.config_path))
 
         # 在窗口显示前加载背景图片和透明样式，避免先显示默认样式再闪变
         self._load_bg_settings()
@@ -449,86 +456,82 @@ class MainWindow(QMainWindow):
         # 在所有控件构造完成且样式就绪后才最大化显示
         self.showMaximized()
 
-    def _create_input_row(self) -> QHBoxLayout:
-        input_row = QHBoxLayout()
-        input_row.addWidget(QLabel("输入:"))
+    def _setup_input_row(self, grid: QGridLayout, row: int) -> None:
+        """在 grid 的第 row 行构建输入控件行。"""
+        grid.addWidget(QLabel(t("main.input_label")), row, 0)
         self.input_combo = QComboBox()
         self.input_combo.setEditable(True)
-        self.input_combo.setPlaceholderText("请选择视频/音频文件或文件夹…")
+        self.input_combo.setPlaceholderText(t("main.input_placeholder"))
+        self.input_combo.lineEdit().setPlaceholderText(self.input_combo.placeholderText())
         self.input_combo.setMinimumWidth(300)
         self.input_combo.activated.connect(self._on_input_combo_activated)
-        input_row.addWidget(self.input_combo, 1)
+        grid.addWidget(self.input_combo, row, 1)
 
-        self.input_folder_btn = QPushButton("选择文件夹")
+        self.input_folder_btn = QPushButton(t("main.input_btn"))
         self.input_folder_btn.setMinimumWidth(_BTN_MIN_WIDTH)
         self.input_folder_btn.clicked.connect(self._select_input_folder)
-        input_row.addWidget(self.input_folder_btn)
-        self.pause_btn = QPushButton("暂停")
+        grid.addWidget(self.input_folder_btn, row, 2)
+        self.pause_btn = QPushButton(t("main.pause_btn"))
         self.pause_btn.setMinimumWidth(_BTN_MIN_WIDTH)
-        self.pause_btn.setToolTip("暂停当前转写任务，再次点击可继续")
+        self.pause_btn.setToolTip(t("main.pause_tooltip"))
         self.pause_btn.setEnabled(False)
         self.pause_btn.clicked.connect(self._on_pause_resume)
-        input_row.addWidget(self.pause_btn)
-        self.stop_btn = QPushButton("停止")
+        grid.addWidget(self.pause_btn, row, 3)
+        self.stop_btn = QPushButton(t("main.stop_btn"))
         self.stop_btn.setMinimumWidth(_BTN_MIN_WIDTH)
-        self.stop_btn.setToolTip("立即停止当前的转写或总结任务")
+        self.stop_btn.setToolTip(t("main.stop_tooltip"))
         self.stop_btn.setEnabled(False)
         self.stop_btn.clicked.connect(self._on_stop)
-        input_row.addWidget(self.stop_btn)
-        return input_row
+        grid.addWidget(self.stop_btn, row, 4)
 
-    def _create_output_row(self) -> QHBoxLayout:
-        output_row = QHBoxLayout()
-        output_row.addWidget(QLabel("输出:"))
+    def _setup_output_row(self, grid: QGridLayout, row: int) -> None:
+        """在 grid 的第 row 行构建输出控件行。"""
+        grid.addWidget(QLabel(t("main.output_label")), row, 0)
         self.output_combo = QComboBox()
         self.output_combo.setEditable(True)
         self.output_combo.setCurrentText(self._default_output_dir)
         self.output_combo.setMinimumWidth(300)
-        output_row.addWidget(self.output_combo, 1)
-        self.output_btn = QPushButton("选择文件夹")
+        grid.addWidget(self.output_combo, row, 1)
+        self.output_btn = QPushButton(t("main.output_btn"))
         self.output_btn.setMinimumWidth(_BTN_MIN_WIDTH)
         self.output_btn.clicked.connect(self._select_output_dir)
-        output_row.addWidget(self.output_btn)
-        self.load_history_btn = QPushButton("加载历史")
+        grid.addWidget(self.output_btn, row, 2)
+        self.load_history_btn = QPushButton(t("main.load_history_btn"))
         self.load_history_btn.setMinimumWidth(_BTN_MIN_WIDTH)
-        self.load_history_btn.setToolTip("加载输出目录中的历史转写和总结文件")
+        self.load_history_btn.setToolTip(t("main.load_history_tooltip"))
         self.load_history_btn.clicked.connect(self._load_history_files)
-        output_row.addWidget(self.load_history_btn)
-        self.open_viewer_btn = QPushButton("全屏查看")
+        grid.addWidget(self.load_history_btn, row, 3)
+        self.open_viewer_btn = QPushButton(t("main.open_viewer_btn"))
         self.open_viewer_btn.setMinimumWidth(_BTN_MIN_WIDTH)
-        self.open_viewer_btn.setToolTip(
-            "在独立窗口中查看所有结果，支持全屏、搜索、导出、书签等功能"
-        )
+        self.open_viewer_btn.setToolTip(t("main.open_viewer_tooltip"))
         self.open_viewer_btn.clicked.connect(self._open_result_viewer)
-        output_row.addWidget(self.open_viewer_btn)
-        return output_row
+        grid.addWidget(self.open_viewer_btn, row, 4)
 
-    def _create_run_row(self) -> QHBoxLayout:
-        run_row = QHBoxLayout()
-        self.progress_label = QLabel("就绪:")
-        run_row.addWidget(self.progress_label)
+    def _setup_run_row(self, grid: QGridLayout, row: int) -> None:
+        """在 grid 的第 row 行构建运行控件行（进度条 + 操作按钮）。"""
+        self.progress_label = QLabel(t("main.progress_label"))
+        grid.addWidget(self.progress_label, row, 0)
         self.progress_bar = QProgressBar()
         self.progress_bar.setValue(0)
-        run_row.addWidget(self.progress_bar, 1)
-        self.transcribe_btn = QPushButton("仅转写")
+        grid.addWidget(self.progress_bar, row, 1)
+        self.transcribe_btn = QPushButton(t("main.transcribe_btn"))
         self.transcribe_btn.setMinimumWidth(_BTN_MIN_WIDTH)
-        self.transcribe_btn.setToolTip("仅执行语音转写，不进行摘要总结")
+        self.transcribe_btn.setToolTip(t("main.transcribe_tooltip"))
         self.transcribe_btn.clicked.connect(self._on_transcribe)
-        run_row.addWidget(self.transcribe_btn)
-        self.summarize_btn = QPushButton("仅总结")
+        grid.addWidget(self.transcribe_btn, row, 2)
+        self.summarize_btn = QPushButton(t("main.summarize_btn"))
         self.summarize_btn.setMinimumWidth(_BTN_MIN_WIDTH)
-        self.summarize_btn.setToolTip("仅对「转写文本」标签页中的文字进行摘要总结")
+        self.summarize_btn.setToolTip(t("main.summarize_tooltip"))
         self.summarize_btn.clicked.connect(self._on_summarize)
-        run_row.addWidget(self.summarize_btn)
-        self.combine_btn = QPushButton("转写总结")
+        grid.addWidget(self.summarize_btn, row, 3)
+        self.combine_btn = QPushButton(t("main.combine_btn"))
         self.combine_btn.setMinimumWidth(_BTN_MIN_WIDTH)
-        self.combine_btn.setToolTip("先执行语音转写，完成后自动对转写文本进行摘要总结")
+        self.combine_btn.setToolTip(t("main.combine_tooltip"))
         self.combine_btn.clicked.connect(self._on_pipeline)
-        run_row.addWidget(self.combine_btn)
-        return run_row
+        grid.addWidget(self.combine_btn, row, 4)
 
     def _create_results_panel(self) -> QWidget:
-        results_group = QGroupBox("结果查看")
+        results_group = QGroupBox(t("main.results_group"))
         results_layout = QVBoxLayout(results_group)
 
         content_layout = QHBoxLayout()
@@ -542,25 +545,21 @@ class MainWindow(QMainWindow):
         self.result_tabs = QTabWidget()
         self.transcript_view = QTextEdit()
         self.transcript_view.setFont(QFont("Consolas", 9))
-        self.transcript_view.setPlaceholderText(
-            "可直接编辑修改，Ctrl+S 保存，Ctrl+F 查找替换,保存后右键点击文件列表中文件可重新转写和摘要"
-        )
-        self.result_tabs.addTab(self.transcript_view, "转写文本")
+        self.transcript_view.setPlaceholderText(t("main.transcript_placeholder"))
+        self.result_tabs.addTab(self.transcript_view, t("main.transcript_tab"))
         self.summary_view = QTextEdit()
         self.summary_view.setFont(QFont("Consolas", 9))
-        self.summary_view.setPlaceholderText(
-            "摘要结果，可直接编辑修改，Ctrl+S 保存，Ctrl+F 查找替换。"
-        )
-        self.result_tabs.addTab(self.summary_view, "摘要结果")
+        self.summary_view.setPlaceholderText(t("main.summary_placeholder"))
+        self.result_tabs.addTab(self.summary_view, t("main.summary_tab"))
         self.result_tabs.currentChanged.connect(self._on_tab_changed)
         content_layout.addWidget(self.result_tabs, 3)
 
-        save_transcript_action = QAction("保存文本", self)
+        save_transcript_action = QAction(t("main.save_action"), self)
         save_transcript_action.setShortcut(QKeySequence("Ctrl+S"))
         save_transcript_action.triggered.connect(self._save_transcript)
         self.addAction(save_transcript_action)
 
-        find_action = QAction("查找替换", self)
+        find_action = QAction(t("main.find_action"), self)
         find_action.setShortcut(QKeySequence("Ctrl+F"))
         find_action.triggered.connect(self._toggle_search)
         self.addAction(find_action)
@@ -580,73 +579,68 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
 
-        tx_prompt_group = QGroupBox("转写提示词配置")
+        tx_prompt_group = QGroupBox(t("main.tx_prompt_group"))
         tx_prompt_layout = QVBoxLayout(tx_prompt_group)
 
         self.tx_prompt_template_combo = QComboBox()
+        self.tx_prompt_template_combo.setEditable(True)
         self.tx_prompt_template_combo.setObjectName("TxPromptCombo")
         self.tx_prompt_template_combo.setMinimumWidth(150)
-        self.tx_prompt_template_combo.setPlaceholderText("选择已保存的提示词…")
+        self.tx_prompt_template_combo.setPlaceholderText(t("main.tx_prompt_template_placeholder"))
+        self.tx_prompt_template_combo.lineEdit().setPlaceholderText(self.tx_prompt_template_combo.placeholderText())
         self.tx_prompt_template_combo.currentTextChanged.connect(
             self._on_tx_prompt_template_selected
         )
 
         self.initial_prompt_edit = QTextEdit()
         self.initial_prompt_edit.setMaximumHeight(60)
-        self.initial_prompt_edit.setPlaceholderText(
-            "场景指令,不要换行,输入邻域术语提升识别准确率,不宜过长,会影响识别速度"
-        )
+        self.initial_prompt_edit.setPlaceholderText(t("main.tx_prompt_placeholder"))
         tx_prompt_layout.addWidget(self.initial_prompt_edit)
 
         self.hotwords_edit = QTextEdit()
         self.hotwords_edit.setMaximumHeight(40)
-        self.hotwords_edit.setPlaceholderText(
-            "热词,空格分隔,输入核心专有名词,不宜过长,会影响识别速度"
-        )
+        self.hotwords_edit.setPlaceholderText(t("main.hotwords_placeholder"))
         tx_prompt_layout.addWidget(self.hotwords_edit)
 
         tx_prompt_btn_row = QHBoxLayout()
         tx_prompt_btn_row.addWidget(self.tx_prompt_template_combo, 1)
-        self.tx_prompt_save_btn = QPushButton("保存")
+        self.tx_prompt_save_btn = QPushButton(t("common.save"))
         self.tx_prompt_save_btn.clicked.connect(self._save_tx_prompt_template)
         tx_prompt_btn_row.addWidget(self.tx_prompt_save_btn)
-        self.tx_prompt_delete_btn = QPushButton("删除")
+        self.tx_prompt_delete_btn = QPushButton(t("common.delete"))
         self.tx_prompt_delete_btn.clicked.connect(self._delete_tx_prompt_template)
         tx_prompt_btn_row.addWidget(self.tx_prompt_delete_btn)
         tx_prompt_layout.addLayout(tx_prompt_btn_row)
 
         layout.addWidget(tx_prompt_group, 1)
 
-        summary_prompt_group = QGroupBox("总结提示词配置")
+        summary_prompt_group = QGroupBox(t("main.summary_prompt_group"))
         prompt_layout = QVBoxLayout(summary_prompt_group)
 
         self.ollama_prompt_edit = QTextEdit()
         self.ollama_prompt_edit.setMaximumHeight(100)
-        self.ollama_prompt_edit.setPlaceholderText(
-            "自定义总结提示词（可选），留空则使用默认提示词"
-        )
+        self.ollama_prompt_edit.setPlaceholderText(t("main.summary_prompt_placeholder"))
         prompt_layout.addWidget(self.ollama_prompt_edit)
 
         prompt_btn_row = QHBoxLayout()
         self.prompt_template_combo = QComboBox()
+        self.prompt_template_combo.setEditable(True)
         self.prompt_template_combo.setObjectName("SummaryPromptCombo")
         self.prompt_template_combo.setMinimumWidth(150)
-        self.prompt_template_combo.setPlaceholderText("选择已保存的提示词…")
+        self.prompt_template_combo.setPlaceholderText(t("main.summary_prompt_template_placeholder"))
+        self.prompt_template_combo.lineEdit().setPlaceholderText(self.prompt_template_combo.placeholderText())
         self.prompt_template_combo.currentTextChanged.connect(
             self._on_prompt_template_selected
         )
         prompt_btn_row.addWidget(self.prompt_template_combo, 1)
-        self.prompt_save_btn = QPushButton("保存")
+        self.prompt_save_btn = QPushButton(t("common.save"))
         self.prompt_save_btn.clicked.connect(self._save_prompt_template)
         prompt_btn_row.addWidget(self.prompt_save_btn)
-        self.prompt_delete_btn = QPushButton("删除")
+        self.prompt_delete_btn = QPushButton(t("common.delete"))
         self.prompt_delete_btn.clicked.connect(self._delete_prompt_template)
         prompt_btn_row.addWidget(self.prompt_delete_btn)
-        self.markdown_enabled_cb = QCheckBox("Markdown格式")
-        self.markdown_enabled_cb.setToolTip(
-            "勾选后总结输出将自动应用Markdown格式指令。\n"
-            "如需自定义Markdown格式，请直接编辑 prompts.json 中的 markdown_prompt 字段。"
-        )
+        self.markdown_enabled_cb = QCheckBox(t("main.markdown_cb"))
+        self.markdown_enabled_cb.setToolTip(t("main.markdown_tooltip"))
         self.markdown_enabled_cb.setChecked(self.prompt_manager.get_markdown_enabled())
         self.markdown_enabled_cb.toggled.connect(self._on_markdown_toggled)
         prompt_btn_row.addWidget(self.markdown_enabled_cb)
@@ -658,64 +652,65 @@ class MainWindow(QMainWindow):
     def _create_menu_bar(self) -> None:
         menu_bar = self.menuBar()
 
-        settings_menu = menu_bar.addMenu("设置")
-        edit_config_action = settings_menu.addAction("编辑配置")
+        settings_menu = menu_bar.addMenu(t("menu.settings"))
+        edit_config_action = settings_menu.addAction(t("menu.settings_edit_config"))
         edit_config_action.triggered.connect(self._show_config_editor)
 
+
         # 背景图片子菜单
-        bg_menu = settings_menu.addMenu("背景图片")
-        bg_change_action = bg_menu.addAction("更换图片")
+        bg_menu = settings_menu.addMenu(t("menu.settings_bg_image"))
+        bg_change_action = bg_menu.addAction(t("menu.settings_bg_change"))
         bg_change_action.triggered.connect(self._change_bg_image)
-        bg_clear_action = bg_menu.addAction("清除背景")
+        bg_clear_action = bg_menu.addAction(t("menu.settings_bg_clear"))
         bg_clear_action.triggered.connect(self._clear_bg_image)
-        bg_transparency_action = bg_menu.addAction("透明度")
+        bg_transparency_action = bg_menu.addAction(t("menu.settings_bg_transparency"))
         bg_transparency_action.triggered.connect(self._adjust_bg_transparency)
 
-        fav_menu = settings_menu.addMenu("收藏")
-        fav_input_action = fav_menu.addAction("收藏输入文件夹")
+        fav_menu = settings_menu.addMenu(t("menu.settings_fav"))
+        fav_input_action = fav_menu.addAction(t("menu.settings_fav_input"))
         fav_input_action.triggered.connect(self._fav_input_dir)
-        fav_output_action = fav_menu.addAction("收藏输出文件夹")
+        fav_output_action = fav_menu.addAction(t("menu.settings_fav_output"))
         fav_output_action.triggered.connect(self._fav_output_dir)
-        fav_both_action = fav_menu.addAction("收藏输入和输出文件夹")
+        fav_both_action = fav_menu.addAction(t("menu.settings_fav_both"))
         fav_both_action.triggered.connect(self._fav_both_dirs)
         fav_menu.addSeparator()
-        clear_input_action = fav_menu.addAction("移除所有输入目录")
+        clear_input_action = fav_menu.addAction(t("menu.settings_fav_clear_input"))
         clear_input_action.triggered.connect(self._clear_all_input_dirs)
-        clear_output_action = fav_menu.addAction("移除所有输出目录")
+        clear_output_action = fav_menu.addAction(t("menu.settings_fav_clear_output"))
         clear_output_action.triggered.connect(self._clear_all_output_dirs)
 
-        tools_menu = menu_bar.addMenu("工具")
-        voice_action = tools_menu.addAction("声音转文本")
+        tools_menu = menu_bar.addMenu(t("menu.tools"))
+        voice_action = tools_menu.addAction(t("menu.tools_voice_to_text"))
         voice_action.triggered.connect(self._on_show_voice_to_text)
 
-        help_menu = menu_bar.addMenu("帮助")
-        donate_action = help_menu.addAction("捐赠支持")
+        help_menu = menu_bar.addMenu(t("menu.help"))
+        donate_action = help_menu.addAction(t("menu.help_donate"))
         donate_action.triggered.connect(self._show_donate)
-        about_action = help_menu.addAction("关于")
+        about_action = help_menu.addAction(t("menu.help_about"))
         about_action.triggered.connect(self._show_about)
 
     def _show_about(self) -> None:
         QMessageBox.about(
             self,
-            "关于 Video2Text",
+            t("about.title"),
             "<div style='min-width:420px'>"
             "<h2 style='margin-bottom:4px'>🎬 Video2Text</h2>"
-            f"<p style='color:#666;margin-top:0'>版本 {APP_VERSION} · 音视频转文本工具</p>"
+            f"<p style='color:#666;margin-top:0'>{t('about.version', version=APP_VERSION)}</p>"
             "<hr>"
-            "<p>基于 <b>faster-whisper</b> 的高精度语音转写和智能总结工具。</p>"
+            f"<p>{t('about.desc')}</p>"
             "<hr>"
             "<table style='font-size:13px'>"
-            "<tr><td style='padding:2px 12px 2px 0;color:#888'>作者</td><td>喵王龙</td></tr>"
-            "<tr><td style='padding:2px 12px 2px 0;color:#888'>许可证</td><td>GNU GPL v3</td></tr>"
-            "<tr><td style='padding:2px 12px 2px 0;color:#888'>技术栈</td><td>faster-whisper · PySide6</td></tr>"
-            "<tr><td style='padding:2px 12px 2px 0;color:#888'>讨论群</td><td>QQ群 296875960</td></tr>"
+            f"<tr><td style='padding:2px 12px 2px 0;color:#888'>{t('about.author_label')}</td><td>{t('about.author_value')}</td></tr>"
+            f"<tr><td style='padding:2px 12px 2px 0;color:#888'>{t('about.license_label')}</td><td>{t('about.license_value')}</td></tr>"
+            f"<tr><td style='padding:2px 12px 2px 0;color:#888'>{t('about.tech_label')}</td><td>{t('about.tech_value')}</td></tr>"
+            f"<tr><td style='padding:2px 12px 2px 0;color:#888'>{t('about.qq_label')}</td><td>{t('about.qq_value')}</td></tr>"
             "</table>"
             "<hr>"
             "<p>"
-            '<a href="https://github.com/fuyouling/video2text">GitHub 仓库</a> · '
-            '<a href="https://github.com/fuyouling/video2text/wiki">使用文档</a>'
+            f'<a href="https://github.com/fuyouling/video2text">{t("about.repo_link")}</a> · '
+            f'<a href="https://github.com/fuyouling/video2text/wiki">{t("about.docs_link")}</a>'
             "</p>"
-            "<p style='color:#999;font-size:12px'>版权所有 © 2026 喵王龙</p>"
+            f"<p style='color:#999;font-size:12px'>{t('about.copyright')}</p>"
             "</div>",
         )
 
@@ -730,7 +725,8 @@ class MainWindow(QMainWindow):
         if dialog.exec() == dialog.DialogCode.Accepted:
             self._load_prompt_config()
             self._refresh_output_dir()
-            self.status_bar.showMessage("配置已保存", 5000)
+            self.status_bar.showMessage(t("status.config_saved"), 5000)
+
 
     def _refresh_output_dir(self) -> None:
         """配置保存后刷新输出目录：同步内存配置与界面控件，使其立即生效"""
@@ -749,8 +745,6 @@ class MainWindow(QMainWindow):
         self._load_tx_prompt_templates()
 
     # ── 转写提示词模板管理 ──
-
-    _TX_PLACEHOLDER_PROMPT = "新建"
 
     def _load_tx_prompt_templates(self) -> None:
         self.tx_prompt_template_combo.blockSignals(True)
@@ -771,6 +765,8 @@ class MainWindow(QMainWindow):
         else:
             self.initial_prompt_edit.clear()
             self.hotwords_edit.clear()
+            self.tx_prompt_template_combo.clearEditText()
+            self.tx_prompt_template_combo.setCurrentIndex(-1)
         self.tx_prompt_template_combo.blockSignals(False)
 
     def _on_tx_prompt_template_selected(self, name: str) -> None:
@@ -788,14 +784,14 @@ class MainWindow(QMainWindow):
         initial_prompt = self.initial_prompt_edit.toPlainText().strip()
         hotwords = self.hotwords_edit.toPlainText().strip()
         if not initial_prompt and not hotwords:
-            QMessageBox.warning(self, "提示", "初始提示词和热词均为空，无法保存。")
+            QMessageBox.warning(self, t("common.hint"), t("main.tx_prompt_empty_warning"))
             return
 
         current_name = self.tx_prompt_template_combo.currentText()
         if current_name == self._TX_PLACEHOLDER_PROMPT:
             current_name = ""
         name, ok = QInputDialog.getText(
-            self, "保存转写提示词模板", "模板名称:", text=current_name
+            self, t("main.tx_prompt_save_dialog"), t("main.tx_prompt_name_label"), text=current_name
         )
         if not ok or not name.strip():
             return
@@ -804,8 +800,8 @@ class MainWindow(QMainWindow):
         if name == self._TX_PLACEHOLDER_PROMPT:
             QMessageBox.warning(
                 self,
-                "提示",
-                f"「{self._TX_PLACEHOLDER_PROMPT}」是保留名称，请使用其他名称。",
+                t("common.hint"),
+                t("main.tx_prompt_reserved_warning", name=self._TX_PLACEHOLDER_PROMPT)
             )
             return
         self._tx_prompt_manager.set_template(name, initial_prompt, hotwords)
@@ -817,18 +813,18 @@ class MainWindow(QMainWindow):
         self.tx_prompt_template_combo.setCurrentText(name)
         self.tx_prompt_template_combo.blockSignals(False)
 
-        self.status_bar.showMessage(f"转写提示词「{name}」已保存", 5000)
+        self.status_bar.showMessage(t("main.tx_prompt_saved", name=name), 5000)
 
     def _delete_tx_prompt_template(self) -> None:
         name = self.tx_prompt_template_combo.currentText()
         if not name or name == self._TX_PLACEHOLDER_PROMPT:
-            QMessageBox.warning(self, "提示", "请先选择要删除的转写提示词模板。")
+            QMessageBox.warning(self, t("common.hint"), t("main.tx_prompt_select_to_delete"))
             return
 
         reply = QMessageBox.question(
             self,
-            "确认删除",
-            f"确定要删除转写提示词模板「{name}」吗？",
+            t("main.tx_prompt_delete_confirm_title"),
+            t("main.tx_prompt_delete_confirm_msg", name=name),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -844,11 +840,9 @@ class MainWindow(QMainWindow):
 
         self.initial_prompt_edit.clear()
         self.hotwords_edit.clear()
-        self.status_bar.showMessage(f"转写提示词「{name}」已删除", 5000)
+        self.status_bar.showMessage(t("main.tx_prompt_deleted", name=name), 5000)
 
     # ── 提示词模板管理 ──
-
-    _PLACEHOLDER_PROMPT = "新建"
 
     def _load_prompt_templates(self) -> None:
         self.prompt_template_combo.blockSignals(True)
@@ -864,6 +858,9 @@ class MainWindow(QMainWindow):
                 content = self.prompt_manager.get_content(last_used)
                 if content:
                     self.ollama_prompt_edit.setPlainText(content)
+        else:
+            self.prompt_template_combo.clearEditText()
+            self.prompt_template_combo.setCurrentIndex(-1)
         self.prompt_template_combo.blockSignals(False)
 
     def _on_prompt_template_selected(self, name: str) -> None:
@@ -880,14 +877,14 @@ class MainWindow(QMainWindow):
 
         content = self.ollama_prompt_edit.toPlainText().strip()
         if not content:
-            QMessageBox.warning(self, "提示", "提示词内容为空，无法保存。")
+            QMessageBox.warning(self, t("common.hint"), t("main.prompt_empty_warning"))
             return
 
         current_name = self.prompt_template_combo.currentText()
         if current_name == self._PLACEHOLDER_PROMPT:
             current_name = ""
         name, ok = QInputDialog.getText(
-            self, "保存提示词模板", "模板名称:", text=current_name
+            self, t("main.prompt_save_dialog"), t("main.prompt_name_label"), text=current_name
         )
         if not ok or not name.strip():
             return
@@ -896,8 +893,8 @@ class MainWindow(QMainWindow):
         if name == self._PLACEHOLDER_PROMPT:
             QMessageBox.warning(
                 self,
-                "提示",
-                f"「{self._PLACEHOLDER_PROMPT}」是保留名称，请使用其他名称。",
+                t("common.hint"),
+                t("main.prompt_reserved_warning", name=self._PLACEHOLDER_PROMPT)
             )
             return
         self.prompt_manager.set_template(name, content)
@@ -909,18 +906,18 @@ class MainWindow(QMainWindow):
         self.prompt_template_combo.setCurrentText(name)
         self.prompt_template_combo.blockSignals(False)
 
-        self.status_bar.showMessage(f"提示词「{name}」已保存", 5000)
+        self.status_bar.showMessage(t("main.prompt_saved", name=name), 5000)
 
     def _delete_prompt_template(self) -> None:
         name = self.prompt_template_combo.currentText()
         if not name or name == self._PLACEHOLDER_PROMPT:
-            QMessageBox.warning(self, "提示", "请先选择要删除的提示词模板。")
+            QMessageBox.warning(self, t("common.hint"), t("main.prompt_select_to_delete"))
             return
 
         reply = QMessageBox.question(
             self,
-            "确认删除",
-            f"确定要删除提示词模板「{name}」吗？",
+            t("main.prompt_delete_confirm_title"),
+            t("main.prompt_delete_confirm_msg", name=name),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -935,7 +932,7 @@ class MainWindow(QMainWindow):
         self.prompt_template_combo.blockSignals(False)
 
         self.ollama_prompt_edit.clear()
-        self.status_bar.showMessage(f"提示词「{name}」已删除", 5000)
+        self.status_bar.showMessage(t("main.prompt_deleted", name=name), 5000)
 
     def _on_markdown_toggled(self, checked: bool) -> None:
         self.prompt_manager.set_markdown_enabled(checked)
@@ -943,18 +940,18 @@ class MainWindow(QMainWindow):
     def _on_tab_changed(self, index: int) -> None:
         if index == 0:
             self.status_bar.showMessage(
-                "转写文本 —— 可直接编辑修改，Ctrl+S 保存，Ctrl+F 查找替换"
+                t("main.tab_transcript_hint")
             )
         elif index == 1:
             self.status_bar.showMessage(
-                "摘要结果 —— 可直接编辑修改，Ctrl+S 保存，Ctrl+F 查找替换"
+                t("main.tab_summary_hint")
             )
         self._search_controller.refresh_if_active()
 
     def _save_transcript(self) -> None:
         """保存当前活动标签页的内容到文件（根据配置的输出格式自动匹配）"""
         if not self._current_video_name:
-            self.status_bar.showMessage("没有选中的文件，无法保存", 3000)
+            self.status_bar.showMessage(t("main.save_no_file"), 3000)
             return
         output_dir = self.output_combo.currentText().strip() or self._default_output_dir
         current_tab = self.result_tabs.currentIndex()
@@ -967,9 +964,9 @@ class MainWindow(QMainWindow):
         try:
             save_path.parent.mkdir(parents=True, exist_ok=True)
             save_path.write_text(text, encoding="utf-8")
-            self.status_bar.showMessage(f"已保存: {save_path}", 5000)
+            self.status_bar.showMessage(t("main.saved_path", path=save_path), 5000)
         except OSError as exc:
-            self.status_bar.showMessage(f"保存失败: {exc}", 5000)
+            self.status_bar.showMessage(t("main.save_fail", error=exc), 5000)
 
     def _resolve_transcript_path(self, output_dir: str) -> Path:
         """根据配置的转写格式，找到已存在的转写文件路径，或按首选格式生成新路径"""
@@ -1011,7 +1008,7 @@ class MainWindow(QMainWindow):
         self.summary_view.setExtraSelections([])
 
     def _on_replace_count(self, count: int) -> None:
-        self.status_bar.showMessage(f"已替换 {count} 处文本", 5000)
+        self.status_bar.showMessage(t("main.replaced_count", count=count), 5000)
 
     # ── 常用目录管理 ──
 
@@ -1036,14 +1033,10 @@ class MainWindow(QMainWindow):
     # ── input selection slots ──
 
     def _get_input_filter_str(self) -> str:
-        return (
-            "音视频文件 ("
-            + " ".join(f"*{ext}" for ext in sorted(self._input_exts))
-            + ");;所有文件 (*.*)"
-        )
+        return t("main.input_filter", exts=" ".join(f"*{ext}" for ext in sorted(self._input_exts)))
 
     def _select_input_folder(self) -> None:
-        folder = QFileDialog.getExistingDirectory(self, "选择音视频文件夹")
+        folder = QFileDialog.getExistingDirectory(self, t("main.select_input_folder"))
         if folder:
             self._scan_context = {"mode": "folder_select", "folder": folder}
             self._start_scan(folder)
@@ -1086,7 +1079,7 @@ class MainWindow(QMainWindow):
 
     def _start_scan(self, folder: str) -> None:
         """启动后台线程扫描文件夹中的音视频文件。"""
-        self.status_bar.showMessage("正在扫描文件...")
+        self.status_bar.showMessage(t("main.scanning"))
         self.input_folder_btn.setEnabled(False)
         self._wait_async_thread("_scan_thread")
         thread = QThread()
@@ -1116,7 +1109,7 @@ class MainWindow(QMainWindow):
 
         if not file_metas:
             QMessageBox.information(
-                self, "提示", "该文件夹及其子目录中未找到支持的音视频文件"
+                self, t("common.hint"), t("main.no_media_in_folder")
             )
             return
 
@@ -1127,7 +1120,7 @@ class MainWindow(QMainWindow):
 
         selected_files = dialog.get_selected_files()
         if not selected_files:
-            QMessageBox.information(self, "提示", "未选择任何文件")
+            QMessageBox.information(self, t("common.hint"), t("main.no_files_selected"))
             return
 
         self._mirror_subdirs = dialog.get_mirror_subdirs()
@@ -1137,14 +1130,14 @@ class MainWindow(QMainWindow):
 
         if ctx["mode"] == "folder_select":
             self.input_combo.setCurrentText(
-                f"{folder} (已选择 {len(selected_files)} 个文件)"
+                t("main.files_selected", folder=folder, count=len(selected_files))
             )
             last_dir = Path(folder).name
         else:
             index = ctx["index"]
             self.input_combo.setItemText(
                 index,
-                f"{folder} (已选择 {len(selected_files)} 个文件)",
+                t("main.files_selected", folder=folder, count=len(selected_files)),
             )
             last_dir = Path(folder).name
 
@@ -1152,7 +1145,7 @@ class MainWindow(QMainWindow):
         self.output_combo.setCurrentText(str(Path(self._default_output_dir) / last_dir))
 
     def _select_output_dir(self) -> None:
-        folder = QFileDialog.getExistingDirectory(self, "选择输出目录")
+        folder = QFileDialog.getExistingDirectory(self, t("main.select_output_dir"))
         if folder:
             self.output_combo.setCurrentText(folder)
 
@@ -1162,7 +1155,7 @@ class MainWindow(QMainWindow):
         output_path = Path(output_dir)
 
         if not output_path.exists():
-            QMessageBox.warning(self, "提示", f"输出目录不存在: {output_dir}")
+            QMessageBox.warning(self, t("common.hint"), t("main.output_dir_not_exist", dir=output_dir))
             return
 
         self._history_loaded = True
@@ -1220,11 +1213,10 @@ class MainWindow(QMainWindow):
         if not found_names:
             QMessageBox.warning(
                 self,
-                "提示",
-                f"未在输出目录中找到历史文件(不扫描子目录):\n{output_dir}\n\n"
-                "请先完成转写，或更换包含历史文件的输出目录后重试。",
+                t("common.hint"),
+                t("main.no_history_found_msg", dir=output_dir),
             )
-            self.status_bar.showMessage("未找到历史文件")
+            self.status_bar.showMessage(t("main.no_history_found_status"))
             return
 
         self.file_list.clear()
@@ -1236,7 +1228,7 @@ class MainWindow(QMainWindow):
             item.setData(Qt.ItemDataRole.UserRole, video_name)
             self.file_list.addItem(item)
 
-        self.status_bar.showMessage(f"已加载 {len(found_names)} 个历史文件")
+        self.status_bar.showMessage(t("main.loaded_history_count", count=len(found_names)))
         self.file_list.setCurrentRow(0)
 
     # ── worker 生成 ──
@@ -1266,16 +1258,14 @@ class MainWindow(QMainWindow):
             has_sum = writer.find_summary_file(name) is not None
             if has_tx and has_sum:
                 logger.info(
-                    "[增量模式] 跳过: %s — 转写和摘要已存在于 %s",
-                    name,
-                    resolved_dir,
+                    t("main.incremental_skip_detail", name=name, dir=resolved_dir),
                 )
                 skipped += 1
             else:
                 keep.append(video_path)
 
         if skipped > 0:
-            self.status_bar.showMessage(f"增量模式: 已跳过 {skipped} 个已处理文件", 5000)
+            self.status_bar.showMessage(t("main.incremental_skipped", count=skipped), 5000)
 
         return keep
 
@@ -1351,7 +1341,7 @@ class MainWindow(QMainWindow):
         self.stop_btn.setEnabled(busy)
         self._update_pause_button(busy)
         if not busy:
-            self.pause_btn.setText("暂停")
+            self.pause_btn.setText(t("main.pause"))
 
     def _update_pause_button(self, busy: bool) -> None:
         """根据当前模式和阶段决定暂停按钮的启用状态。"""
@@ -1390,12 +1380,12 @@ class MainWindow(QMainWindow):
 
     def _on_worker_error(self, msg: str) -> None:
         mode_map = {
-            "transcribe": "转写",
-            "summarize": "总结",
-            "pipeline": "管道",
+            "transcribe": t("main.mode_label_transcribe"),
+            "summarize": t("main.mode_label_summarize"),
+            "pipeline": t("main.mode_label_pipeline"),
         }
-        label = mode_map.get(self._current_mode, "任务")
-        self.status_bar.showMessage(f"{label}异常: {msg}", 5000)
+        label = mode_map.get(self._current_mode, t("main.mode_label_task"))
+        self.status_bar.showMessage(t("main.mode_error", label=label, msg=msg), 5000)
 
     def _on_pause_resume(self) -> None:
         if self._worker is None:
@@ -1407,12 +1397,12 @@ class MainWindow(QMainWindow):
                 # 总结阶段暂停/继续
                 if self._worker.is_sum_paused:
                     self._worker.sum_resume()
-                    self.pause_btn.setText("暂停")
-                    self.status_bar.showMessage("总结已继续")
+                    self.pause_btn.setText(t("main.pause"))
+                    self.status_bar.showMessage(t("main.summary_resumed"))
                 else:
                     self._worker.sum_pause()
-                    self.pause_btn.setText("继续")
-                    self.status_bar.showMessage("总结已暂停")
+                    self.pause_btn.setText(t("main.resume"))
+                    self.status_bar.showMessage(t("main.summary_paused"))
                 return
             else:
                 # 转写阶段暂停/继续
@@ -1422,24 +1412,24 @@ class MainWindow(QMainWindow):
                     return
                 if self._worker.is_paused:
                     self._worker.resume()
-                    self.pause_btn.setText("暂停")
-                    self.status_bar.showMessage("转写已继续")
+                    self.pause_btn.setText(t("main.pause"))
+                    self.status_bar.showMessage(t("main.transcribe_resumed"))
                 else:
                     self._worker.pause()
-                    self.pause_btn.setText("继续")
-                    self.status_bar.showMessage("正在等待当前音频/切片转写完成后暂停…")
+                    self.pause_btn.setText(t("main.resume"))
+                    self.status_bar.showMessage(t("main.transcribe_pause_waiting"))
                 return
 
         # ── 仅总结模式 ──
         if self._current_mode == "summarize" and hasattr(self._worker, "pause"):
             if self._worker.is_paused:
                 self._worker.resume()
-                self.pause_btn.setText("暂停")
-                self.status_bar.showMessage("总结已继续")
+                self.pause_btn.setText(t("main.pause"))
+                self.status_bar.showMessage(t("main.summary_resumed"))
             else:
                 self._worker.pause()
-                self.pause_btn.setText("继续")
-                self.status_bar.showMessage("总结已暂停")
+                self.pause_btn.setText(t("main.resume"))
+                self.status_bar.showMessage(t("main.summary_paused"))
             return
 
         # ── 仅转写模式（原有逻辑） ──
@@ -1448,12 +1438,12 @@ class MainWindow(QMainWindow):
 
         if self._worker.is_paused:
             self._worker.resume()
-            self.pause_btn.setText("暂停")
-            self.status_bar.showMessage("转写已继续")
+            self.pause_btn.setText(t("main.pause"))
+            self.status_bar.showMessage(t("main.transcribe_resumed"))
         else:
             self._worker.pause()
-            self.pause_btn.setText("继续")
-            self.status_bar.showMessage("正在等待当前音频/切片转写完成后暂停…")
+            self.pause_btn.setText(t("main.resume"))
+            self.status_bar.showMessage(t("main.transcribe_pause_waiting"))
 
     def _on_stop(self) -> None:
         """立即停止当前的转写或总结任务：请求取消并退出工作线程。
@@ -1466,8 +1456,8 @@ class MainWindow(QMainWindow):
         """
         if self._worker is None or self._worker_thread is None:
             return
-        get_logger("video2text").info("  ├─ ⏹ 停止请求已接收，尝试终止任务…")
-        self.status_bar.showMessage("正在停止任务…")
+        get_logger("video2text").info(t("main.stop_requested"))
+        self.status_bar.showMessage(t("main.stopping_task"))
         if hasattr(self._worker, "cancel"):
             self._worker.cancel()
         if hasattr(self._worker, "unpause"):
@@ -1477,7 +1467,7 @@ class MainWindow(QMainWindow):
             self._worker_thread.quit()
             if not self._worker_thread.wait(5000):
                 get_logger("video2text").warning(
-                    "  ├─ ⚠ Worker 线程未响应退出请求，强制终止…"
+                    t("main.stop_force_terminate")
                 )
                 self._worker_thread.terminate()
                 self._worker_thread.wait(3000)
@@ -1487,14 +1477,14 @@ class MainWindow(QMainWindow):
         self.pause_btn.setEnabled(False)
         # 确保界面从忙碌状态恢复
         self._set_busy_state(False)
-        self.status_bar.showMessage("任务已停止")
+        self.status_bar.showMessage(t("main.task_stopped"))
 
     # ── 仅转写 ──
 
     def _on_transcribe(self) -> None:
         """「仅转写」按钮点击处理：校验输入 → 清空结果 → 启动转写线程。"""
         if not self._video_files:
-            QMessageBox.warning(self, "提示", "请先选择输入文件或文件夹。")
+            QMessageBox.warning(self, t("common.hint"), t("main.no_input_dialog"))
             return
 
         output_dir = self._get_output_dir()
@@ -1514,7 +1504,7 @@ class MainWindow(QMainWindow):
         video_files = self._apply_incremental_mode(self._video_files, output_dir)
         if not video_files:
             QMessageBox.information(
-                self, "提示", "增量模式: 所有文件均已有转写和摘要结果，无需重复处理。"
+                self, t("common.hint"), t("main.incremental_all_done")
             )
             return
 
@@ -1568,7 +1558,7 @@ class MainWindow(QMainWindow):
             self._load_transcript_content(video_name)
 
         self.status_bar.showMessage(
-            f"转写完成: {video_name} ({segments_count} 段)", 5000
+            t("main.tx_done_count", name=video_name, segments=segments_count), 5000
         )
 
     def _load_transcript_content(self, video_name: str) -> None:
@@ -1583,14 +1573,14 @@ class MainWindow(QMainWindow):
             )
         except (OSError, UnicodeDecodeError) as exc:
             get_logger("video2text").warning(
-                "读取转写文件失败: %s (%s)", transcript_path.name, exc
+                t("main.load_transcript_fail", name=transcript_path.name, err=exc)
             )
 
     def _on_transcribe_error(self, video_name: str, error_msg: str) -> None:
         """单个文件转写失败"""
         self._tx_fail += 1
-        self._fail_records.append((video_name, "转写", error_msg))
-        self.status_bar.showMessage(f"转写失败: {video_name} — {error_msg}", 5000)
+        self._fail_records.append((video_name, t("main.fail_record_transcribe"), error_msg))
+        self.status_bar.showMessage(t("main.tx_fail_count", name=video_name, msg=error_msg), 5000)
 
     # ── 仅总结 ──
 
@@ -1611,8 +1601,8 @@ class MainWindow(QMainWindow):
         if not video_files:
             QMessageBox.warning(
                 self,
-                "提示",
-                "请先选择文件或文件夹，并完成转写后再进行总结。",
+                t("common.hint"),
+                t("main.no_summarize_dialog"),
             )
             return
 
@@ -1672,20 +1662,20 @@ class MainWindow(QMainWindow):
             self.summary_view.setPlainText(summary)
         elif self._current_video_name == video_name:
             self.summary_view.setPlainText(summary)
-        self.status_bar.showMessage(f"总结完成: {video_name}", 5000)
+        self.status_bar.showMessage(t("main.sum_done_count", name=video_name), 5000)
 
     def _on_summarize_error(self, video_name: str, error_msg: str) -> None:
         """单个文件总结失败"""
         self._sum_fail += 1
-        self._fail_records.append((video_name, "总结", error_msg))
-        self.status_bar.showMessage(f"总结失败: {video_name} — {error_msg}", 5000)
+        self._fail_records.append((video_name, t("main.fail_record_summarize"), error_msg))
+        self.status_bar.showMessage(t("main.sum_fail_count", name=video_name, msg=error_msg), 5000)
 
     # ── 转写总结管道 ──
 
     def _on_pipeline(self) -> None:
         """「转写总结」按钮点击处理：校验输入 → 启动管道线程（先转写后总结）。"""
         if not self._video_files:
-            QMessageBox.warning(self, "提示", "请先选择输入文件或文件夹。")
+            QMessageBox.warning(self, t("common.hint"), t("main.no_input_dialog"))
             return
 
         output_dir = self._get_output_dir()
@@ -1707,7 +1697,7 @@ class MainWindow(QMainWindow):
         video_files = self._apply_incremental_mode(self._video_files, output_dir)
         if not video_files:
             QMessageBox.information(
-                self, "提示", "增量模式: 所有文件均已有转写和摘要结果，无需重复处理。"
+                self, t("common.hint"), t("main.incremental_all_done")
             )
             return
 
@@ -1758,9 +1748,9 @@ class MainWindow(QMainWindow):
         if self._worker is not None:
             self._update_pause_button(True)
         if phase == "summarize":
-            self.status_bar.showMessage("正在切换到总结阶段...")
+            self.status_bar.showMessage(t("main.phase_switch_summarize"))
         elif phase == "transcribe":
-            self.status_bar.showMessage("正在转写阶段...")
+            self.status_bar.showMessage(t("main.phase_switch_transcribe"))
 
     def _on_confirm_download(self) -> None:
         worker = self._worker
@@ -1768,10 +1758,8 @@ class MainWindow(QMainWindow):
             return
         reply = QMessageBox.question(
             self,
-            "模型下载确认",
-            "建议使用网盘中已下载好的模型，HuggingFace 一般不可直连。\n\n"
-            "如需使用其它模型，请把核心文件复制到 models 目录再到配置中更改模型路径。\n\n"
-            "是否开始下载模型？",
+            t("main.confirm_download_title"),
+            t("main.confirm_download_msg"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -1816,16 +1804,13 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(self.progress_bar.maximum())
 
         if self._current_mode == "transcribe":
-            msg = f"转写完成 — 成功: {self._tx_success}, 失败: {self._tx_fail}"
+            msg = t("main.pipeline_done_tx", ok=self._tx_success, fail=self._tx_fail)
         elif self._current_mode == "summarize":
-            msg = f"总结完成 — 成功: {self._sum_success}, 失败: {self._sum_fail}"
+            msg = t("main.pipeline_done_sum", ok=self._sum_success, fail=self._sum_fail)
         elif self._current_mode == "pipeline":
-            msg = (
-                f"转写: 成功 {self._tx_success} / 失败 {self._tx_fail} | "
-                f"总结: 成功 {self._sum_success} / 失败 {self._sum_fail}"
-            )
+            msg = t("main.pipeline_done_both", tx_ok=self._tx_success, tx_fail=self._tx_fail, sum_ok=self._sum_success, sum_fail=self._sum_fail)
         else:
-            msg = "处理完成"
+            msg = t("main.pipeline_done_all")
 
         self.status_bar.showMessage(msg)
         self._save_fail_records()
@@ -1839,25 +1824,25 @@ class MainWindow(QMainWindow):
         fail_path = log_path / "fail_log.log"
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         mode_map = {
-            "transcribe": "仅转写",
-            "summarize": "仅总结",
-            "pipeline": "转写总结",
+            "transcribe": t("main.log_mode_transcribe"),
+            "summarize": t("main.log_mode_summarize"),
+            "pipeline": t("main.log_mode_pipeline"),
         }
-        mode_label = mode_map.get(self._current_mode, self._current_mode)
+        mode_label = mode_map.get(self._current_mode, t("main.mode_label_task"))
         try:
             with open(fail_path, "a", encoding="utf-8") as f:
-                f.write(f"[{timestamp}] 模式: {mode_label}\n")
+                f.write(t("main.fail_log_mode", time=timestamp, mode=mode_label))
                 for video_name, stage, error_msg in self._fail_records:
-                    f.write(f"  {stage}失败 | {video_name} | {error_msg}\n")
+                    f.write(t("main.fail_log_line", stage=stage, name=video_name, msg=error_msg))
                 f.write("\n")
         except OSError as exc:
-            get_logger("video2text").warning("写入失败日志失败: %s", exc)
+            get_logger("video2text").warning(t("main.failed_log_write", err=exc))
 
     # ── result file viewer ──
 
     def _open_result_viewer(self) -> None:
         if not self._completed_names and not self._history_loaded:
-            QMessageBox.warning(self, "提示", "请先完成转写或加载历史文件")
+            QMessageBox.warning(self, t("common.hint"), t("main.no_video_dialog"))
             return
 
         output_dir = self.output_combo.currentText().strip() or self._default_output_dir
@@ -1883,8 +1868,8 @@ class MainWindow(QMainWindow):
             return
         video_name = item.data(Qt.ItemDataRole.UserRole)
         menu = QMenu(self)
-        retranscribe_action = menu.addAction("重新转写")
-        resummarize_action = menu.addAction("重新总结")
+        retranscribe_action = menu.addAction(t("main.file_context_retranscribe"))
+        resummarize_action = menu.addAction(t("main.file_context_resummarize"))
         action = menu.exec(self.file_list.viewport().mapToGlobal(pos))
         if action == retranscribe_action:
             self._on_retranscribe(video_name)
@@ -1899,15 +1884,15 @@ class MainWindow(QMainWindow):
 
     def _on_retranscribe(self, video_name: str) -> None:
         if self._worker_thread is not None and self._worker_thread.isRunning():
-            QMessageBox.warning(self, "提示", "当前有任务正在运行，请等待完成后再试。")
+            QMessageBox.warning(self, t("common.hint"), t("main.task_running_warning"))
             return
 
         video_path = self._find_video_path_by_name(video_name)
         if video_path is None:
             QMessageBox.warning(
                 self,
-                "提示",
-                f"未找到原始文件: {video_name}\n请先在主界面加载包含该文件的目录。",
+                t("common.hint"),
+                t("main.remove_file_dialog", name=video_name),
             )
             return
 
@@ -1938,14 +1923,14 @@ class MainWindow(QMainWindow):
 
     def _on_resummarize(self, video_name: str) -> None:
         if self._worker_thread is not None and self._worker_thread.isRunning():
-            QMessageBox.warning(self, "提示", "当前有任务正在运行，请等待完成后再试。")
+            QMessageBox.warning(self, t("common.hint"), t("main.task_running_warning"))
             return
 
         output_dir = self._get_output_dir()
         resolved_dir = self._resolve_video_output_dir(video_name)
         transcript_path = FileWriter(resolved_dir).find_transcript_file(video_name)
         if transcript_path is None:
-            QMessageBox.warning(self, "提示", f"未找到转写文件: {video_name}")
+            QMessageBox.warning(self, t("common.hint"), t("main.no_transcript_file", name=video_name))
             return
 
         self._current_mode = "summarize"
@@ -2006,18 +1991,18 @@ class MainWindow(QMainWindow):
                     transcript_path.read_text(encoding="utf-8-sig")
                 )
             except (OSError, UnicodeDecodeError) as exc:
-                self.transcript_view.setPlainText(f"读取失败: {exc}")
+                self.transcript_view.setPlainText(t("main.read_failure_inline", err=exc))
         else:
-            self.transcript_view.setPlainText("(未找到转写文件)")
+            self.transcript_view.setPlainText(t("main.transcript_not_found"))
 
         summary_path = _find_summary_path(output_dir, video_name)
         if summary_path:
             try:
                 self.summary_view.setPlainText(summary_path.read_text(encoding="utf-8"))
             except (OSError, UnicodeDecodeError) as exc:
-                self.summary_view.setPlainText(f"读取失败: {exc}")
+                self.summary_view.setPlainText(t("main.read_failure_inline", err=exc))
         else:
-            self.summary_view.setPlainText("(未找到摘要文件)")
+            self.summary_view.setPlainText(t("main.summary_not_found_inline"))
 
         self._search_controller.refresh_if_active()
 
@@ -2136,7 +2121,7 @@ class MainWindow(QMainWindow):
             self.settings.set("app.main_transparency", str(opacity_int))
             self.settings.save()
         except Exception as e:
-            logger.warning("保存主界面背景图片配置失败: %s", e)
+            logger.warning(t("main.config_save_fail_warn", err=e))
 
     def _change_bg_image(self) -> None:
         """通过资源管理器选择并更换背景图片"""
@@ -2145,16 +2130,16 @@ class MainWindow(QMainWindow):
         )
         file_path, _ = QFileDialog.getOpenFileName(
             self,
-            "选择背景图片",
+            t("main.bg_pick_title"),
             initial_dir,
-            "图片文件 (*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp);;所有文件 (*.*)",
+            t("main.bg_pick_filter"),
         )
         if not file_path:
             return
 
         pixmap = QPixmap(file_path)
         if pixmap.isNull():
-            QMessageBox.warning(self, "提示", "无法加载该图片文件，请选择其他图片。")
+            QMessageBox.warning(self, t("common.hint"), t("main.bg_load_fail"))
             return
 
         self._bg_pixmap = pixmap
@@ -2163,7 +2148,7 @@ class MainWindow(QMainWindow):
             self._bg_content.set_bg_pixmap(self._bg_pixmap)
         self._apply_bg_transparency()
         self._save_bg_config()
-        self.status_bar.showMessage(f"背景图片已更换: {Path(file_path).name}")
+        self.status_bar.showMessage(t("main.bg_changed", name=Path(file_path).name))
 
     def _clear_bg_image(self) -> None:
         """清除背景图片"""
@@ -2173,15 +2158,15 @@ class MainWindow(QMainWindow):
             self._bg_content.set_bg_pixmap(None)
         self._apply_bg_transparency()
         self._save_bg_config()
-        self.status_bar.showMessage("背景图片已清除")
+        self.status_bar.showMessage(t("main.bg_cleared"))
 
     def _adjust_bg_transparency(self) -> None:
         """弹出输入框修改背景不透明度 (0~255)"""
         current_val = round(self._bg_opacity * 255)
         value, ok = QInputDialog.getInt(
             self,
-            "调整背景不透明度",
-            "请输入背景不透明度 (0~255)：\n0=完全透明（背景图不可见），255=完全不透明（背景图最明显）",
+            t("main.bg_transparency_title"),
+            t("main.bg_transparency_label"),
             current_val,
             0,
             255,
@@ -2192,7 +2177,7 @@ class MainWindow(QMainWindow):
             if hasattr(self, "_bg_content"):
                 self._bg_content.set_bg_opacity(self._bg_opacity)
             self._save_bg_config()
-            self.status_bar.showMessage(f"背景不透明度已设置为: {value} (0~255)")
+            self.status_bar.showMessage(t("main.bg_transparency_set", value=value))
 
     def _apply_bg_transparency(self) -> None:
         """有背景图片时设置面板透明，否则恢复默认样式"""
@@ -2300,6 +2285,20 @@ def main() -> None:
 
         app = QApplication()
         app.setStyle("Fusion")
+
+        # ── 国际化：解析并应用语言（须在构建窗口前完成）──
+        import os
+
+        cli_lang = None
+        for i, a in enumerate(sys.argv[1:]):
+            if a == "--lang" and i + 1 < len(sys.argv[1:]):
+                cli_lang = sys.argv[1:][i + 1]
+            elif a.startswith("--lang="):
+                cli_lang = a.split("=", 1)[1]
+        lang = resolve_language(cli_lang)
+        set_lang(lang)
+        install_qt_translator(app, lang)
+
         window = MainWindow()
         window.show()
         app.exec()
