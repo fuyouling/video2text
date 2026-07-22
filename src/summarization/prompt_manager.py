@@ -143,7 +143,7 @@ class PromptManager:
         if custom_prompt and custom_prompt.strip():
             base = custom_prompt.strip()
         else:
-            base = "你是一个专业的文本总结助手，擅长提取关键信息并生成简洁准确的总结，只输出总结正文，**禁止添加任何开头语、结尾说明、解释性语句、备注**，**不要额外修饰、补充话术，纯输出总结内容**。"
+            base = "你是一个专业的文本总结助手，擅长提取关键信息并生成简洁准确的总结，只输出总结正文，**禁止添加任何开头语、结尾说明、解释性语句、备注**，**不要额外修饰、补充话术，纯输出总结内容**，结尾无需再次总结。"
 
         if self._markdown_enabled and is_use_gui_markdown_flag:
             md_prompt = self._markdown_prompt

@@ -225,9 +225,8 @@ output/*
 !output/readme.md
 
 # 模型文件
-models/large-v3/
-models/whisper-large-v3-turbo
-models/faster-whisper-large-v3-turbo-ct2
+models/*
+!models/readme.md
 
 # vscode设置
 .vscode/
