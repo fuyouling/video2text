@@ -1,4 +1,4 @@
-"""Provider abstraction layer — unified interface for Ollama / NVIDIA / Zhipu summarization providers"""
+"""Provider abstraction layer — unified interface for Ollama / NVIDIA summarization providers"""
 
 import os
 import threading
@@ -9,7 +9,6 @@ from src.i18n import t
 from src.summarization.prompt_manager import PromptManager
 from src.summarization.nvidia_client import NvidiaClient
 from src.summarization.ollama_client import OllamaClient
-from src.summarization.zhipu_client import ZhipuClient
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -140,57 +139,11 @@ class NvidiaProvider:
         self._client.close()
 
 
-class ZhipuProvider:
-    """Zhipu provider — online API summarization"""
-
-    def __init__(self, settings: Settings) -> None:
-        zhipu_timeout = settings.get_int("summarization.zhipu_timeout", 600)
-        self._model = settings.get("summarization.zhipu_model", "glm-4.7")
-        self._max_tokens = settings.get_int("summarization.zhipu_max_tokens", 65536)
-        self._temperature = settings.get_float("summarization.zhipu_temperature", 1.0)
-
-        self._client = ZhipuClient(
-            api_key=os.environ.get("ZHIPU_API_KEY", ""),
-            model=self._model,
-            timeout=zhipu_timeout,
-        )
-
-    def check_connection(self) -> bool:
-        return self._client.check_connection()
-
-    def summarize(
-        self,
-        text: str,
-        custom_prompt: str = "",
-        stream: bool = False,
-        on_token: Optional[Callable[[str], None]] = None,
-        cancel_check: Optional[Callable[[], bool]] = None,
-        pause_event: Optional[threading.Event] = None,
-        is_use_gui_markdown_flag: bool = True
-    ) -> str:
-        prompt = PromptManager().build_prompt(text, custom_prompt, is_use_gui_markdown_flag=is_use_gui_markdown_flag)
-        return self._client.generate(
-            model=self._model,
-            prompt=prompt,
-            temperature=self._temperature,
-            max_tokens=self._max_tokens,
-            stream=stream,
-            on_token=on_token,
-            cancel_check=cancel_check,
-            pause_event=pause_event,
-        )
-
-    def close(self) -> None:
-        self._client.close()
-
-
 def create_provider(settings: Settings) -> SummarizationProvider:
     """Factory function — creates the appropriate provider based on config"""
     provider_name = settings.get("summarization.provider", "ollama")
     if provider_name == "nvidia":
         return NvidiaProvider(settings)
-    if provider_name == "zhipu":
-        return ZhipuProvider(settings)
     if provider_name != "ollama":
         logger.warning(t("services.summarization.unknown_provider", provider=provider_name))
     return OllamaProvider(settings)

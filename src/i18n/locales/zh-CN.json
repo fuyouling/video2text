@@ -158,9 +158,9 @@
     "bg_load_fail": "无法加载该图片文件，请选择其他图片。",
     "bg_changed": "背景图片已更换: {name}",
     "bg_cleared": "背景图片已清除",
-    "bg_transparency_title": "调整背景不透明度",
-    "bg_transparency_label": "请输入背景不透明度 (0~255)：\n0=完全透明（背景图不可见），255=完全不透明（背景图最明显）",
-    "bg_transparency_set": "背景不透明度已设置为: {value} (0~255)",
+    "bg_transparency_title": "调整背景透明度",
+    "bg_transparency_label": "请输入背景透明度 (0~255)：\n0=完全透明（背景图不可见），255=完全不透明（背景图最明显）",
+    "bg_transparency_set": "背景透明度已设置为: {value} (0~255)",
     "config_path_status": "配置: {path}",
     "config_save_fail_warn": "保存主界面背景图片配置失败: {err}",
     "scan_start": "正在扫描文件...",
@@ -376,7 +376,7 @@
     "bg_cleared": "背景图片已清除",
     "bg_transparency_title": "调整背景透明度",
     "bg_transparency_label": "请输入背景透明度 (0~255)：\n0=完全透明（背景图不可见），255=完全不透明（背景图最明显）",
-    "bg_opacity_set": "背景不透明度已设置为: {value} (0~255)",
+    "bg_opacity_set": "背景透明度已设置为: {value} (0~255)",
     "copy_info_format": "文件: {name}\n类型: {type_label}\n位置: {position}\n预览: {preview}",
     "copy_info_path": "路径: {path}",
     "copy_info_note": "备注: {note}"
@@ -608,10 +608,8 @@
     "provider_group": "总结服务",
     "ollama_group": "Ollama 配置",
     "nvidia_group": "NVIDIA 配置",
-    "zhipu_group": "智谱配置",
     "radio_ollama": "本地 Ollama 模型",
     "radio_nvidia": "在线 NVIDIA 模型",
-    "radio_zhipu": "在线智谱模型",
     "test_btn": "测试连接",
     "refresh_btn": "刷新模型列表",
     "start_btn": "启动服务",
@@ -625,9 +623,6 @@
     "nvidia_mode_label": "NVIDIA 模式:",
     "nvidia_stream_label": "NVIDIA 流式输出:",
     "nvidia_threads_label": "NVIDIA 线程数:",
-    "zhipu_mode_label": "智谱模式:",
-    "zhipu_stream_label": "智谱流式输出:",
-    "zhipu_threads_label": "智谱线程数:",
     "model_label": "模型名称:",
     "ollama_not_found_title": "提示",
     "ollama_not_found_msg": "未找到ollama命令，请确保已安装Ollama。\n可以从 https://ollama.com/download 下载安装。",
@@ -649,8 +644,6 @@
     "status_stop_error": "关闭失败",
     "log_nvidia_ok": "NVIDIA API 连接: ✓ 成功 ({latency_ms:.0f}ms) | url={url} model={model}",
     "log_nvidia_fail": "NVIDIA API 连接: ✗ 失败 | url={url} model={model}",
-    "log_zhipu_ok": "智谱 API 连接: ✓ 成功 ({latency_ms:.0f}ms) | model={model}",
-    "log_zhipu_fail": "智谱 API 连接: ✗ 失败 | model={model}",
     "log_ollama_ok": "Ollama 连接: ✓ 成功 ({latency_ms:.0f}ms) | url={url} model={model}",
     "log_ollama_fail": "Ollama 连接: ✗ 失败 | reason={reason} url={url} model={model}",
     "log_ollama_start_already": "Ollama 服务启动: ✓ 已在运行",
@@ -675,14 +668,7 @@
     "nvidia_timeout": "NVIDIA 超时时间",
     "nvidia_mode": "NVIDIA 模式",
     "nvidia_thread_count": "NVIDIA 线程数",
-    "nvidia_stream": "NVIDIA 流式输出",
-    "zhipu_model": "智谱模型",
-    "zhipu_max_tokens": "最大 Token 数",
-    "zhipu_temperature": "温度",
-    "zhipu_timeout": "智谱超时时间",
-    "zhipu_mode": "智谱模式",
-    "zhipu_thread_count": "智谱线程数",
-    "zhipu_stream": "智谱流式输出"
+    "nvidia_stream": "NVIDIA 流式输出"
   },
   "summ_tooltips": {
     "ollama_url": "Ollama 服务地址，默认 http://127.0.0.1:11434",
@@ -700,14 +686,7 @@
     "nvidia_timeout": "NVIDIA 请求超时时间 (秒)，长文本建议 600+",
     "nvidia_mode": "NVIDIA 模式: single (单线程，支持流式), multi (多线程并发)",
     "nvidia_thread_count": "多线程模式下的并发线程数",
-    "nvidia_stream": "是否启用流式输出 (仅单线程模式有效): true / false",
-    "zhipu_model": "智谱模型标识，如 glm-4.7",
-    "zhipu_max_tokens": "最大生成 token 数",
-    "zhipu_temperature": "生成温度 (0~2)",
-    "zhipu_timeout": "智谱请求超时时间 (秒)，长文本建议 600+",
-    "zhipu_mode": "智谱模式: single (单线程，支持流式), multi (多线程并发)",
-    "zhipu_thread_count": "多线程模式下的并发线程数",
-    "zhipu_stream": "是否启用流式输出 (仅单线程模式有效): true / false"
+    "nvidia_stream": "是否启用流式输出 (仅单线程模式有效): true / false"
   },
   "donate": {
     "title": "捐赠支持",
@@ -747,7 +726,6 @@
     "replaced_count": "已替换 {count} 处"
   },
   "gui_workers": {
-    "provider_zhipu": "智谱 API",
     "provider_unavailable": "{provider_label} 服务不可用",
     "paused_waiting": "  ├─ ✅ 已暂停 — 等待恢复…",
     "resumed": "  └─ ▶ 已继续",
@@ -1084,20 +1062,6 @@
         "stream_json_error": "NvidiaClient: 流式 JSON 解析失败",
         "stream_interrupted": "NvidiaClient: 流式中断，已接收 {count} 字符",
         "stream_connection_failed": "NVIDIA 流式连接失败: {error}"
-      },
-      "zhipu": {
-        "api_key_missing": "ZhipuClient: API Key 未配置",
-        "check_ok": "ZhipuClient: 连接检查成功",
-        "check_fail": "ZhipuClient: 连接失败 ({error})",
-        "rate_limited": "智谱 API 限流 (429), {wait}s 后重试",
-        "rate_limited_log": "ZhipuClient: 429 限流 ({attempt}/{max})，等待 {wait}s",
-        "request_failed": "智谱 API 请求失败: {error}",
-        "unknown_error": "智谱 API 请求失败（未知错误）",
-        "retry_log": "ZhipuClient: {wait}s 后重试...",
-        "user_cancelled": "用户取消",
-        "user_cancelled_stream": "ZhipuClient: 用户取消流式生成",
-        "stream_interrupted": "ZhipuClient: 流式中断，已接收 {count} 字符",
-        "stream_connection_failed": "智谱 流式连接失败: {error}"
       }
     },
     "voice_transcription": {

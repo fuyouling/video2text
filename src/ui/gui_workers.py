@@ -126,7 +126,7 @@ def _get_online_cfg(settings: Settings, suffix: str, default):
 
 
 def _get_provider_label(provider: str) -> str:
-    return {"ollama": "Ollama", "nvidia": "NVIDIA API", "zhipu": t("gui_workers.provider_zhipu")}.get(
+    return {"ollama": "Ollama", "nvidia": "NVIDIA API"}.get(
         provider, provider
     )
 
@@ -464,7 +464,7 @@ class SummarizeWorker(QObject):
                 mode = _get_online_cfg(self.settings, "mode", "single")
                 max_workers = (
                     _get_online_cfg(self.settings, "thread_count", 5)
-                    if provider_name in ("nvidia", "zhipu") and mode == "multi"
+                    if provider_name == "nvidia" and mode == "multi"
                     else 1
                 )
                 stream = self.stream and max_workers <= 1
@@ -745,7 +745,7 @@ class PipelineWorker(QObject):
                     mode = _get_online_cfg(self.settings, "mode", "single")
                     max_workers = (
                         _get_online_cfg(self.settings, "thread_count", 5)
-                        if provider_name in ("nvidia", "zhipu") and mode == "multi"
+                        if provider_name == "nvidia" and mode == "multi"
                         else 1
                     )
                     stream = self.stream and max_workers <= 1
@@ -826,8 +826,6 @@ class CheckWorker(QObject):
                 ok, detail = self._check_ollama()
             elif self.provider_type == "nvidia":
                 ok, detail = self._check_nvidia()
-            elif self.provider_type == "zhipu":
-                ok, detail = self._check_zhipu()
             else:
                 ok, detail = False, "unknown_provider"
             latency_ms = (time.monotonic() - t0) * 1000
@@ -861,19 +859,6 @@ class CheckWorker(QObject):
             return client.check_connection(), ""
         finally:
             client.close()
-
-    def _check_zhipu(self) -> tuple[bool, str]:
-        from src.summarization.zhipu_client import ZhipuClient
-
-        client = ZhipuClient(
-            api_key=get_api_key("ZHIPU_API_KEY"),
-            model=self.kwargs.get("model", ""),
-        )
-        try:
-            return client.check_connection(), ""
-        finally:
-            client.close()
-
 
 # ---------------------------------------------------------------------------
 # Ollama 辅助 Workers (保持不变)

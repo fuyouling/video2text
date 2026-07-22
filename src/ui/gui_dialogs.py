@@ -1006,9 +1006,7 @@ _BOOL_COMBO_KEYS: set[str] = {
 _COMBO_KEYS: set[str] = set(_BOOL_COMBO_KEYS) | {
     "app.ui_language",
     "summarization.nvidia_stream",
-    "summarization.zhipu_stream",
     "summarization.nvidia_mode",
-    "summarization.zhipu_mode",
     "app.log_level",
     "transcription.device",
     "transcription.compute_type",
@@ -1023,9 +1021,7 @@ _COMBO_OPTIONS: dict[str, list[str]] = {
 _COMBO_OPTIONS.update(
     {
         "summarization.nvidia_stream": ["common.yes", "common.no"],
-        "summarization.zhipu_stream": ["common.yes", "common.no"],
         "summarization.nvidia_mode": ["config.combo.mode_single", "config.combo.mode_multi"],
-        "summarization.zhipu_mode": ["config.combo.mode_single", "config.combo.mode_multi"],
     }
 )
 
@@ -1036,9 +1032,7 @@ _COMBO_VALUE_MAP: dict[str, dict[str, str]] = {
 _COMBO_VALUE_MAP.update(
     {
         "summarization.nvidia_stream": {"common.yes": "True", "common.no": "False"},
-        "summarization.zhipu_stream": {"common.yes": "True", "common.no": "False"},
         "summarization.nvidia_mode": {"config.combo.mode_single": "single", "config.combo.mode_multi": "multi"},
-        "summarization.zhipu_mode": {"config.combo.mode_single": "single", "config.combo.mode_multi": "multi"},
     }
 )
 

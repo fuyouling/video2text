@@ -1297,7 +1297,7 @@ class MainWindow(QMainWindow):
         """更新多线程标志"""
         provider = self.settings.get("summarization.provider", "ollama")
         mode = self.settings.get(f"summarization.{provider}_mode", "single")
-        self._is_multi_thread = provider in ("nvidia", "zhipu") and mode == "multi"
+        self._is_multi_thread = provider == "nvidia" and mode == "multi"
 
     def _start_worker(self, thread: QThread, worker) -> None:
         """启动 worker 线程并连接通用信号"""
@@ -2161,7 +2161,7 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage(t("main.bg_cleared"))
 
     def _adjust_bg_transparency(self) -> None:
-        """弹出输入框修改背景不透明度 (0~255)"""
+        """弹出输入框修改背景透明度 (0~255)"""
         current_val = round(self._bg_opacity * 255)
         value, ok = QInputDialog.getInt(
             self,

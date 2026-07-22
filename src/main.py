@@ -17,7 +17,7 @@ def main():
     """
     ensure_cuda_libs()
     # 所有运行模式（GUI / CLI）在入口处统一加载一次项目根目录的 .env，
-    # 确保 NVIDIA_API_KEY / ZHIPU_API_KEY 等环境变量在任意工作目录下均可读取。
+    # 确保 NVIDIA_API_KEY 等环境变量在任意工作目录下均可读取。
     load_dotenv(get_base_dir() / ".env", override=True)
 
     try:

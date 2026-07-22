@@ -382,10 +382,8 @@
     "provider_group": "Service de résumé",
     "ollama_group": "Configuration Ollama",
     "nvidia_group": "Configuration NVIDIA",
-    "zhipu_group": "Configuration Zhipu",
     "radio_ollama": "Modèle Ollama local",
     "radio_nvidia": "Modèle NVIDIA en ligne",
-    "radio_zhipu": "Modèle Zhipu en ligne",
     "test_btn": "Tester la connexion",
     "refresh_btn": "Actualiser la liste des modèles",
     "start_btn": "Démarrer le service",
@@ -399,9 +397,6 @@
     "nvidia_mode_label": "Mode NVIDIA :",
     "nvidia_stream_label": "Sortie flux NVIDIA :",
     "nvidia_threads_label": "Threads NVIDIA :",
-    "zhipu_mode_label": "Mode Zhipu :",
-    "zhipu_stream_label": "Sortie flux Zhipu :",
-    "zhipu_threads_label": "Threads Zhipu :",
     "model_label": "Nom du modèle :",
     "ollama_not_found_title": "Avis",
     "ollama_not_found_msg": "Commande ollama introuvable. Veuillez installer Ollama.\nTélécharger depuis https://ollama.com/download",
@@ -423,8 +418,6 @@
     "status_stop_error": "Échec de l'arrêt",
     "log_nvidia_ok": "Connexion API NVIDIA : ✓ succès ({latency_ms:.0f} ms) | url={url} model={model}",
     "log_nvidia_fail": "Connexion API NVIDIA : ✗ échec | url={url} model={model}",
-    "log_zhipu_ok": "Connexion API Zhipu : ✓ succès ({latency_ms:.0f} ms) | model={model}",
-    "log_zhipu_fail": "Connexion API Zhipu : ✗ échec | model={model}",
     "log_ollama_ok": "Connexion Ollama : ✓ succès ({latency_ms:.0f} ms) | url={url} model={model}",
     "log_ollama_fail": "Connexion Ollama : ✗ échec | raison={reason} url={url} model={model}",
     "log_ollama_start_already": "Service Ollama : ✓ déjà en cours d'exécution",
@@ -449,14 +442,7 @@
     "nvidia_timeout": "Délai d'attente NVIDIA",
     "nvidia_mode": "Mode NVIDIA",
     "nvidia_thread_count": "Nombre de threads NVIDIA",
-    "nvidia_stream": "Sortie flux NVIDIA",
-    "zhipu_model": "Modèle Zhipu",
-    "zhipu_max_tokens": "Tokens max",
-    "zhipu_temperature": "Température",
-    "zhipu_timeout": "Délai d'attente Zhipu",
-    "zhipu_mode": "Mode Zhipu",
-    "zhipu_thread_count": "Nombre de threads Zhipu",
-    "zhipu_stream": "Sortie flux Zhipu"
+    "nvidia_stream": "Sortie flux NVIDIA"
   },
   "summ_tooltips": {
     "ollama_url": "URL du service Ollama, par défaut http://127.0.0.1:11434",
@@ -474,14 +460,7 @@
     "nvidia_timeout": "Délai d'attente NVIDIA (secondes), recommandé 600+ pour les longs textes",
     "nvidia_mode": "Mode NVIDIA : single (thread unique, supporte le flux), multi (multi-thread concurrent)",
     "nvidia_thread_count": "Nombre de threads concurrents pour le mode multi-thread",
-    "nvidia_stream": "Activer la sortie en flux (thread unique uniquement) : true / false",
-    "zhipu_model": "Identifiant du modèle Zhipu, ex. glm-4.7",
-    "zhipu_max_tokens": "Nombre maximal de tokens générés",
-    "zhipu_temperature": "Température (0~2)",
-    "zhipu_timeout": "Délai d'attente Zhipu (secondes), recommandé 600+ pour les longs textes",
-    "zhipu_mode": "Mode Zhipu : single (thread unique, supporte le flux), multi (multi-thread concurrent)",
-    "zhipu_thread_count": "Nombre de threads concurrents pour le mode multi-thread",
-    "zhipu_stream": "Activer la sortie en flux (thread unique uniquement) : true / false"
+    "nvidia_stream": "Activer la sortie en flux (thread unique uniquement) : true / false"
   },
   "donate": {
     "title": "Faire un don",
@@ -521,7 +500,6 @@
     "replaced_count": "{count} occurrence(s) remplacée(s)"
   },
   "gui_workers": {
-    "provider_zhipu": "API Zhipu",
     "provider_unavailable": "Service {provider_label} indisponible",
     "paused_waiting": "  ├─ ✅ En pause — en attente de reprise…",
     "resumed": "  └─ ▶ Repris",
@@ -1081,20 +1059,6 @@
         "stream_json_error": "NvidiaClient : échec de l'analyse JSON du streaming",
         "stream_interrupted": "NvidiaClient : flux interrompu, {count} caractères reçus",
         "stream_connection_failed": "Échec de connexion du streaming NVIDIA : {error}"
-      },
-      "zhipu": {
-        "api_key_missing": "ZhipuClient : Clé API non configurée",
-        "check_ok": "ZhipuClient : vérification de connexion OK",
-        "check_fail": "ZhipuClient : échec de connexion ({error})",
-        "rate_limited": "API Zhipu limitée en débit (429), nouvelle tentative dans {wait}s",
-        "rate_limited_log": "ZhipuClient : 429 limite de débit ({attempt}/{max}), attente {wait}s",
-        "request_failed": "Échec de la requête API Zhipu : {error}",
-        "unknown_error": "Échec de la requête API Zhipu (erreur inconnue)",
-        "retry_log": "ZhipuClient : nouvelle tentative dans {wait}s...",
-        "user_cancelled": "Annulé par l'utilisateur",
-        "user_cancelled_stream": "ZhipuClient : génération en streaming annulée par l'utilisateur",
-        "stream_interrupted": "ZhipuClient : flux interrompu, {count} caractères reçus",
-        "stream_connection_failed": "Échec de connexion du streaming Zhipu : {error}"
       }
     },
     "voice_transcription": {

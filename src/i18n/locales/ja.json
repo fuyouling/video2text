@@ -158,9 +158,9 @@
     "bg_load_fail": "この画像を読み込めませんでした。別の画像を選択してください。",
     "bg_changed": "背景画像を変更しました: {name}",
     "bg_cleared": "背景画像をクリアしました",
-    "bg_transparency_title": "背景の不透明度を調整",
-    "bg_transparency_label": "背景の不透明度を入力してください (0~255):\n0=完全に透明（非表示）、255=完全に不透明",
-    "bg_transparency_set": "背景の不透明度を {value} に設定しました (0~255)",
+    "bg_transparency_title": "背景透明度を調整",
+    "bg_transparency_label": "背景透明度を入力してください (0~255):\n0=完全に透明（非表示）、255=完全に不透明",
+    "bg_transparency_set": "背景透明度を {value} に設定しました (0~255)",
     "config_path_status": "設定: {path}",
     "config_save_fail_warn": "メインウィンドウの背景画像設定の保存に失敗しました: {err}",
     "scan_start": "ファイルをスキャン中...",
@@ -314,7 +314,7 @@
     "bg_image_tooltip": "背景画像の設定",
     "change_bg_image": "画像を変更",
     "clear_bg_image": "背景をクリア",
-    "bg_transparency": "不透明度",
+    "bg_transparency": "透明度",
     "bookmark_dock": "ブックマーク",
     "close_bookmark_tooltip": "ブックマークパネルを閉じる",
     "bookmark_count": "合計 {count} ブックマーク",
@@ -371,9 +371,9 @@
     "load_image_failed": "この画像ファイルを読み込めませんでした。別の画像を選択してください。",
     "bg_changed": "背景画像を変更しました: {name}",
     "bg_cleared": "背景画像をクリアしました",
-    "bg_transparency_title": "背景の不透明度を調整",
-    "bg_transparency_label": "背景の不透明度を入力してください (0~255):\n0=完全に透明（非表示）、255=完全に不透明",
-    "bg_opacity_set": "背景の不透明度を {value} に設定しました (0~255)",
+    "bg_transparency_title": "背景透明度を調整",
+    "bg_transparency_label": "背景透明度を入力してください (0~255):\n0=完全に透明（非表示）、255=完全に不透明",
+    "bg_opacity_set": "背景透明度を {value} に設定しました (0~255)",
     "copy_info_format": "ファイル: {name}\n種類: {type_label}\n位置: {position}\nプレビュー: {preview}",
     "copy_info_path": "パス: {path}",
     "copy_info_note": "メモ: {note}"
@@ -382,10 +382,8 @@
     "provider_group": "要約サービス",
     "ollama_group": "Ollama設定",
     "nvidia_group": "NVIDIA設定",
-    "zhipu_group": "Zhipu設定",
     "radio_ollama": "ローカルOllamaモデル",
     "radio_nvidia": "オンラインNVIDIAモデル",
-    "radio_zhipu": "オンラインZhipuモデル",
     "test_btn": "接続テスト",
     "refresh_btn": "モデル一覧を更新",
     "start_btn": "サービスを開始",
@@ -399,9 +397,6 @@
     "nvidia_mode_label": "NVIDIAモード:",
     "nvidia_stream_label": "NVIDIAストリーム出力:",
     "nvidia_threads_label": "NVIDIAスレッド数:",
-    "zhipu_mode_label": "Zhipuモード:",
-    "zhipu_stream_label": "Zhipuストリーム出力:",
-    "zhipu_threads_label": "Zhipuスレッド数:",
     "model_label": "モデル名:",
     "ollama_not_found_title": "通知",
     "ollama_not_found_msg": "Ollamaコマンドが見つかりません。Ollamaをインストールしてください。\nhttps://ollama.com/download からダウンロード",
@@ -423,8 +418,6 @@
     "status_stop_error": "停止に失敗しました",
     "log_nvidia_ok": "NVIDIA API接続: ✓ 成功 ({latency_ms:.0f}ms) | url={url} model={model}",
     "log_nvidia_fail": "NVIDIA API接続: ✗ 失敗 | url={url} model={model}",
-    "log_zhipu_ok": "Zhipu API接続: ✓ 成功 ({latency_ms:.0f}ms) | model={model}",
-    "log_zhipu_fail": "Zhipu API接続: ✗ 失敗 | model={model}",
     "log_ollama_ok": "Ollama接続: ✓ 成功 ({latency_ms:.0f}ms) | url={url} model={model}",
     "log_ollama_fail": "Ollama接続: ✗ 失敗 | reason={reason} url={url} model={model}",
     "log_ollama_start_already": "Ollamaサービス: ✓ 既に実行中",
@@ -449,14 +442,7 @@
     "nvidia_timeout": "NVIDIAタイムアウト",
     "nvidia_mode": "NVIDIAモード",
     "nvidia_thread_count": "NVIDIAスレッド数",
-    "nvidia_stream": "NVIDIAストリーム出力",
-    "zhipu_model": "Zhipuモデル",
-    "zhipu_max_tokens": "最大トークン数",
-    "zhipu_temperature": "Temperature",
-    "zhipu_timeout": "Zhipuタイムアウト",
-    "zhipu_mode": "Zhipuモード",
-    "zhipu_thread_count": "Zhipuスレッド数",
-    "zhipu_stream": "Zhipuストリーム出力"
+    "nvidia_stream": "NVIDIAストリーム出力"
   },
   "summ_tooltips": {
     "ollama_url": "OllamaサービスのURL、デフォルト http://127.0.0.1:11434",
@@ -474,14 +460,7 @@
     "nvidia_timeout": "NVIDIAタイムアウト（秒）、長文の場合は600以上を推奨",
     "nvidia_mode": "NVIDIAモード: single（シングルスレッド、ストリーム対応）、multi（マルチスレッド並列）",
     "nvidia_thread_count": "マルチスレッドモードの並列スレッド数",
-    "nvidia_stream": "ストリーム出力を有効にする（シングルスレッドのみ）: true / false",
-    "zhipu_model": "ZhipuモデルID、例: glm-4.7",
-    "zhipu_max_tokens": "最大生成トークン数",
-    "zhipu_temperature": "Temperature (0~2)",
-    "zhipu_timeout": "Zhipuタイムアウト（秒）、長文の場合は600以上を推奨",
-    "zhipu_mode": "Zhipuモード: single（シングルスレッド、ストリーム対応）、multi（マルチスレッド並列）",
-    "zhipu_thread_count": "マルチスレッドモードの並列スレッド数",
-    "zhipu_stream": "ストリーム出力を有効にする（シングルスレッドのみ）: true / false"
+    "nvidia_stream": "ストリーム出力を有効にする（シングルスレッドのみ）: true / false"
   },
   "donate": {
     "title": "寄付",
@@ -521,7 +500,6 @@
     "replaced_count": "{count} 件置換しました"
   },
   "gui_workers": {
-    "provider_zhipu": "Zhipu API",
     "provider_unavailable": "{provider_label} サービスが利用できません",
     "paused_waiting": "  ├─ ✅ 一時停止中 — 再開待ち…",
     "resumed": "  └─ ▶ 再開しました",
@@ -646,13 +624,19 @@
   "voice": {
     "user_prefix": "[ユーザー] ",
     "summary_prefix": "[要約] ",
-    "sidebar": { "title": "会話" },
-    "chat": { "placeholder": "上の録音ボタンをクリックして音声文字起こしを開始" },
+    "sidebar": {
+      "title": "会話"
+    },
+    "chat": {
+      "placeholder": "上の録音ボタンをクリックして音声文字起こしを開始"
+    },
     "back_main": "メインに戻る",
     "new_conv": "新規",
     "record_start": "録音開始",
     "record_stop": "録音停止",
-    "conv": { "meta": "{time}  ·  {count} メッセージ" },
+    "conv": {
+      "meta": "{time}  ·  {count} メッセージ"
+    },
     "summary_saved": "要約を保存しました: {path}",
     "status": {
       "initializing": "● 初期化中...",
@@ -700,7 +684,9 @@
       "summarize": "要約"
     },
     "dialog": {
-      "record_error": { "title": "録音エラー" },
+      "record_error": {
+        "title": "録音エラー"
+      },
       "record_fail": {
         "title": "録音失敗",
         "msg": "録音を開始できませんでした: {error}"
@@ -744,7 +730,10 @@
       "voice_to_text": "音声テキスト化"
     },
     "group": {
-      "app": { "general": "一般", "background": "背景画像" },
+      "app": {
+        "general": "一般",
+        "background": "背景画像"
+      },
       "transcription": {
         "basic": "基本",
         "decode": "デコード",
@@ -752,9 +741,17 @@
         "quality": "品質管理",
         "repeat": "繰り返し抑制"
       },
-      "preprocessing": { "audio": "音声処理", "format": "サポート形式" },
-      "output": { "settings": "出力設定", "mirror": "ディレクトリミラー" },
-      "text_processing": { "merge": "マージとクリーン" },
+      "preprocessing": {
+        "audio": "音声処理",
+        "format": "サポート形式"
+      },
+      "output": {
+        "settings": "出力設定",
+        "mirror": "ディレクトリミラー"
+      },
+      "text_processing": {
+        "merge": "マージとクリーン"
+      },
       "voice_to_text": {
         "basic": "基本",
         "audio_vad": "音声とVAD",
@@ -779,9 +776,9 @@
         "proxy": "プロキシアドレス",
         "ui_language": "UI言語",
         "result_image_path": "結果ビューア画像パス",
-        "result_transparency": "結果ビューア不透明度",
+        "result_transparency": "結果ビューア透明度",
         "main_image_path": "メインウィンドウ画像パス",
-        "main_transparency": "メインウィンドウ不透明度"
+        "main_transparency": "メインウィンドウ透明度"
       },
       "transcription": {
         "model_path": "モデルパス",
@@ -847,7 +844,7 @@
         "vad_max_speech_s": "VAD最大音声 (s)",
         "initial_prompt": "初期プロンプト",
         "bg_image_path": "背景画像パス",
-        "bg_transparency": "背景不透明度",
+        "bg_transparency": "背景透明度",
         "vad_endpoint_detection": "VADエンドポイント検出",
         "vad_energy_threshold": "VADエネルギー閾値",
         "vad_silence_frames": "VAD無音フレーム",
@@ -865,9 +862,9 @@
         "proxy": "HTTPプロキシ（例: http://127.0.0.1:7890）、空で無効",
         "ui_language": "アプリケーションのUI言語。反映には再起動が必要です",
         "result_image_path": "結果ビューアの背景画像パス。相対パスと絶対パスをサポート",
-        "result_transparency": "背景画像の不透明度 (0~255)、0=透明、255=不透明",
+        "result_transparency": "背景画像の透明度 (0~255)、0=透明、255=不透明",
         "main_image_path": "メインウィンドウの背景画像パス。相対パスと絶対パスをサポート",
-        "main_transparency": "メインウィンドウの背景不透明度 (0~255)、0=透明、255=不透明"
+        "main_transparency": "メインウィンドウの背景透明度 (0~255)、0=透明、255=不透明"
       },
       "transcription": {
         "model_path": "Whisperモデルのディレクトリ名またはパス",
@@ -933,7 +930,7 @@
         "vad_max_speech_s": "VAD最大セグメント長 (秒)、0 = 無制限",
         "initial_prompt": "文字起こし用の初期プロンプト。コンテキスト強化に有用",
         "bg_image_path": "音声テキスト化インターフェースの背景画像パス。空で無効",
-        "bg_transparency": "背景画像の不透明度 (0~255)、0=透明、255=不透明",
+        "bg_transparency": "背景画像の透明度 (0~255)、0=透明、255=不透明",
         "vad_endpoint_detection": "リアルタイムVADエンドポイント検出を有効にする: True / False",
         "vad_energy_threshold": "VADエネルギー閾値 (0~N)、0で自動キャリブレーション",
         "vad_silence_frames": "発話終了とみなす連続無音フレーム数（各約32ms）",
@@ -1062,20 +1059,6 @@
         "stream_json_error": "NvidiaClient: ストリーミングJSON解析失敗",
         "stream_interrupted": "NvidiaClient: ストリーム中断、{count} 文字受信",
         "stream_connection_failed": "NVIDIA ストリーミング接続失敗: {error}"
-      },
-      "zhipu": {
-        "api_key_missing": "ZhipuClient: APIキーが設定されていません",
-        "check_ok": "ZhipuClient: 接続チェック OK",
-        "check_fail": "ZhipuClient: 接続失敗 ({error})",
-        "rate_limited": "Zhipu API レート制限 (429)、{wait}秒後に再試行",
-        "rate_limited_log": "ZhipuClient: 429 レート制限 ({attempt}/{max})、{wait}秒待機",
-        "request_failed": "Zhipu API リクエスト失敗: {error}",
-        "unknown_error": "Zhipu API リクエスト失敗 (不明なエラー)",
-        "retry_log": "ZhipuClient: {wait}秒後に再試行...",
-        "user_cancelled": "ユーザーがキャンセルしました",
-        "user_cancelled_stream": "ZhipuClient: ユーザーがストリーミング生成をキャンセルしました",
-        "stream_interrupted": "ZhipuClient: ストリーム中断、{count} 文字受信",
-        "stream_connection_failed": "Zhipu ストリーミング接続失敗: {error}"
       }
     },
     "voice_transcription": {
@@ -1097,7 +1080,10 @@
     }
   },
   "storage": {
-    "log": { "load_fail": "読み取り失敗: %s", "save_fail": "書き込み失敗: %s" },
+    "log": {
+      "load_fail": "読み取り失敗: %s",
+      "save_fail": "書き込み失敗: %s"
+    },
     "file_writer": {
       "empty_transcript": "文字起こしが空です（音声が検出されませんでした）。{fmt} ファイルを書き込めません: {filename}",
       "unsupported_format": "サポートされていない形式: {fmt}",
@@ -1118,7 +1104,10 @@
       "keywords_success": "FileWriter: ✓ キーワード (%s)",
       "keywords_fail": "FileWriter: ✗ キーワード (%s): %s"
     },
-    "bookmark": { "load_fail": "読み取り失敗: %s", "save_fail": "書き込み失敗: %s" },
+    "bookmark": {
+      "load_fail": "読み取り失敗: %s",
+      "save_fail": "書き込み失敗: %s"
+    },
     "voice_store": {
       "create_conv": "新しい会話 %s",
       "read_conv_fail": "会話 %s の読み取りに失敗: %s",
@@ -1126,7 +1115,9 @@
       "delete_conv": "会話 %s を削除しました",
       "conv_not_found": "会話が見つかりません: {conv_id}"
     },
-    "json": { "read_fail": "JSONファイル {name} の読み取りに失敗: {error}" }
+    "json": {
+      "read_fail": "JSONファイル {name} の読み取りに失敗: {error}"
+    }
   },
   "text_processing": {
     "segment_merger": {
@@ -1137,7 +1128,9 @@
       "label_merge_time": "時間でマージ ({interval}秒)",
       "filter_summary": "短いセグメントをフィルタ、保持: {kept}/{total}"
     },
-    "text_cleaner": { "clean_done": "テキストクリーン完了: {before} -> {after} 文字" }
+    "text_cleaner": {
+      "clean_done": "テキストクリーン完了: {before} -> {after} 文字"
+    }
   },
   "config_manager": {
     "dm_load_fail": "DirectoryManager: ✗ 読み込み失敗 ({name})",
@@ -1196,7 +1189,9 @@
     "save_failed": "TranscriptionPromptManager: ✗ 保存失敗 ({error})"
   },
   "dll_downloader": {
-    "proxy_source": { "system": "システムプロキシ" },
+    "proxy_source": {
+      "system": "システムプロキシ"
+    },
     "download": {
       "existing": "既存の {archive} ({size})、再開ダウンロードを試行",
       "start": "{archive} をダウンロード中",
@@ -1242,7 +1237,9 @@
   },
   "model_downloader": {
     "size_unknown": "不明",
-    "proxy_source": { "system": "システムプロキシ" },
+    "proxy_source": {
+      "system": "システムプロキシ"
+    },
     "download": {
       "start": "モデルダウンロード ({model})",
       "check_network": "ネットワーク接続を確認中",

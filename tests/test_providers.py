@@ -8,7 +8,6 @@ from src.summarization.prompt_manager import PromptManager
 from src.summarization.providers import (
     OllamaProvider,
     NvidiaProvider,
-    ZhipuProvider,
     create_provider,
 )
 
@@ -151,35 +150,6 @@ class TestNvidiaProvider:
         assert result == "NVIDIA总结"
 
 
-class TestZhipuProvider:
-    @patch("src.summarization.providers.ZhipuClient")
-    def test_check_connection(self, MockClient):
-        settings = MagicMock()
-        settings.get.side_effect = lambda key, default="": {
-            "summarization.zhipu_model": "glm-4.7",
-        }.get(key, default)
-        settings.get_int.return_value = 600
-        settings.get_float.return_value = 1.0
-
-        provider = ZhipuProvider(settings)
-        provider._client.check_connection.return_value = True
-        assert provider.check_connection() is True
-
-    @patch("src.summarization.providers.ZhipuClient")
-    def test_summarize(self, MockClient):
-        settings = MagicMock()
-        settings.get.side_effect = lambda key, default="": {
-            "summarization.zhipu_model": "glm-4.7",
-        }.get(key, default)
-        settings.get_int.return_value = 600
-        settings.get_float.return_value = 1.0
-
-        provider = ZhipuProvider(settings)
-        provider._client.generate.return_value = "智谱总结"
-        result = provider.summarize("文本")
-        assert result == "智谱总结"
-
-
 class TestCreateProvider:
     def test_create_ollama_provider(self):
         settings = MagicMock()
@@ -204,18 +174,6 @@ class TestCreateProvider:
         settings.get_float.return_value = 1.0
         provider = create_provider(settings)
         assert isinstance(provider, NvidiaProvider)
-
-    @patch("src.summarization.providers.ZhipuClient")
-    def test_create_zhipu_provider(self, MockClient):
-        settings = MagicMock()
-        settings.get.side_effect = lambda key, default="": {
-            "summarization.provider": "zhipu",
-            "summarization.zhipu_model": "glm-4.7",
-        }.get(key, default)
-        settings.get_int.return_value = 600
-        settings.get_float.return_value = 1.0
-        provider = create_provider(settings)
-        assert isinstance(provider, ZhipuProvider)
 
     def test_unknown_provider_falls_back_to_ollama(self):
         settings = MagicMock()

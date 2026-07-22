@@ -158,9 +158,9 @@
     "bg_load_fail": "Не удалось загрузить это изображение. Выберите другое.",
     "bg_changed": "Фоновое изображение изменено: {name}",
     "bg_cleared": "Фоновое изображение удалено",
-    "bg_transparency_title": "Настройка непрозрачности фона",
-    "bg_transparency_label": "Введите непрозрачность фона (0~255):\n0 = полностью прозрачный (скрыт), 255 = полностью непрозрачный",
-    "bg_transparency_set": "Непрозрачность фона установлена: {value} (0~255)",
+    "bg_transparency_title": "Настройка прозрачности фона",
+    "bg_transparency_label": "Введите прозрачность фона (0~255):\n0 = полностью прозрачный (скрыт), 255 = полностью непрозрачный",
+    "bg_transparency_set": "Прозрачность фона установлена: {value} (0~255)",
     "config_path_status": "Конфигурация: {path}",
     "config_save_fail_warn": "Не удалось сохранить конфигурацию фонового изображения главного окна: {err}",
     "scan_start": "Сканирование файлов…",
@@ -314,7 +314,7 @@
     "bg_image_tooltip": "Настройки фонового изображения",
     "change_bg_image": "Сменить изображение",
     "clear_bg_image": "Убрать фон",
-    "bg_transparency": "Непрозрачность",
+    "bg_transparency": "Прозрачность",
     "bookmark_dock": "Закладки",
     "close_bookmark_tooltip": "Закрыть панель закладок",
     "bookmark_count": "Всего закладок: {count}",
@@ -371,9 +371,9 @@
     "load_image_failed": "Не удалось загрузить этот файл изображения. Выберите другой.",
     "bg_changed": "Фоновое изображение изменено: {name}",
     "bg_cleared": "Фоновое изображение удалено",
-    "bg_transparency_title": "Настройка непрозрачности фона",
-    "bg_transparency_label": "Введите непрозрачность фона (0~255):\n0 = полностью прозрачный (скрыт), 255 = полностью непрозрачный",
-    "bg_opacity_set": "Непрозрачность фона установлена: {value} (0~255)",
+    "bg_transparency_title": "Настройка прозрачности фона",
+    "bg_transparency_label": "Введите прозрачность фона (0~255):\n0 = полностью прозрачный (скрыт), 255 = полностью непрозрачный",
+    "bg_opacity_set": "Прозрачность фона установлена: {value} (0~255)",
     "copy_info_format": "Файл: {name}\nТип: {type_label}\nПозиция: {position}\nПревью: {preview}",
     "copy_info_path": "Путь: {path}",
     "copy_info_note": "Заметка: {note}"
@@ -382,10 +382,8 @@
     "provider_group": "Сервис суммаризации",
     "ollama_group": "Конфигурация Ollama",
     "nvidia_group": "Конфигурация NVIDIA",
-    "zhipu_group": "Конфигурация Zhipu",
     "radio_ollama": "Локальная модель Ollama",
     "radio_nvidia": "Онлайн модель NVIDIA",
-    "radio_zhipu": "Онлайн модель Zhipu",
     "test_btn": "Проверить соединение",
     "refresh_btn": "Обновить список моделей",
     "start_btn": "Запустить сервис",
@@ -399,9 +397,6 @@
     "nvidia_mode_label": "Режим NVIDIA:",
     "nvidia_stream_label": "Потоковый вывод NVIDIA:",
     "nvidia_threads_label": "Потоки NVIDIA:",
-    "zhipu_mode_label": "Режим Zhipu:",
-    "zhipu_stream_label": "Потоковый вывод Zhipu:",
-    "zhipu_threads_label": "Потоки Zhipu:",
     "model_label": "Имя модели:",
     "ollama_not_found_title": "Уведомление",
     "ollama_not_found_msg": "Команда ollama не найдена. Установите Ollama.\nСкачать с https://ollama.com/download",
@@ -423,8 +418,6 @@
     "status_stop_error": "Ошибка остановки",
     "log_nvidia_ok": "Подключение NVIDIA API: ✓ успех ({latency_ms:.0f} мс) | url={url} model={model}",
     "log_nvidia_fail": "Подключение NVIDIA API: ✗ ошибка | url={url} model={model}",
-    "log_zhipu_ok": "Подключение Zhipu API: ✓ успех ({latency_ms:.0f} мс) | model={model}",
-    "log_zhipu_fail": "Подключение Zhipu API: ✗ ошибка | model={model}",
     "log_ollama_ok": "Подключение Ollama: ✓ успех ({latency_ms:.0f} мс) | url={url} model={model}",
     "log_ollama_fail": "Подключение Ollama: ✗ ошибка | причина={reason} url={url} model={model}",
     "log_ollama_start_already": "Сервис Ollama: ✓ уже запущен",
@@ -449,14 +442,7 @@
     "nvidia_timeout": "Таймаут NVIDIA",
     "nvidia_mode": "Режим NVIDIA",
     "nvidia_thread_count": "Количество потоков NVIDIA",
-    "nvidia_stream": "Потоковый вывод NVIDIA",
-    "zhipu_model": "Модель Zhipu",
-    "zhipu_max_tokens": "Макс. токенов",
-    "zhipu_temperature": "Температура",
-    "zhipu_timeout": "Таймаут Zhipu",
-    "zhipu_mode": "Режим Zhipu",
-    "zhipu_thread_count": "Количество потоков Zhipu",
-    "zhipu_stream": "Потоковый вывод Zhipu"
+    "nvidia_stream": "Потоковый вывод NVIDIA"
   },
   "summ_tooltips": {
     "ollama_url": "URL сервиса Ollama, по умолчанию http://127.0.0.1:11434",
@@ -474,14 +460,7 @@
     "nvidia_timeout": "Таймаут NVIDIA (сек), для длинного текста рекомендуется 600+",
     "nvidia_mode": "Режим NVIDIA: single (один поток, поддерживает потоковую передачу), multi (многопоточный одновременный)",
     "nvidia_thread_count": "Количество одновременных потоков для многопоточного режима",
-    "nvidia_stream": "Включить потоковый вывод (только для одного потока): true / false",
-    "zhipu_model": "Идентификатор модели Zhipu, например glm-4.7",
-    "zhipu_max_tokens": "Максимальное количество генерируемых токенов",
-    "zhipu_temperature": "Температура (0~2)",
-    "zhipu_timeout": "Таймаут Zhipu (сек), для длинного текста рекомендуется 600+",
-    "zhipu_mode": "Режим Zhipu: single (один поток, поддерживает потоковую передачу), multi (многопоточный одновременный)",
-    "zhipu_thread_count": "Количество одновременных потоков для многопоточного режима",
-    "zhipu_stream": "Включить потоковый вывод (только для одного потока): true / false"
+    "nvidia_stream": "Включить потоковый вывод (только для одного потока): true / false"
   },
   "donate": {
     "title": "Пожертвовать",
@@ -521,7 +500,6 @@
     "replaced_count": "Заменено вхождений: {count}"
   },
   "gui_workers": {
-    "provider_zhipu": "Zhipu API",
     "provider_unavailable": "Сервис {provider_label} недоступен",
     "paused_waiting": "  ├─ ✅ Приостановлено — ожидание возобновления…",
     "resumed": "  └─ ▶ Возобновлено",
@@ -798,9 +776,9 @@
         "proxy": "Адрес прокси",
         "ui_language": "Язык интерфейса",
         "result_image_path": "Путь к изображению просмотрщика результатов",
-        "result_transparency": "Непрозрачность просмотрщика",
+        "result_transparency": "Прозрачность просмотрщика",
         "main_image_path": "Путь к изображению главного окна",
-        "main_transparency": "Непрозрачность главного окна"
+        "main_transparency": "Прозрачность главного окна"
       },
       "transcription": {
         "model_path": "Путь к модели",
@@ -866,7 +844,7 @@
         "vad_max_speech_s": "Макс. речь VAD (с)",
         "initial_prompt": "Начальная подсказка",
         "bg_image_path": "Путь к фоновому изображению",
-        "bg_transparency": "Непрозрачность фона",
+        "bg_transparency": "Прозрачность фона",
         "vad_endpoint_detection": "Обнаружение конечной точки VAD",
         "vad_energy_threshold": "Энергетический порог VAD",
         "vad_silence_frames": "Кадры тишины VAD",
@@ -884,9 +862,9 @@
         "proxy": "HTTP-прокси (например, http://127.0.0.1:7890), оставьте пустым для отключения",
         "ui_language": "Язык интерфейса приложения, требуется перезапуск для применения",
         "result_image_path": "Путь к фоновому изображению для просмотрщика результатов, поддерживаются относительные и абсолютные пути",
-        "result_transparency": "Непрозрачность фонового изображения (0~255), 0 = прозрачный, 255 = непрозрачный",
+        "result_transparency": "Прозрачность фонового изображения (0~255), 0 = прозрачный, 255 = непрозрачный",
         "main_image_path": "Путь к фоновому изображению главного окна, поддерживаются относительные и абсолютные пути",
-        "main_transparency": "Непрозрачность фона главного окна (0~255), 0 = прозрачный, 255 = непрозрачный"
+        "main_transparency": "Прозрачность фона главного окна (0~255), 0 = прозрачный, 255 = непрозрачный"
       },
       "transcription": {
         "model_path": "Имя папки модели Whisper или путь",
@@ -952,7 +930,7 @@
         "vad_max_speech_s": "Максимальная длительность сегмента VAD (с), 0 = без ограничений",
         "initial_prompt": "Начальная подсказка для расшифровки, полезна для усиления контекста",
         "bg_image_path": "Путь к фоновому изображению для интерфейса «Голос в текст», оставьте пустым для отключения",
-        "bg_transparency": "Непрозрачность фонового изображения (0~255), 0 = прозрачный, 255 = непрозрачный",
+        "bg_transparency": "Прозрачность фонового изображения (0~255), 0 = прозрачный, 255 = непрозрачный",
         "vad_endpoint_detection": "Включить обнаружение конечной точки VAD в реальном времени: True / False",
         "vad_energy_threshold": "Энергетический порог VAD (0~N), 0 для автокалибровки",
         "vad_silence_frames": "Последовательные кадры тишины для окончания речи (каждый ~32 мс)",
@@ -1081,20 +1059,6 @@
         "stream_json_error": "NvidiaClient: ошибка разбора JSON потока",
         "stream_interrupted": "NvidiaClient: поток прерван, получено {count} символов",
         "stream_connection_failed": "Ошибка подключения потоковой передачи NVIDIA: {error}"
-      },
-      "zhipu": {
-        "api_key_missing": "ZhipuClient: API-ключ не настроен",
-        "check_ok": "ZhipuClient: проверка подключения ОК",
-        "check_fail": "ZhipuClient: ошибка подключения ({error})",
-        "rate_limited": "Zhipu API ограничение скорости (429), повтор через {wait} с",
-        "rate_limited_log": "ZhipuClient: 429 ограничение скорости ({attempt}/{max}), ожидание {wait} с",
-        "request_failed": "Ошибка запроса Zhipu API: {error}",
-        "unknown_error": "Ошибка запроса Zhipu API (неизвестная ошибка)",
-        "retry_log": "ZhipuClient: повтор через {wait} с…",
-        "user_cancelled": "Пользователь отменил",
-        "user_cancelled_stream": "ZhipuClient: пользователь отменил потоковую генерацию",
-        "stream_interrupted": "ZhipuClient: поток прерван, получено {count} символов",
-        "stream_connection_failed": "Ошибка подключения потоковой передачи Zhipu: {error}"
       }
     },
     "voice_transcription": {

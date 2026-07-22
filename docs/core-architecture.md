@@ -24,7 +24,7 @@
 Video2Text 是一个视频/音频转文本工具，核心功能包括：
 
 - **语音转写**：基于 `faster_whisper`（OpenAI Whisper 的 CTranslate2 优化实现）将视频/音频中的语音转换为文本
-- **智能总结**：通过本地 Ollama（Qwen2.5）、在线 NVIDIA API 或智谱 API 对转写文本进行摘要总结
+- **智能总结**：通过本地 Ollama（Qwen2.5）或在线 NVIDIA API 对转写文本进行摘要总结
 - **多格式输出**：支持 TXT、SRT、VTT、JSON 四种转写输出格式，以及 TXT/MD 两种摘要格式
 - **双界面**：CLI（Typer + Rich）和 GUI（PySide6）两种使用方式
 
@@ -35,7 +35,7 @@ Video2Text 是一个视频/音频转文本工具，核心功能包括：
 | CLI 框架 | Typer + Rich |
 | GUI 框架 | PySide6 (Qt for Python) |
 | 语音转写 | faster_whisper (CTranslate2) |
-| 文本总结 | Ollama HTTP API / NVIDIA OpenAI 兼容 API / 智谱 zai-sdk |
+| 文本总结 | Ollama HTTP API / NVIDIA OpenAI 兼容 API |
 | 视频处理 | FFmpeg / ffprobe（子进程调用） |
 | 配置管理 | Python configparser |
 | 日志系统 | Python logging + RotatingFileHandler |
@@ -76,7 +76,7 @@ Video2Text 是一个视频/音频转文本工具，核心功能包括：
 | 预处理 | `src/preprocessing/` | FFmpeg 路径管理，音视频验证，音频提取 |
 | 转写引擎 | `src/transcription/` | faster_whisper 模型加载、转写、OOM 降级 |
 | 文本处理 | `src/text_processing/` | 段落合并、文本清理（去填充词、标点修复） |
-| 总结引擎 | `src/summarization/` | Ollama/NVIDIA/智谱客户端，Provider 抽象层，提示词管理 |
+| 总结引擎 | `src/summarization/` | Ollama/NVIDIA 客户端，Provider 抽象层，提示词管理 |
 | 业务服务 | `src/services/` | 编排预处理→转写→总结的完整流程，断点续传 |
 | 存储输出 | `src/storage/` | 文件写入（原子写入）、格式化（OutputFormatter）、书签管理、对话存储 |
 | 用户界面 | `src/ui/` | CLI 命令定义、GUI 主窗口、Worker 线程、结果查看器、主题管理、摘要标签页 |
@@ -442,17 +442,11 @@ class NvidiaProvider:
     """在线 NVIDIA API 总结"""
     ...
 
-class ZhipuProvider:
-    """在线智谱 API 总结"""
-    ...
-
 def create_provider(settings: Settings) -> SummarizationProvider:
     """工厂函数 —— 根据配置创建对应的 Provider 实例"""
     provider_name = settings.get("summarization.provider", "ollama")
     if provider_name == "nvidia":
         return NvidiaProvider(settings)
-    if provider_name == "zhipu":
-        return ZhipuProvider(settings)
     if provider_name != "ollama":
         logger.warning("未知的总结提供商 '%s'，回退到 Ollama", provider_name)
     return OllamaProvider(settings)
@@ -517,19 +511,6 @@ stop_service()
 - **429 限流处理**：自动读取 `Retry-After` 响应头，指数退避重试（最多 5 次）
 - **流式输出**：解析 SSE（Server-Sent Events）格式，逐 token 回调
 - **API Key 来源**：优先环境变量 `NVIDIA_API_KEY`，其次 `.env` 文件
-
-### 8.4 ZhipuClient (`src/summarization/zhipu_client.py`)
-
-**职责**：通过智谱 zai-sdk 调用 GLM 模型。
-
-**依赖**：基于 `zai` SDK（`ZhipuAiClient`），支持 `glm-4.7`、`glm-4.7-flash` 等模型。
-
-**特性**：
-- **429 限流处理**：自动读取 `Retry-After` 响应头，指数退避重试（最多 5 次）
-- **流式输出**：逐 chunk 解析，逐 token 回调
-- **API Key 来源**：优先环境变量 `ZHIPU_API_KEY`，其次 `.env` 文件
-- **思考模型支持**：`glm-4.7-flash` 自动启用 `thinking` 参数
-- **多轮对话**：思考模型使用 3 轮对话提示格式
 
 ### 8.5 PromptManager (`src/summarization/prompt_manager.py`)
 
@@ -718,7 +699,7 @@ SummarizationService(
 
 **批量总结（并发模式）**：
 
-当 provider 为 `nvidia` 或 `zhipu` 且对应 `_mode=multi` 时，使用线程池并发处理：
+当 provider 为 `nvidia` 且对应 `_mode=multi` 时，使用线程池并发处理：
 
 ```python
 def _summarize_batch_concurrent(self, items, stream, total, max_workers):
@@ -1112,8 +1093,8 @@ def build_prompt(self, language: str, custom_prompt: str = "") -> str:
 | 模式 | 应用位置 | 说明 |
 |------|----------|------|
 | **单例模式** | Settings, PromptManager | 全局配置和提示词管理器，进程内唯一实例 |
-| **策略模式** | SummarizationProvider | Ollama/NVIDIA/智谱可互换的总结后端 |
-| **工厂模式** | `create_provider()` | 根据配置（ollama/nvidia/zhipu）动态创建 Provider 实例 |
+| **策略模式** | SummarizationProvider | Ollama/NVIDIA 可互换的总结后端 |
+| **工厂模式** | `create_provider()` | 根据配置（ollama/nvidia）动态创建 Provider 实例 |
 | **观察者模式** | 回调函数（on_progress, on_token） | 服务层通过回调通知 UI 层 |
 | **LRU 缓存** | Transcriber 模型缓存 | 最多缓存 2 个模型实例，淘汰最久未使用的 |
 | **原子写入** | Settings, FileWriter, 所有 JSON 写入 | 先写临时文件再原子替换，防止崩溃损坏 |
@@ -1523,7 +1504,7 @@ for idx, tx_result in enumerate(tx_results):
 mode = _get_online_cfg(self.settings, "mode", "single")
 max_workers = (
     _get_online_cfg(self.settings, "thread_count", 5)
-    if provider_name in ("nvidia", "zhipu") and mode == "multi"
+    if provider_name == "nvidia" and mode == "multi"
     else 1
 )
 stream = self.stream and max_workers <= 1
