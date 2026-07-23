@@ -28,18 +28,18 @@ python -m src.ui.gui
 
 ```text
 video2text\libs\
-├── cublas64_12.dll                     ← NVIDIA cuBLAS 12 库
-├── cublasLt64_12.dll                   ← NVIDIA cuBLASLt 12 库
-├── cudnn64_9.dll                       ← NVIDIA cuDNN 9 主库
-├── cudnn_adv64_9.dll                   ← cuDNN 高级推理库
-├── cudnn_cnn64_9.dll                   ← cuDNN CNN 库
-├── cudnn_engines_precompiled64_9.dll   ← cuDNN 预编译引擎
-├── cudnn_engines_runtime_compiled64_9.dll ← cuDNN 运行时编译引擎
-├── cudnn_graph64_9.dll                 ← cuDNN 图执行库
-├── cudnn_heuristic64_9.dll             ← cuDNN 启发式引擎
-├── cudnn_ops64_9.dll                   ← cuDNN 算子库
-├── readme_en.md                        ← 依赖说明（英文）
-└── readme_zh.md                        ← 依赖说明（中文）
+├── cublas64_12.dll                    
+├── cublasLt64_12.dll                  
+├── cudnn64_9.dll                      
+├── cudnn_adv64_9.dll                  
+├── cudnn_cnn64_9.dll                  
+├── cudnn_engines_precompiled64_9.dll  
+├── cudnn_engines_runtime_compiled64_9.dll
+├── cudnn_graph64_9.dll                
+├── cudnn_heuristic64_9.dll            
+├── cudnn_ops64_9.dll                  
+├── readme_en.md                       
+└── readme_zh.md                       
 ```
 
  ****models目录结构说明****：
@@ -47,13 +47,13 @@ video2text\libs\
 ```text
 video2text\models\
 └── faster-whisper-large-v3-turbo-ct2\
-    ├── config.json                  ← 模型配置（约 2.3 KB）
-    ├── model.bin                    ← 核心模型文件（约 1.6 GB）
-    ├── preprocessor_config.json     ← 预处理配置（约 340 B）
-    ├── README.md                    ← 模型说明
-    ├── tokenizer.json               ← 分词器（约 2.7 MB）
-    ├── vocabulary.json              ← 词表（约 1.1 MB）
-    └── .gitattributes               ← Git 属性（可忽略）
+    ├── config.json                 
+    ├── model.bin                   
+    ├── preprocessor_config.json    
+    ├── README.md                   
+    ├── tokenizer.json              
+    ├── vocabulary.json             
+    └── .gitattributes              
 ```
 
 > 放好模型后就可以使用视频转文本功能了。
