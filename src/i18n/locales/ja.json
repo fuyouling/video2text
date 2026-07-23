@@ -867,7 +867,7 @@
         "main_transparency": "メインウィンドウの背景透明度 (0~255)、0=透明、255=不透明"
       },
       "transcription": {
-        "model_path": "Whisperモデルのディレクトリ名またはパス",
+        "model_path": "faster-whisperモデルのディレクトリ名またはフルパス",
         "device": "推論デバイス: cuda (NVIDIA GPU)、cpu、auto",
         "language": "文字起こし言語コード: zh、en、ja など。空または 'auto' で自動検出",
         "beam_size": "ビームサイズ (1~10)。大きいほど正確だが低速",

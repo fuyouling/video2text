@@ -35,7 +35,7 @@ Requires: Python 3.8+, PyInstaller, requests
     # 构建后直接部署，不生成 ZIP
     python build_portable.py --no-zip --copy C:\\dev\\windowsTools\\video2text
     # 完全清理 + 构建 + 部署，不生成 ZIP
-    python build_portable.py --clean --no-zip --copy --not-copy-dll C:\\dev\\windowsTools\\video2text
+    python build_portable.py --clean --no-zip --not-copy-dll --copy  C:\\dev\\windowsTools\\video2text
 
     python build_portable.py --clean --no-zip --not-copy-dll
     python build_portable.py --clean --not-copy-dll

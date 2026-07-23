@@ -526,7 +526,7 @@
         "main_transparency": "主界面背景图片透明度 (0~255)，0=完全透明，255=完全不透明"
       },
       "transcription": {
-        "model_path": "Whisper 模型目录,填写目录名称",
+        "model_path": "faster-whisper 模型目录名称,也可填写全路径",
         "device": "推理设备: cuda (NVIDIA GPU), cpu, auto (自动选择)",
         "language": "转写语言代码: zh (中文), en (英文), ja (日文) 等，留空或 auto 自动检测",
         "beam_size": "束搜索宽度 (1~10)，越大越准确但越慢",

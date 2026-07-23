@@ -867,7 +867,7 @@
         "main_transparency": "Opacité de l'arrière-plan de la fenêtre principale (0~255), 0=transparent, 255=opaque"
       },
       "transcription": {
-        "model_path": "Nom ou chemin du répertoire du modèle Whisper",
+        "model_path": "Nom du répertoire du modèle faster-whisper, ou chemin complet",
         "device": "Périphérique d'inférence : cuda (GPU NVIDIA), cpu, auto",
         "language": "Code de langue de transcription : zh, en, ja, etc. Laisser vide ou 'auto' pour la détection automatique",
         "beam_size": "Taille de faisceau (1~10), plus élevée = plus précis mais plus lent",

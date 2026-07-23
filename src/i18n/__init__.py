@@ -41,9 +41,15 @@ class I18N:
 
     @staticmethod
     def _base_dir() -> Path:
-        """i18n 资源根目录：兼容开发态与 frozen（便携版）两种模式。"""
+        """i18n 资源根目录：兼容开发态与 frozen（便携版）两种模式。
+
+        在 PyInstaller 打包（frozen）环境下：
+          - 资源文件通过 spec 的 datas 机制收集，存放在 sys._MEIPASS 下。
+          - sys.executable 是 exe 本身（在 _internal 的父目录），
+            而 sys._MEIPASS 指向 _internal/，这才是 datas 的根目录。
+        """
         if getattr(sys, "frozen", False):
-            return Path(sys.executable).parent / "i18n"
+            return Path(sys._MEIPASS) / "i18n"
         return Path(__file__).resolve().parent
 
     def _load_registry(self) -> None:
@@ -133,7 +139,7 @@ class I18N:
     def t(self, msg_key: str, count=None, **kwargs) -> str:
         text = self._fallback_lookup(msg_key)
         if text is None:
-            return key
+            return msg_key
 
         if count is not None and "|" in text:
             segments = text.split("|")

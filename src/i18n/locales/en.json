@@ -867,7 +867,7 @@
         "main_transparency": "Main window background opacity (0~255), 0=transparent, 255=opaque"
       },
       "transcription": {
-        "model_path": "Whisper model directory name or path",
+        "model_path": "faster-whisper model directory name, or full path",
         "device": "Inference device: cuda (NVIDIA GPU), cpu, auto",
         "language": "Transcription language code: zh, en, ja, etc. Leave empty or 'auto' for auto-detection",
         "beam_size": "Beam size (1~10), higher is more accurate but slower",

@@ -69,6 +69,16 @@ a = Analysis(
     datas=[
         ('config.ini', '.'),
         ('src/ui/styles/voice_to_text.qss', 'src/ui/styles'),
+        ('src/i18n/languages.json', 'i18n'),
+        ('src/i18n/locales/de.json', 'i18n/locales'),
+        ('src/i18n/locales/en.json', 'i18n/locales'),
+        ('src/i18n/locales/es.json', 'i18n/locales'),
+        ('src/i18n/locales/fr.json', 'i18n/locales'),
+        ('src/i18n/locales/ja.json', 'i18n/locales'),
+        ('src/i18n/locales/ko.json', 'i18n/locales'),
+        ('src/i18n/locales/ru.json', 'i18n/locales'),
+        ('src/i18n/locales/zh-CN.json', 'i18n/locales'),
+        ('src/i18n/locales/zh-TW.json', 'i18n/locales'),
         # 7za.exe 用于解压 BCJ2 压缩的 7z 包（py7zr 不支持 BCJ2）
         ('7z/7za.exe', '.'),
     ] + pyside6_data + faster_whisper_data + ctranslate2_data + tokenizers_data + huggingface_hub_data,

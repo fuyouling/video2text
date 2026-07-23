@@ -867,7 +867,7 @@
         "main_transparency": "메인 창 배경 투명도 (0~255), 0=투명, 255=불투명"
       },
       "transcription": {
-        "model_path": "Whisper 모델 디렉토리 이름 또는 경로",
+        "model_path": "faster-whisper 모델 디렉토리 이름 또는 전체 경로",
         "device": "추론 장치: cuda (NVIDIA GPU), cpu, auto",
         "language": "변환 언어 코드: zh, en, ja 등. 비워두거나 'auto'는 자동 감지",
         "beam_size": "빔 크기 (1~10), 높을수록 정확하지만 느림",

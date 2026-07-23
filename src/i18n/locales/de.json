@@ -867,7 +867,7 @@
         "main_transparency": "Hauptfenster-Hintergrunddeckkraft (0~255), 0=transparent, 255=deckend"
       },
       "transcription": {
-        "model_path": "Whisper-Modellverzeichnisname oder -pfad",
+        "model_path": "Name des faster-whisper-Modellverzeichnisses oder vollständiger Pfad",
         "device": "Inferenzgerät: cuda (NVIDIA GPU), cpu, auto",
         "language": "Transkriptionssprachcode: zh, en, ja, etc. Leer oder 'auto' für automatische Erkennung",
         "beam_size": "Beam-Größe (1~10), höher ist genauer, aber langsamer",

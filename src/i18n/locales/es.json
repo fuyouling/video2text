@@ -867,7 +867,7 @@
         "main_transparency": "Opacidad del fondo de la ventana principal (0~255), 0=transparente, 255=opaco"
       },
       "transcription": {
-        "model_path": "Nombre o ruta del directorio del modelo Whisper",
+        "model_path": "Nombre del directorio del modelo faster-whisper o ruta completa",
         "device": "Dispositivo de inferencia: cuda (GPU NVIDIA), cpu, auto",
         "language": "Código de idioma de transcripción: zh, en, ja, etc. Dejar vacío o 'auto' para detección automática",
         "beam_size": "Tamaño de haz (1~10), más alto es más preciso pero más lento",
