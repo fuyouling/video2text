@@ -27,18 +27,18 @@ The `libs` directory stores third-party dependency libraries required for progra
 
 ```text
 video2text\libs\
-├── cublas64_12.dll                     ← NVIDIA cuBLAS 12 library
-├── cublasLt64_12.dll                   ← NVIDIA cuBLASLt 12 library
-├── cudnn64_9.dll                       ← NVIDIA cuDNN 9 main library
-├── cudnn_adv64_9.dll                   ← cuDNN advanced inference library
-├── cudnn_cnn64_9.dll                   ← cuDNN CNN library
-├── cudnn_engines_precompiled64_9.dll   ← cuDNN precompiled engines
-├── cudnn_engines_runtime_compiled64_9.dll ← cuDNN runtime compiled engines
-├── cudnn_graph64_9.dll                 ← cuDNN graph execution library
-├── cudnn_heuristic64_9.dll             ← cuDNN heuristic engine
-├── cudnn_ops64_9.dll                   ← cuDNN operator library
-├── readme_en.md                        ← dependency description (English)
-└── readme_zh.md                        ← dependency description (Chinese)
+├── cublas64_12.dll                    
+├── cublasLt64_12.dll                  
+├── cudnn64_9.dll                      
+├── cudnn_adv64_9.dll                  
+├── cudnn_cnn64_9.dll                  
+├── cudnn_engines_precompiled64_9.dll  
+├── cudnn_engines_runtime_compiled64_9.dll
+├── cudnn_graph64_9.dll                
+├── cudnn_heuristic64_9.dll            
+├── cudnn_ops64_9.dll                  
+├── readme_en.md                       
+└── readme_zh.md                       
 ```
 
 ****models directory structure****:
@@ -46,13 +46,13 @@ video2text\libs\
 ```text
 video2text\models\
 └── faster-whisper-large-v3-turbo-ct2\
-    ├── config.json                  ← model configuration (~2.3 KB)
-    ├── model.bin                    ← core model file (~1.6 GB)
-    ├── preprocessor_config.json     ← preprocessing configuration (~340 B)
-    ├── README.md                    ← model description
-    ├── tokenizer.json               ← tokenizer (~2.7 MB)
-    ├── vocabulary.json              ← vocabulary (~1.1 MB)
-    └── .gitattributes               ← Git attributes (can be ignored)
+    ├── config.json                 
+    ├── model.bin                   
+    ├── preprocessor_config.json    
+    ├── README.md                   
+    ├── tokenizer.json              
+    ├── vocabulary.json             
+    └── .gitattributes              
 ```
 
 > After placing the models, you can use the video-to-text feature.
