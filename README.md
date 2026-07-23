@@ -1,29 +1,30 @@
 # Video2Text
 
-Audio/video transcription and summarization tool based on faster-whisper, designed for Windows environment.
+Audio/video transcription and summarization tool based on faster-whisper, suitable for Windows environment.
 
 ## GUI
 
-![GUI](https://github.com/user-attachments/assets/444687f6-302c-4b76-be40-9c5a595a0151)
+![](https://github.com/user-attachments/assets/444687f6-302c-4b76-be40-9c5a595a0151)
 
-**Run**
+**Program Entry**
 ```bash
 python -m src.ui.gui
 ```
 
 ## Installation
 
-**1. Installation Steps**
+**1. Download and Dependencies**
 
-**1.1 Deploy video2text**
+Download the portable version from the release page, extract it, and double-click to run. The program will automatically download dependencies.
 
-Extract `video2text_portable_windows_*.zip` and open the program. Dependencies will be downloaded automatically. If manual download is needed:
-    - [faster-whisper-large-v3-turbo-ct2](https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2) (speech transcription model)
-    - [cuBLAS.and.cuDNN_CUDA12_win_v3.7z](https://github.com/Purfview/whisper-standalone-win/releases/tag/libs) (GPU acceleration dependency library)
+If the download fails, check if the download source exists:
 
-**libs directory structure**
+- [faster-whisper-large-v3-turbo-ct2](https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2) (transcription speech model)
+- [cuBLAS.and.cuDNN_CUDA12_win_v3.7z](https://github.com/Purfview/whisper-standalone-win/releases/tag/libs) (GPU acceleration dependency libraries)
 
-The `libs` directory stores third-party dependency libraries required for program operation. It contains CUDA 12 and cuDNN 9 related dynamic libraries used for local GPU-accelerated speech recognition inference. Extract `cuBLAS.and.cuDNN_CUDA12_win_v3.7z` to the `libs` directory:
+libs directory description:
+
+Normally automatically downloads the `cuBLAS.and.cuDNN_CUDA12_win_v3.7z` package and automatically extracts it to the `libs` directory, containing CUDA 12 and cuDNN 9 dynamic libraries used for local GPU-accelerated speech recognition inference:
 
 ```text
 video2text\libs\
@@ -41,7 +42,9 @@ video2text\libs\
 └── readme_zh.md                       
 ```
 
-****models directory structure****:
+models directory structure:
+
+Normally automatically downloads the `faster-whisper-large-v3-turbo-ct2` model. If you want to use other models, you can download them from [Systran](https://huggingface.co/Systran)
 
 ```text
 video2text\models\
@@ -55,13 +58,13 @@ video2text\models\
     └── .gitattributes              
 ```
 
-> After placing the models, you can use the video-to-text feature.
+> After placing the models, you can use the audio/video to text feature.
 
-**1.2 Summary model installation**
+**2. Summary Model Installation**
 
-video2text supports two summary services: NVIDIA online models and local Ollama models. Choose one as needed. Configuration steps: `Settings > Edit Configuration > Summary > Radio button selection`
+Supports two summary services: NVIDIA online models and local Ollama models. Choose one as needed. Configuration steps: `Settings > Edit Configuration > Summary > Radio button selection`
 
-**1.2.1 NVIDIA Online (Use online NVIDIA models for summarization)**
+**2.1 NVIDIA Online (Use online NVIDIA models for summarization)**
 
 You need to first register on [NVIDIA Build](https://build.nvidia.com/) and create an API Key (most models are free to use currently). After obtaining the Key, create a new text file named `.env` in the program directory (note: the filename starts with a dot and has no extension). Open it with Notepad and add the following content as needed:
 
@@ -70,12 +73,11 @@ You need to first register on [NVIDIA Build](https://build.nvidia.com/) and crea
 NVIDIA_API_KEY=nvapi-your API key
 ```
 
-Save the file. The program will automatically read environment variables from this file when starting. API Key can also be set via system environment variables with the same effect (system environment variables take precedence over `.env` file). NVIDIA offers many free models; if you have network access issues, you need to resolve them yourself.
+Save the file. The program will automatically read environment variables from this file when starting.
 
-**1.2.2 Install Ollama (Use local models for summarization)**
+**2.2 Install Ollama (Use local models for summarization)**
 
-Ollama is a local large language model runtime framework. video2text uses it to generate text summaries.
+Ollama is a local large language model runtime framework used for generating text summaries. If you have 8GB of VRAM, it may be difficult to find a model with good summarization performance. It is recommended to use online models directly.
 
-1. For download and installation, see [official website](https://docs.ollama.com/), you need to add ollama to environment variables
-2. The ollama service will be automatically started during summarization, and there are start/stop functions in [Configuration]
-
+1. For download and installation, see the [official website](https://docs.ollama.com/). You need to add ollama to the environment variables
+2. The ollama service will be automatically started during summarization, and there are start and stop functions in [Configuration]
