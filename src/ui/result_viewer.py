@@ -582,7 +582,6 @@ class ResultViewerWindow(QMainWindow):
             dock_close_btn.setObjectName("BookmarkCloseBtn")
             self._bookmark_preserved_styles["BookmarkCloseBtn"] = style_close
             dock_close_btn.setStyleSheet(style_close)
-        dock_close_btn.setToolTip(t("viewer.close_bookmark_tooltip"))
         dock_close_btn.clicked.connect(self.bookmark_dock.close)
         title_layout.addWidget(dock_close_btn)
         self.bookmark_dock.setTitleBarWidget(title_bar)

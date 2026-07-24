@@ -316,7 +316,6 @@
     "clear_bg_image": "背景をクリア",
     "bg_transparency": "透明度",
     "bookmark_dock": "ブックマーク",
-    "close_bookmark_tooltip": "ブックマークパネルを閉じる",
     "bookmark_count": "合計 {count} ブックマーク",
     "bookmark_count_showing": "表示中 {showing} / {total} ブックマーク",
     "bookmark_filter_placeholder": "ブックマークをフィルタ...",

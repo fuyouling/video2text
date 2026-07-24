@@ -319,7 +319,6 @@
     "clear_bg_image": "清除背景",
     "bg_transparency": "透明度",
     "bookmark_dock": "書籤",
-    "close_bookmark_tooltip": "關閉書籤面板",
     "bookmark_count": "共 {count} 個書籤",
     "bookmark_count_showing": "顯示 {showing} / 共 {total} 個書籤",
     "bookmark_filter_placeholder": "過濾書籤...",

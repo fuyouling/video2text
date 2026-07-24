@@ -319,7 +319,6 @@
     "clear_bg_image": "清除背景",
     "bg_transparency": "透明度",
     "bookmark_dock": "书签",
-    "close_bookmark_tooltip": "关闭书签面板",
     "bookmark_count": "共 {count} 个书签",
     "bookmark_count_showing": "显示 {showing} / 共 {total} 个书签",
     "bookmark_filter_placeholder": "过滤书签...",

@@ -316,7 +316,6 @@
     "clear_bg_image": "Hintergrund löschen",
     "bg_transparency": "Deckkraft",
     "bookmark_dock": "Lesezeichen",
-    "close_bookmark_tooltip": "Lesezeichen-Panel schließen",
     "bookmark_count": "{count} Lesezeichen insgesamt",
     "bookmark_count_showing": "Zeige {showing} / {total} Lesezeichen",
     "bookmark_filter_placeholder": "Lesezeichen filtern...",

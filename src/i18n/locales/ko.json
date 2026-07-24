@@ -316,7 +316,6 @@
     "clear_bg_image": "배경 지우기",
     "bg_transparency": "투명도",
     "bookmark_dock": "북마크",
-    "close_bookmark_tooltip": "북마크 패널 닫기",
     "bookmark_count": "총 {count}개 북마크",
     "bookmark_count_showing": "{showing} / {total}개 북마크 표시 중",
     "bookmark_filter_placeholder": "북마크 필터...",

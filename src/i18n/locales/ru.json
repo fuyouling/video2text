@@ -316,7 +316,6 @@
     "clear_bg_image": "Убрать фон",
     "bg_transparency": "Прозрачность",
     "bookmark_dock": "Закладки",
-    "close_bookmark_tooltip": "Закрыть панель закладок",
     "bookmark_count": "Всего закладок: {count}",
     "bookmark_count_showing": "Показано {showing} / {total} закладок",
     "bookmark_filter_placeholder": "Фильтр закладок…",

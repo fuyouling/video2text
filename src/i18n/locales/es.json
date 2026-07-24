@@ -316,7 +316,6 @@
     "clear_bg_image": "Quitar fondo",
     "bg_transparency": "Opacidad",
     "bookmark_dock": "Marcadores",
-    "close_bookmark_tooltip": "Cerrar panel de marcadores",
     "bookmark_count": "{count} marcadores en total",
     "bookmark_count_showing": "Mostrando {showing} / {total} marcadores",
     "bookmark_filter_placeholder": "Filtrar marcadores...",

@@ -316,7 +316,6 @@
     "clear_bg_image": "Effacer l'arrière-plan",
     "bg_transparency": "Opacité",
     "bookmark_dock": "Favoris",
-    "close_bookmark_tooltip": "Fermer le panneau des favoris",
     "bookmark_count": "{count} favori(s) au total",
     "bookmark_count_showing": "{showing} / {total} favori(s) affiché(s)",
     "bookmark_filter_placeholder": "Filtrer les favoris...",

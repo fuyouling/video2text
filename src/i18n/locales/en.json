@@ -316,7 +316,6 @@
     "clear_bg_image": "Clear Background",
     "bg_transparency": "Opacity",
     "bookmark_dock": "Bookmarks",
-    "close_bookmark_tooltip": "Close Bookmark Panel",
     "bookmark_count": "{count} bookmarks total",
     "bookmark_count_showing": "Showing {showing} / {total} bookmarks",
     "bookmark_filter_placeholder": "Filter bookmarks...",
