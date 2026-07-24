@@ -705,10 +705,10 @@ class ResultViewerWindow(QMainWindow):
             self._folder_mode_action.setChecked(True)
             self._folder_mode = True
             self.file_list.setVisible(False)
-            self._file_filter.setVisible(False)
             self._folder_tree.setVisible(True)
             self._populate_file_list(self._all_video_names)
             self._scan_and_build_tree()
+            self._filter_folder_tree(self._file_filter.text())
             self._folder_tree.setFocus()
         else:
             self._folder_mode_action.setChecked(False)
@@ -732,7 +732,11 @@ class ResultViewerWindow(QMainWindow):
             self.file_list.setCurrentRow(0)
 
     def _filter_file_list(self, text: str):
-        """根据输入文本过滤文件列表，保持当前选中项"""
+        """根据输入文本过滤文件列表 / 文件夹模式下的树形列表"""
+        if self._folder_mode:
+            self._filter_folder_tree(text)
+            return
+
         if not text:
             filtered = self._all_video_names
         else:
@@ -757,20 +761,51 @@ class ResultViewerWindow(QMainWindow):
         elif filtered:
             self.file_list.setCurrentRow(0)
 
+    def _filter_folder_tree(self, text: str) -> None:
+        """根据输入文本过滤文件夹模式下的树形列表，保留匹配项及其祖先"""
+        if not text:
+            self._show_all_tree_items(self._folder_tree.invisibleRootItem())
+            return
+
+        text_lower = text.lower()
+        self._show_matching_tree_items(self._folder_tree.invisibleRootItem(), text_lower)
+
+    def _show_all_tree_items(self, item: QTreeWidgetItem) -> None:
+        """递归显示所有树节点"""
+        item.setHidden(False)
+        for i in range(item.childCount()):
+            self._show_all_tree_items(item.child(i))
+
+    def _show_matching_tree_items(self, item: QTreeWidgetItem, text_lower: str) -> bool:
+        """递归显示匹配项及其祖先；返回当前子树是否包含匹配"""
+        has_match = False
+        for i in range(item.childCount()):
+            child_match = self._show_matching_tree_items(item.child(i), text_lower)
+            if child_match:
+                has_match = True
+
+        item_text = item.text(0).lower()
+        if text_lower in item_text or has_match:
+            item.setHidden(False)
+            return True
+        item.setHidden(True)
+        return False
+
     def _toggle_folder_mode(self, checked: bool):
         """切换文件夹模式"""
         self._folder_mode = checked
         self.file_list.setVisible(not checked)
-        self._file_filter.setVisible(not checked)
         self._folder_tree.setVisible(checked)
 
         if checked and self._output_dir:
             self._scan_and_build_tree()
+            self._filter_folder_tree(self._file_filter.text())
             self._folder_tree.setFocus()
         elif not checked:
             self._output_dir = self._root_output_dir
             self._all_video_names = list(self._flat_video_names)
             self._populate_file_list(self._all_video_names)
+            self._filter_file_list(self._file_filter.text())
             if self._current_video_name:
                 for i in range(self.file_list.count()):
                     item = self.file_list.item(i)
@@ -1602,6 +1637,7 @@ class ResultViewerWindow(QMainWindow):
 
         if self._folder_mode:
             self._scan_and_build_tree()
+            self._filter_folder_tree(self._file_filter.text())
             target = self._find_tree_item_by_name(select_video)
             if target:
                 self._folder_tree.setCurrentItem(target)
