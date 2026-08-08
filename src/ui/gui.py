@@ -47,6 +47,7 @@ from src.config.version import APP_VERSION
 from src.services.transcription_service import TranscriptionService
 from src.summarization.prompt_manager import PromptManager
 from src.storage.file_writer import FileWriter
+from src.storage.output_formatter import OutputFormatter
 from src.summarization.ollama_client import OllamaClient
 from src.ui.background_content import BackgroundContent
 from src.ui.gui_dialogs import ConfigEditorDialog, VideoSelectionDialog
@@ -105,6 +106,11 @@ class MainWindow(QMainWindow):
         self._input_exts = self._video_exts | self._audio_exts
         self._video_files: list[str] = []
         self._completed_names: set[str] = set()
+        self._streaming_video: Optional[str] = None
+        self._segment_text_queue: list[str] = []
+        self._segment_timer = QTimer(self)
+        self._segment_timer.setInterval(16)
+        self._segment_timer.timeout.connect(self._pump_segment_text)
         self._worker_thread: Optional[QThread] = None
         self._worker = None
         self._result_viewer: Optional[ResultViewerWindow] = None
@@ -1493,6 +1499,9 @@ class MainWindow(QMainWindow):
         self.transcript_view.clear()
         self.summary_view.clear()
         self._completed_names.clear()
+        self._streaming_video = None
+        self._segment_text_queue.clear()
+        self._segment_timer.stop()
         self.log_panel.clear()
 
         self._current_mode = "transcribe"
@@ -1528,6 +1537,7 @@ class MainWindow(QMainWindow):
 
         worker.video_done.connect(self._on_single_video_transcribed)
         worker.video_error.connect(self._on_transcribe_error)
+        worker.segment_emitted.connect(self._on_segment_emitted)
         worker.progress.connect(self._on_progress)
         worker.error.connect(self._on_worker_error)
         worker.confirm_download.connect(self._on_confirm_download)
@@ -1547,19 +1557,59 @@ class MainWindow(QMainWindow):
             self.file_list.addItem(item)
 
         self.file_list.setCurrentItem(self.file_list.item(self.file_list.count() - 1))
-        if output_paths:
-            try:
-                self.transcript_view.setPlainText(
-                    Path(output_paths[0]).read_text(encoding="utf-8-sig")
-                )
-            except Exception:
+        # 已通过流式实时显示则保留流式文本，不被带时间戳的落盘文件覆盖，
+        # 尾部空白由打字机定时器在队列耗尽时统一清理，保证与总结显示一致
+        if self._streaming_video != video_name:
+            if output_paths:
+                try:
+                    self.transcript_view.setPlainText(
+                        Path(output_paths[0]).read_text(encoding="utf-8-sig")
+                    )
+                except Exception:
+                    self._load_transcript_content(video_name)
+            else:
                 self._load_transcript_content(video_name)
-        else:
-            self._load_transcript_content(video_name)
 
         self.status_bar.showMessage(
             t("main.tx_done_count", name=video_name, segments=segments_count), 5000
         )
+
+    def _on_segment_emitted(self, video_name: str, segment) -> None:
+        """单个转写段到达 —— 像总结逐 token 一样，以打字机效果逐字显示。
+
+        faster-whisper 只按「段」产出文本（无逐字流），因此在显示层把段
+        文本拆成字符入队，由 ``_pump_segment_text`` 用定时器逐字填入，
+        呈现与总结结果一致的逐字流式观感。每个文件首段清空转写区并重置队列。
+        """
+        if self._streaming_video != video_name:
+            self._streaming_video = video_name
+            self.transcript_view.clear()
+            self._current_video_name = video_name
+            self._segment_text_queue.clear()
+
+        # 保留时间戳与换行，逐字打出带 [起 - 止] 前缀的整行文本
+        line = OutputFormatter.format_transcript([segment], include_timestamps=True) + "\n"
+        self._segment_text_queue.extend(line)
+        if not self._segment_timer.isActive():
+            self._segment_timer.start()
+
+    def _pump_segment_text(self) -> None:
+        """定时器回调：按积压量动态提速，逐字把队列文本填入转写区。"""
+        if not self._segment_text_queue:
+            self._segment_timer.stop()
+            # 全部显示完毕，清理段间拼接可能产生的尾部空白
+            plain = self.transcript_view.toPlainText().rstrip()
+            self.transcript_view.setPlainText(plain)
+            return
+
+        backlog = len(self._segment_text_queue)
+        step = 1 if backlog < 40 else (2 if backlog < 200 else 6)
+        chunk = "".join(self._segment_text_queue[:step])
+        del self._segment_text_queue[:step]
+
+        self.transcript_view.moveCursor(QTextCursor.End)
+        self.transcript_view.insertPlainText(chunk)
+        self.transcript_view.ensureCursorVisible()
 
     def _load_transcript_content(self, video_name: str) -> None:
         """加载指定文件的转写文本到编辑区"""
@@ -1684,6 +1734,9 @@ class MainWindow(QMainWindow):
         self.transcript_view.clear()
         self.summary_view.clear()
         self._completed_names.clear()
+        self._streaming_video = None
+        self._segment_text_queue.clear()
+        self._segment_timer.stop()
         self.log_panel.clear()
 
         self._current_mode = "pipeline"
@@ -1726,6 +1779,7 @@ class MainWindow(QMainWindow):
         worker.transcribe_done.connect(self._on_single_video_transcribed)
         worker.transcribe_error.connect(self._on_transcribe_error)
         worker.phase_changed.connect(self._on_phase_changed)
+        worker.segment_emitted.connect(self._on_segment_emitted)
         worker.summarize_started.connect(self._on_summarize_started)
         worker.stream_token.connect(self._on_stream_token)
         worker.summarize_done.connect(self._on_single_video_summarized)

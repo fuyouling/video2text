@@ -19,6 +19,7 @@ from src.summarization.providers import create_provider
 from src.text_processing.segment_merger import SegmentMerger
 from src.text_processing.text_cleaner import TextCleaner
 from src.transcription.transcriber import Transcriber
+from src.storage.output_formatter import OutputFormatter
 from src.utils.exceptions import (
     Video2TextError,
     VideoFileError,
@@ -111,6 +112,10 @@ def transcribe(
             no_repeat_ngram_size=cfg.no_repeat_ngram_size,
             max_chunk_duration=cfg.max_chunk_duration,
             output_formats=cfg.output_formats,
+            on_segment=lambda name, seg: console.print(
+                OutputFormatter.format_transcript([seg], include_timestamps=True),
+                highlight=False,
+            ),
         )
 
         service.transcriber.load_model()
@@ -260,6 +265,10 @@ def run_pipeline(
             no_repeat_ngram_size=cfg.no_repeat_ngram_size,
             max_chunk_duration=cfg.max_chunk_duration,
             output_formats=cfg.output_formats,
+            on_segment=lambda name, seg: console.print(
+                OutputFormatter.format_transcript([seg], include_timestamps=True),
+                highlight=False,
+            ),
         )
 
         tx_service.transcriber.load_model()

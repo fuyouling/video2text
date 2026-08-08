@@ -20,7 +20,7 @@ from src.summarization.ollama_client import OllamaClient
 from src.summarization.providers import create_provider
 from src.text_processing.segment_merger import SegmentMerger
 from src.text_processing.text_cleaner import TextCleaner
-from src.transcription.transcriber import get_cached_transcriber
+from src.transcription.transcriber import get_cached_transcriber, TranscriptSegment
 from src.utils.env_loader import get_api_key
 from src.utils.exceptions import DownloadCancelledError
 from src.i18n import t
@@ -164,6 +164,7 @@ def _build_transcription_service(
     on_video_error: Callable[[str, str], None],
     cancel_check: Callable[[], bool],
     confirm_download_callback: Callable[[], bool],
+    on_segment: Optional[Callable[[str, TranscriptSegment], None]] = None,
     initial_prompt: Optional[str] = None,
     hotwords: Optional[str] = None,
 ) -> TranscriptionService:
@@ -214,6 +215,7 @@ def _build_transcription_service(
         mirror_depth=mirror_depth,
         on_video_done=on_video_done,
         on_video_error=on_video_error,
+        on_segment=on_segment,
         cancel_check=cancel_check,
     )
 
@@ -246,6 +248,7 @@ class TranscribeWorker(QObject):
 
     video_done = Signal(str, int, list)
     video_error = Signal(str, str)
+    segment_emitted = Signal(str, object)
     progress = Signal(int, int)
     error = Signal(str)
     finished = Signal()
@@ -343,6 +346,7 @@ class TranscribeWorker(QObject):
                 self.mirror_depth,
                 on_video_done=on_done,
                 on_video_error=on_error,
+                on_segment=lambda v, s: self.segment_emitted.emit(v, s),
                 cancel_check=lambda: self._cancelled,
                 confirm_download_callback=self._confirm_download_callback,
                 initial_prompt=self.initial_prompt,
@@ -558,6 +562,7 @@ class PipelineWorker(QObject):
 
     transcribe_done = Signal(str, int, list)
     transcribe_error = Signal(str, str)
+    segment_emitted = Signal(str, object)
     summarize_started = Signal(str)
     summarize_done = Signal(str, str)
     summarize_error = Signal(str, str)
@@ -689,6 +694,7 @@ class PipelineWorker(QObject):
                 self.mirror_depth,
                 on_video_done=on_tx_done,
                 on_video_error=on_tx_error,
+                on_segment=lambda v, s: self.segment_emitted.emit(v, s),
                 cancel_check=lambda: self._cancelled,
                 confirm_download_callback=self._confirm_download_callback,
                 initial_prompt=self.initial_prompt,

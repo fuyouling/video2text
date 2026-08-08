@@ -76,6 +76,7 @@ class TranscriptionService:
         # 回调
         on_video_done: Optional[Callable[[TranscribeResult], None]] = None,
         on_video_error: Optional[Callable[[str, str], None]] = None,
+        on_segment: Optional[Callable[[str, TranscriptSegment], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
     ):
         self.transcriber = transcriber
@@ -104,6 +105,7 @@ class TranscriptionService:
 
         self.on_video_done = on_video_done
         self.on_video_error = on_video_error
+        self.on_segment = on_segment
         self.cancel_check = cancel_check
 
         self._checkpoint_dir: Optional[Path] = None
@@ -229,16 +231,19 @@ class TranscriptionService:
             t0 = time.monotonic()
             last_progress_ts = [t0]
 
-            def _on_progress(start: float, end: float, count: int) -> None:
+            def _on_progress(start: float, end: float, count: int, segment: TranscriptSegment) -> None:
                 now = time.monotonic()
                 if now - last_progress_ts[0] >= 30:
                     last_progress_ts[0] = now
                     elapsed = now - t0
                     logger.info("  ├─ " + t("services.transcription.transcribing_progress", count=count, elapsed=round(elapsed)))
+                if self.on_segment:
+                    self.on_segment(video_name, segment)
 
             if video_info.duration > self.max_chunk_duration:
                 segments = self._transcribe_chunked(
-                    temp_audio, video_name, video_path, output_dir
+                    temp_audio, video_name, video_path, output_dir,
+                    progress_callback=_on_progress,
                 )
             else:
                 segments = self._transcribe_with_timeout(
@@ -325,6 +330,7 @@ class TranscriptionService:
         video_name: str,
         video_path: str,
         output_dir: str,
+        progress_callback: Optional[Callable] = None,
     ) -> List[TranscriptSegment]:
         """长音频切片转写，支持断点续传。"""
         hash_input = f"{video_path}:chunk={self.max_chunk_duration}"
@@ -435,6 +441,21 @@ class TranscriptionService:
                 logger.info("  ├─ " + t("services.transcription.chunk_transcribing", current=idx + 1, total=total_chunks))
 
                 chunk_t0 = time.monotonic()
+                # 当前切片在整体音频中的时间偏移，用于把流式段时间戳校正到全局时间轴
+                chunk_offset = cumulative_offset
+
+                def _on_chunk_segment(start, end, count, segment: TranscriptSegment) -> None:
+                    if not self.on_segment:
+                        return
+                    offset_segment = TranscriptSegment(
+                        start=segment.start + chunk_offset,
+                        end=segment.end + chunk_offset,
+                        text=segment.text,
+                        confidence=segment.confidence,
+                        language=segment.language,
+                    )
+                    self.on_segment(video_name, offset_segment)
+
                 try:
                     chunk_segments = self._transcribe_with_timeout(
                         chunk_path,
@@ -454,6 +475,7 @@ class TranscriptionService:
                         no_speech_threshold=self.no_speech_threshold,
                         repetition_penalty=self.repetition_penalty,
                         no_repeat_ngram_size=self.no_repeat_ngram_size,
+                        progress_callback=_on_chunk_segment if progress_callback else None,
                     )
                 except Exception as chunk_err:
                     logger.warning(

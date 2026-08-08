@@ -411,7 +411,8 @@ class Transcriber:
             no_speech_threshold: 无语音概率阈值
             repetition_penalty: 重复惩罚系数
             no_repeat_ngram_size: 禁止重复的 N-gram 大小
-            progress_callback: 进度回调函数，接收 (start, end, segment_count)
+            progress_callback: 进度回调函数，接收 (start, end, segment_count, segment)，
+                其中 segment 为当前段对应的 TranscriptSegment 对象（流式结果用）
 
         Returns:
             转写段列表
@@ -485,7 +486,10 @@ class Transcriber:
 
                 if progress_callback:
                     progress_callback(
-                        segment.start, segment.end, len(transcript_segments)
+                        segment.start,
+                        segment.end,
+                        len(transcript_segments),
+                        transcript_segment,
                     )
 
             logger.debug(t("transcriber.transcribe_done", count=len(transcript_segments)))
