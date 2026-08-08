@@ -140,7 +140,7 @@ class MainWindow(QMainWindow):
         )
 
         # 提示词下拉框占位符（实例属性，确保在 set_lang 之后求值）
-        self._TX_PLACEHOLDER_PROMPT = t("main.placeholder_new")
+        self._TX_PLACEHOLDER_PROMPT = t("main.placeholder_new_tx")
         self._PLACEHOLDER_PROMPT = t("main.placeholder_new")
 
         # 背景图片
@@ -335,9 +335,8 @@ class MainWindow(QMainWindow):
         # file_percent 为「当前文件」自身的实时下载完成度，
         # 例：第 2 个文件共 100M，已下 50M → 显示 50%。
         self.progress_label.setText(
-            f"{current_item}/{total_items} "
+            f"{current_item}/{total_items} ({file_percent}%)"
         )
-        remain = total - downloaded if total > 0 else 0
         self.status_bar.showMessage(
             t("main.dep_progress_downloading", name=name, current=current_item, total=total_items, downloaded=self._fmt_size(downloaded), size=self._fmt_size(total))
         )

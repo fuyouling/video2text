@@ -597,7 +597,11 @@ class VideoSelectionDialog(QDialog):
         elif file_type_idx == 2:
             input_exts = self._audio_exts
 
-        suffix_target = self._suffix_combo.currentText().strip().lower()
+        # index 0 恒为"全部"，避免将翻译文本(如英文 "All")与小写后缀比较导致误过滤
+        suffix_idx = self._suffix_combo.currentIndex()
+        suffix_target = ""
+        if suffix_idx > 0:
+            suffix_target = self._suffix_combo.currentText().strip().lower()
 
         size_idx = self._size_combo.currentIndex()
         size_lo, size_hi = 0, None
@@ -615,7 +619,7 @@ class VideoSelectionDialog(QDialog):
             match = True
             if input_exts is not None and ext not in input_exts:
                 match = False
-            if suffix_target and suffix_target != t("dialogs.file_select.type_all") and ext != suffix_target:
+            if suffix_target and ext != suffix_target:
                 match = False
             if size_idx > 0:
                 if size_bytes < 0:

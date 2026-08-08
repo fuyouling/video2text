@@ -1083,8 +1083,7 @@ class ResultViewerWindow(QMainWindow):
 
         font_size = self.font_size_spin.value()
 
-        default_font = QFont()
-        default_font.setPointSize(font_size)
+        default_font = QFont("Consolas", font_size)
         self.summary_view.document().setDefaultFont(default_font)
 
         html = self._md_renderer.render(

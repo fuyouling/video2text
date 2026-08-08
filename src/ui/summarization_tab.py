@@ -113,6 +113,11 @@ class SummarizationTab(QWidget):
 
     # ---- UI 构建 ----
 
+    def _set_widget_text(self, widget, value):
+        """延迟导入 ConfigEditorDialog 以避免循环导入。"""
+        from src.ui.gui_dialogs import ConfigEditorDialog
+        ConfigEditorDialog._set_widget_text(widget, value)
+
     def _init_ui(self) -> None:
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(8, 8, 8, 8)
@@ -207,8 +212,7 @@ class SummarizationTab(QWidget):
         self._nvidia_mode_combo.addItem(t("summarization_tab.mode_single"), "single")
         self._nvidia_mode_combo.addItem(t("summarization_tab.mode_multi"), "multi")
         nvidia_mode_val = self._settings.get("summarization.nvidia_mode", "single")
-        from src.ui.gui_dialogs import ConfigEditorDialog
-        ConfigEditorDialog._set_widget_text(self._nvidia_mode_combo, nvidia_mode_val)
+        self._set_widget_text(self._nvidia_mode_combo, nvidia_mode_val)
         self._nvidia_mode_combo.setToolTip(
             _SUMM_KEY_TOOLTIPS.get("summarization.nvidia_mode", "")
         )
@@ -219,8 +223,7 @@ class SummarizationTab(QWidget):
         self._nvidia_stream_combo.addItem(t("common.yes"))
         self._nvidia_stream_combo.addItem(t("common.no"))
         nvidia_stream_val = self._settings.get("summarization.nvidia_stream", "true")
-        from src.ui.gui_dialogs import ConfigEditorDialog
-        ConfigEditorDialog._set_widget_text(self._nvidia_stream_combo, nvidia_stream_val)
+        self._set_widget_text(self._nvidia_stream_combo, nvidia_stream_val)
         self._nvidia_stream_combo.setToolTip(
             _SUMM_KEY_TOOLTIPS.get("summarization.nvidia_stream", "")
         )

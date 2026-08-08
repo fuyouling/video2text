@@ -77,6 +77,7 @@
     "markdown_tooltip": "Activar para aplicar formato Markdown automáticamente a los resúmenes.\nPara Markdown personalizado, edite el campo markdown_prompt en prompts.json directamente.",
     "log_panel_title": "Salida de registro",
     "placeholder_new": "Nuevo",
+    "placeholder_new_tx": "Nuevo",
     "config_saved": "Configuración guardada",
     "file_context_retranscribe": "Re-transcribir",
     "file_context_resummarize": "Re-resumir",

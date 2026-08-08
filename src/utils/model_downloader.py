@@ -470,40 +470,4 @@ def check_models_integrity(
     return all_ok
 
 
-class StartupModelCheckWorker(QObject):
-    """后台线程执行模型下载（仅下载阶段），不包含确认对话框逻辑。
 
-    确认对话框已在主线程中提前完成。worker 负责下载并将进度通过信号上报主线程。
-    """
-
-    finished = Signal(bool)
-    progress_updated = Signal(int, int)
-
-    def __init__(self, settings) -> None:
-        super().__init__()
-        self._settings = settings
-        self._cancelled = False
-
-    def cancel(self) -> None:
-        """取消当前下载（线程安全）。"""
-        self._cancelled = True
-
-    def run(self) -> None:
-        """在后台线程执行模型下载。"""
-        ok = False
-        try:
-            if not self._cancelled:
-                ok = check_models_integrity(
-                    self._settings,
-                    progress_callback=self._make_progress_cb(),
-                )
-        except Exception:  # noqa: BLE001
-            logger.exception("模型完整性检测异常")
-            ok = False
-        self.finished.emit(ok)
-
-    def _make_progress_cb(self):
-        def _progress(downloaded: int, total: int) -> None:
-            self.progress_updated.emit(downloaded, total)
-
-        return _progress
