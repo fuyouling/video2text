@@ -24,12 +24,12 @@ class NvidiaClient:
         self,
         api_url: str = "https://integrate.api.nvidia.com/v1/chat/completions",
         api_key: Optional[str] = None,
-        timeout: int = 60,
+        timeout: int = 15,
         model: str = "openai/gpt-oss-120b",
     ):
         self.api_url = api_url.rstrip("/")
         self.timeout = timeout
-        self.max_retries = 5
+        self.max_retries = 3
         self._model = model
 
         if not api_key:
@@ -54,6 +54,7 @@ class NvidiaClient:
 
         Reference: test_nvidia.py, sends a minimal request to verify connectivity and API Key.
         """
+        logger.info(t("services.summarization.nvidia.check_start"))
         if not self._api_key:
             logger.error(t("services.summarization.nvidia.api_key_missing"))
             env_path = get_base_dir() / ".env"

@@ -1038,6 +1038,7 @@
         "api_error": "Ollama API 오류: {code}"
       },
       "nvidia": {
+        "check_start": "NvidiaClient: 연결 확인 시작...",
         "api_key_missing": "NvidiaClient: API 키가 구성되지 않음",
         "env_missing_key": "NvidiaClient: .env 파일에 NVIDIA_API_KEY가 없습니다. NVIDIA_API_KEY=your_api_key를 추가하세요",
         "env_not_found": "NvidiaClient: .env 파일을 찾을 수 없습니다. NVIDIA_API_KEY를 생성하여 구성하세요",

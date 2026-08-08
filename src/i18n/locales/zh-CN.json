@@ -1041,6 +1041,7 @@
         "api_error": "Ollama API错误: {code}"
       },
       "nvidia": {
+        "check_start": "NvidiaClient: 开始连接检查...",
         "api_key_missing": "NvidiaClient: API Key 未配置",
         "env_missing_key": "NvidiaClient: .env 文件中未找到 NVIDIA_API_KEY，请添加: NVIDIA_API_KEY=your_api_key",
         "env_not_found": "NvidiaClient: .env 文件不存在，请创建并配置 NVIDIA_API_KEY",

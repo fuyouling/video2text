@@ -38,7 +38,7 @@ payload = {
   "stream": stream
 }
 # print("Request headers:", headers)
-response = requests.post(invoke_url, headers=headers, json=payload)
+response = requests.post(invoke_url, headers=headers, json=payload,timeout=15)
 
 if stream:
     for line in response.iter_lines():

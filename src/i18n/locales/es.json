@@ -1038,6 +1038,7 @@
         "api_error": "Error de API Ollama: {code}"
       },
       "nvidia": {
+        "check_start": "NvidiaClient: iniciando verificación de conexión...",
         "api_key_missing": "NvidiaClient: Clave API no configurada",
         "env_missing_key": "NvidiaClient: NVIDIA_API_KEY no encontrada en el archivo .env, agregue: NVIDIA_API_KEY=su_clave_api",
         "env_not_found": "NvidiaClient: archivo .env no encontrado, cree y configure NVIDIA_API_KEY",
