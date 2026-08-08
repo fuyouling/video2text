@@ -1760,21 +1760,23 @@ _select_input_folder() (gui.py:633)
     │
     ├─ _start_scan(folder) (gui.py:671)
     │   │
+    │   ├─ 创建 VideoSelectionDialog(scanning=True) 并 exec()  # 扫描前即弹出对话框
+    │   │
     │   ├─ 创建 ScanFilesWorker(folder, input_exts)
-    │   │   └─ run(): Path(folder).rglob(f"*{ext}")  # 递归扫描所有支持格式
+    │   │   └─ run(): 单次 os.scandir() 递归遍历
+    │   │       └─ file_found(path, size) 信号 → dialog.add_file()  # 扫描到即实时显示
     │   │
-    │   ├─ worker.result.connect(self._on_scan_result)  # 扫描完成信号
+    │   ├─ worker.finished.connect(dialog.finish_scan)  # 扫描结束启用"确定"
     │   │
-    │   └─ 启动 QThread 后台扫描
+    │   └─ 启动 QThread 后台扫描；对话框内节流合并刷新树（150ms），
+    │      勾选/筛选/排序状态在刷新时保留
     │
     ▼
-_on_scan_result(video_files) (gui.py:695)
+dialog.exec() 返回后
     │
-    ├─ video_files 为空？ → 提示"未找到支持的音视频文件"
+    ├─ 文件为空 → 对话框内提示"未找到支持的音视频文件"并关闭
     │
-    ├─ 弹出 VideoSelectionDialog(video_files)
-    │   └─ 树形视图展示文件，支持按类型/后缀/大小/关键字筛选
-    │   └─ get_selected_files() → 返回用户勾选的文件列表
+    ├─ get_selected_files() → 返回用户勾选的文件列表
     │
     └─ self._video_files = selected_files  # 保存选中文件
 ```
@@ -2089,8 +2091,8 @@ _on_file_selected(current, _previous) (gui.py:1309)
 | | `finished` | `()` | `thread.quit` | 线程结束 |
 | | `confirm_download` | `()` | `_on_confirm_download` | 下载确认请求 |
 | | `phase_changed` | `(str,)` | `_on_phase_changed` | 阶段切换通知 |
-| **ScanFilesWorker** | `result` | `(list,)` | `_on_scan_result` | 扫描结果 |
-| | `finished` | `()` | `thread.quit` | 线程结束 |
+| **ScanFilesWorker** | `file_found` | `(str, int)` | `dialog.add_file` | 扫描到单个文件（实时推送） |
+| | `finished` | `()` | `dialog.finish_scan` / `thread.quit` | 扫描结束 |
 | **CheckWorker** | `result` | `(bool, float, str)` | 配置面板槽函数 | 连接状态 + 延迟 + 详情 |
 
 #### 14.2.9 RateLimiter 速率限制器
