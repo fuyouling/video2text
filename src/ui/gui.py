@@ -57,6 +57,7 @@ from src.ui.gui_workers import (
     ScanFilesWorker,
     SummarizeWorker,
     TranscribeWorker,
+    _is_multi_mode,
 )
 from src.ui.favorite_dir_helper import FavoriteDirHelper
 from src.ui.log_panel import LogPanel
@@ -1302,7 +1303,7 @@ class MainWindow(QMainWindow):
         if provider == "ollama":
             return True
         mode = self.settings.get(f"summarization.{provider}_mode", "single")
-        if mode == "multi":
+        if _is_multi_mode(mode):
             return False
         return self.settings.get_bool(f"summarization.{provider}_stream", True)
 
@@ -1324,27 +1325,49 @@ class MainWindow(QMainWindow):
         """更新多线程标志"""
         provider = self.settings.get("summarization.provider", "ollama")
         mode = self.settings.get(f"summarization.{provider}_mode", "single")
-        self._is_multi_thread = provider == "nvidia" and mode == "multi"
+        self._is_multi_thread = provider == "nvidia" and _is_multi_mode(mode)
 
-    def _start_worker(self, thread: QThread, worker) -> None:
-        """启动 worker 线程并连接通用信号"""
+    def _start_worker(self, thread: QThread, worker) -> bool:
+        """启动 worker 线程并连接通用信号。
+
+        若上一个 worker 线程仍在运行，先尝试停止它：cancel → quit → 等待 5 秒 →
+        terminate → 再等 1 秒。若 terminate 后线程仍存活，**不能丢弃引用**
+        （否则 QThread 对象被 GC 时线程仍在运行，Qt 会终止整个进程），改为
+        保留引用并重新连接 finished，等其自然结束后由 _on_thread_finished 清理，
+        同时返回 False 拒绝本次启动，由调用方恢复界面状态。
+
+        Returns:
+            True 表示已成功启动；False 表示上一个线程仍在停止中，本次未启动。
+        """
         if self._worker_thread is not None and self._worker_thread.isRunning():
+            old_thread = self._worker_thread
+            old_worker = self._worker
             try:
-                self._worker_thread.finished.disconnect(self._on_thread_finished)
+                old_thread.finished.disconnect(self._on_thread_finished)
             except (RuntimeError, TypeError):
                 pass
-            if self._worker is not None:
-                if hasattr(self._worker, "cancel"):
-                    self._worker.cancel()
-                if hasattr(self._worker, "unpause"):
-                    self._worker.unpause()
-            self._worker_thread.quit()
-            self._worker_thread.wait(5000)
-            if self._worker_thread.isRunning():
-                self._worker_thread.terminate()
-                self._worker_thread.wait(1000)
-            if self._worker is not None:
-                self._worker.deleteLater()
+            if old_worker is not None:
+                if hasattr(old_worker, "cancel"):
+                    old_worker.cancel()
+                if hasattr(old_worker, "unpause"):
+                    old_worker.unpause()
+            old_thread.quit()
+            if not old_thread.wait(5000):
+                get_logger("video2text").warning(
+                    t("main.stop_force_terminate")
+                )
+                old_thread.terminate()
+                if not old_thread.wait(1000):
+                    # 线程仍存活：保留 self._worker_thread / self._worker 引用，
+                    # 重新连接 finished 等待自然结束后清理，本次启动放弃。
+                    old_thread.finished.connect(self._on_thread_finished)
+                    get_logger("video2text").warning(t("main.stop_deferred"))
+                    self.status_bar.showMessage(
+                        t("main.stop_busy_waiting"), 8000
+                    )
+                    return False
+            if old_worker is not None:
+                old_worker.deleteLater()
             self._worker = None
             self._worker_thread = None
 
@@ -1356,6 +1379,7 @@ class MainWindow(QMainWindow):
         worker.finished.connect(thread.quit)
         thread.finished.connect(self._on_thread_finished)
         thread.start()
+        return True
 
     def _set_busy_state(self, busy: bool) -> None:
         """设置界面忙碌状态：禁用/启用各操作按钮，控制暂停按钮可见性。"""
@@ -1480,6 +1504,11 @@ class MainWindow(QMainWindow):
         2. 解除暂停状态（避免 Worker 卡在暂停循环中）
         3. 等待线程自然退出（超时 5 秒）
         4. 若仍卡死（faster-whisper 在 C 层挂起），使用 terminate() 强行终止
+        5. terminate() 后线程仍不退出的（Qt 6 中 terminate 是协作式请求，
+           对阻塞在 C 层/子进程中的线程不一定立即生效），**必须保留线程引用**，
+           等其自然结束后由 finished → _on_thread_finished 完成清理——否则
+           QThread 对象被垃圾回收时底层线程仍在运行，Qt 会直接终止整个进程
+           （"QThread: Destroyed while thread is still running"）。
         """
         if self._worker is None or self._worker_thread is None:
             return
@@ -1497,11 +1526,29 @@ class MainWindow(QMainWindow):
                     t("main.stop_force_terminate")
                 )
                 self._worker_thread.terminate()
-                self._worker_thread.wait(3000)
+                if not self._worker_thread.wait(3000):
+                    # 线程仍存活：不置空引用，保留 self._worker /
+                    # self._worker_thread，等线程自然结束后由
+                    # finished → _on_thread_finished 完成清理。
+                    get_logger("video2text").warning(t("main.stop_deferred"))
+                    self.status_bar.showMessage(
+                        t("main.stop_waiting_exit"), 8000
+                    )
+                    self.stop_btn.setEnabled(False)
+                    self.pause_btn.setEnabled(False)
+                    self._streaming_video = None
+                    self._segment_text_queue.clear()
+                    self._segment_timer.stop()
+                    # 确保界面从忙碌状态恢复
+                    self._set_busy_state(False)
+                    return
         self._worker = None
         self._worker_thread = None
         self.stop_btn.setEnabled(False)
         self.pause_btn.setEnabled(False)
+        self._streaming_video = None
+        self._segment_text_queue.clear()
+        self._segment_timer.stop()
         # 确保界面从忙碌状态恢复
         self._set_busy_state(False)
         self.status_bar.showMessage(t("main.task_stopped"))
@@ -1563,7 +1610,9 @@ class MainWindow(QMainWindow):
         worker.error.connect(self._on_worker_error)
         worker.confirm_download.connect(self._on_confirm_download)
 
-        self._start_worker(thread, worker)
+        if not self._start_worker(thread, worker):
+            self._set_busy_state(False)
+            return
 
     def _on_single_video_transcribed(
         self, video_name: str, segments_count: int, output_paths: list
@@ -1578,18 +1627,19 @@ class MainWindow(QMainWindow):
             self.file_list.addItem(item)
 
         self.file_list.setCurrentItem(self.file_list.item(self.file_list.count() - 1))
-        # 已通过流式实时显示则保留流式文本，不被带时间戳的落盘文件覆盖，
-        # 尾部空白由打字机定时器在队列耗尽时统一清理，保证与总结显示一致
-        if self._streaming_video != video_name:
-            if output_paths:
-                try:
-                    self.transcript_view.setPlainText(
-                        Path(output_paths[0]).read_text(encoding="utf-8-sig")
-                    )
-                except Exception:
-                    self._load_transcript_content(video_name)
-            else:
+        if self._streaming_video == video_name:
+            self._streaming_video = None
+            self._segment_text_queue.clear()
+            self._segment_timer.stop()
+        if output_paths:
+            try:
+                self.transcript_view.setPlainText(
+                    Path(output_paths[0]).read_text(encoding="utf-8-sig")
+                )
+            except Exception:
                 self._load_transcript_content(video_name)
+        else:
+            self._load_transcript_content(video_name)
 
         self.status_bar.showMessage(
             t("main.tx_done_count", name=video_name, segments=segments_count), 5000
@@ -1708,7 +1758,9 @@ class MainWindow(QMainWindow):
         worker.progress.connect(self._on_progress)
         worker.error.connect(self._on_worker_error)
 
-        self._start_worker(thread, worker)
+        if not self._start_worker(thread, worker):
+            self._set_busy_state(False)
+            return
 
     def _on_stream_token(self, token: str) -> None:
         """流式 token —— 追加到摘要区"""
@@ -1809,7 +1861,9 @@ class MainWindow(QMainWindow):
         worker.error.connect(self._on_worker_error)
         worker.confirm_download.connect(self._on_confirm_download)
 
-        self._start_worker(thread, worker)
+        if not self._start_worker(thread, worker):
+            self._set_busy_state(False)
+            return
 
     # ── progress / completion ──
 
@@ -1994,7 +2048,9 @@ class MainWindow(QMainWindow):
         worker.progress.connect(self._on_progress)
         worker.error.connect(self._on_worker_error)
         worker.confirm_download.connect(self._on_confirm_download)
-        self._start_worker(thread, worker)
+        if not self._start_worker(thread, worker):
+            self._set_busy_state(False)
+            return
 
     def _on_resummarize(self, video_name: str) -> None:
         if self._worker_thread is not None and self._worker_thread.isRunning():
@@ -2043,7 +2099,9 @@ class MainWindow(QMainWindow):
         worker.video_error.connect(self._on_summarize_error)
         worker.progress.connect(self._on_progress)
         worker.error.connect(self._on_worker_error)
-        self._start_worker(thread, worker)
+        if not self._start_worker(thread, worker):
+            self._set_busy_state(False)
+            return
 
     def _on_file_selected(
         self, current: Optional[QListWidgetItem], _previous: Optional[QListWidgetItem]
@@ -2052,6 +2110,10 @@ class MainWindow(QMainWindow):
         if current is None:
             return
         video_name = current.data(Qt.ItemDataRole.UserRole)
+        if self._streaming_video is not None and self._streaming_video != video_name:
+            self._streaming_video = None
+            self._segment_text_queue.clear()
+            self._segment_timer.stop()
         self._current_video_name = video_name
         output_dir = self._resolve_video_output_dir(video_name)
 
@@ -2082,9 +2144,21 @@ class MainWindow(QMainWindow):
         self._search_controller.refresh_if_active()
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        # ── 后台线程停止：任何情况下都不能在 QThread 仍运行时释放其引用，
+        #    否则 Qt 会直接终止整个进程（"QThread: Destroyed while thread is
+        #    still running"）。若线程无法在超时内停止（terminate 为协作式请求，
+        #    对阻塞在 C 层/子进程中的线程不一定立即生效），则保留引用、阻止
+        #    窗口关闭并提示用户等待后台任务退出后再关闭。──
         if self._scan_thread is not None and self._scan_thread.isRunning():
+            if self._scan_worker is not None and hasattr(self._scan_worker, "cancel"):
+                self._scan_worker.cancel()
             self._scan_thread.quit()
-            self._scan_thread.wait(3000)
+            if not self._scan_thread.wait(3000):
+                self._scan_thread.terminate()
+                if not self._scan_thread.wait(1000):
+                    self.status_bar.showMessage(t("main.stop_busy_waiting"), 8000)
+                    event.ignore()
+                    return
 
         if self._startup_dependency_thread is not None and self._startup_dependency_thread.isRunning():
             if self._startup_dependency_worker is not None:
@@ -2093,19 +2167,28 @@ class MainWindow(QMainWindow):
             # 等待 5 秒（含安全余量），超时则强制终止，避免窗口关闭卡顿。
             if not self._startup_dependency_thread.wait(5000):
                 self._startup_dependency_thread.terminate()
-                self._startup_dependency_thread.wait(2000)
+                if not self._startup_dependency_thread.wait(2000):
+                    self.status_bar.showMessage(t("main.stop_busy_waiting"), 8000)
+                    event.ignore()
+                    return
             self._startup_dependency_thread = None
             self._startup_dependency_worker = None
 
         if self._worker_thread is not None and self._worker_thread.isRunning():
-            if self._worker is not None and hasattr(self._worker, "cancel"):
-                self._worker.cancel()
-            if self._worker is not None and hasattr(self._worker, "unpause"):
-                self._worker.unpause()
+            if self._worker is not None:
+                if hasattr(self._worker, "cancel"):
+                    self._worker.cancel()
+                if hasattr(self._worker, "unpause"):
+                    self._worker.unpause()
             self._worker_thread.quit()
             if not self._worker_thread.wait(3000):
                 self._worker_thread.terminate()
-                self._worker_thread.wait(1000)
+                if not self._worker_thread.wait(2000):
+                    # 线程仍存活：不能丢弃引用（会导致 QThread 析构崩溃），
+                    # 阻止关闭并提示用户等待后台任务退出。
+                    self.status_bar.showMessage(t("main.stop_waiting_exit"), 8000)
+                    event.ignore()
+                    return
             if self._worker is not None:
                 self._worker.deleteLater()
             self._worker = None

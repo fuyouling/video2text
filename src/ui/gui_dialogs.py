@@ -1751,9 +1751,14 @@ class ConfigEditorDialog(QDialog):
                 mapping = ConfigEditorDialog._get_combo_value_map(full_key)
                 if display in mapping:
                     return mapping[display]
-            for mapping in _COMBO_VALUE_MAP.values():
-                if display in mapping:
-                    return mapping[display]
+            # 兜底:按当前语言翻译 i18n key 后再与显示文本匹配。
+            # 覆盖未设置 _combo_key property 的 ComboBox(如 SummarizationTab
+            # 中的模式/流式下拉框),避免把显示文本(如 "Multi Thread"/"Yes")
+            # 直接写入配置文件。
+            for full_key, mapping in _COMBO_VALUE_MAP.items():
+                translated = ConfigEditorDialog._get_combo_value_map(full_key)
+                if display in translated:
+                    return translated[display]
             return display
         # 容器控件（PATH_KEYS / _FILE_KEYS 带浏览按钮）取内部的 QLineEdit
         if not hasattr(widget, "text"):

@@ -7,7 +7,7 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Callable, Tuple
 from dataclasses import dataclass
-from src.utils.exceptions import TranscriptionError
+from src.utils.exceptions import TranscriptionError, TranscriptionCancelledError
 from src.i18n import t
 from src.utils.logger import get_logger
 from src.utils.paths import get_base_dir as _get_base_dir
@@ -391,6 +391,7 @@ class Transcriber:
         repetition_penalty: float = 1.0,
         no_repeat_ngram_size: int = 0,
         progress_callback: Optional[Callable] = None,
+        cancel_check: Optional[Callable[[], bool]] = None,
     ) -> List[TranscriptSegment]:
         """转写音频
 
@@ -475,6 +476,11 @@ class Transcriber:
             transcript_segments = []
 
             for segment in segments:
+                # 段粒度取消检查：用户在转写过程中点停止时快速中断
+                if cancel_check and cancel_check():
+                    raise TranscriptionCancelledError(
+                        "Transcription cancelled by user"
+                    )
                 transcript_segment = TranscriptSegment(
                     start=segment.start,
                     end=segment.end,
@@ -495,6 +501,10 @@ class Transcriber:
             logger.debug(t("transcriber.transcribe_done", count=len(transcript_segments)))
             return transcript_segments
 
+        except TranscriptionCancelledError:
+            # 用户取消：原样传播，让上层（TranscriptionService）静默中止，
+            # 不能被包装成 TranscriptionError 误报为转写失败。
+            raise
         except Exception as e:
             raise TranscriptionError(t("transcriber.transcribe_failed", error=str(e)))
 

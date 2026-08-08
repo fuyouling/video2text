@@ -25,6 +25,7 @@ from src.ui.gui_workers import (
     OllamaListModelWorker,
     OllamaStartServiceWorker,
     OllamaStopServiceWorker,
+    _is_multi_mode,
 )
 from src.utils.logger import get_logger
 
@@ -209,9 +210,18 @@ class SummarizationTab(QWidget):
             self._section_edits[key] = widget
 
         self._nvidia_mode_combo = QComboBox()
+        self._nvidia_mode_combo.setProperty(
+            "_combo_key", "summarization.nvidia_mode"
+        )
         self._nvidia_mode_combo.addItem(t("summarization_tab.mode_single"), "single")
         self._nvidia_mode_combo.addItem(t("summarization_tab.mode_multi"), "multi")
         nvidia_mode_val = self._settings.get("summarization.nvidia_mode", "single")
+        # 兼容旧配置中误存的显示文本(如 "Multi Thread"/"多线程"),
+        # 归一化为规范值后设置下拉框,保证显示与实际运行一致。
+        if _is_multi_mode(nvidia_mode_val):
+            nvidia_mode_val = "multi"
+        else:
+            nvidia_mode_val = "single"
         self._set_widget_text(self._nvidia_mode_combo, nvidia_mode_val)
         self._nvidia_mode_combo.setToolTip(
             _SUMM_KEY_TOOLTIPS.get("summarization.nvidia_mode", "")
@@ -220,6 +230,9 @@ class SummarizationTab(QWidget):
         self._section_edits["nvidia_mode"] = self._nvidia_mode_combo
 
         self._nvidia_stream_combo = QComboBox()
+        self._nvidia_stream_combo.setProperty(
+            "_combo_key", "summarization.nvidia_stream"
+        )
         self._nvidia_stream_combo.addItem(t("common.yes"))
         self._nvidia_stream_combo.addItem(t("common.no"))
         nvidia_stream_val = self._settings.get("summarization.nvidia_stream", "true")

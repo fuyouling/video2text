@@ -125,6 +125,18 @@ def _get_online_cfg(settings: Settings, suffix: str, default):
     return settings.get(key, default)
 
 
+def _is_multi_mode(value) -> bool:
+    """判断 NVIDIA 模式配置是否为多线程(兼容旧配置中误存的显示文本)。
+
+    旧版本 ConfigEditorDialog 保存时可能把下拉框显示文本(如 "Multi Thread" /
+    "多线程")直接写入 config.ini 的 summarization.nvidia_mode,导致
+    mode == "multi" 判断失败、误按单线程且开启流式输出。此处对空格/下划线/
+    大小写做归一化后再匹配,兼容 "multi" 与各语言显示文本。
+    """
+    text = str(value or "").strip().lower().replace(" ", "").replace("_", "")
+    return text in ("multi", "multithread", "多线程")
+
+
 def _get_provider_label(provider: str) -> str:
     return {"ollama": "Ollama", "nvidia": "NVIDIA API"}.get(
         provider, provider
@@ -468,7 +480,7 @@ class SummarizeWorker(QObject):
                 mode = _get_online_cfg(self.settings, "mode", "single")
                 max_workers = (
                     _get_online_cfg(self.settings, "thread_count", 5)
-                    if provider_name == "nvidia" and mode == "multi"
+                    if provider_name == "nvidia" and _is_multi_mode(mode)
                     else 1
                 )
                 stream = self.stream and max_workers <= 1
@@ -751,7 +763,7 @@ class PipelineWorker(QObject):
                     mode = _get_online_cfg(self.settings, "mode", "single")
                     max_workers = (
                         _get_online_cfg(self.settings, "thread_count", 5)
-                        if provider_name == "nvidia" and mode == "multi"
+                        if provider_name == "nvidia" and _is_multi_mode(mode)
                         else 1
                     )
                     stream = self.stream and max_workers <= 1

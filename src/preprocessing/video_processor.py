@@ -3,13 +3,14 @@
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 from dataclasses import dataclass
 from src.config.settings import Settings
 from src.i18n import t
 from src.preprocessing.ffmpeg import ensure_ffmpeg, ensure_ffprobe
-from src.utils.exceptions import VideoFileError
+from src.utils.exceptions import TranscriptionCancelledError, VideoFileError
 from src.utils.logger import get_logger
 from src.utils.subprocess_compat import CREATE_NO_WINDOW
 
@@ -242,6 +243,49 @@ class VideoProcessor:
                 t("preprocessing.errors.info_failed", error=e)
             )
 
+    def _run_ffmpeg_with_cancel(
+        self,
+        cmd: list,
+        timeout: int,
+        cancel_check: Optional[Callable[[], bool]] = None,
+    ) -> "subprocess.CompletedProcess[str]":
+        """运行 ffmpeg 命令，支持用户取消。
+
+        使用 Popen + communicate(timeout) 轮询：取消标志置位时立即终止
+        子进程并抛 TranscriptionCancelledError（由转写服务层捕获后静默中止），
+        避免用户点停止后 ffmpeg 仍在后台长时间运行、线程迟迟无法退出。
+        """
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+            creationflags=CREATE_NO_WINDOW,
+        )
+        deadline = time.monotonic() + timeout
+        try:
+            while True:
+                if cancel_check and cancel_check():
+                    raise TranscriptionCancelledError(
+                        "Audio extraction cancelled by user"
+                    )
+                if time.monotonic() >= deadline:
+                    raise subprocess.TimeoutExpired(cmd, timeout)
+                try:
+                    stdout, stderr = proc.communicate(timeout=0.2)
+                    break
+                except subprocess.TimeoutExpired:
+                    continue
+        except Exception:
+            # 兜底：确保子进程被终止后原样抛出异常（kill 幂等）
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
+            raise
+        return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
+
     def extract_audio(
         self,
         video_path: str,
@@ -249,6 +293,7 @@ class VideoProcessor:
         sample_rate: int = 16000,
         channels: int = 1,
         video_info: Optional[VideoInfo] = None,
+        cancel_check: Optional[Callable[[], bool]] = None,
     ) -> str:
         """提取音频
 
@@ -294,7 +339,8 @@ class VideoProcessor:
         )
 
         return self._run_ffmpeg_pcm_extract(
-            video_path, str(output_file), sample_rate, channels, label
+            video_path, str(output_file), sample_rate, channels, label,
+            cancel_check=cancel_check,
         )
 
     def _run_ffmpeg_pcm_extract(
@@ -304,6 +350,7 @@ class VideoProcessor:
         sample_rate: int,
         channels: int,
         label: str,
+        cancel_check: Optional[Callable[[], bool]] = None,
     ) -> str:
         """使用 pcm_s16le 编码提取/转换音频，失败时自动回退。"""
         output_file = Path(output_path)
@@ -326,27 +373,21 @@ class VideoProcessor:
         )
 
         try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=3600,
-                creationflags=CREATE_NO_WINDOW,
-                encoding="utf-8",
-                errors="ignore",
-            )
+            result = self._run_ffmpeg_with_cancel(cmd, timeout=3600, cancel_check=cancel_check)
 
             if result.returncode != 0:
                 error_msg = result.stderr or result.stdout
                 logger.warning(t("preprocessing.log.fallback_pcm_failed"))
                 return self._extract_audio_fallback(
-                    input_path, str(output_file), sample_rate, channels
+                    input_path, str(output_file), sample_rate, channels,
+                    cancel_check=cancel_check,
                 )
 
             if not output_file.exists():
                 logger.warning(t("preprocessing.log.fallback_audio_not_generated"))
                 return self._extract_audio_fallback(
-                    input_path, str(output_file), sample_rate, channels
+                    input_path, str(output_file), sample_rate, channels,
+                    cancel_check=cancel_check,
                 )
 
             logger.debug(
@@ -358,6 +399,8 @@ class VideoProcessor:
             raise VideoFileError(
                 t("preprocessing.errors.extract_timeout", label=label)
             )
+        except TranscriptionCancelledError:
+            raise
         except VideoFileError:
             raise
         except Exception as e:
@@ -366,7 +409,8 @@ class VideoProcessor:
             )
             try:
                 return self._extract_audio_fallback(
-                    input_path, str(output_file), sample_rate, channels
+                    input_path, str(output_file), sample_rate, channels,
+                    cancel_check=cancel_check,
                 )
             except VideoFileError as fallback_err:
                 raise VideoFileError(
@@ -379,6 +423,7 @@ class VideoProcessor:
         output_path: str,
         sample_rate: int = 16000,
         channels: int = 1,
+        cancel_check: Optional[Callable[[], bool]] = None,
     ) -> str:
         """音频提取回退方案：先用 mp3 编码提取，再转为 WAV。
 
@@ -410,15 +455,7 @@ class VideoProcessor:
         )
 
         try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=3600,
-                creationflags=CREATE_NO_WINDOW,
-                encoding="utf-8",
-                errors="ignore",
-            )
+            result = self._run_ffmpeg_with_cancel(cmd, timeout=3600, cancel_check=cancel_check)
 
             if result.returncode != 0:
                 error_msg = result.stderr or result.stdout
@@ -444,15 +481,7 @@ class VideoProcessor:
                 "-y",
                 str(output_file),
             ]
-            convert_result = subprocess.run(
-                convert_cmd,
-                capture_output=True,
-                text=True,
-                timeout=600,
-                creationflags=CREATE_NO_WINDOW,
-                encoding="utf-8",
-                errors="ignore",
-            )
+            convert_result = self._run_ffmpeg_with_cancel(convert_cmd, timeout=600, cancel_check=cancel_check)
 
             if convert_result.returncode != 0:
                 raise VideoFileError(
@@ -468,6 +497,8 @@ class VideoProcessor:
             return str(output_file)
 
         except VideoFileError:
+            raise
+        except TranscriptionCancelledError:
             raise
         except Exception as e:
             raise VideoFileError(

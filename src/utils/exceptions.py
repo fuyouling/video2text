@@ -25,6 +25,12 @@ class DownloadCancelledError(TranscriptionError):
     pass
 
 
+class TranscriptionCancelledError(TranscriptionError):
+    """用户在转写过程中取消了任务（用于中断正在进行的转写）"""
+
+    pass
+
+
 class SummarizationError(Video2TextError):
     """总结错误"""
 

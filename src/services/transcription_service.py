@@ -18,7 +18,11 @@ from src.config.settings import Settings
 from src.preprocessing.video_processor import VideoProcessor
 from src.storage.file_writer import FileWriter
 from src.transcription.transcriber import TranscriptSegment, Transcriber
-from src.utils.exceptions import TranscriptionError, Video2TextError
+from src.utils.exceptions import (
+    TranscriptionCancelledError,
+    TranscriptionError,
+    Video2TextError,
+)
 from src.utils.json_utils import atomic_write_json, safe_read_json
 from src.i18n import t
 from src.utils.logger import get_logger
@@ -189,6 +193,12 @@ class TranscriptionService:
                 if self.on_video_done:
                     self.on_video_done(result)
 
+            except TranscriptionCancelledError:
+                # 用户在转写过程中取消：静默中止，不当作错误上报
+                logger.info(
+                    "  └─ " + t("services.transcription.user_cancelled")
+                )
+                break
             except Video2TextError as e:
                 logger.info("  └─ " + t("services.transcription.failed", error=e))
                 if self.on_video_error:
@@ -219,6 +229,7 @@ class TranscriptionService:
                 sample_rate=16000,
                 channels=1,
                 video_info=video_info,
+                cancel_check=self.cancel_check,
             )
             elapsed = time.monotonic() - t0
             logger.info("  ├─ " + t("services.transcription.audio_extracted", elapsed=round(elapsed, 1)))
@@ -312,6 +323,7 @@ class TranscriptionService:
             TranscriptionError: 转写失败或超时
         """
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        kwargs.setdefault("cancel_check", self.cancel_check)
         try:
             future = executor.submit(
                 self.transcriber.transcribe, str(audio_path), **kwargs
@@ -354,19 +366,24 @@ class TranscriptionService:
                 str(chunk_dir / "chunk_%03d.wav"),
             ]
             try:
-                subprocess.run(
+                split_result = self.video_processor._run_ffmpeg_with_cancel(
                     split_cmd,
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                    creationflags=CREATE_NO_WINDOW,
-                    encoding="utf-8",
-                    errors="ignore",
+                    timeout=3600,
+                    cancel_check=self.cancel_check,
                 )
-            except subprocess.CalledProcessError as e:
-                    raise TranscriptionError(
-                        t("services.transcription.ffmpeg_chunk_fail", error=e.stderr or e.stdout)
-                    ) from e
+            except subprocess.TimeoutExpired:
+                raise TranscriptionError(
+                    t("services.transcription.ffmpeg_chunk_fail", error="timeout")
+                )
+            except TranscriptionCancelledError:
+                raise
+            if split_result.returncode != 0:
+                raise TranscriptionError(
+                    t(
+                        "services.transcription.ffmpeg_chunk_fail",
+                        error=split_result.stderr or split_result.stdout,
+                    )
+                )
             chunk_files = sorted(chunk_dir.glob("chunk_*.wav"))
             total_chunks = len(chunk_files)
 
@@ -477,6 +494,9 @@ class TranscriptionService:
                         no_repeat_ngram_size=self.no_repeat_ngram_size,
                         progress_callback=_on_chunk_segment if progress_callback else None,
                     )
+                except TranscriptionCancelledError:
+                    # 用户取消：不当作切片失败记录断点，直接中断整个转写
+                    raise
                 except Exception as chunk_err:
                     logger.warning(
                         "  ├─ " + t("services.transcription.chunk_failed", current=idx + 1, total=total_chunks, error=chunk_err),

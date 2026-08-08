@@ -222,16 +222,13 @@ class TestTranscriptionServicePassthrough:
         mock_video_processor.ffmpeg_path = "ffmpeg"
         mock_video_processor.ffprobe_path = "ffprobe"
 
-        with patch("src.services.transcription_service.subprocess") as mock_sub:
+        def _fake_split(split_cmd, **kwargs):
+            out_dir = Path(split_cmd[-1]).parent
+            (out_dir / "chunk_000.wav").write_bytes(b"\x00" * (44 + 32000))
+            return MagicMock(returncode=0, stderr="", stdout="")
 
-            def _fake_split(split_cmd, **kwargs):
-                out_dir = Path(split_cmd[-1]).parent
-                (out_dir / "chunk_000.wav").write_bytes(b"\x00" * (44 + 32000))
-                return MagicMock(returncode=0, stderr="", stdout="")
-
-            mock_sub.run.side_effect = _fake_split
-            mock_sub.CREATE_NO_WINDOW = 0
-            svc._transcribe_chunked(chunk, "video", "/tmp/video.mp4", str(tmp_path))
+        mock_video_processor._run_ffmpeg_with_cancel.side_effect = _fake_split
+        svc._transcribe_chunked(chunk, "video", "/tmp/video.mp4", str(tmp_path))
 
         kwargs = mock_transcriber.transcribe.call_args.kwargs
         assert kwargs["initial_prompt"] == "专有名词"

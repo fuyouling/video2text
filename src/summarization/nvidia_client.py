@@ -20,6 +20,38 @@ logger = get_logger(__name__)
 class NvidiaClient:
     """NVIDIA API client — calling NVIDIA models via OpenAI-compatible interface"""
 
+    # ── 连接状态复用（类级缓存） ──────────────────────────────────
+    # GUI 每次总结前都会调用 check_connection()（每次新建 client 实例），
+    # 若每次都发探测请求会白白多一次网络往返。这里把连接检查结果缓存在
+    # 类级别（跨实例共享），成功结果在 TTL 内直接复用；失败不缓存，
+    # 以便网络恢复后能重新探测。generate() 成功时也会刷新缓存。
+    _connection_cache: dict = {}  # key -> (ok, checked_at_monotonic)
+    _connection_cache_lock = threading.Lock()
+    _connection_cache_ttl = 300.0  # 成功连接状态的缓存时长（秒）
+
+    def _cache_key(self) -> tuple:
+        return (self.api_url, self._api_key, self._model)
+
+    def _cached_connection(self) -> Optional[bool]:
+        """返回缓存中的有效连接状态；无缓存或已过期返回 None。"""
+        with self._connection_cache_lock:
+            entry = self._connection_cache.get(self._cache_key())
+            if not entry:
+                return None
+            ok, checked_at = entry
+            if time.monotonic() - checked_at > self._connection_cache_ttl:
+                self._connection_cache.pop(self._cache_key(), None)
+                return None
+            return ok
+
+    def _remember_connection(self, ok: bool) -> None:
+        """记录连接状态：成功结果入缓存；失败结果使缓存失效。"""
+        with self._connection_cache_lock:
+            if ok:
+                self._connection_cache[self._cache_key()] = (True, time.monotonic())
+            else:
+                self._connection_cache.pop(self._cache_key(), None)
+
     def __init__(
         self,
         api_url: str = "https://integrate.api.nvidia.com/v1/chat/completions",
@@ -53,7 +85,14 @@ class NvidiaClient:
         """Check if the NVIDIA API is available.
 
         Reference: test_nvidia.py, sends a minimal request to verify connectivity and API Key.
+        连接状态在类级缓存中复用（默认 300 秒），避免每次总结前重复探测；
+        仅缓存成功结果，失败不缓存以便下次重新检查。
         """
+        cached = self._cached_connection()
+        if cached is True:
+            logger.debug(t("services.summarization.nvidia.check_cached"))
+            return True
+
         logger.info(t("services.summarization.nvidia.check_start"))
         if not self._api_key:
             logger.error(t("services.summarization.nvidia.api_key_missing"))
@@ -96,10 +135,11 @@ class NvidiaClient:
                     logger.error(
                         t("services.summarization.nvidia.check_fail", code=resp.status_code),
                     )
-            return ok
         except Exception as e:
             logger.error(t("services.summarization.nvidia.check_error", error=e))
-            return False
+            ok = False
+        self._remember_connection(ok)
+        return ok
 
     def generate(
         self,
@@ -169,15 +209,20 @@ class NvidiaClient:
                         raise SummarizationError(error_msg)
 
                     if stream:
-                        return self._handle_streaming(
+                        result = self._handle_streaming(
                             response, on_token, cancel_check, pause_event
                         )
                     else:
                         data = response.json()
                         choices = data.get("choices", [])
-                        if choices:
-                            return choices[0].get("message", {}).get("content", "")
-                        return ""
+                        result = (
+                            choices[0].get("message", {}).get("content", "")
+                            if choices
+                            else ""
+                        )
+                    # 请求成功说明连接可用，刷新类级连接缓存
+                    self._remember_connection(True)
+                    return result
 
             except requests.exceptions.Timeout:
                 last_exc = SummarizationError(t("services.summarization.nvidia.request_timeout"))
