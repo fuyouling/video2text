@@ -970,37 +970,47 @@ class OllamaListModelWorker(QObject):
 
 
 class ScanFilesWorker(QObject):
-    """异步递归扫描文件夹中的音视频文件——单次 os.scandir() 遍历，返回 (path, size_bytes) 元组列表"""
+    """异步递归扫描文件夹中的音视频文件——单次 os.scandir() 遍历。
 
-    result = Signal(list)
+    每发现一个文件都会通过 file_found 信号实时推送，可配合对话框边扫边显示。
+    """
+
+    file_found = Signal(str, int)
     finished = Signal()
 
     def __init__(self, folder: str, input_exts: set[str]) -> None:
         super().__init__()
         self.folder = folder
         self.input_exts = input_exts
+        self._cancelled = threading.Event()
+
+    def cancel(self) -> None:
+        """请求尽快停止扫描（遍历循环中检查标志）。"""
+        self._cancelled.set()
 
     def run(self) -> None:
         try:
-            files: list[tuple[str, int]] = []
-            self._scan_recursive(self.folder, files)
-            self.result.emit(files)
-        except Exception:
-            self.result.emit([])
+            self._scan_recursive(self.folder)
         finally:
             self.finished.emit()
 
-    def _scan_recursive(self, dir_path: str, files: list) -> None:
+    def _scan_recursive(self, dir_path: str) -> None:
+        if self._cancelled.is_set():
+            return
         try:
             for entry in os.scandir(dir_path):
+                if self._cancelled.is_set():
+                    return
                 try:
                     if entry.is_dir(follow_symlinks=False):
-                        self._scan_recursive(entry.path, files)
+                        self._scan_recursive(entry.path)
                     elif entry.is_file(follow_symlinks=False):
                         ext = Path(entry.name).suffix.lower()
                         if ext in self.input_exts:
-                            files.append((entry.path, entry.stat().st_size))
-                except PermissionError:
+                            size = entry.stat().st_size
+                            self.file_found.emit(entry.path, size)
+                except OSError:
+                    # 文件在扫描过程中被删除/无权限/网络错误等, 跳过即可
                     continue
-        except PermissionError:
+        except OSError:
             pass

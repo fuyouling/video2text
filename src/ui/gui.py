@@ -1083,20 +1083,36 @@ class MainWindow(QMainWindow):
             setattr(self, attr_name, None)
 
     def _start_scan(self, folder: str) -> None:
-        """启动后台线程扫描文件夹中的音视频文件。"""
+        """启动后台线程扫描文件夹，扫描过程中选择对话框实时显示已发现文件。
+
+        对话框在扫描开始前即弹出，worker 每发现一个文件就通过 file_found
+        信号推送到对话框（GUI 线程节流合并刷新），扫描结束后启用确认。
+        """
         self.status_bar.showMessage(t("main.scanning"))
-        self.input_folder_btn.setEnabled(False)
         self._wait_async_thread("_scan_thread")
+        self.input_folder_btn.setEnabled(False)
         thread = QThread()
         worker = ScanFilesWorker(folder, self._input_exts)
         worker.moveToThread(thread)
 
-        def _cleanup():
-            self._scan_thread = None
-            self._scan_worker = None
-            self.input_folder_btn.setEnabled(True)
+        ctx = self._scan_context
+        self._scan_context = None
 
-        worker.result.connect(self._on_scan_result)
+        dialog = VideoSelectionDialog([], self, folder=folder, scanning=True)
+
+        def _cleanup():
+            # 仅当仍是本线程引用时才清空并恢复按钮, 避免旧线程退出时
+            # 误清新扫描线程的引用或在扫描进行中误启用按钮
+            if self._scan_thread is thread:
+                self._scan_thread = None
+                self._scan_worker = None
+                self.input_folder_btn.setEnabled(True)
+
+        worker.file_found.connect(dialog.add_file)
+        # 扫描一结束(正常或取消)立即清空状态栏, 不等到对话框关闭——
+        # 否则模态对话框打开期间状态栏会一直挂着过期的"正在扫描文件..."
+        worker.finished.connect(lambda: self.status_bar.showMessage(""))
+        worker.finished.connect(dialog.finish_scan)
         thread.finished.connect(_cleanup)
         thread.finished.connect(thread.deleteLater)
         thread.finished.connect(worker.deleteLater)
@@ -1106,21 +1122,27 @@ class MainWindow(QMainWindow):
         self._scan_thread = thread
         self._scan_worker = worker
 
-    def _on_scan_result(self, file_metas: list[tuple[str, int]]) -> None:
-        """扫描完成后，根据上下文弹出选择对话框或提示无文件。"""
-        ctx = self._scan_context
-        self._scan_context = None
+        dialog.exec()
+
+        # 对话框关闭后：若扫描仍在进行，断开对话框信号并请求停止，
+        # 不阻塞主线程——线程在后台自行退出（finished → thread.quit → _cleanup）
+        try:
+            thread_running = thread.isRunning()
+        except RuntimeError:
+            # 扫描在对话框打开期间已完成并走完退出流程（thread 已被
+            # deleteLater 销毁），无需再请求停止
+            thread_running = False
+        if thread_running:
+            worker.cancel()
+            thread.quit()
+            try:
+                worker.file_found.disconnect(dialog.add_file)
+                worker.finished.disconnect(dialog.finish_scan)
+            except (RuntimeError, TypeError):
+                pass
         self.status_bar.showMessage("")
 
-        if not file_metas:
-            QMessageBox.information(
-                self, t("common.hint"), t("main.no_media_in_folder")
-            )
-            return
-
-        folder = ctx["folder"]
-        dialog = VideoSelectionDialog(file_metas, self, folder=folder)
-        if dialog.exec() != dialog.DialogCode.Accepted:
+        if dialog.result() != dialog.DialogCode.Accepted or ctx is None:
             return
 
         selected_files = dialog.get_selected_files()

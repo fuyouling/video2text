@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMenu,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QSpinBox,
@@ -71,12 +72,25 @@ class VideoSelectionDialog(QDialog):
         file_metas: list[tuple[str, int]],
         parent=None,
         folder: Optional[str] = None,
+        scanning: bool = False,
     ) -> None:
         super().__init__(parent)
         self._file_metas = file_metas
         self._paths = [Path(p) for p, _ in file_metas]
-        self._path_to_size: dict[str, int] = dict(file_metas)
+        # key 统一为 pathlib 规范化形式（Windows 反斜杠），与 _make_file_item
+        # 中 str(Path(p)) 的查询键一致——QFileDialog 返回正斜杠路径时
+        # 避免查不到 size 导致总大小显示 0
+        self._path_to_size: dict[str, int] = {
+            str(Path(p)): size for p, size in file_metas
+        }
         self._input_folder = folder
+        self._scanning = scanning
+        self._scan_finalized = False
+        self._pending_metas: list[tuple[str, int]] = []
+        self._mirror_touched = False
+        self._ok_btn: Optional[QPushButton] = None
+        # 渐进加载: 当前已显示到列表中的文件数（非扫描模式下初始即为全量）
+        self._visible_count = len(file_metas)
 
         settings = Settings()
         self._video_exts: set[str] = set(
@@ -335,6 +349,15 @@ class VideoSelectionDialog(QDialog):
         toolbar.addWidget(self._search_edit)
         layout.addWidget(toolbar_widget)
 
+        # 增量扫描: 后台 worker 推来的文件先暂存, 节流合并后重建树, 避免高频刷新卡 UI
+        self._pending_timer = QTimer()
+        self._pending_timer.setSingleShot(True)
+        self._pending_timer.timeout.connect(self._flush_pending)
+        # 渐进加载: 扫描完成后文件分批"滚入"列表, 让快扫描也有可见的动态过程
+        self._loading_timer = QTimer()
+        self._loading_timer.setSingleShot(True)
+        self._loading_timer.timeout.connect(self._load_next_batch)
+
         self._tree = QTreeWidget()
         self._tree.setHeaderLabels([t("dialogs.file_select.header_filename"), t("dialogs.file_select.header_type"), t("dialogs.file_select.header_size"), t("dialogs.file_select.header_output")])
         self._tree.setSelectionMode(QTreeWidget.SelectionMode.NoSelection)
@@ -404,10 +427,13 @@ class VideoSelectionDialog(QDialog):
         self._depth_spin.valueChanged.connect(self._on_depth_changed)
         bottom_layout.addWidget(self._depth_spin)
 
-        ok_btn = QPushButton(t("common.ok"))
-        ok_btn.setDefault(True)
-        ok_btn.clicked.connect(self.accept)
-        bottom_layout.addWidget(ok_btn)
+        self._ok_btn = QPushButton(t("common.ok"))
+        self._ok_btn.setDefault(True)
+        self._ok_btn.clicked.connect(self.accept)
+        if self._scanning:
+            # 扫描完成前不允许确认
+            self._ok_btn.setEnabled(False)
+        bottom_layout.addWidget(self._ok_btn)
         cancel_btn = QPushButton(t("common.cancel"))
         cancel_btn.setObjectName("_secondary_btn")
         cancel_btn.clicked.connect(self.reject)
@@ -431,8 +457,133 @@ class VideoSelectionDialog(QDialog):
             )
         self._tree.setUpdatesEnabled(True)
         self._tree.expandAll()
+        if self._scanning:
+            # 扫描模式下: 镜像等设置等扫描完成拿到完整文件列表后再应用
+            self._info_label.setText(t("main.scanning"))
+        else:
+            self._update_info_label()
+            self._apply_mirror_defaults()
+
+    # ── 增量扫描支持: 扫描到即显示 ──
+
+    def add_file(self, path: str, size: int) -> None:
+        """后台扫描线程发现新文件时调用（GUI 线程执行，节流合并刷新）。"""
+        if self._scan_finalized or not self.isVisible():
+            return
+        self._pending_metas.append((path, size))
+        if not self._pending_timer.isActive():
+            # 300ms 节流: 慢扫描时定期刷新已发现文件; 快扫描时 finished 事件
+            # 先于本定时器到达, 由 finish_scan 停表并交给渐进加载, 避免大跳
+            self._pending_timer.start(300)
+
+    def _flush_pending(self) -> None:
+        """把暂存的增量文件合并进列表并重建树。"""
+        if not self._pending_metas or not self.isVisible():
+            return
+        self._file_metas.extend(self._pending_metas)
+        self._pending_metas = []
+        self._visible_count = len(self._file_metas)
+        self._rebuild_tree()
+
+    def finish_scan(self) -> None:
+        """后台扫描结束时调用（worker 线程 finished 信号，排队到 GUI 线程）。
+
+        若用户已提前关闭对话框，则不弹窗、仅标记完成。
+        """
+        if self._scan_finalized or not self.isVisible():
+            self._scan_finalized = True
+            return
+        self._scan_finalized = True
+        # 扫描结束: 停止增量节流 flush, 剩余文件的呈现交给渐进加载
+        self._pending_timer.stop()
+        # 合并剩余增量（事件队列 FIFO，此时 pending 通常已含全部文件）
+        if self._pending_metas:
+            self._file_metas.extend(self._pending_metas)
+            self._pending_metas = []
+        if not self._file_metas:
+            QMessageBox.information(
+                self, t("common.hint"), t("main.no_media_in_folder")
+            )
+            self.reject()
+            return
+        self._apply_mirror_defaults(use_saved=not self._mirror_touched)
+        total = len(self._file_metas)
+        if self._visible_count >= total:
+            # 扫描期间已全部增量显示（慢扫描场景），无需渐进加载
+            self._ok_btn.setEnabled(True)
+            self._update_info_label()
+            return
+        # 快扫描场景: 文件尚未显示, 分批"滚入"制造可见的加载过程
+        self._ok_btn.setEnabled(False)
+        self._batch_size = max(64, (total + 11) // 12)
+        self._load_next_batch()
+
+    def _load_next_batch(self) -> None:
+        """渐进加载: 每帧显示一批文件, 直到全部显示后启用确认。"""
+        if not self.isVisible():
+            # 用户已提前关闭对话框, 停止加载链
+            self._loading_timer.stop()
+            return
+        total = len(self._file_metas)
+        self._visible_count = min(total, self._visible_count + self._batch_size)
+        # _rebuild_tree 末尾的 _update_info_label() 会用 info_selected 动态更新
+        # （total/checked/size 三个变量随可见文件数递增）
+        self._rebuild_tree()
+        if self._visible_count >= total:
+            self._ok_btn.setEnabled(True)
+            return
+        self._loading_timer.start(16)
+
+    def _rebuild_tree(self) -> None:
+        """基于当前已收集的文件列表重建整棵树（增量扫描时定期调用）。
+
+        重建前快照用户已做的勾选/后缀筛选/排序状态，重建后恢复，
+        避免每批刷新把用户的操作重置。
+        """
+        # 快照: 文件勾选状态（按路径）
+        check_states: dict[str, Qt.CheckState] = {}
+        for item in self._leaf_items:
+            p = item.data(0, Qt.ItemDataRole.UserRole)
+            if p:
+                check_states[p] = item.checkState(0)
+        suffix_text = (
+            self._suffix_combo.currentText() if self._suffix_combo.count() > 0 else ""
+        )
+        sort_col = self._tree.header().sortIndicatorSection()
+        sort_order = self._tree.header().sortIndicatorOrder()
+
+        visible_metas = self._file_metas[: self._visible_count]
+        self._paths = [Path(p) for p, _ in visible_metas]
+        self._path_to_size = {
+            str(Path(p)): size for p, size in visible_metas
+        }
+        self._tree.setSortingEnabled(False)
+        self._tree.setUpdatesEnabled(False)
+        self._tree.clear()
+        self._leaf_items.clear()
+        self._build_tree()
+        if suffix_text:
+            idx = self._suffix_combo.findText(suffix_text)
+            if idx >= 0:
+                self._suffix_combo.setCurrentIndex(idx)
+        self._tree.setUpdatesEnabled(True)
+        self._tree.expandAll()
+        self._apply_filters()
+        # 恢复用户勾选（仅针对仍存在的文件）
+        self._tree.blockSignals(True)
+        for item in self._leaf_items:
+            p = item.data(0, Qt.ItemDataRole.UserRole)
+            st = check_states.get(p)
+            if st is not None:
+                item.setCheckState(0, st)
+        self._tree.blockSignals(False)
+        # 恢复排序
+        if self._sort_order:
+            self._tree.sortByColumn(sort_col, sort_order)
+        # 扫描中镜像已启用时, 重新填充第 4 列预览(rebuild 会清空新节点的该列)
+        if self._max_depth > 0 and self._mirror_checkbox.isChecked():
+            self._update_mirror_column(min(self._depth_spin.value(), self._max_depth))
         self._update_info_label()
-        self._apply_mirror_defaults()
 
     def _build_tree(self) -> None:
         paths = self._paths
@@ -693,7 +844,10 @@ class VideoSelectionDialog(QDialog):
                 selected.append(item.data(0, Qt.ItemDataRole.UserRole))
         return selected
 
-    def _apply_mirror_defaults(self) -> None:
+    def _apply_mirror_defaults(self, use_saved: bool = True) -> None:
+        """应用镜像输出设置。use_saved=False 时保留用户当前勾选状态
+        （用于扫描完成后用户已手动调整过镜像选项的场景）。
+        """
         settings = Settings()
         if self._max_depth == 0:
             self._mirror_checkbox.setChecked(False)
@@ -702,28 +856,50 @@ class VideoSelectionDialog(QDialog):
             for item in self._iter_leaves():
                 item.setText(3, t("dialogs.file_select.mirror_disabled"))
         else:
-            saved_enabled = settings.get_bool("output.mirror_enabled", True)
-            self._mirror_checkbox.blockSignals(True)
-            self._mirror_checkbox.setChecked(saved_enabled)
-            self._mirror_checkbox.blockSignals(False)
-            default_depth = settings.get_int("output.mirror_depth", 1)
-            clamped = min(default_depth, self._max_depth)
+            if use_saved:
+                saved_enabled = settings.get_bool("output.mirror_enabled", True)
+                self._mirror_checkbox.blockSignals(True)
+                self._mirror_checkbox.setChecked(saved_enabled)
+                self._mirror_checkbox.blockSignals(False)
+            self._mirror_checkbox.setEnabled(True)
+            if use_saved:
+                default_depth = settings.get_int("output.mirror_depth", 1)
+                depth_value = min(default_depth, self._max_depth)
+            else:
+                # 用户已手动调整过镜像选项: 保留当前深度, 仅 clamp 到合法范围
+                depth_value = min(max(self._depth_spin.value(), 1), self._max_depth)
             self._depth_spin.blockSignals(True)
             self._depth_spin.setRange(1, self._max_depth)
-            self._depth_spin.setValue(clamped)
+            self._depth_spin.setValue(depth_value)
             self._depth_spin.blockSignals(False)
-            if saved_enabled:
+            if self._mirror_checkbox.isChecked():
                 self._depth_spin.setEnabled(True)
-                self._update_mirror_column(clamped)
+                self._update_mirror_column(depth_value)
             else:
                 self._depth_spin.setEnabled(False)
                 for item in self._iter_leaves():
                     item.setText(3, t("dialogs.file_select.mirror_disabled"))
 
+    def accept(self) -> None:
+        """确认时持久化镜像设置（扫描期间勾选的值仅在确认时写入配置）。
+
+        扁平文件夹（无子目录）时镜像无意义，UI 为禁用态，不写入配置，
+        避免仅因点确定就覆盖用户保存的全局镜像设置。
+        """
+        if self._max_depth > 0:
+            settings = Settings()
+            settings.set("output.mirror_enabled", str(self._mirror_checkbox.isChecked()))
+            settings.set("output.mirror_depth", str(self._depth_spin.value()))
+            settings.save()
+        super().accept()
+
     def _on_mirror_changed(self, checked: bool) -> None:
-        settings = Settings()
-        settings.set("output.mirror_enabled", str(checked))
-        settings.save()
+        self._mirror_touched = True
+        if not (self._scanning and not self._scan_finalized):
+            # 扫描进行中不立即写配置（避免用户取消时污染全局设置），确认时才持久化
+            settings = Settings()
+            settings.set("output.mirror_enabled", str(checked))
+            settings.save()
         if checked:
             depth = self._depth_spin.value()
             self._depth_spin.setEnabled(True)
@@ -736,10 +912,13 @@ class VideoSelectionDialog(QDialog):
             self._tree.blockSignals(False)
 
     def _on_depth_changed(self, value: int) -> None:
+        self._mirror_touched = True
         self._update_mirror_column(value)
-        settings = Settings()
-        settings.set("output.mirror_depth", str(value))
-        settings.save()
+        if not (self._scanning and not self._scan_finalized):
+            # 扫描进行中不立即写配置（与 mirror_enabled 一致），确认时才持久化
+            settings = Settings()
+            settings.set("output.mirror_depth", str(value))
+            settings.save()
 
     def _update_mirror_column(self, depth: int) -> None:
         self._tree.blockSignals(True)
