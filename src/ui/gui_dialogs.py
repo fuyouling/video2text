@@ -530,6 +530,11 @@ class VideoSelectionDialog(QDialog):
         # （total/checked/size 三个变量随可见文件数递增）
         self._rebuild_tree()
         if self._visible_count >= total:
+            # 渐进加载结束: 此时 _build_tree 才算出了最终 _max_depth（首层既有
+            # 文件又有子文件夹时, 扫描初期的 _rebuild_tree 还没见到子文件夹,
+            # _max_depth 暂为 0, finish_scan 里那次 _apply_mirror_defaults 据此把
+            # 镜像复选框禁用了）。这里用最终 _max_depth 重新应用, 恢复可选状态。
+            self._apply_mirror_defaults(use_saved=not self._mirror_touched)
             self._ok_btn.setEnabled(True)
             return
         self._loading_timer.start(16)
