@@ -37,7 +37,8 @@
     "tools_nvidia_api_test": "Nvidia API 応答テスト",
     "help": "ヘルプ",
     "help_donate": "寄付",
-    "help_about": "について"
+    "help_about": "について",
+    "settings_api_key_manage": "API KEY を設定"
   },
   "main": {
     "input_label": "入力:",
@@ -495,7 +496,11 @@
     "apply_title": "要約モデルに設定",
     "apply_confirm": "{model} を summarization.nvidia_model に書き込みますか？",
     "apply_done": "{model} を NVIDIA 要約モデルに設定しました",
-    "apply_failed": "設定の保存に失敗しました: {error}",       "refresh_list": "リストを更新",       "refresh_list_loading": "モデルリストを更新中…",       "refresh_list_done": "モデルリストを更新しました（{count} 件）",       "refresh_list_failed": "モデルリストの更新に失敗しました: {error}"
+    "apply_failed": "設定の保存に失敗しました: {error}",
+    "refresh_list": "リストを更新",
+    "refresh_list_loading": "モデルリストを更新中…",
+    "refresh_list_done": "モデルリストを更新しました（{count} 件）",
+    "refresh_list_failed": "モデルリストの更新に失敗しました: {error}"
   },
   "donate": {
     "title": "寄付",
@@ -1363,5 +1368,27 @@
     "timestamp": {
       "out_of_range": "タイムスタンプ値が範囲外です: {timestamp}"
     }
+  },
+  "api_key": {
+    "title": "API Key 管理",
+    "subtitle": "プロジェクトルートの .env 内のシークレットを管理します。値はデフォルトでマスク表示され、追加後に編集・削除できます。",
+    "path_label": "設定ファイル: {path}",
+    "file_missing": "ファイルが存在しません。保存時に作成されます",
+    "list_section": "シークレット一覧",
+    "show_all": "すべて表示",
+    "add": "追加",
+    "save": "保存",
+    "cancel": "キャンセル",
+    "show": "表示",
+    "hide": "非表示",
+    "delete": "削除",
+    "key_placeholder": "キー名（既存のものは変更不可）",
+    "value_placeholder": "シークレット値",
+    "empty_hint": "シークレットはまだありません。「追加」をクリックしてください",
+    "error_empty_key": "キー名を空にすることはできません",
+    "error_invalid_key": "キー名は英字・数字・アンダースコアのみ使用でき、英字またはアンダースコアで始まる必要があります",
+    "error_dup_key": "キー名はすでに存在します（大文字小文字を区別しません）",
+    "save_failed": "保存に失敗しました: {error}",
+    "saved_msg": "正常に保存しました:\n{path}"
   }
 }

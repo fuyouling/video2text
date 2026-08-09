@@ -35,9 +35,32 @@
     "tools": "工具",
     "tools_voice_to_text": "声音转文本",
     "tools_nvidia_api_test": "Nvidia API 响应测试",
+    "settings_api_key_manage": "设置 API KEY",
     "help": "帮助",
     "help_donate": "捐赠支持",
     "help_about": "关于"
+  },
+  "api_key": {
+    "title": "API Key 管理",
+    "subtitle": "管理项目根目录 .env 中的密钥。密钥值默认以掩码显示，新增后可修改或删除。",
+    "path_label": "配置文件：{path}",
+    "file_missing": "文件不存在，保存后将新建",
+    "list_section": "密钥列表",
+    "show_all": "全部显示",
+    "add": "添加",
+    "save": "保存",
+    "cancel": "取消",
+    "show": "显示",
+    "hide": "隐藏",
+    "delete": "删除",
+    "key_placeholder": "键名（已有项不可修改）",
+    "value_placeholder": "密钥值",
+    "empty_hint": "暂无密钥，点击「添加」新增一条",
+    "error_empty_key": "键名不能为空",
+    "error_invalid_key": "键名仅允许字母、数字、下划线，且以字母或下划线开头",
+    "error_dup_key": "键名已存在（不区分大小写）",
+    "save_failed": "保存失败：{error}",
+    "saved_msg": "已成功保存到：\n{path}"
   },
   "main": {
     "input_label": "输入:",
@@ -102,6 +125,8 @@
     "tx_prompt_delete_confirm_msg": "确定要删除转写提示词模板「{name}」吗？",
     "tx_prompt_saved": "转写提示词「{name}」已保存",
     "tx_prompt_deleted": "转写提示词「{name}」已删除",
+    "tx_prompt_load_fail": "转写提示词模板加载失败",
+    "summary_prompt_load_fail": "总结提示词模板加载失败",
     "prompt_save_dialog": "保存提示词模板",
     "prompt_name_label": "模板名称:",
     "prompt_empty_warning": "提示词内容为空，无法保存。",
@@ -654,7 +679,14 @@
     "log_ollama_start_ok": "Ollama 服务启动: ✓ 成功",
     "log_ollama_start_not_found": "Ollama 服务启动: ✗ 未找到ollama命令",
     "log_ollama_start_timeout": "Ollama 服务启动: ✗ 超时",
-    "log_ollama_start_fail": "Ollama 服务启动: ✗ 失败"
+    "log_ollama_start_fail": "Ollama 服务启动: ✗ 失败",
+    "radio_mistral": "在线 Mistral 模型",
+    "mistral_group": "Mistral 配置",
+    "mistral_mode_label": "处理模式",
+    "mistral_stream_label": "流式输出",
+    "mistral_threads_label": "线程数",
+    "log_mistral_ok": "MistralClient: 连接成功，延迟 {latency_ms:.0f}ms，模型 {model}",
+    "log_mistral_fail": "MistralClient: 连接失败，模型 {model}"
   },
   "summ_labels": {
     "ollama_url": "Ollama服务地址",
@@ -672,7 +704,16 @@
     "nvidia_timeout": "NVIDIA 超时时间",
     "nvidia_mode": "NVIDIA 模式",
     "nvidia_thread_count": "NVIDIA 线程数",
-    "nvidia_stream": "NVIDIA 流式输出"
+    "nvidia_stream": "NVIDIA 流式输出",
+    "mistral_model": "模型",
+    "mistral_max_tokens": "最大输出 Token",
+    "mistral_temperature": "温度",
+    "mistral_timeout": "超时(秒)",
+    "mistral_mode": "处理模式",
+    "mistral_thread_count": "线程数",
+    "mistral_stream": "流式输出",
+    "mistral_base_url": "API 地址",
+    "mistral_rate_limit": "API 调用速率 (请求/秒)"
   },
   "summ_tooltips": {
     "ollama_url": "Ollama 服务地址，默认 http://127.0.0.1:11434",
@@ -690,7 +731,16 @@
     "nvidia_timeout": "NVIDIA 请求超时时间 (秒)，长文本建议 600+",
     "nvidia_mode": "NVIDIA 模式: single (单线程，支持流式), multi (多线程并发)",
     "nvidia_thread_count": "多线程模式下的并发线程数",
-    "nvidia_stream": "是否启用流式输出 (仅单线程模式有效): true / false"
+    "nvidia_stream": "是否启用流式输出 (仅单线程模式有效): true / false",
+    "mistral_model": "Mistral 模型名，如 mistral-large-latest / mistral-small-latest",
+    "mistral_max_tokens": "单次总结最大生成 Token 数",
+    "mistral_temperature": "采样温度，越高越随机",
+    "mistral_timeout": "请求超时时间（秒）",
+    "mistral_mode": "single=单线程串行；multi=多线程并发（仅 multi 生效流式关闭）",
+    "mistral_thread_count": "multi 模式下的并发线程数",
+    "mistral_stream": "是否逐字流式输出（仅 single 模式生效）",
+    "mistral_base_url": "Mistral API 端点地址，留空使用官方默认地址",
+    "mistral_rate_limit": "Mistral API 每秒最大请求数，codestral-2508 建议 2.0"
   },
   "nvidia_test": {
     "title": "Nvidia API 响应测试",
@@ -721,7 +771,11 @@
     "apply_title": "设为总结模型",
     "apply_confirm": "将 {model} 写入配置项 summarization.nvidia_model？",
     "apply_done": "已将 {model} 设为 NVIDIA 总结模型",
-    "apply_failed": "写入配置失败: {error}",       "refresh_list": "刷新列表",       "refresh_list_loading": "正在刷新模型列表…",       "refresh_list_done": "已刷新模型列表（共 {count} 个）",       "refresh_list_failed": "刷新模型列表失败: {error}"
+    "apply_failed": "写入配置失败: {error}",
+    "refresh_list": "刷新列表",
+    "refresh_list_loading": "正在刷新模型列表…",
+    "refresh_list_done": "已刷新模型列表（共 {count} 个）",
+    "refresh_list_failed": "刷新模型列表失败: {error}"
   },
   "donate": {
     "title": "捐赠支持",
@@ -1099,6 +1153,25 @@
         "stream_json_error": "NvidiaClient: 流式 JSON 解析失败",
         "stream_interrupted": "NvidiaClient: 流式中断，已接收 {count} 字符",
         "stream_connection_failed": "NVIDIA 流式连接失败: {error}"
+      },
+      "mistral": {
+        "check_cached": "MistralClient: 使用缓存的连接状态",
+        "check_start": "MistralClient: 开始连接检查...",
+        "check_ok": "MistralClient: 连接检查成功",
+        "check_fail_empty": "MistralClient: 连接检查返回空响应",
+        "api_key_missing": "MistralClient: API Key 未配置",
+        "api_key_invalid": "MistralClient: API Key 无效（401），请检查 MISTRAL_API_KEY",
+        "check_error": "MistralClient: 连接检查异常: {error}",
+        "rate_limited": "MistralClient: 触发限流，{wait} 秒后重试",
+        "rate_limited_log": "MistralClient: 限流重试 ({attempt}/{max})，等待 {wait}s",
+        "api_error": "MistralClient: API 错误: {error}",
+        "request_failed": "MistralClient: 请求失败: {error}",
+        "retry_log": "MistralClient: 重试，等待 {wait}s",
+        "unknown_error": "MistralClient: 未知错误",
+        "user_cancelled": "MistralClient: 用户取消",
+        "stream_chunk_error": "MistralClient: 流式分片解析失败: {error}",
+        "stream_interrupted": "MistralClient: 流式中断，已收到 {count} 字符",
+        "stream_connection_failed": "MistralClient: 流式连接失败: {error}"
       }
     },
     "voice_transcription": {

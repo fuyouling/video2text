@@ -37,7 +37,8 @@
     "tools_nvidia_api_test": "Prueba de respuesta de la API de Nvidia",
     "help": "Ayuda",
     "help_donate": "Donar",
-    "help_about": "Acerca de"
+    "help_about": "Acerca de",
+    "settings_api_key_manage": "Gestionar API KEY"
   },
   "main": {
     "input_label": "Entrada:",
@@ -495,7 +496,11 @@
     "apply_title": "Establecer como modelo de resumen",
     "apply_confirm": "¿Escribir {model} en summarization.nvidia_model?",
     "apply_done": "{model} ahora es el modelo de resumen de NVIDIA",
-    "apply_failed": "Error al guardar la configuración: {error}",       "refresh_list": "Actualizar lista",       "refresh_list_loading": "Actualizando lista de modelos…",       "refresh_list_done": "Lista de modelos actualizada ({count} modelos)",       "refresh_list_failed": "No se pudo actualizar la lista de modelos: {error}"
+    "apply_failed": "Error al guardar la configuración: {error}",
+    "refresh_list": "Actualizar lista",
+    "refresh_list_loading": "Actualizando lista de modelos…",
+    "refresh_list_done": "Lista de modelos actualizada ({count} modelos)",
+    "refresh_list_failed": "No se pudo actualizar la lista de modelos: {error}"
   },
   "donate": {
     "title": "Donar",
@@ -1363,5 +1368,27 @@
     "timestamp": {
       "out_of_range": "Valor de marca de tiempo fuera de rango: {timestamp}"
     }
+  },
+  "api_key": {
+    "title": "Gestión de API Key",
+    "subtitle": "Gestiona secretos en el .env del directorio raíz del proyecto. Los valores se ocultan por defecto; puedes añadir, editar o eliminar entradas.",
+    "path_label": "Archivo de configuración: {path}",
+    "file_missing": "El archivo no existe; se creará al guardar",
+    "list_section": "Lista de secretos",
+    "show_all": "Mostrar todo",
+    "add": "Añadir",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "show": "Mostrar",
+    "hide": "Ocultar",
+    "delete": "Eliminar",
+    "key_placeholder": "Nombre de clave (solo lectura para existentes)",
+    "value_placeholder": "Valor secreto",
+    "empty_hint": "Aún no hay secretos. Haz clic en «Añadir».",
+    "error_empty_key": "El nombre de la clave no puede estar vacío",
+    "error_invalid_key": "El nombre de la clave solo puede contener letras, dígitos y guiones bajos, y debe empezar por una letra o guion bajo",
+    "error_dup_key": "El nombre de la clave ya existe (no distingue mayúsculas)",
+    "save_failed": "Error al guardar: {error}",
+    "saved_msg": "Guardado correctamente en:\n{path}"
   }
 }

@@ -37,7 +37,8 @@
     "tools_nvidia_api_test": "Nvidia API 응답 테스트",
     "help": "도움말",
     "help_donate": "기부",
-    "help_about": "정보"
+    "help_about": "정보",
+    "settings_api_key_manage": "API KEY 설정"
   },
   "main": {
     "input_label": "입력:",
@@ -495,7 +496,11 @@
     "apply_title": "요약 모델로 설정",
     "apply_confirm": "{model}을(를) summarization.nvidia_model에 저장할까요?",
     "apply_done": "{model}을(를) NVIDIA 요약 모델로 설정했습니다",
-    "apply_failed": "설정 저장 실패: {error}",       "refresh_list": "목록 새로고침",       "refresh_list_loading": "모델 목록을 새로 고치는 중…",       "refresh_list_done": "모델 목록 새로고침 완료（{count}개）",       "refresh_list_failed": "모델 목록 새로고침 실패: {error}"
+    "apply_failed": "설정 저장 실패: {error}",
+    "refresh_list": "목록 새로고침",
+    "refresh_list_loading": "모델 목록을 새로 고치는 중…",
+    "refresh_list_done": "모델 목록 새로고침 완료（{count}개）",
+    "refresh_list_failed": "모델 목록 새로고침 실패: {error}"
   },
   "donate": {
     "title": "기부",
@@ -1363,5 +1368,27 @@
     "timestamp": {
       "out_of_range": "타임스탬프 값이 범위를 벗어남: {timestamp}"
     }
+  },
+  "api_key": {
+    "title": "API Key 관리",
+    "subtitle": "프로젝트 루트의 .env에 있는 비밀을 관리합니다. 값은 기본적으로 마스킹되며, 추가 후 수정하거나 삭제할 수 있습니다.",
+    "path_label": "설정 파일: {path}",
+    "file_missing": "파일이 없습니다. 저장 시 새로 만들어집니다",
+    "list_section": "비밀 목록",
+    "show_all": "모두 표시",
+    "add": "추가",
+    "save": "저장",
+    "cancel": "취소",
+    "show": "표시",
+    "hide": "숨기기",
+    "delete": "삭제",
+    "key_placeholder": "키 이름 (기존 항목은 수정 불가)",
+    "value_placeholder": "비밀 값",
+    "empty_hint": "비밀이 없습니다. «추가»를 클릭하세요.",
+    "error_empty_key": "키 이름은 비워둘 수 없습니다",
+    "error_invalid_key": "키 이름은 문자, 숫자, 밑줄만 사용할 수 있으며 문자 또는 밑줄로 시작해야 합니다",
+    "error_dup_key": "키 이름이 이미 존재합니다 (대소문자 구분 안 함)",
+    "save_failed": "저장 실패: {error}",
+    "saved_msg": "성공적으로 저장됨:\n{path}"
   }
 }

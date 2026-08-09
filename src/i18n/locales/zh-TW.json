@@ -37,7 +37,8 @@
     "tools_nvidia_api_test": "Nvidia API 回應測試",
     "help": "幫助",
     "help_donate": "捐贈支持",
-    "help_about": "關於"
+    "help_about": "關於",
+    "settings_api_key_manage": "設定 API KEY"
   },
   "main": {
     "input_label": "輸入:",
@@ -721,7 +722,11 @@
     "apply_title": "設為摘要模型",
     "apply_confirm": "將 {model} 寫入設定項 summarization.nvidia_model？",
     "apply_done": "已將 {model} 設為 NVIDIA 摘要模型",
-    "apply_failed": "寫入設定失敗：{error}",       "refresh_list": "重新整理清單",       "refresh_list_loading": "正在重新整理模型清單…",       "refresh_list_done": "已重新整理模型清單（共 {count} 個）",       "refresh_list_failed": "重新整理模型清單失敗：{error}"
+    "apply_failed": "寫入設定失敗：{error}",
+    "refresh_list": "重新整理清單",
+    "refresh_list_loading": "正在重新整理模型清單…",
+    "refresh_list_done": "已重新整理模型清單（共 {count} 個）",
+    "refresh_list_failed": "重新整理模型清單失敗：{error}"
   },
   "donate": {
     "title": "捐贈支持",
@@ -1366,5 +1371,27 @@
     "timestamp": {
       "out_of_range": "時間戳值越界: {timestamp}"
     }
+  },
+  "api_key": {
+    "title": "API Key 管理",
+    "subtitle": "管理專案根目錄 .env 中的密鑰。密鑰值預設以遮罩顯示，新增後可修改或刪除。",
+    "path_label": "設定檔：{path}",
+    "file_missing": "檔案不存在，儲存後將新建",
+    "list_section": "密鑰清單",
+    "show_all": "全部顯示",
+    "add": "新增",
+    "save": "儲存",
+    "cancel": "取消",
+    "show": "顯示",
+    "hide": "隱藏",
+    "delete": "刪除",
+    "key_placeholder": "鍵名（已有項不可修改）",
+    "value_placeholder": "密鑰值",
+    "empty_hint": "尚無密鑰，點擊「新增」新增一條",
+    "error_empty_key": "鍵名不能為空",
+    "error_invalid_key": "鍵名僅允許字母、數字、底線，且以字母或底線開頭",
+    "error_dup_key": "鍵名已存在（不區分大小寫）",
+    "save_failed": "儲存失敗：{error}",
+    "saved_msg": "已成功儲存至：\n{path}"
   }
 }

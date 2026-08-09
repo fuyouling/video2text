@@ -37,7 +37,8 @@
     "tools_nvidia_api_test": "Nvidia-API-Antworttest",
     "help": "Hilfe",
     "help_donate": "Spenden",
-    "help_about": "Über"
+    "help_about": "Über",
+    "settings_api_key_manage": "API-Schlüssel verwalten"
   },
   "main": {
     "input_label": "Eingabe:",
@@ -495,7 +496,11 @@
     "apply_title": "Als Zusammenfassungsmodell festlegen",
     "apply_confirm": "{model} in summarization.nvidia_model schreiben?",
     "apply_done": "{model} ist jetzt das NVIDIA-Zusammenfassungsmodell",
-    "apply_failed": "Konfiguration konnte nicht gespeichert werden: {error}",       "refresh_list": "Liste aktualisieren",       "refresh_list_loading": "Modellliste wird aktualisiert…",       "refresh_list_done": "Modellliste aktualisiert ({count} Modelle)",       "refresh_list_failed": "Modellliste konnte nicht aktualisiert werden: {error}"
+    "apply_failed": "Konfiguration konnte nicht gespeichert werden: {error}",
+    "refresh_list": "Liste aktualisieren",
+    "refresh_list_loading": "Modellliste wird aktualisiert…",
+    "refresh_list_done": "Modellliste aktualisiert ({count} Modelle)",
+    "refresh_list_failed": "Modellliste konnte nicht aktualisiert werden: {error}"
   },
   "donate": {
     "title": "Spenden",
@@ -1363,5 +1368,27 @@
     "timestamp": {
       "out_of_range": "Zeitstempelwert außerhalb des Bereichs: {timestamp}"
     }
+  },
+  "api_key": {
+    "title": "API-Schlüssel-Verwaltung",
+    "subtitle": "Verwaltet Geheimnisse in der .env im Projektstammverzeichnis. Werte werden standardmäßig maskiert; Einträge können hinzugefügt, bearbeitet oder gelöscht werden.",
+    "path_label": "Konfigurationsdatei: {path}",
+    "file_missing": "Datei existiert nicht; wird beim Speichern erstellt",
+    "list_section": "Geheimnisliste",
+    "show_all": "Alle anzeigen",
+    "add": "Hinzufügen",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "show": "Anzeigen",
+    "hide": "Ausblenden",
+    "delete": "Löschen",
+    "key_placeholder": "Schlüsselname (bei Vorhandenem schreibgeschützt)",
+    "value_placeholder": "Geheimwert",
+    "empty_hint": "Noch keine Geheimnisse. Klicken Sie auf „Hinzufügen“.",
+    "error_empty_key": "Schlüsselname darf nicht leer sein",
+    "error_invalid_key": "Schlüsselname darf nur Buchstaben, Ziffern und Unterstriche enthalten und muss mit einem Buchstaben oder Unterstrich beginnen",
+    "error_dup_key": "Schlüsselname existiert bereits (groß-/kleinschreibungsunempfindlich)",
+    "save_failed": "Speichern fehlgeschlagen: {error}",
+    "saved_msg": "Erfolgreich gespeichert in:\n{path}"
   }
 }

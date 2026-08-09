@@ -161,7 +161,15 @@ class MainWindow(QMainWindow):
         )
         self._fav_helper.load()
         self._load_prompt_config()
-        self._load_prompt_templates()
+        # 两者独立加载并做异常隔离：任一方失败都不影响另一方恢复 last_used
+        try:
+            self._load_tx_prompt_templates()
+        except Exception:
+            logger.exception(t("main.tx_prompt_load_fail"))
+        try:
+            self._load_prompt_templates()
+        except Exception:
+            logger.exception(t("main.summary_prompt_load_fail"))
 
         # 界面完整加载并渲染后，再执行启动模型完整性检测。
         # 使用 300ms 延迟而非 0ms，确保窗口完全绘制后再弹出模态确认对话框，
@@ -685,6 +693,9 @@ class MainWindow(QMainWindow):
         clear_output_action = fav_menu.addAction(t("menu.settings_fav_clear_output"))
         clear_output_action.triggered.connect(self._clear_all_output_dirs)
 
+        api_key_action = settings_menu.addAction(t("menu.settings_api_key_manage"))
+        api_key_action.triggered.connect(self._on_show_api_key_manage)
+
         tools_menu = menu_bar.addMenu(t("menu.tools"))
         voice_action = tools_menu.addAction(t("menu.tools_voice_to_text"))
         voice_action.triggered.connect(self._on_show_voice_to_text)
@@ -732,6 +743,7 @@ class MainWindow(QMainWindow):
         dialog = ConfigEditorDialog(self)
         if dialog.exec() == dialog.DialogCode.Accepted:
             self._load_prompt_config()
+            self._load_prompt_templates()
             self._refresh_output_dir()
             self.status_bar.showMessage(t("status.config_saved"), 5000)
 
@@ -749,8 +761,6 @@ class MainWindow(QMainWindow):
     def _load_prompt_config(self) -> None:
         prompt = self.settings.get("summarization.custom_prompt", "")
         self.ollama_prompt_edit.setPlainText(prompt)
-
-        self._load_tx_prompt_templates()
 
     # ── 转写提示词模板管理 ──
 
@@ -859,14 +869,14 @@ class MainWindow(QMainWindow):
         for name in self.prompt_manager.get_names():
             self.prompt_template_combo.addItem(name)
         last_used = self.prompt_manager.get_last_used()
-        if last_used:
+        if last_used and last_used in self.prompt_manager.get_names():
             idx = self.prompt_template_combo.findText(last_used)
             if idx >= 0:
                 self.prompt_template_combo.setCurrentIndex(idx)
                 content = self.prompt_manager.get_content(last_used)
-                if content:
-                    self.ollama_prompt_edit.setPlainText(content)
+                self.ollama_prompt_edit.setPlainText(content)
         else:
+            self.ollama_prompt_edit.clear()
             self.prompt_template_combo.clearEditText()
             self.prompt_template_combo.setCurrentIndex(-1)
         self.prompt_template_combo.blockSignals(False)
@@ -1327,7 +1337,7 @@ class MainWindow(QMainWindow):
         """更新多线程标志"""
         provider = self.settings.get("summarization.provider", "ollama")
         mode = self.settings.get(f"summarization.{provider}_mode", "single")
-        self._is_multi_thread = provider == "nvidia" and _is_multi_mode(mode)
+        self._is_multi_thread = provider in ("nvidia", "mistral") and _is_multi_mode(mode)
 
     def _start_worker(self, thread: QThread, worker) -> bool:
         """启动 worker 线程并连接通用信号。
@@ -1917,6 +1927,12 @@ class MainWindow(QMainWindow):
         from src.ui.nvidia_api_test_dialog import NvidiaApiTestDialog
 
         dialog = NvidiaApiTestDialog(self, self.settings)
+        dialog.exec()
+
+    def _on_show_api_key_manage(self) -> None:
+        from src.ui.api_key_manager_dialog import ApiKeyManagerDialog
+
+        dialog = ApiKeyManagerDialog(self)
         dialog.exec()
 
     def _on_thread_finished(self) -> None:

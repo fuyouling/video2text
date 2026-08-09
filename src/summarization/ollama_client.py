@@ -127,7 +127,9 @@ class OllamaClient:
 
             if not quiet:
                 logger.warning(t("services.summarization.ollama.start_no_response"))
-            return True
+            # 进程已启动但超时仍未就绪：保留进程引用，但如实返回未就绪，
+            # 避免上层误判 Ollama 可用。
+            return False
         except Exception as e:
             if not quiet:
                 logger.error(t("services.summarization.ollama.start_failed", error=e))

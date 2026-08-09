@@ -35,9 +35,32 @@
     "tools": "Tools",
     "tools_voice_to_text": "Voice to Text",
     "tools_nvidia_api_test": "Nvidia API Response Test",
+    "settings_api_key_manage": "Manage API Key",
     "help": "Help",
     "help_donate": "Donate",
     "help_about": "About"
+  },
+  "api_key": {
+    "title": "API Key Manager",
+    "subtitle": "Manage secrets in the project root .env. Values are masked by default; you can add, edit, or delete entries.",
+    "path_label": "Config file: {path}",
+    "file_missing": "File does not exist; will be created on save",
+    "list_section": "Secret list",
+    "show_all": "Show all",
+    "add": "Add",
+    "save": "Save",
+    "cancel": "Cancel",
+    "show": "Show",
+    "hide": "Hide",
+    "delete": "Delete",
+    "key_placeholder": "Key name (read-only for existing)",
+    "value_placeholder": "Secret value",
+    "empty_hint": "No secrets yet. Click \"Add\" to create one.",
+    "error_empty_key": "Key name cannot be empty",
+    "error_invalid_key": "Key name may only contain letters, digits and underscores, and must start with a letter or underscore",
+    "error_dup_key": "Key name already exists (case-insensitive)",
+    "save_failed": "Save failed: {error}",
+    "saved_msg": "Saved successfully to:\n{path}"
   },
   "main": {
     "input_label": "Input:",
@@ -428,7 +451,14 @@
     "log_ollama_start_ok": "Ollama service: ✓ started",
     "log_ollama_start_not_found": "Ollama service: ✗ ollama command not found",
     "log_ollama_start_timeout": "Ollama service: ✗ timeout",
-    "log_ollama_start_fail": "Ollama service: ✗ failed to start"
+    "log_ollama_start_fail": "Ollama service: ✗ failed to start",
+    "radio_mistral": "Online Mistral model",
+    "mistral_group": "Mistral Config",
+    "mistral_mode_label": "Process mode",
+    "mistral_stream_label": "Stream output",
+    "mistral_threads_label": "Threads",
+    "log_mistral_ok": "MistralClient: connected, latency {latency_ms:.0f}ms, model {model}",
+    "log_mistral_fail": "MistralClient: connection failed, model {model}"
   },
   "summ_labels": {
     "ollama_url": "Ollama URL",
@@ -446,7 +476,16 @@
     "nvidia_timeout": "NVIDIA Timeout",
     "nvidia_mode": "NVIDIA Mode",
     "nvidia_thread_count": "NVIDIA Thread Count",
-    "nvidia_stream": "NVIDIA Stream Output"
+    "nvidia_stream": "NVIDIA Stream Output",
+    "mistral_model": "Model",
+    "mistral_max_tokens": "Max output tokens",
+    "mistral_temperature": "Temperature",
+    "mistral_timeout": "Timeout(s)",
+    "mistral_mode": "Process mode",
+    "mistral_thread_count": "Threads",
+    "mistral_stream": "Stream output",
+    "mistral_base_url": "API URL",
+    "mistral_rate_limit": "API rate (req/sec)"
   },
   "summ_tooltips": {
     "ollama_url": "Ollama service URL, default http://127.0.0.1:11434",
@@ -464,7 +503,16 @@
     "nvidia_timeout": "NVIDIA timeout (seconds), long text recommended 600+",
     "nvidia_mode": "NVIDIA mode: single (single thread, supports stream), multi (multi thread concurrent)",
     "nvidia_thread_count": "Concurrent thread count for multi-thread mode",
-    "nvidia_stream": "Enable stream output (single thread only): true / false"
+    "nvidia_stream": "Enable stream output (single thread only): true / false",
+    "mistral_model": "Mistral model name, e.g. mistral-large-latest / mistral-small-latest",
+    "mistral_max_tokens": "Max tokens generated per summary",
+    "mistral_temperature": "Sampling temperature, higher = more random",
+    "mistral_timeout": "Request timeout in seconds",
+    "mistral_mode": "single=serial; multi=concurrent threads (stream disabled in multi)",
+    "mistral_thread_count": "Concurrent threads in multi mode",
+    "mistral_stream": "Stream output token by token (single mode only)",
+    "mistral_base_url": "Mistral API endpoint URL, leave empty for the official default",
+    "mistral_rate_limit": "Max Mistral API requests per second, 2.0 recommended for codestral-2508"
   },
   "nvidia_test": {
     "title": "Nvidia API Response Test",
@@ -495,7 +543,11 @@
     "apply_title": "Set as summarization model",
     "apply_confirm": "Write {model} to summarization.nvidia_model?",
     "apply_done": "{model} is now the NVIDIA summarization model",
-    "apply_failed": "Failed to save config: {error}",       "refresh_list": "Refresh list",       "refresh_list_loading": "Refreshing model list…",       "refresh_list_done": "Model list refreshed ({count} models)",       "refresh_list_failed": "Failed to refresh model list: {error}"
+    "apply_failed": "Failed to save config: {error}",
+    "refresh_list": "Refresh list",
+    "refresh_list_loading": "Refreshing model list…",
+    "refresh_list_done": "Model list refreshed ({count} models)",
+    "refresh_list_failed": "Failed to refresh model list: {error}"
   },
   "donate": {
     "title": "Donate",
@@ -1096,6 +1148,25 @@
         "stream_json_error": "NvidiaClient: streaming JSON parse failed",
         "stream_interrupted": "NvidiaClient: stream interrupted, received {count} chars",
         "stream_connection_failed": "NVIDIA streaming connection failed: {error}"
+      },
+      "mistral": {
+        "check_cached": "MistralClient: using cached connection status",
+        "check_start": "MistralClient: starting connection check...",
+        "check_ok": "MistralClient: connection check OK",
+        "check_fail_empty": "MistralClient: connection check returned empty response",
+        "api_key_missing": "MistralClient: API Key not configured",
+        "api_key_invalid": "MistralClient: API Key invalid (401), check MISTRAL_API_KEY",
+        "check_error": "MistralClient: connection check error: {error}",
+        "rate_limited": "MistralClient: rate limited, retry after {wait}s",
+        "rate_limited_log": "MistralClient: rate-limit retry ({attempt}/{max}), wait {wait}s",
+        "api_error": "MistralClient: API error: {error}",
+        "request_failed": "MistralClient: request failed: {error}",
+        "retry_log": "MistralClient: retry, wait {wait}s",
+        "unknown_error": "MistralClient: unknown error",
+        "user_cancelled": "MistralClient: user cancelled",
+        "stream_chunk_error": "MistralClient: stream chunk parse failed: {error}",
+        "stream_interrupted": "MistralClient: stream interrupted, received {count} chars",
+        "stream_connection_failed": "MistralClient: stream connection failed: {error}"
       }
     },
     "voice_transcription": {

@@ -37,7 +37,8 @@
     "tools_nvidia_api_test": "Test de réponse de l'API Nvidia",
     "help": "Aide",
     "help_donate": "Faire un don",
-    "help_about": "À propos"
+    "help_about": "À propos",
+    "settings_api_key_manage": "Gérer la clé API"
   },
   "main": {
     "input_label": "Entrée :",
@@ -495,7 +496,11 @@
     "apply_title": "Définir comme modèle de résumé",
     "apply_confirm": "Écrire {model} dans summarization.nvidia_model ?",
     "apply_done": "{model} est désormais le modèle de résumé NVIDIA",
-    "apply_failed": "Échec de l'enregistrement de la configuration : {error}",       "refresh_list": "Actualiser la liste",       "refresh_list_loading": "Actualisation de la liste des modèles…",       "refresh_list_done": "Liste des modèles actualisée ({count} modèles)",       "refresh_list_failed": "Échec de l'actualisation de la liste des modèles : {error}"
+    "apply_failed": "Échec de l'enregistrement de la configuration : {error}",
+    "refresh_list": "Actualiser la liste",
+    "refresh_list_loading": "Actualisation de la liste des modèles…",
+    "refresh_list_done": "Liste des modèles actualisée ({count} modèles)",
+    "refresh_list_failed": "Échec de l'actualisation de la liste des modèles : {error}"
   },
   "donate": {
     "title": "Faire un don",
@@ -1363,5 +1368,27 @@
     "timestamp": {
       "out_of_range": "Valeur d'horodatage hors plage : {timestamp}"
     }
+  },
+  "api_key": {
+    "title": "Gestion des clés API",
+    "subtitle": "Gère les secrets dans le .env à la racine du projet. Les valeurs sont masquées par défaut ; vous pouvez ajouter, modifier ou supprimer des entrées.",
+    "path_label": "Fichier de configuration : {path}",
+    "file_missing": "Le fichier n'existe pas ; il sera créé à l'enregistrement",
+    "list_section": "Liste des secrets",
+    "show_all": "Tout afficher",
+    "add": "Ajouter",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "show": "Afficher",
+    "hide": "Masquer",
+    "delete": "Supprimer",
+    "key_placeholder": "Nom de clé (lecture seule pour les existantes)",
+    "value_placeholder": "Valeur secrète",
+    "empty_hint": "Aucun secret pour l'instant. Cliquez sur « Ajouter ».",
+    "error_empty_key": "Le nom de la clé ne peut pas être vide",
+    "error_invalid_key": "Le nom de la clé ne peut contenir que des lettres, chiffres et tirets bas, et doit commencer par une lettre ou un tiret bas",
+    "error_dup_key": "Le nom de la clé existe déjà (insensible à la casse)",
+    "save_failed": "Échec de l'enregistrement : {error}",
+    "saved_msg": "Enregistré avec succès dans :\n{path}"
   }
 }
