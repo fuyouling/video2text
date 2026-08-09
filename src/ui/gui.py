@@ -688,6 +688,8 @@ class MainWindow(QMainWindow):
         tools_menu = menu_bar.addMenu(t("menu.tools"))
         voice_action = tools_menu.addAction(t("menu.tools_voice_to_text"))
         voice_action.triggered.connect(self._on_show_voice_to_text)
+        nvidia_test_action = tools_menu.addAction(t("menu.tools_nvidia_api_test"))
+        nvidia_test_action.triggered.connect(self._on_show_nvidia_api_test)
 
         help_menu = menu_bar.addMenu(t("menu.help"))
         donate_action = help_menu.addAction(t("menu.help_donate"))
@@ -1908,6 +1910,14 @@ class MainWindow(QMainWindow):
     def _on_back_to_main(self) -> None:
         self.voice_panel.hide()
         self.main_panel.show()
+
+    # ── Nvidia API 响应测试（逻辑全部在 nvidia_api_test_dialog 中，此处仅入口） ──
+
+    def _on_show_nvidia_api_test(self) -> None:
+        from src.ui.nvidia_api_test_dialog import NvidiaApiTestDialog
+
+        dialog = NvidiaApiTestDialog(self, self.settings)
+        dialog.exec()
 
     def _on_thread_finished(self) -> None:
         sender = self.sender()

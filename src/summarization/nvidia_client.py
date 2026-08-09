@@ -215,11 +215,20 @@ class NvidiaClient:
                     else:
                         data = response.json()
                         choices = data.get("choices", [])
-                        result = (
-                            choices[0].get("message", {}).get("content", "")
-                            if choices
-                            else ""
-                        )
+                        if choices:
+                            message = choices[0].get("message", {}) or {}
+                            result = message.get("content") or ""
+                            if not result:
+                                # 部分推理模型（如 openai/gpt-oss）把最终答案放在
+                                # reasoning_content，而 message.content 为 null；
+                                # 这里回退，避免把可用模型误判为「空响应」。
+                                result = (
+                                    message.get("reasoning_content")
+                                    or message.get("reasoning")
+                                    or ""
+                                )
+                        else:
+                            result = ""
                     # 请求成功说明连接可用，刷新类级连接缓存
                     self._remember_connection(True)
                     return result

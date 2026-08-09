@@ -520,6 +520,57 @@ def gen_close(output_dir: Optional[Path] = None) -> Path:
     return path
 
 
+def gen_refresh(output_dir: Optional[Path] = None) -> Path:
+    """生成「重新测试」刷新图标 PNG（环形箭头）。
+
+    用于 Nvidia API 响应测试对话框中每个模型卡片上的重新测试按钮。
+
+    Args:
+        output_dir: 输出目录，默认为项目 assets/ 目录
+
+    Returns:
+        生成的文件路径
+    """
+    if output_dir is None:
+        output_dir = Path(__file__).resolve().parent.parent.parent / "assets"
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    import math as _m
+
+    size = 512
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    color = (120, 170, 255, 255)  # 与主题蓝一致
+
+    cx = cy = size // 2
+    r = 150
+    bbox = [cx - r, cy - r, cx + r, cy + r]
+    width = 56
+    # 环形箭头主体（约 280° 弧，顺时针）
+    draw.arc(bbox, start=50, end=330, fill=color, width=width)
+
+    # 箭头头部：位于弧末端（angle=330°，顺时针切线方向）
+    end_angle = _m.radians(330)
+    bx = cx + r * _m.cos(end_angle)
+    by = cy + r * _m.sin(end_angle)
+    dx = -_m.sin(end_angle)  # 顺时针切线方向
+    dy = _m.cos(end_angle)
+    rx = _m.cos(end_angle)   # 径向方向
+    ry = _m.sin(end_angle)
+    head_len = 96
+    hw = 46
+    tip = (bx + dx * head_len, by + dy * head_len)
+    c1 = (bx - dx * hw + rx * hw, by - dy * hw + ry * hw)
+    c2 = (bx - dx * hw - rx * hw, by - dy * hw - ry * hw)
+    draw.polygon([tip, c1, c2], fill=color)
+
+    path = output_dir / "refresh.png"
+    img.save(path)
+    logger.info("已生成刷新图标: %s", path)
+    return path
+
+
 # ============================================================
 # 公共 API
 # ============================================================
@@ -565,7 +616,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="图标生成工具")
     parser.add_argument("--arrows", action="store_true", help="仅生成箭头/关闭符号图标")
-    parser.add_argument("--widgets", action="store_true", help="仅生成控件图标（树形折叠/展开、勾选标记）")
+    parser.add_argument("--widgets", action="store_true", help="仅生成控件图标（树形折叠/展开、勾选标记、刷新）")
     parser.add_argument("--main", action="store_true", help="仅生成主图标")
     parser.add_argument("--all", action="store_true", help="生成所有图标（默认行为）")
     args = parser.parse_args()
@@ -578,6 +629,7 @@ if __name__ == "__main__":
         gen_tree_closed()
         gen_tree_open()
         gen_check()
+        gen_refresh()
     else:
         if args.main or args.all:
             generate_icon_files()
@@ -589,3 +641,4 @@ if __name__ == "__main__":
             gen_tree_closed()
             gen_tree_open()
             gen_check()
+            gen_refresh()

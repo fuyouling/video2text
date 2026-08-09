@@ -17,18 +17,11 @@ headers = {
 }
 
 user_input = """
-你是一个严格的中文文本修正器。
-修正用户语音转写文本中的错别字和不通顺的语句，
-保留用户原来的语气和表达习惯，只修正明显错误的字词。
-请以JSON格式输出，格式为：
-{"source_text":"用户原文","update_text":"修正后的文本"}
-只输出JSON，不要添加任何其他内容。
-文本内容:
-看一看英雷达API是否能够使用
+hello
 """
 
 payload = {
-  "model": "openai/gpt-oss-120b",
+  "model": "openai/gpt-oss-20b",
   "messages": [{"role":"user","content":user_input}],
   "max_tokens": 100000,
   "temperature": 1.00,
