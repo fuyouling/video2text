@@ -17,6 +17,7 @@ from typing import Callable, List, Optional
 from src.config.settings import Settings
 from src.preprocessing.video_processor import VideoProcessor
 from src.storage.file_writer import FileWriter
+from src.storage.output_index import OutputIndex
 from src.transcription.transcriber import TranscriptSegment, Transcriber
 from src.utils.exceptions import (
     TranscriptionCancelledError,
@@ -217,7 +218,8 @@ class TranscriptionService:
     def _transcribe_single(self, video_path: str, output_dir: str) -> TranscribeResult:
         """转写单个文件。"""
         video_name = Path(video_path).stem
-        temp_audio = Path(output_dir) / f"temp_{video_name}.wav"
+        # 临时音频放到系统临时目录，避免污染输出目录
+        temp_audio = Path(tempfile.gettempdir()) / f"v2t_temp_{video_name}_{os.getpid()}.wav"
 
         try:
             t0 = time.monotonic()
@@ -292,6 +294,14 @@ class TranscriptionService:
             formats = ", ".join(f".{fmt}" for fmt in self.output_formats)
             logger.info("  └─ " + t("services.transcription.save_done", formats=formats))
 
+            # 记录真实结果路径到输出索引（manifest），供历史加载/查看器/增量模式使用
+            try:
+                OutputIndex(output_dir).record(
+                    video_name, transcript_paths=output_paths, source_path=video_path
+                )
+            except Exception as exc:
+                logger.warning("写入输出索引失败: %s", exc)
+
             return TranscribeResult(
                 video_name=video_name,
                 segments=segments,
@@ -349,7 +359,7 @@ class TranscriptionService:
         path_hash = hashlib.sha256(hash_input.encode("utf-8")).hexdigest()[:12]
         checkpoint_file = self._checkpoint_dir / f"{video_name}_{path_hash}_chunks.json"
 
-        chunk_dir = Path(tempfile.mkdtemp(prefix="audio_chunks_", dir=output_dir))
+        chunk_dir = Path(tempfile.mkdtemp(prefix="audio_chunks_", dir=tempfile.gettempdir()))
         try:
             split_cmd = [
                 self.video_processor.ffmpeg_path,

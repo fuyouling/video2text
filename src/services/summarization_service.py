@@ -7,6 +7,7 @@ from typing import Callable, List, Optional
 from src.config.settings import Settings
 from src.i18n import t
 from src.storage.file_writer import FileWriter
+from src.storage.output_index import OutputIndex
 from src.summarization.providers import SummarizationProvider, create_provider
 from src.utils.exceptions import SummarizationError
 from src.utils.logger import get_logger
@@ -134,7 +135,14 @@ class SummarizationService:
 
         writer = file_writer or self.file_writer
         if video_name:
-            writer.write_summary(summary, video_name, fmt=self.summary_format)
+            summary_path = writer.write_summary(summary, video_name, fmt=self.summary_format)
+            # 记录真实摘要路径到输出索引（manifest）
+            try:
+                OutputIndex(str(writer.output_dir)).record(
+                    video_name, summary_path=summary_path
+                )
+            except Exception as exc:
+                logger.warning("写入输出索引失败: %s", exc)
 
         if total > 0:
             logger.info("  └─ " + t("services.summarization.summary_done", format=self.summary_format))

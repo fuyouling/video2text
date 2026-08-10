@@ -6,6 +6,7 @@ import tempfile
 from dataclasses import asdict
 from pathlib import Path
 from typing import List, Optional
+
 from src.transcription.transcriber import TranscriptSegment
 from src.text_processing.segment_merger import MergedSegment
 from src.storage.output_formatter import OutputFormatter
@@ -17,22 +18,86 @@ from src.utils.output_validator import (
     validate_output_file,
     validate_output_content,
 )
+from src.utils.path_resolver import normalize_path_key
 
 logger = get_logger(__name__)
+
+# ── 集中管理的格式常量（避免各模块硬编码不一致） ──
+TRANSCRIPT_FORMATS = ("txt", "srt", "vtt", "json")
+SUMMARY_FORMATS = ("txt", "md")
+KEYWORD_SUFFIX = "_keywords"
+SUMMARY_SUFFIX = "_summary"
+# 扫描时应跳过的派生文件后缀
+SKIP_SUFFIXES = ("_summary.txt", "_summary.md", "_keywords.txt")
+# 输出索引（manifest）所在子目录，以 '.' 开头，扫描时统一忽略
+OUTPUT_INDEX_DIR = ".v2t"
+
+
+class FileLocator:
+    """只读文件定位器 —— 不实例化 FileWriter，避免创建输出目录的副作用。"""
+
+    @staticmethod
+    def find_transcript(output_dir: str, video_name: str) -> Optional[Path]:
+        """查找已存在的转写文件（支持 txt/srt/vtt/json），未找到返回 None"""
+        for ext in TRANSCRIPT_FORMATS:
+            candidate = Path(output_dir) / f"{video_name}.{ext}"
+            if candidate.exists():
+                return candidate
+        return None
+
+    @staticmethod
+    def find_summary(output_dir: str, video_name: str) -> Optional[Path]:
+        """查找已存在的摘要文件（支持 txt/md），未找到返回 None"""
+        for fmt in SUMMARY_FORMATS:
+            candidate = Path(output_dir) / f"{video_name}{SUMMARY_SUFFIX}.{fmt}"
+            if candidate.exists():
+                return candidate
+        return None
+
+    @staticmethod
+    def iter_output_files(output_dir: str):
+        """递归遍历输出目录下的转写/摘要文件。
+
+        跳过任何父级路径以 '.' 开头的目录（如 ``.checkpoint`` / ``.v2t``），
+        避免把断点文件、输出索引等中间产物当成结果列出。
+        """
+        root = Path(output_dir)
+        if not root.exists():
+            return
+        for ext in TRANSCRIPT_FORMATS:
+            for p in root.rglob(f"*.{ext}"):
+                if any(part.startswith(".") for part in p.relative_to(root).parts):
+                    continue
+                yield p
+        for fmt in SUMMARY_FORMATS:
+            for p in root.rglob(f"{SUMMARY_SUFFIX}.{fmt}"):
+                if any(part.startswith(".") for part in p.relative_to(root).parts):
+                    continue
+                yield p
 
 
 class FileWriter:
     """文件写入器"""
 
+    # 保持向后兼容的类属性
+    SUPPORTED_TRANSCRIPT_FORMATS = TRANSCRIPT_FORMATS
+    SUPPORTED_SUMMARY_FORMATS = SUMMARY_FORMATS
+
     def __init__(self, output_dir: str):
         """初始化文件写入器
 
         Args:
-            output_dir: 输出目录
+            output_dir: 输出目录（仅在使用时才创建，构造期不 mkdir）
         """
         self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
         self.formatter = OutputFormatter()
+        self._ensured = False
+
+    def _ensure_dir(self) -> None:
+        """惰性创建输出目录（仅在真正写入时调用一次）。"""
+        if not self._ensured:
+            self.output_dir.mkdir(parents=True, exist_ok=True)
+            self._ensured = True
 
     @staticmethod
     def _atomic_write(file_path: Path, content: str, encoding: str = "utf-8") -> None:
@@ -74,6 +139,7 @@ class FileWriter:
         Returns:
             输出文件路径
         """
+        self._ensure_dir()
         output_path = self.output_dir / f"{filename}.{fmt}"
 
         if not segments:
@@ -133,6 +199,7 @@ class FileWriter:
         if not segments:
             raise OutputError(t("storage.file_writer.empty_merged", filename=filename))
 
+        self._ensure_dir()
         output_path = self.output_dir / f"{filename}.txt"
         content = self.formatter.format_merged_transcript(segments, include_timestamps)
 
@@ -147,8 +214,6 @@ class FileWriter:
         except Exception as e:
             logger.error(t("storage.file_writer.merge_fail"), output_path.name, e)
             raise
-
-    SUPPORTED_SUMMARY_FORMATS = ("txt", "md")
 
     def write_summary(
         self,
@@ -169,11 +234,12 @@ class FileWriter:
             输出文件路径
         """
         fmt_clean = fmt.lower().strip()
-        if fmt_clean not in self.SUPPORTED_SUMMARY_FORMATS:
+        if fmt_clean not in SUMMARY_FORMATS:
             raise ValueError(
-                t("storage.file_writer.unsupported_summary_format", fmt=fmt, formats=", ".join(self.SUPPORTED_SUMMARY_FORMATS))
+                t("storage.file_writer.unsupported_summary_format", fmt=fmt, formats=", ".join(SUMMARY_FORMATS))
             )
-        output_path = self.output_dir / f"{filename}_summary.{fmt_clean}"
+        self._ensure_dir()
+        output_path = self.output_dir / f"{filename}{SUMMARY_SUFFIX}.{fmt_clean}"
         content = self.formatter.format_summary(summary)
 
         try:
@@ -189,36 +255,12 @@ class FileWriter:
             raise
 
     def find_summary_file(self, filename: str) -> Optional[Path]:
-        """查找已存在的摘要文件（支持 txt/md）
-
-        Args:
-            filename: 文件名（不含 _summary 后缀）
-
-        Returns:
-            摘要文件路径，未找到返回 None
-        """
-        for fmt in self.SUPPORTED_SUMMARY_FORMATS:
-            candidate = self.output_dir / f"{filename}_summary.{fmt}"
-            if candidate.exists():
-                return candidate
-        return None
-
-    SUPPORTED_TRANSCRIPT_FORMATS = ("txt", "srt", "vtt", "json")
+        """查找已存在的摘要文件（支持 txt/md）"""
+        return FileLocator.find_summary(str(self.output_dir), filename)
 
     def find_transcript_file(self, video_name: str) -> Optional[Path]:
-        """查找已存在的转写文件（支持 txt/srt/vtt/json）
-
-        Args:
-            video_name: 视频文件名（不含扩展名）
-
-        Returns:
-            转写文件路径，未找到返回 None
-        """
-        for ext in self.SUPPORTED_TRANSCRIPT_FORMATS:
-            candidate = self.output_dir / f"{video_name}.{ext}"
-            if candidate.exists():
-                return candidate
-        return None
+        """查找已存在的转写文件（支持 txt/srt/vtt/json）"""
+        return FileLocator.find_transcript(str(self.output_dir), video_name)
 
     def write_json(self, data: dict, filename: str, validate: bool = True) -> str:
         """写入JSON文件
@@ -231,6 +273,7 @@ class FileWriter:
         Returns:
             输出文件路径
         """
+        self._ensure_dir()
         output_path = self.output_dir / f"{filename}.json"
 
         try:
@@ -257,6 +300,7 @@ class FileWriter:
         Returns:
             输出文件路径
         """
+        self._ensure_dir()
         output_path = self.output_dir / f"{filename}.txt"
 
         try:
@@ -287,7 +331,8 @@ class FileWriter:
         if not keywords:
             raise OutputError(t("storage.file_writer.empty_keywords", filename=filename))
 
-        output_path = self.output_dir / f"{filename}_keywords.txt"
+        self._ensure_dir()
+        output_path = self.output_dir / f"{filename}{KEYWORD_SUFFIX}.txt"
         content = "\n".join(keywords)
 
         try:

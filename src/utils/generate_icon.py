@@ -815,6 +815,68 @@ def gen_arrow_right(output_dir: Optional[Path] = None) -> Path:
     return path
 
 
+def gen_donate(output_dir: Optional[Path] = None) -> Path:
+    """生成「捐赠」爱心图标 PNG。
+
+    用于帮助菜单中的捐赠入口（独立于 donate.png，后者为对话框内的二维码/图片）。
+
+    Args:
+        output_dir: 输出目录，默认为项目 assets/ 目录
+
+    Returns:
+        生成的文件路径
+    """
+    if output_dir is None:
+        output_dir = Path(__file__).resolve().parent.parent.parent / "assets"
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    size = 512
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    color = _MENU_BLUE
+
+    cx = 256
+    top_y = 150
+    lobe = 96
+    pts = []
+    steps = 200
+    for i in range(steps + 1):
+        t = i / steps
+        if t < 0.5:
+            # 左半：从顶部凹陷到左叶底再到底部尖
+            u = t * 2
+            x = cx - 150 * math.sin(math.pi * u)
+            y = top_y + (362 - top_y) * (1 - math.cos(math.pi * u)) / 2
+        else:
+            u = (t - 0.5) * 2
+            x = cx + 150 * math.sin(math.pi * u)
+            y = top_y + (362 - top_y) * (1 + math.cos(math.pi * u)) / 2
+        pts.append((x, y))
+    draw.polygon(pts, fill=color)
+
+    # 中心高光（与菜单图标一致的镂空白边风格）
+    hl_pts = []
+    hl_cx = 256
+    for i in range(steps + 1):
+        t = i / steps
+        if t < 0.5:
+            u = t * 2
+            x = hl_cx - 110 * math.sin(math.pi * u)
+            y = top_y + 18 + (320 - top_y - 18) * (1 - math.cos(math.pi * u)) / 2
+        else:
+            u = (t - 0.5) * 2
+            x = hl_cx + 110 * math.sin(math.pi * u)
+            y = top_y + 18 + (320 - top_y - 18) * (1 + math.cos(math.pi * u)) / 2
+        hl_pts.append((x, y))
+    draw.polygon(hl_pts, fill=(0, 0, 0, 0))
+
+    path = output_dir / "heart.png"
+    img.save(path)
+    logger.info("已生成捐赠图标: %s", path)
+    return path
+
+
 # ============================================================
 # 公共 API
 # ============================================================
@@ -890,6 +952,8 @@ if __name__ == "__main__":
         gen_api_test()
         gen_about()
         gen_arrow_right()
+        gen_donate()
+
     else:
         if args.main or args.all:
             generate_icon_files()
@@ -914,3 +978,4 @@ if __name__ == "__main__":
             gen_api_test()
             gen_about()
             gen_arrow_right()
+            gen_donate()

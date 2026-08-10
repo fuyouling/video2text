@@ -9,7 +9,7 @@ from typing import Optional, Union
 from src.ui.background_content import BackgroundContent
 from src.config.settings import Settings
 from src.storage.bookmark_manager import BookmarkItem, BookmarkManager
-from src.storage.file_writer import FileWriter
+from src.storage.file_writer import FileLocator
 from src.ui.markdown_renderer import MarkdownRenderer
 from src.utils.paths import get_base_dir as _get_base_dir
 from src.i18n import t
@@ -89,7 +89,7 @@ def _asset_path(name: str) -> Optional[str]:
 
 def _find_summary_path(output_dir: str, video_name: str) -> Optional[Path]:
     """查找摘要文件（支持 _summary.txt 和 _summary.md）"""
-    return FileWriter(output_dir).find_summary_file(video_name)
+    return FileLocator.find_summary(output_dir, video_name)
 
 
 class ResultViewerWindow(QMainWindow):
@@ -119,6 +119,7 @@ class ResultViewerWindow(QMainWindow):
 
         self._output_dir = ""
         self._root_output_dir = ""
+        self._name_to_dir: dict[str, str] = {}
         self._flat_video_names: list[str] = []
         self._bookmark_mgr = BookmarkManager(_get_base_dir() / "bookmarks.json")
         self._all_video_names: list[str] = []
@@ -692,11 +693,24 @@ class ResultViewerWindow(QMainWindow):
     # ─── 文件加载与过滤 ────────────────────────────────────────
 
     def load_files(
-        self, video_names: list[str], output_dir: str, folder_mode: bool = False
+        self,
+        video_names: list[str],
+        output_dir: str,
+        folder_mode: bool = False,
+        name_to_dir: Optional[dict] = None,
     ):
-        """加载多个文件"""
+        """加载多个文件
+
+        Args:
+            video_names: 视频名列表（仅用于平铺模式展示与排序）
+            output_dir: 默认/根输出目录
+            folder_mode: 是否进入文件夹树模式
+            name_to_dir: name -> 真实结果目录 映射（历史/索引提供），
+                使平铺模式下也能定位镜像子目录里的文件
+        """
         self._output_dir = output_dir
         self._root_output_dir = output_dir
+        self._name_to_dir = dict(name_to_dir) if name_to_dir else {}
         self._flat_video_names = sorted(video_names, key=lambda x: x.lower())
         self._all_video_names = list(self._flat_video_names)
         self._file_filter.clear()
@@ -797,7 +811,8 @@ class ResultViewerWindow(QMainWindow):
         self.file_list.setVisible(not checked)
         self._folder_tree.setVisible(checked)
 
-        if checked and self._output_dir:
+        if checked and self._root_output_dir:
+            self._output_dir = self._root_output_dir
             self._scan_and_build_tree()
             self._filter_folder_tree(self._file_filter.text())
             self._folder_tree.setFocus()
@@ -816,7 +831,9 @@ class ResultViewerWindow(QMainWindow):
 
     def _scan_and_build_tree(self):
         """扫描输出目录下所有转写和摘要文件，构建按子目录分层的树形列表"""
-        output_path = Path(self._output_dir)
+        # 始终以根输出目录（主界面所选 base dir）为扫描起点，
+        # 避免 load_content 把 _output_dir 改成单个文件子目录后只显示该子目录
+        output_path = Path(self._root_output_dir) if self._root_output_dir else Path(self._output_dir)
         if not output_path.exists():
             return
 
@@ -836,6 +853,44 @@ class ResultViewerWindow(QMainWindow):
 
         _TRANSCRIPT_EXTS = (".txt", ".srt", ".vtt", ".json")
         _SKIP_SUFFIXES = ("_summary.txt", "_summary.md", "_keywords.txt")
+        # 已加入树 / name_to_dir 的 (目录键, 视频名)，用于多格式去重
+        _added_keys: set[str] = set()
+
+        def _is_hidden(p: Path) -> bool:
+            return any(part.startswith(".") for part in p.relative_to(output_path).parts)
+
+        def _add_node(video_name: str, file_path: Path) -> None:
+            """把文件加入树（按真实父目录分层），并记录 name -> dir 映射。"""
+            dir_key = str(file_path.parent)
+            key = f"{dir_key}|{video_name}"
+            if key in _added_keys:
+                return
+            _added_keys.add(key)
+            video_names.add(video_name)
+            self._name_to_dir[video_name] = dir_key
+
+            rel = file_path.parent.relative_to(output_path)
+            parts = list(rel.parts)
+            parent = root
+            for depth, part in enumerate(parts):
+                node_key = "/".join(parts[: depth + 1])
+                if node_key not in dir_nodes:
+                    node = QTreeWidgetItem()
+                    node.setText(0, part)
+                    node.setFlags(node.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+                    nf = node.font(0)
+                    nf.setBold(True)
+                    node.setFont(0, nf)
+                    parent.addChild(node)
+                    dir_nodes[node_key] = node
+                parent = dir_nodes[node_key]
+
+            child = QTreeWidgetItem()
+            child.setText(0, video_name)
+            child.setData(0, Qt.ItemDataRole.UserRole, video_name)
+            child.setData(0, Qt.ItemDataRole.UserRole + 1, dir_key)
+            parent.addChild(child)
+            self._tree_name_map[str(file_path.parent / video_name)] = child
 
         try:
             all_files: list[Path] = []
@@ -848,37 +903,14 @@ class ResultViewerWindow(QMainWindow):
             return
 
         for txt_file in all_files:
+            if _is_hidden(txt_file):
+                continue
             if any(txt_file.name.endswith(s) for s in _SKIP_SUFFIXES):
                 continue
             video_name = txt_file.stem
             if not video_name:
                 continue
-            video_names.add(video_name)
-
-            rel = txt_file.parent.relative_to(output_path)
-            parts = list(rel.parts)
-
-            parent = root
-            for depth, part in enumerate(parts):
-                dir_key = "/".join(parts[: depth + 1])
-                if dir_key not in dir_nodes:
-                    node = QTreeWidgetItem()
-                    node.setText(0, part)
-                    node.setFlags(node.flags() & ~Qt.ItemFlag.ItemIsSelectable)
-                    nf = node.font(0)
-                    nf.setBold(True)
-                    node.setFont(0, nf)
-                    parent.addChild(node)
-                    dir_nodes[dir_key] = node
-                parent = dir_nodes[dir_key]
-
-            child = QTreeWidgetItem()
-            child.setText(0, video_name)
-            child.setData(0, Qt.ItemDataRole.UserRole, video_name)
-            child.setData(0, Qt.ItemDataRole.UserRole + 1, str(txt_file.parent))
-            parent.addChild(child)
-            tree_key = str(txt_file.parent / video_name)
-            self._tree_name_map[tree_key] = child
+            _add_node(video_name, txt_file)
 
         try:
             summary_files = sorted(
@@ -890,35 +922,12 @@ class ResultViewerWindow(QMainWindow):
             summary_files = []
 
         for sf in summary_files:
-            vname = sf.stem.removesuffix("_summary")
-            if not vname or vname in video_names:
+            if _is_hidden(sf):
                 continue
-            video_names.add(vname)
-
-            rel = sf.parent.relative_to(output_path)
-            parts = list(rel.parts)
-
-            parent = root
-            for depth, part in enumerate(parts):
-                dir_key = "/".join(parts[: depth + 1])
-                if dir_key not in dir_nodes:
-                    node = QTreeWidgetItem()
-                    node.setText(0, part)
-                    node.setFlags(node.flags() & ~Qt.ItemFlag.ItemIsSelectable)
-                    nf = node.font(0)
-                    nf.setBold(True)
-                    node.setFont(0, nf)
-                    parent.addChild(node)
-                    dir_nodes[dir_key] = node
-                parent = dir_nodes[dir_key]
-
-            child = QTreeWidgetItem()
-            child.setText(0, vname)
-            child.setData(0, Qt.ItemDataRole.UserRole, vname)
-            child.setData(0, Qt.ItemDataRole.UserRole + 1, str(sf.parent))
-            parent.addChild(child)
-            tree_key = str(sf.parent / vname)
-            self._tree_name_map[tree_key] = child
+            vname = sf.stem.removesuffix("_summary")
+            if not vname:
+                continue
+            _add_node(vname, sf)
 
         self._sort_folders_first(root)
         self._update_folder_counts(root)
@@ -1004,7 +1013,9 @@ class ResultViewerWindow(QMainWindow):
     def load_content(self, video_name: str, output_dir: str):
         """加载指定文件的转写和摘要内容"""
         self._current_video_name = video_name
-        self._output_dir = output_dir
+        # 优先使用 name_to_dir 中记录的真实目录，再回退到传入目录
+        real_dir = self._name_to_dir.get(video_name) or output_dir
+        self._output_dir = real_dir
 
         # 清除搜索状态（文档内容将改变，旧的位置信息失效）
         self._search_matches = []
@@ -1015,12 +1026,7 @@ class ResultViewerWindow(QMainWindow):
         self.summary_view.setExtraSelections([])
 
         # 加载转写文本
-        transcript_path = None
-        for ext in ("txt", "srt", "vtt", "json"):
-            candidate = Path(output_dir) / f"{video_name}.{ext}"
-            if candidate.exists():
-                transcript_path = candidate
-                break
+        transcript_path = FileLocator.find_transcript(real_dir, video_name)
         if transcript_path is not None:
             try:
                 self.transcript_view.setPlainText(
@@ -1032,7 +1038,7 @@ class ResultViewerWindow(QMainWindow):
             self.transcript_view.setPlainText(t("viewer.transcript_not_found"))
 
         # 加载摘要（Markdown渲染）
-        summary_path = _find_summary_path(output_dir, video_name)
+        summary_path = _find_summary_path(real_dir, video_name)
         if summary_path:
             try:
                 summary_text = summary_path.read_text(encoding="utf-8-sig")
@@ -1053,14 +1059,17 @@ class ResultViewerWindow(QMainWindow):
         video_name = current.data(Qt.ItemDataRole.UserRole)
         if video_name == self._current_video_name:
             return
-        self.load_content(video_name, self._output_dir)
+        # 平铺模式下使用每个文件自身真实目录（来自 name_to_dir 映射）
+        real_dir = self._name_to_dir.get(video_name) or self._output_dir
+        self.load_content(video_name, real_dir)
 
     def _reload_content(self) -> None:
         """重新加载当前文件内容"""
         if not self._current_video_name:
             QMessageBox.information(self, t("common.hint"), t("viewer.select_file_first"))
             return
-        self.load_content(self._current_video_name, self._output_dir)
+        real_dir = self._name_to_dir.get(self._current_video_name) or self._output_dir
+        self.load_content(self._current_video_name, real_dir)
         self.status_bar.showMessage(t("viewer.reloaded"))
 
     # ─── 内容区右键菜单 ──────────────────────────────────────────
@@ -1338,13 +1347,10 @@ class ResultViewerWindow(QMainWindow):
 
     def _resolve_file_path(self, video_name: str, content_type: str) -> Optional[Path]:
         """根据 video_name 和 content_type 定位实际文件路径"""
+        real_dir = self._name_to_dir.get(video_name) or self._output_dir
         if content_type == "summary":
-            return _find_summary_path(self._output_dir, video_name)
-        for ext in ("txt", "srt", "vtt", "json"):
-            candidate = Path(self._output_dir) / f"{video_name}.{ext}"
-            if candidate.exists():
-                return candidate
-        return None
+            return _find_summary_path(real_dir, video_name)
+        return FileLocator.find_transcript(real_dir, video_name)
 
     def _add_bookmark(self):
         """添加书签"""
@@ -1600,26 +1606,36 @@ class ResultViewerWindow(QMainWindow):
         self, target_dir: Path, select_video: str, bookmark: BookmarkItem
     ):
         """切换到指定目录并加载文件列表，然后定位到书签"""
+        target_dir = Path(target_dir)
         self._output_dir = str(target_dir)
+        self._root_output_dir = str(target_dir)
 
+        name_to_dir: dict[str, str] = {}
         video_names: list[str] = []
         try:
-            for txt_file in sorted(target_dir.rglob("*.txt")):
-                if txt_file.name.endswith("_summary.txt") or txt_file.name.endswith(
-                    "_keywords.txt"
-                ):
-                    continue
-                if txt_file.stem:
-                    video_names.append(txt_file.stem)
+            for ext in ("txt", "srt", "vtt", "json"):
+                for f in sorted(target_dir.rglob(f"*.{ext}")):
+                    if any(part.startswith(".") for part in f.relative_to(target_dir).parts):
+                        continue
+                    if f.name.endswith(("_summary.txt", "_summary.md", "_keywords.txt")):
+                        continue
+                    if not f.stem:
+                        continue
+                    video_names.append(f.stem)
+                    name_to_dir[f.stem] = str(f.parent)
         except OSError:
             pass
 
         try:
             for sf in sorted(target_dir.rglob("*_summary.*")):
-                if sf.suffix in (".txt", ".md"):
-                    vname = sf.stem.removesuffix("_summary")
-                    if vname and vname not in video_names:
-                        video_names.append(vname)
+                if sf.suffix not in (".txt", ".md"):
+                    continue
+                if any(part.startswith(".") for part in sf.relative_to(target_dir).parts):
+                    continue
+                vname = sf.stem.removesuffix("_summary")
+                if vname and vname not in name_to_dir:
+                    name_to_dir[vname] = str(sf.parent)
+                    video_names.append(vname)
         except OSError:
             pass
 
@@ -1632,6 +1648,7 @@ class ResultViewerWindow(QMainWindow):
         video_names.sort(key=lambda x: x.lower())
         self._flat_video_names = video_names
         self._all_video_names = list(video_names)
+        self._name_to_dir = name_to_dir
         self._file_filter.clear()
 
         if self._folder_mode:

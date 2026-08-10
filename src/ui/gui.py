@@ -48,8 +48,10 @@ from src.config.settings import Settings
 from src.config.version import APP_VERSION
 from src.services.transcription_service import TranscriptionService
 from src.summarization.prompt_manager import PromptManager
-from src.storage.file_writer import FileWriter
+from src.storage.file_writer import FileWriter, FileLocator
+from src.storage.output_index import OutputIndex
 from src.storage.output_formatter import OutputFormatter
+from src.utils.path_resolver import resolve_output_path
 from src.summarization.ollama_client import OllamaClient
 from src.ui.background_content import BackgroundContent
 from src.ui.gui_dialogs import ConfigEditorDialog, VideoSelectionDialog
@@ -865,7 +867,7 @@ class MainWindow(QMainWindow):
 
         help_menu = QMenu(self)
         help_menu.setTitle(t("menu.help"))
-        donate_action = help_menu.addAction(_menu_icon("donate.png"), t("menu.help_donate"))
+        donate_action = help_menu.addAction(_menu_icon("heart.png"), t("menu.help_donate"))
         donate_action.triggered.connect(self._show_donate)
         about_action = help_menu.addAction(_menu_icon("about.png"), t("menu.help_about"))
         about_action.setShortcut("F1")
@@ -1141,17 +1143,22 @@ class MainWindow(QMainWindow):
         if not self._current_video_name:
             self.status_bar.showMessage(t("main.save_no_file"), 3000)
             return
-        output_dir = self.output_combo.currentText().strip() or self._default_output_dir
+        # 写回真实结果目录（优先索引/历史映射，再回退配置输出目录），避免镜像模式下另存到根目录
+        real_dir = self._resolve_video_output_dir(self._current_video_name)
         current_tab = self.result_tabs.currentIndex()
         if current_tab == 0:
             text = self.transcript_view.toPlainText()
-            save_path = self._resolve_transcript_path(output_dir)
+            fmt = self.settings.get_list("output.transcript_format", ["txt"])
+            fmt = [f.lower().strip() for f in fmt if f.lower().strip()] or ["txt"]
+            save_path = Path(real_dir) / f"{self._current_video_name}.{fmt[0]}"
         else:
             text = self.summary_view.toPlainText()
-            save_path = self._resolve_summary_path(output_dir)
+            fmt = self.settings.get("output.summary_format", "txt").lower().strip()
+            if fmt not in ("txt", "md"):
+                fmt = "txt"
+            save_path = Path(real_dir) / f"{self._current_video_name}_summary.{fmt}"
         try:
-            save_path.parent.mkdir(parents=True, exist_ok=True)
-            save_path.write_text(text, encoding="utf-8")
+            FileWriter._atomic_write(save_path, text)
             self.status_bar.showMessage(t("main.saved_path", path=save_path), 5000)
         except OSError as exc:
             self.status_bar.showMessage(t("main.save_fail", error=exc), 5000)
@@ -1178,7 +1185,7 @@ class MainWindow(QMainWindow):
         preferred = Path(output_dir) / f"{name}_summary.{fmt}"
         if preferred.exists():
             return preferred
-        found = FileWriter(output_dir).find_summary_file(name)
+        found = FileLocator.find_summary(output_dir, name)
         if found:
             return found
         return preferred
@@ -1361,7 +1368,10 @@ class MainWindow(QMainWindow):
 
     def _load_history_files(self) -> None:
         """从输出目录加载历史转写和总结文件，填充文件列表。"""
-        output_dir = self.output_combo.currentText().strip() or self._default_output_dir
+        output_dir = resolve_output_path(
+            self.output_combo.currentText().strip() or self._default_output_dir,
+            self.settings._base_dir,
+        )
         output_path = Path(output_dir)
 
         if not output_path.exists():
@@ -1369,44 +1379,13 @@ class MainWindow(QMainWindow):
             return
 
         self._history_loaded = True
-        self._name_to_output_dir = {}
+        # 用输出索引扫描：跳过 '.checkpoint'/'.v2t' 等中间产物，并按真实父目录记录 name -> dir
+        scanned = OutputIndex(output_dir).scan()
 
-        transcript_files: list[Path] = []
-        for ext in ("txt", "srt", "vtt", "json"):
-            try:
-                transcript_files.extend(output_path.rglob(f"*.{ext}"))
-            except OSError:
-                pass
-        transcript_files.sort(key=lambda p: p.name.lower())
-
-        found_names: set[str] = set()
-        for txt_file in transcript_files:
-            if txt_file.name.endswith("_summary.txt") or txt_file.name.endswith(
-                "_summary.md"
-            ):
-                continue
-            if txt_file.name.endswith("_keywords.txt"):
-                continue
-            found_names.add(txt_file.stem)
-            self._name_to_output_dir[txt_file.stem] = str(txt_file.parent)
-
-        summary_files: list[Path] = []
-        try:
-            summary_files.extend(
-                p
-                for p in output_path.rglob("*_summary.*")
-                if p.suffix in (".txt", ".md")
-            )
-        except OSError:
-            pass
-        for summary_file in summary_files:
-            if summary_file.suffix not in (".txt", ".md"):
-                continue
-            video_name = summary_file.stem.removesuffix("_summary")
-            if video_name:
-                found_names.add(video_name)
-                if video_name not in self._name_to_output_dir:
-                    self._name_to_output_dir[video_name] = str(summary_file.parent)
+        self._name_to_output_dir = {
+            name: info.get("dir", output_dir) for name, info in scanned.items()
+        }
+        found_names = set(scanned.keys())
 
         if not found_names:
             QMessageBox.warning(
@@ -1433,9 +1412,16 @@ class MainWindow(QMainWindow):
 
     def _get_output_dir(self) -> str:
         """获取并规范化输出目录路径，不存在时自动创建。"""
-        output_dir = self.output_combo.currentText().strip() or self._default_output_dir
+        raw = self.output_combo.currentText().strip() or self._default_output_dir
+        output_dir = resolve_output_path(raw, self.settings._base_dir)
         self.output_combo.setCurrentText(output_dir)
-        Path(output_dir).mkdir(parents=True, exist_ok=True)
+        try:
+            Path(output_dir).mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            QMessageBox.warning(
+                self, t("common.hint"), t("main.output_dir_not_exist", dir=output_dir)
+            )
+            raise
         return output_dir
 
     def _apply_incremental_mode(self, video_files: list[str], output_dir: str) -> list[str]:
@@ -1479,10 +1465,13 @@ class MainWindow(QMainWindow):
 
     def _resolve_video_output_dir(self, video_name: str) -> str:
         base_dir = self.output_combo.currentText().strip() or self._default_output_dir
+        # 优先用历史/索引映射里的真实目录（修复：加载历史后子目录文件读不到）
+        # 仅在该目录确实存在时才信任，避免旧的历史映射在后续新任务中误用
+        mapped = self._name_to_output_dir.get(video_name)
+        if mapped and Path(mapped).exists():
+            return mapped
         if not self._mirror_subdirs:
             return base_dir
-        if video_name in self._name_to_output_dir:
-            return self._name_to_output_dir[video_name]
         if self._input_folder:
             for vf in self._video_files:
                 if Path(vf).stem == video_name:
@@ -1855,7 +1844,7 @@ class MainWindow(QMainWindow):
     def _load_transcript_content(self, video_name: str) -> None:
         """加载指定文件的转写文本到编辑区"""
         output_dir = self._resolve_video_output_dir(video_name)
-        transcript_path = FileWriter(output_dir).find_transcript_file(video_name)
+        transcript_path = FileLocator.find_transcript(output_dir, video_name)
         if transcript_path is None:
             return
         try:
@@ -2158,7 +2147,10 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, t("common.hint"), t("main.no_video_dialog"))
             return
 
-        output_dir = self.output_combo.currentText().strip() or self._default_output_dir
+        output_dir = resolve_output_path(
+            self.output_combo.currentText().strip() or self._default_output_dir,
+            self.settings._base_dir,
+        )
         video_files = list(self._completed_names)
 
         if self._result_viewer is None or not self._result_viewer.isVisible():
@@ -2169,7 +2161,10 @@ class MainWindow(QMainWindow):
         # 上调用 ShowWindow(SW_SHOWMAXIMIZED)，窗口一出场即最大化，消除"小窗口先闪"。
         self._result_viewer.winId()
         self._result_viewer.load_files(
-            video_files, output_dir, folder_mode=self._mirror_subdirs
+            video_files,
+            output_dir,
+            folder_mode=self._mirror_subdirs,
+            name_to_dir=self._name_to_output_dir,
         )
         self._result_viewer.showMaximized()
         self._result_viewer.raise_()
@@ -2305,7 +2300,7 @@ class MainWindow(QMainWindow):
 
     def _load_file_content(self, video_name: str, output_dir: str) -> None:
         """在事件循环空闲时加载文件内容，避免阻塞 GUI 线程。"""
-        transcript_path = FileWriter(output_dir).find_transcript_file(video_name)
+        transcript_path = FileLocator.find_transcript(output_dir, video_name)
         if transcript_path is not None:
             try:
                 self.transcript_view.setPlainText(
