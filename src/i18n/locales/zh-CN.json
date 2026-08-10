@@ -38,9 +38,7 @@
     "settings_api_key_manage": "设置 API KEY",
     "help": "帮助",
     "help_donate": "捐赠支持",
-    "help_about": "关于",
-    "group_config": "配置",
-    "group_account": "账户"
+    "help_about": "关于"
   },
   "api_key": {
     "title": "API Key 管理",

@@ -39,9 +39,7 @@
     "help_donate": "기부",
     "help_about": "정보",
     "settings_api_key_manage": "API KEY 설정",
-    "group_config": "설정",
-    "group_account": "계정"
-  },
+    "help": "도움말",
   "main": {
     "input_label": "입력:",
     "input_placeholder": "비디오/오디오 파일 또는 폴더 선택…",

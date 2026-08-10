@@ -39,9 +39,7 @@
     "help_donate": "捐贈支持",
     "help_about": "關於",
     "settings_api_key_manage": "設定 API KEY",
-    "group_config": "設定",
-    "group_account": "帳戶"
-  },
+    "help": "幫助",
   "main": {
     "input_label": "輸入:",
     "input_placeholder": "請選擇視頻/音頻文件或文件夾…",

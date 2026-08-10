@@ -39,9 +39,7 @@
     "help_donate": "Пожертвовать",
     "help_about": "О программе",
     "settings_api_key_manage": "Настроить API KEY",
-    "group_config": "Конфигурация",
-    "group_account": "Аккаунт"
-  },
+    "help": "Помощь",
   "main": {
     "input_label": "Вход:",
     "input_placeholder": "Выберите видео/аудиофайлы или папку…",

@@ -39,9 +39,7 @@
     "help_donate": "Spenden",
     "help_about": "Über",
     "settings_api_key_manage": "API-Schlüssel verwalten",
-    "group_config": "Konfiguration",
-    "group_account": "Konto"
-  },
+    "help": "Hilfe",
   "main": {
     "input_label": "Eingabe:",
     "input_placeholder": "Video-/Audiodateien oder Ordner auswählen…",

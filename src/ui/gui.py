@@ -156,7 +156,6 @@ QMenu {
     border-radius: 10px;
     padding: 6px;
     font-size: 14px;
-    min-width: 220px;
 }
 QMenu::item {
     padding: 8px 30px 8px 12px;
@@ -774,12 +773,6 @@ class MainWindow(QMainWindow):
         """应用浅色主题菜单样式（独立于背景图，始终生效）。"""
         self.setStyleSheet(self.styleSheet() + _MENU_QSS)
 
-    def _add_section_title(self, menu: "QMenu", key: str) -> None:
-        """新增一个禁用的分组标题（加粗灰字）。"""
-        title = menu.addAction(t(key))
-        title.setEnabled(False)
-        title.setObjectName("menuSectionTitle")
-
     def _create_menu_button(
         self, toolbar: "QToolBar", icon_name: str, menu_key: str, menu: "QMenu"
     ) -> "QToolButton":
@@ -809,7 +802,6 @@ class MainWindow(QMainWindow):
         settings_menu = QMenu(self)
         settings_menu.setTitle(t("menu.settings"))
 
-        self._add_section_title(settings_menu, "menu.group_config")
         edit_config_action = settings_menu.addAction(
             _menu_icon("edit_config.png"), t("menu.settings_edit_config")
         )
@@ -849,7 +841,6 @@ class MainWindow(QMainWindow):
         clear_output_action = fav_menu.addAction(t("menu.settings_fav_clear_output"))
         clear_output_action.triggered.connect(self._clear_all_output_dirs)
 
-        self._add_section_title(settings_menu, "menu.group_account")
         api_key_action = settings_menu.addAction(
             _menu_icon("api_key.png"), t("menu.settings_api_key_manage")
         )
@@ -1381,15 +1372,11 @@ class MainWindow(QMainWindow):
         self._name_to_output_dir = {}
 
         transcript_files: list[Path] = []
-        if self._mirror_subdirs:
-            for ext in ("txt", "srt", "vtt", "json"):
-                try:
-                    transcript_files.extend(output_path.rglob(f"*.{ext}"))
-                except OSError:
-                    pass
-        else:
-            for ext in ("txt", "srt", "vtt", "json"):
-                transcript_files.extend(output_path.glob(f"*.{ext}"))
+        for ext in ("txt", "srt", "vtt", "json"):
+            try:
+                transcript_files.extend(output_path.rglob(f"*.{ext}"))
+            except OSError:
+                pass
         transcript_files.sort(key=lambda p: p.name.lower())
 
         found_names: set[str] = set()
@@ -1401,32 +1388,24 @@ class MainWindow(QMainWindow):
             if txt_file.name.endswith("_keywords.txt"):
                 continue
             found_names.add(txt_file.stem)
-            if self._mirror_subdirs:
-                self._name_to_output_dir[txt_file.stem] = str(txt_file.parent)
+            self._name_to_output_dir[txt_file.stem] = str(txt_file.parent)
 
         summary_files: list[Path] = []
-        if self._mirror_subdirs:
-            try:
-                summary_files.extend(
-                    p
-                    for p in output_path.rglob("*_summary.*")
-                    if p.suffix in (".txt", ".md")
-                )
-            except OSError:
-                pass
-        else:
+        try:
             summary_files.extend(
                 p
-                for p in output_path.glob("*_summary.*")
+                for p in output_path.rglob("*_summary.*")
                 if p.suffix in (".txt", ".md")
             )
+        except OSError:
+            pass
         for summary_file in summary_files:
             if summary_file.suffix not in (".txt", ".md"):
                 continue
             video_name = summary_file.stem.removesuffix("_summary")
             if video_name:
                 found_names.add(video_name)
-                if self._mirror_subdirs and video_name not in self._name_to_output_dir:
+                if video_name not in self._name_to_output_dir:
                     self._name_to_output_dir[video_name] = str(summary_file.parent)
 
         if not found_names:

@@ -39,9 +39,7 @@
     "help_donate": "寄付",
     "help_about": "について",
     "settings_api_key_manage": "API KEY を設定",
-    "group_config": "設定",
-    "group_account": "アカウント"
-  },
+    "help": "ヘルプ",
   "main": {
     "input_label": "入力:",
     "input_placeholder": "動画/音声ファイルまたはフォルダを選択…",
