@@ -79,7 +79,7 @@ Ollama 是一个本地大语言模型运行框架，使用它来生成文本摘�
 
 >注册Ollama账号后也有免费的在线模型可以使用
 
-**mistral 在线模型**
+**2.3 mistral 在线模型**
 
 需要先在[mistral](https://v2.auth.mistral.ai/login)注册账号,再创建 API Key,再通过`设置>设置 API Key`添加到程序
 

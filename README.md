@@ -79,7 +79,7 @@ Ollama is a local large language model runtime framework used for generating tex
 
 > After registering for an Ollama account, there are also free online models you can use
 
-**mistral Online Model**
+**2.3 mistral Online Model**
 
 You need to first register on [mistral](https://v2.auth.mistral.ai/login), then create an API Key, and add it to the program via `Settings > Manage API Key`
 
