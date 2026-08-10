@@ -4,6 +4,8 @@ Audio/video transcription and summarization tool based on faster-whisper, suitab
 
 ## GUI
 
+If you don't like this background image, you can replace it and adjust the transparency as you wish
+
 ![](https://github.com/user-attachments/assets/444687f6-302c-4b76-be40-9c5a595a0151)
 
 **Program Entry**

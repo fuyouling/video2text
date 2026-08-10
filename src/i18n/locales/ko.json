@@ -38,7 +38,9 @@
     "help": "도움말",
     "help_donate": "기부",
     "help_about": "정보",
-    "settings_api_key_manage": "API KEY 설정"
+    "settings_api_key_manage": "API KEY 설정",
+    "group_config": "설정",
+    "group_account": "계정"
   },
   "main": {
     "input_label": "입력:",

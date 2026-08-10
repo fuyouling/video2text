@@ -37,6 +37,8 @@ from PySide6.QtWidgets import (
     QStatusBar,
     QTabWidget,
     QTextEdit,
+    QToolBar,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -83,6 +85,84 @@ else:
 _DEFAULT_OUTPUT_DIR = str(_PROJECT_ROOT / "output")
 
 _BTN_MIN_WIDTH = 100
+
+_ASSETS_DIR = Path(__file__).resolve().parents[2] / "assets"
+
+
+def _menu_icon(name: str) -> QIcon:
+    """加载 assets/ 下的菜单图标。"""
+    return QIcon(str(_ASSETS_DIR / name))
+
+
+# 浅色主题菜单样式（无条件生效，独立于背景图）
+# 说明：本环境 PySide6 的原生 QMenuBar 在带图标时只会保留图标、丢弃文字，
+# 因此顶部菜单改用 QToolBar + QToolButton(图标+文字) 实现，弹出菜单仍为 QMenu。
+_MENU_QSS = """
+QToolBar#mainMenuBar {
+    background: #f4f6fa;
+    border-bottom: 1px solid #e3e7ee;
+    spacing: 2px;
+    padding: 0px 3px;
+    margin: 0;
+}
+QToolBar#mainMenuBar QToolButton {
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    margin: 0;
+    padding: 0px 8px;
+    min-height: 16px;
+    max-height: 20px;
+    color: #1f2933;
+    font-size: 11px;
+    icon-size: 12px;
+}
+QToolBar#mainMenuBar QToolButton:hover,
+QToolBar#mainMenuBar QToolButton:pressed {
+    background: rgba(91, 157, 255, 0.18);
+    color: #1763d6;
+}
+QToolBar#mainMenuBar QToolButton::menu-indicator {
+    image: none;
+}
+QMenu {
+    background: #ffffff;
+    color: #1f2933;
+    border: 1px solid #e3e7ee;
+    border-radius: 10px;
+    padding: 6px;
+    font-size: 14px;
+    min-width: 220px;
+}
+QMenu::item {
+    padding: 8px 30px 8px 12px;
+    min-height: 28px;
+    border-radius: 6px;
+    color: #1f2933;
+    icon-size: 18px;
+}
+QMenu::item:selected {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #5b9dff, stop:1 #4a8cff);
+    color: #ffffff;
+}
+QMenu::separator {
+    height: 1px;
+    background: #edeff3;
+    margin: 6px 10px;
+}
+QMenu::right-arrow {
+    image: url(assets/arrow_right.png);
+    width: 14px;
+    height: 14px;
+}
+QMenu::item:disabled {
+    color: #98a2b3;
+    font-weight: 600;
+    padding: 4px 12px;
+    background: transparent;
+}
+"""
 
 
 class MainWindow(QMainWindow):
@@ -415,6 +495,7 @@ class MainWindow(QMainWindow):
             self.setWindowIcon(QIcon(str(icon_path)))
 
         self._create_menu_bar()
+        self._apply_menu_style()
 
         self._bg_content = BackgroundContent()
         self.setCentralWidget(self._bg_content)
@@ -663,24 +744,73 @@ class MainWindow(QMainWindow):
         layout.addWidget(summary_prompt_group, 1)
         return container
 
-    def _create_menu_bar(self) -> None:
-        menu_bar = self.menuBar()
+    def _apply_menu_style(self) -> None:
+        """应用浅色主题菜单样式（独立于背景图，始终生效）。"""
+        self.setStyleSheet(self.styleSheet() + _MENU_QSS)
 
-        settings_menu = menu_bar.addMenu(t("menu.settings"))
-        edit_config_action = settings_menu.addAction(t("menu.settings_edit_config"))
+    def _add_section_title(self, menu: "QMenu", key: str) -> None:
+        """新增一个禁用的分组标题（加粗灰字）。"""
+        title = menu.addAction(t(key))
+        title.setEnabled(False)
+        title.setObjectName("menuSectionTitle")
+
+    def _create_menu_button(
+        self, toolbar: "QToolBar", icon_name: str, menu_key: str, menu: "QMenu"
+    ) -> "QToolButton":
+        """创建顶部「图标+文字」菜单按钮。
+
+        说明：本环境 PySide6 原生 QMenuBar 在条目带图标时会丢弃文字（只保留图标），
+        因此顶部菜单改用 QToolButton(图标+文字) 弹出 QMenu 的方式实现。
+        """
+        btn = QToolButton(self)
+        btn.setIcon(_menu_icon(icon_name))
+        btn.setText(t(menu_key))
+        btn.setMenu(menu)
+        btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        btn.setAutoRaise(True)
+        btn.setObjectName("mainMenuButton")
+        toolbar.addWidget(btn)
+        return btn
+
+    def _create_menu_bar(self) -> None:
+        toolbar = QToolBar(self)
+        toolbar.setObjectName("mainMenuBar")
+        toolbar.setMovable(False)
+        toolbar.setFloatable(False)
+        toolbar.setAllowedAreas(Qt.ToolBarArea.TopToolBarArea)
+
+        settings_menu = QMenu(self)
+        settings_menu.setTitle(t("menu.settings"))
+
+        self._add_section_title(settings_menu, "menu.group_config")
+        edit_config_action = settings_menu.addAction(
+            _menu_icon("edit_config.png"), t("menu.settings_edit_config")
+        )
+        edit_config_action.setShortcut("Ctrl+,")
+        edit_config_action.setShortcutVisibleInContextMenu(True)
+        edit_config_action.setStatusTip(t("menu.settings_edit_config"))
         edit_config_action.triggered.connect(self._show_config_editor)
 
-
-        # 背景图片子菜单
-        bg_menu = settings_menu.addMenu(t("menu.settings_bg_image"))
-        bg_change_action = bg_menu.addAction(t("menu.settings_bg_change"))
+        bg_menu = settings_menu.addMenu(
+            _menu_icon("bg_image.png"), t("menu.settings_bg_image")
+        )
+        bg_change_action = bg_menu.addAction(
+            _menu_icon("bg_image.png"), t("menu.settings_bg_change")
+        )
         bg_change_action.triggered.connect(self._change_bg_image)
-        bg_clear_action = bg_menu.addAction(t("menu.settings_bg_clear"))
+        bg_clear_action = bg_menu.addAction(
+            _menu_icon("close.png"), t("menu.settings_bg_clear")
+        )
         bg_clear_action.triggered.connect(self._clear_bg_image)
-        bg_transparency_action = bg_menu.addAction(t("menu.settings_bg_transparency"))
+        bg_transparency_action = bg_menu.addAction(
+            _menu_icon("refresh.png"), t("menu.settings_bg_transparency")
+        )
         bg_transparency_action.triggered.connect(self._adjust_bg_transparency)
 
-        fav_menu = settings_menu.addMenu(t("menu.settings_fav"))
+        fav_menu = settings_menu.addMenu(
+            _menu_icon("favorite.png"), t("menu.settings_fav")
+        )
         fav_input_action = fav_menu.addAction(t("menu.settings_fav_input"))
         fav_input_action.triggered.connect(self._fav_input_dir)
         fav_output_action = fav_menu.addAction(t("menu.settings_fav_output"))
@@ -693,20 +823,43 @@ class MainWindow(QMainWindow):
         clear_output_action = fav_menu.addAction(t("menu.settings_fav_clear_output"))
         clear_output_action.triggered.connect(self._clear_all_output_dirs)
 
-        api_key_action = settings_menu.addAction(t("menu.settings_api_key_manage"))
+        self._add_section_title(settings_menu, "menu.group_account")
+        api_key_action = settings_menu.addAction(
+            _menu_icon("api_key.png"), t("menu.settings_api_key_manage")
+        )
+        api_key_action.setShortcut("Ctrl+K")
+        api_key_action.setShortcutVisibleInContextMenu(True)
+        api_key_action.setStatusTip(t("menu.settings_api_key_manage"))
         api_key_action.triggered.connect(self._on_show_api_key_manage)
 
-        tools_menu = menu_bar.addMenu(t("menu.tools"))
-        voice_action = tools_menu.addAction(t("menu.tools_voice_to_text"))
+        tools_menu = QMenu(self)
+        tools_menu.setTitle(t("menu.tools"))
+        voice_action = tools_menu.addAction(
+            _menu_icon("voice.png"), t("menu.tools_voice_to_text")
+        )
+        voice_action.setShortcut("Ctrl+Shift+V")
+        voice_action.setShortcutVisibleInContextMenu(True)
+        voice_action.setStatusTip(t("menu.tools_voice_to_text"))
         voice_action.triggered.connect(self._on_show_voice_to_text)
-        nvidia_test_action = tools_menu.addAction(t("menu.tools_nvidia_api_test"))
+        nvidia_test_action = tools_menu.addAction(
+            _menu_icon("api_test.png"), t("menu.tools_nvidia_api_test")
+        )
         nvidia_test_action.triggered.connect(self._on_show_nvidia_api_test)
 
-        help_menu = menu_bar.addMenu(t("menu.help"))
-        donate_action = help_menu.addAction(t("menu.help_donate"))
+        help_menu = QMenu(self)
+        help_menu.setTitle(t("menu.help"))
+        donate_action = help_menu.addAction(_menu_icon("donate.png"), t("menu.help_donate"))
         donate_action.triggered.connect(self._show_donate)
-        about_action = help_menu.addAction(t("menu.help_about"))
+        about_action = help_menu.addAction(_menu_icon("about.png"), t("menu.help_about"))
+        about_action.setShortcut("F1")
+        about_action.setShortcutVisibleInContextMenu(True)
+        about_action.setStatusTip(t("menu.help_about"))
         about_action.triggered.connect(self._show_about)
+
+        self._create_menu_button(toolbar, "settings.png", "menu.settings", settings_menu)
+        self._create_menu_button(toolbar, "tools.png", "menu.tools", tools_menu)
+        self._create_menu_button(toolbar, "help.png", "menu.help", help_menu)
+        self.addToolBar(toolbar)
 
     def _show_about(self) -> None:
         QMessageBox.about(
@@ -2388,15 +2541,6 @@ class MainWindow(QMainWindow):
                         selection-background-color: palette(highlight);
                         selection-color: palette(highlighted-text);
                         outline: none;
-                    }
-                    QMenu {
-                        background: palette(window);
-                        color: palette(text);
-                        border: 1px solid palette(mid);
-                    }
-                    QMenu::item:selected {
-                        background: palette(highlight);
-                        color: palette(highlighted-text);
                     }
                     QLineEdit { background: transparent; border: 1px solid palette(mid); border-radius: 3px; padding: 2px 4px; }
                     QTextEdit { background: transparent; border: 1px solid palette(mid); border-radius: 3px; }

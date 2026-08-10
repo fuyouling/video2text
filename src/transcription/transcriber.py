@@ -11,6 +11,7 @@ from src.utils.exceptions import TranscriptionError, TranscriptionCancelledError
 from src.i18n import t
 from src.utils.logger import get_logger
 from src.utils.paths import get_base_dir as _get_base_dir
+from src.text_processing.text_cleaner import remove_replacement_chars
 
 logger = get_logger(__name__)
 
@@ -484,7 +485,7 @@ class Transcriber:
                 transcript_segment = TranscriptSegment(
                     start=segment.start,
                     end=segment.end,
-                    text=segment.text.strip(),
+                    text=remove_replacement_chars(segment.text.strip()),
                     confidence=_logprob_to_confidence(segment.avg_logprob),
                     language=detected_language,
                 )

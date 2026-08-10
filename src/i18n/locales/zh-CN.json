@@ -38,7 +38,9 @@
     "settings_api_key_manage": "设置 API KEY",
     "help": "帮助",
     "help_donate": "捐赠支持",
-    "help_about": "关于"
+    "help_about": "关于",
+    "group_config": "配置",
+    "group_account": "账户"
   },
   "api_key": {
     "title": "API Key 管理",
@@ -89,7 +91,7 @@
     "results_group": "结果查看",
     "transcript_tab": "转写文本",
     "summary_tab": "摘要结果",
-    "transcript_placeholder": "可直接编辑修改，Ctrl+S 保存，Ctrl+F 查找替换,保存后右键点击文件列表中文件可重新转写和摘要",
+    "transcript_placeholder": "可直接编辑修改，Ctrl+S 保存，Ctrl+F 查找替换,右键点击文件列表中文件可重新转写和摘要",
     "summary_placeholder": "摘要结果，可直接编辑修改，Ctrl+S 保存，Ctrl+F 查找替换。",
     "save_action": "保存文本",
     "find_action": "查找替换",

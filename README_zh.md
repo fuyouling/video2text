@@ -4,6 +4,8 @@
 
 ## GUI
 
+如果不喜欢这个背景图片可自行更换和修改透明度.
+
 ![](https://github.com/user-attachments/assets/444687f6-302c-4b76-be40-9c5a595a0151)
 
 **程序入口**
@@ -66,22 +68,20 @@ video2text\models\
 
 **2.1 NVIDIA 在线（使用在线 NVIDIA 模型总结）**
 
-需要先在 [NVIDIA Build](https://build.nvidia.com/) 注册账号并创建 API Key（目前大部分模型免费使用）。获取 Key 后在程序目录下新建一个名为 `.env` 的文本文件（注意文件名以点开头，无扩展名）。用记事本打开，按需添加以下内容：
-
-``` ini
-# NVIDIA API Key（使用在线 NVIDIA 模型总结时需要）
-NVIDIA_API_KEY=nvapi-你的API密钥
-```
-
-保存文件。程序启动时会自动读取该文件中的环境变量。
+需要先在 [NVIDIA Build](https://build.nvidia.com/) 注册账号并创建 API Key,再通过`设置>设置 API Key`添加到程序
 
 **2.2 安装 Ollama（使用本地模型总结）**
 
-Ollama 是一个本地大语言模型运行框架，使用它来生成文本摘要,如果显存是8G比较难找到总结效果较好的模型,建议直接使用在线模型。
+Ollama 是一个本地大语言模型运行框架，使用它来生成文本摘要,如果显存比较小很难找到总结效果较好的模型,建议直接使用在线模型。
 
 1. 下载和安装请查看[官网](https://docs.ollama.com/),需要将ollama添加到环境变量中
 2. 总结时会自动启动ollama服务并且[配置]中有启动和关闭功能
 
+>注册Ollama账号后也有免费的在线模型可以使用
+
+**mistral 在线模型**
+
+需要先在[mistral](https://v2.auth.mistral.ai/login)注册账号,再创建 API Key,再通过`设置>设置 API Key`添加到程序
 
 ## 讨论小组
 QQ群: 296875960

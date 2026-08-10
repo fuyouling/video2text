@@ -38,7 +38,9 @@
     "help": "Ayuda",
     "help_donate": "Donar",
     "help_about": "Acerca de",
-    "settings_api_key_manage": "Gestionar API KEY"
+    "settings_api_key_manage": "Gestionar API KEY",
+    "group_config": "Configuración",
+    "group_account": "Cuenta"
   },
   "main": {
     "input_label": "Entrada:",

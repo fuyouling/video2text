@@ -38,7 +38,9 @@
     "help": "ヘルプ",
     "help_donate": "寄付",
     "help_about": "について",
-    "settings_api_key_manage": "API KEY を設定"
+    "settings_api_key_manage": "API KEY を設定",
+    "group_config": "設定",
+    "group_account": "アカウント"
   },
   "main": {
     "input_label": "入力:",

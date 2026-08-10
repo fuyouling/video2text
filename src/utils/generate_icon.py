@@ -572,6 +572,250 @@ def gen_refresh(output_dir: Optional[Path] = None) -> Path:
 
 
 # ============================================================
+# 菜单图标生成（设置 / 工具 / 帮助 等）
+# ============================================================
+
+_MENU_BLUE = (120, 170, 255, 255)
+_MENU_BLUE_DARK = (56, 118, 224, 255)
+_MENU_GRAY = (90, 107, 123, 255)
+
+
+def _new_canvas(size: int = 512) -> Tuple[Image.Image, ImageDraw.ImageDraw]:
+    """创建透明画布（菜单图标统一画布）。"""
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    return img, ImageDraw.Draw(img)
+
+
+def _star_points(cx: int, cy: int, outer: int, inner: int, n: int = 5) -> list:
+    """生成 n 角星的顶点列表。"""
+    pts = []
+    for i in range(n * 2):
+        r = outer if i % 2 == 0 else inner
+        ang = -math.pi / 2 + i * math.pi / n
+        pts.append((cx + r * math.cos(ang), cy + r * math.sin(ang)))
+    return pts
+
+
+def gen_settings(output_dir: Optional[Path] = None) -> Path:
+    """生成「设置」齿轮图标 PNG。"""
+    if output_dir is None:
+        output_dir = Path(__file__).resolve().parent.parent.parent / "assets"
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    img, draw = _new_canvas()
+    cx = cy = 256
+    R = 180
+    teeth = 8
+    r = R * 0.74
+    step = math.pi / teeth
+    ang0 = -math.pi / 2
+    pts = []
+    for i in range(teeth * 2):
+        rad = R if i % 2 == 0 else r
+        ang = ang0 + i * step
+        pts.append((cx + rad * math.cos(ang), cy + rad * math.sin(ang)))
+    draw.polygon(pts, fill=_MENU_BLUE)
+    hole = R * 0.36
+    draw.ellipse([cx - hole, cy - hole, cx + hole, cy + hole], fill=(0, 0, 0, 0))
+    path = output_dir / "settings.png"
+    img.save(path)
+    logger.info("已生成设置图标: %s", path)
+    return path
+
+
+def gen_tools(output_dir: Optional[Path] = None) -> Path:
+    """生成「工具」扳手图标 PNG。"""
+    if output_dir is None:
+        output_dir = Path(__file__).resolve().parent.parent.parent / "assets"
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    img, draw = _new_canvas()
+    # 手柄
+    _draw_rounded_line(draw, 150, 370, 330, 190, 66, _MENU_BLUE)
+    # 头部圆环
+    hx, hy, hr = 330, 190, 104
+    draw.ellipse([hx - hr, hy - hr, hx + hr, hy + hr], fill=_MENU_BLUE)
+    draw.ellipse([hx - hr * 0.52, hy - hr * 0.52, hx + hr * 0.52, hy + hr * 0.52],
+                 fill=(0, 0, 0, 0))
+    # 开口（楔形擦除）
+    draw.polygon([(hx, hy), (hx + hr, hy - hr), (hx + hr, hy + hr)],
+                 fill=(0, 0, 0, 0))
+    path = output_dir / "tools.png"
+    img.save(path)
+    logger.info("已生成工具图标: %s", path)
+    return path
+
+
+def gen_help(output_dir: Optional[Path] = None) -> Path:
+    """生成「帮助」问号图标 PNG。"""
+    if output_dir is None:
+        output_dir = Path(__file__).resolve().parent.parent.parent / "assets"
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    img, draw = _new_canvas()
+    # 顶部弧线
+    draw.arc([166, 120, 346, 320], start=200, end=340, fill=_MENU_BLUE, width=46)
+    # 竖线
+    draw.line([(256, 318), (256, 372)], fill=_MENU_BLUE, width=46)
+    # 点
+    draw.ellipse([238, 396, 274, 432], fill=_MENU_BLUE)
+    path = output_dir / "help.png"
+    img.save(path)
+    logger.info("已生成帮助图标: %s", path)
+    return path
+
+
+def gen_edit_config(output_dir: Optional[Path] = None) -> Path:
+    """生成「编辑配置」滑块图标 PNG。"""
+    if output_dir is None:
+        output_dir = Path(__file__).resolve().parent.parent.parent / "assets"
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    img, draw = _new_canvas()
+    ys = [170, 256, 342]
+    xs = [300, 180, 340]
+    for y in ys:
+        draw.line([(110, y), (402, y)], fill=_MENU_GRAY, width=26)
+    for y, x in zip(ys, xs):
+        draw.ellipse([x - 46, y - 46, x + 46, y + 46], fill=_MENU_BLUE)
+    path = output_dir / "edit_config.png"
+    img.save(path)
+    logger.info("已生成编辑配置图标: %s", path)
+    return path
+
+
+def gen_bg_image(output_dir: Optional[Path] = None) -> Path:
+    """生成「背景图片」图片框图标 PNG。"""
+    if output_dir is None:
+        output_dir = Path(__file__).resolve().parent.parent.parent / "assets"
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    img, draw = _new_canvas()
+    draw.rounded_rectangle([110, 120, 402, 392], radius=40,
+                           outline=_MENU_BLUE, width=26)
+    draw.ellipse([150, 160, 214, 224], fill=_MENU_BLUE)
+    draw.polygon([(110, 392), (224, 252), (300, 332), (360, 272), (402, 392)],
+                 fill=_MENU_BLUE)
+    path = output_dir / "bg_image.png"
+    img.save(path)
+    logger.info("已生成背景图片图标: %s", path)
+    return path
+
+
+def gen_favorite(output_dir: Optional[Path] = None) -> Path:
+    """生成「常用目录」星形图标 PNG。"""
+    if output_dir is None:
+        output_dir = Path(__file__).resolve().parent.parent.parent / "assets"
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    img, draw = _new_canvas()
+    pts = _star_points(256, 262, 190, 76)
+    draw.polygon(pts, fill=_MENU_BLUE)
+    path = output_dir / "favorite.png"
+    img.save(path)
+    logger.info("已生成常用目录图标: %s", path)
+    return path
+
+
+def gen_api_key(output_dir: Optional[Path] = None) -> Path:
+    """生成「API Key 管理」钥匙图标 PNG。"""
+    if output_dir is None:
+        output_dir = Path(__file__).resolve().parent.parent.parent / "assets"
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    img, draw = _new_canvas()
+    hx, hy, hr = 168, 256, 92
+    draw.ellipse([hx - hr, hy - hr, hx + hr, hy + hr], fill=_MENU_BLUE)
+    draw.ellipse([hx - hr * 0.42, hy - hr * 0.42, hx + hr * 0.42, hy + hr * 0.42],
+                 fill=(0, 0, 0, 0))
+    draw.line([(250, 256), (404, 256)], fill=_MENU_BLUE, width=46)
+    draw.line([(340, 256), (340, 322)], fill=_MENU_BLUE, width=30)
+    draw.line([(382, 256), (382, 322)], fill=_MENU_BLUE, width=30)
+    path = output_dir / "api_key.png"
+    img.save(path)
+    logger.info("已生成 API Key 图标: %s", path)
+    return path
+
+
+def gen_voice(output_dir: Optional[Path] = None) -> Path:
+    """生成「语音转文字」麦克风图标 PNG。"""
+    if output_dir is None:
+        output_dir = Path(__file__).resolve().parent.parent.parent / "assets"
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    img, draw = _new_canvas()
+    draw.rounded_rectangle([196, 120, 316, 300], radius=60, fill=_MENU_BLUE)
+    draw.line([(256, 300), (256, 384)], fill=_MENU_BLUE, width=30)
+    draw.arc([150, 300, 362, 512], start=180, end=360, fill=_MENU_BLUE, width=40)
+    draw.line([(170, 470), (342, 470)], fill=_MENU_BLUE, width=40)
+    path = output_dir / "voice.png"
+    img.save(path)
+    logger.info("已生成语音转文字图标: %s", path)
+    return path
+
+
+def gen_api_test(output_dir: Optional[Path] = None) -> Path:
+    """生成「Nvidia API 测试」烧瓶图标 PNG。"""
+    if output_dir is None:
+        output_dir = Path(__file__).resolve().parent.parent.parent / "assets"
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    img, draw = _new_canvas()
+    draw.rectangle([236, 108, 276, 162], fill=_MENU_BLUE)
+    draw.polygon([(236, 162), (276, 162), (360, 392), (152, 392)],
+                 fill=_MENU_BLUE)
+    draw.polygon([(196, 300), (316, 300), (360, 392), (152, 392)],
+                 fill=_MENU_BLUE_DARK)
+    draw.ellipse([214, 326, 240, 352], fill=(255, 255, 255, 200))
+    draw.ellipse([286, 344, 306, 364], fill=(255, 255, 255, 200))
+    path = output_dir / "api_test.png"
+    img.save(path)
+    logger.info("已生成 API 测试图标: %s", path)
+    return path
+
+
+def gen_about(output_dir: Optional[Path] = None) -> Path:
+    """生成「关于」信息圆圈图标 PNG。"""
+    if output_dir is None:
+        output_dir = Path(__file__).resolve().parent.parent.parent / "assets"
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    img, draw = _new_canvas()
+    draw.ellipse([110, 110, 402, 402], outline=_MENU_BLUE, width=26)
+    draw.ellipse([238, 372, 274, 408], fill=_MENU_BLUE)
+    draw.line([(256, 150), (256, 344)], fill=_MENU_BLUE, width=46)
+    path = output_dir / "about.png"
+    img.save(path)
+    logger.info("已生成关于图标: %s", path)
+    return path
+
+
+def gen_arrow_right(output_dir: Optional[Path] = None) -> Path:
+    """生成子菜单右向箭头图标 PNG。"""
+    if output_dir is None:
+        output_dir = Path(__file__).resolve().parent.parent.parent / "assets"
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    img, draw = _new_canvas()
+    draw.polygon([(190, 150), (190, 362), (382, 256)], fill=_MENU_BLUE)
+    path = output_dir / "arrow_right.png"
+    img.save(path)
+    logger.info("已生成右向箭头图标: %s", path)
+    return path
+
+
+# ============================================================
 # 公共 API
 # ============================================================
 
@@ -618,10 +862,15 @@ if __name__ == "__main__":
     parser.add_argument("--arrows", action="store_true", help="仅生成箭头/关闭符号图标")
     parser.add_argument("--widgets", action="store_true", help="仅生成控件图标（树形折叠/展开、勾选标记、刷新）")
     parser.add_argument("--main", action="store_true", help="仅生成主图标")
+    parser.add_argument(
+        "--menu",
+        action="store_true",
+        help="仅生成菜单图标（设置/工具/帮助及其子项）",
+    )
     parser.add_argument("--all", action="store_true", help="生成所有图标（默认行为）")
     args = parser.parse_args()
 
-    if not args.arrows and not args.main and not args.widgets:
+    if not args.arrows and not args.main and not args.widgets and not args.menu:
         generate_icon_files()
         gen_arrow_down()
         gen_arrow_up()
@@ -630,6 +879,17 @@ if __name__ == "__main__":
         gen_tree_open()
         gen_check()
         gen_refresh()
+        gen_settings()
+        gen_tools()
+        gen_help()
+        gen_edit_config()
+        gen_bg_image()
+        gen_favorite()
+        gen_api_key()
+        gen_voice()
+        gen_api_test()
+        gen_about()
+        gen_arrow_right()
     else:
         if args.main or args.all:
             generate_icon_files()
@@ -642,3 +902,15 @@ if __name__ == "__main__":
             gen_tree_open()
             gen_check()
             gen_refresh()
+        if args.menu or args.all:
+            gen_settings()
+            gen_tools()
+            gen_help()
+            gen_edit_config()
+            gen_bg_image()
+            gen_favorite()
+            gen_api_key()
+            gen_voice()
+            gen_api_test()
+            gen_about()
+            gen_arrow_right()

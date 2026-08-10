@@ -38,7 +38,9 @@
     "help": "幫助",
     "help_donate": "捐贈支持",
     "help_about": "關於",
-    "settings_api_key_manage": "設定 API KEY"
+    "settings_api_key_manage": "設定 API KEY",
+    "group_config": "設定",
+    "group_account": "帳戶"
   },
   "main": {
     "input_label": "輸入:",
@@ -67,7 +69,7 @@
     "results_group": "結果查看",
     "transcript_tab": "轉寫文本",
     "summary_tab": "摘要結果",
-    "transcript_placeholder": "可直接編輯修改，Ctrl+S 保存，Ctrl+F 查找替換，保存後右鍵點擊文件列表中文件可重新轉寫和摘要",
+    "transcript_placeholder": "可直接編輯修改，Ctrl+S 保存，Ctrl+F 查找替換，右鍵點擊文件列表中文件可重新轉寫和摘要",
     "summary_placeholder": "摘要結果，可直接編輯修改，Ctrl+S 保存，Ctrl+F 查找替換。",
     "save_action": "保存文本",
     "find_action": "查找替換",

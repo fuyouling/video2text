@@ -38,7 +38,9 @@
     "help": "Помощь",
     "help_donate": "Пожертвовать",
     "help_about": "О программе",
-    "settings_api_key_manage": "Настроить API KEY"
+    "settings_api_key_manage": "Настроить API KEY",
+    "group_config": "Конфигурация",
+    "group_account": "Аккаунт"
   },
   "main": {
     "input_label": "Вход:",

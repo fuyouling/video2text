@@ -38,7 +38,9 @@
     "help": "Aide",
     "help_donate": "Faire un don",
     "help_about": "À propos",
-    "settings_api_key_manage": "Gérer la clé API"
+    "settings_api_key_manage": "Gérer la clé API",
+    "group_config": "Configuration",
+    "group_account": "Compte"
   },
   "main": {
     "input_label": "Entrée :",

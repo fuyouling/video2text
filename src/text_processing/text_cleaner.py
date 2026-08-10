@@ -7,6 +7,27 @@ from src.i18n import t
 
 logger = get_logger(__name__)
 
+# 替换字符 U+FFFD（\ufffd）：faster-whisper 按段独立解码时，多字节字符被分段
+# 边界截断会产生该损坏标记，它本身没有语义，清理后可避免污染输出。
+_REPLACEMENT_CHAR_RE = re.compile(chr(0xFFFD))
+
+
+def remove_replacement_chars(text: str) -> str:
+    """移除替换字符 U+FFFD（）。
+
+    faster-whisper 按段独立解码时，多字节字符被分段边界截断会产生该损坏
+    标记，它本身没有语义，移除后可避免污染输出。
+
+    Args:
+        text: 原始文本
+
+    Returns:
+        移除替换字符后的文本
+    """
+    if not text:
+        return text
+    return _REPLACEMENT_CHAR_RE.sub("", text)
+
 
 class TextCleaner:
     """文本清理器"""
@@ -53,6 +74,7 @@ class TextCleaner:
 
         cleaned = text
 
+        cleaned = remove_replacement_chars(cleaned)
         cleaned = self.remove_extra_whitespace(cleaned)
         cleaned = self.remove_fillers(cleaned)
         cleaned = self.fix_punctuation(cleaned)

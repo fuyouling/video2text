@@ -38,7 +38,9 @@
     "help": "Hilfe",
     "help_donate": "Spenden",
     "help_about": "Über",
-    "settings_api_key_manage": "API-Schlüssel verwalten"
+    "settings_api_key_manage": "API-Schlüssel verwalten",
+    "group_config": "Konfiguration",
+    "group_account": "Konto"
   },
   "main": {
     "input_label": "Eingabe:",

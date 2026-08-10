@@ -38,7 +38,9 @@
     "settings_api_key_manage": "Manage API Key",
     "help": "Help",
     "help_donate": "Donate",
-    "help_about": "About"
+    "help_about": "About",
+    "group_config": "Configuration",
+    "group_account": "Account"
   },
   "api_key": {
     "title": "API Key Manager",
