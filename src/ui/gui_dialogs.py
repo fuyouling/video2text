@@ -263,7 +263,7 @@ class VideoSelectionDialog(QDialog):
         QSpinBox:focus { border: 1px solid #4a90d9; }
         QSpinBox::up-button, QSpinBox::down-button {
             subcontrol-origin: border;
-            width: 16px;
+            width: 28px;
             border: none;
         }
         QSpinBox::up-arrow { image: url(assets/arrow_up.png); width: 10px; height: 10px; }
@@ -420,6 +420,7 @@ class VideoSelectionDialog(QDialog):
 
         bottom_layout.addWidget(QLabel(t("dialogs.file_select.depth_label")))
         self._depth_spin = QSpinBox()
+        self._depth_spin.setObjectName("_depth_spin")
         self._depth_spin.setRange(1, 10)
         default_depth = Settings().get_int("output.mirror_depth", 1)
         self._depth_spin.setValue(default_depth)
@@ -860,19 +861,29 @@ class VideoSelectionDialog(QDialog):
             self._depth_spin.setEnabled(False)
             for item in self._iter_leaves():
                 item.setText(3, t("dialogs.file_select.mirror_disabled"))
-        else:
-            if use_saved:
-                saved_enabled = settings.get_bool("output.mirror_enabled", True)
-                self._mirror_checkbox.blockSignals(True)
-                self._mirror_checkbox.setChecked(saved_enabled)
-                self._mirror_checkbox.blockSignals(False)
-            self._mirror_checkbox.setEnabled(True)
-            if use_saved:
-                default_depth = settings.get_int("output.mirror_depth", 1)
-                depth_value = min(default_depth, self._max_depth)
+            return
+        # max_depth > 0 时始终允许勾选, 即使保存的深度超过当前文件夹最大深度
+        if use_saved:
+            saved_enabled = settings.get_bool("output.mirror_enabled", True)
+            self._mirror_checkbox.blockSignals(True)
+            self._mirror_checkbox.setChecked(saved_enabled)
+            self._mirror_checkbox.blockSignals(False)
+        self._mirror_checkbox.setEnabled(True)
+        if use_saved:
+            default_depth = settings.get_int("output.mirror_depth", 1)
+            depth_value = min(default_depth, self._max_depth)
+            self._depth_spin.blockSignals(True)
+            self._depth_spin.setRange(1, self._max_depth)
+            self._depth_spin.setValue(depth_value)
+            self._depth_spin.blockSignals(False)
+            if self._mirror_checkbox.isChecked():
+                self._depth_spin.setEnabled(True)
+                self._update_mirror_column(depth_value)
             else:
-                # 用户已手动调整过镜像选项: 保留当前深度, 仅 clamp 到合法范围
-                depth_value = min(max(self._depth_spin.value(), 1), self._max_depth)
+                self._depth_spin.setEnabled(False)
+                for item in self._iter_leaves():
+                    item.setText(3, t("dialogs.file_select.mirror_disabled"))
+        else:
             self._depth_spin.blockSignals(True)
             self._depth_spin.setRange(1, self._max_depth)
             self._depth_spin.setValue(depth_value)

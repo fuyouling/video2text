@@ -86,12 +86,36 @@ _DEFAULT_OUTPUT_DIR = str(_PROJECT_ROOT / "output")
 
 _BTN_MIN_WIDTH = 100
 
-_ASSETS_DIR = Path(__file__).resolve().parents[2] / "assets"
+def _resolve_assets_dir() -> Path:
+    """解析 assets 目录，兼容开发态与 PyInstaller 冻结（绿色版）两种模式。
+
+    冻结后 __file__ 位于 _internal 内，故优先改用可执行文件所在目录下的 assets/；
+    若以单文件(onefile)打包则回退到 sys._MEIPASS。
+    """
+    d = Path(__file__).resolve().parents[2] / "assets"
+    if getattr(sys, "frozen", False) and not d.exists():
+        exe_assets = Path(sys.executable).parent / "assets"
+        if exe_assets.exists():
+            return exe_assets
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            mp = Path(meipass) / "assets"
+            if mp.exists():
+                return mp
+    return d
+
+
+_ASSETS_DIR = _resolve_assets_dir()
 
 
 def _menu_icon(name: str) -> QIcon:
     """加载 assets/ 下的菜单图标。"""
     return QIcon(str(_ASSETS_DIR / name))
+
+
+def _abs_asset_url(name: str) -> str:
+    """返回 QSS 可用的绝对路径 url(...)，兼容冻结后资源位置变化。"""
+    return "url(" + str(_ASSETS_DIR / name).replace("\\", "/") + ")"
 
 
 # 浅色主题菜单样式（无条件生效，独立于背景图）
@@ -152,7 +176,7 @@ QMenu::separator {
     margin: 6px 10px;
 }
 QMenu::right-arrow {
-    image: url(assets/arrow_right.png);
+    image: ASSETS_ARROW_RIGHT;
     width: 14px;
     height: 14px;
 }
@@ -163,6 +187,8 @@ QMenu::item:disabled {
     background: transparent;
 }
 """
+
+_MENU_QSS = _MENU_QSS.replace("ASSETS_ARROW_RIGHT", _abs_asset_url("arrow_right.png"))
 
 
 class MainWindow(QMainWindow):
@@ -2531,7 +2557,7 @@ class MainWindow(QMainWindow):
                     QComboBox { background: transparent; color: palette(text); border: 1px solid palette(mid); border-radius: 3px; padding: 2px 4px; }
                     QComboBox::drop-down { border-left: 1px solid palette(mid); width: 24px; }
                     QComboBox::down-arrow {
-                        image: url(assets/arrow_down.png);
+                        image: ASSETS_ARROW_DOWN;
                         width: 20px; height: 20px;
                     }
                     QComboBox QAbstractItemView {
@@ -2553,7 +2579,7 @@ class MainWindow(QMainWindow):
                     QProgressBar { border: 1px solid palette(mid); border-radius: 3px; text-align: center; background: transparent; }
                     QProgressBar::chunk { background: palette(highlight); border-radius: 2px; }
                     QSplitter::handle { background: palette(mid); width: 1px; }
-                """)
+                """.replace("ASSETS_ARROW_DOWN", _abs_asset_url("arrow_down.png")))
                 self.result_tabs.setStyleSheet("""
                     QTabBar::tab {
                         border: 1px solid palette(mid);
