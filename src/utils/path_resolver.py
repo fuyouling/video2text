@@ -13,6 +13,7 @@ from pathlib import Path
 
 from src.utils.paths import get_base_dir
 from src.utils.logger import get_logger
+from src.i18n import t
 
 logger = get_logger(__name__)
 
@@ -70,5 +71,5 @@ def validate_output_dir(text: str, base_dir: Path | None = None) -> tuple[bool, 
     if any(ch in resolved for ch in "*?"):
         return False, resolved
     if is_path_too_long(resolved):
-        logger.warning("输出目录路径过长（>%d 字符），保存可能失败: %s", _MAX_PATH, resolved)
+        logger.warning(t("path_resolver.path_too_long", max=_MAX_PATH, path=resolved))
     return True, resolved

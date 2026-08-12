@@ -6,6 +6,8 @@ import threading
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
 
+from src.i18n import t
+
 _CONFIGURED_LOGGERS: set[str] = set()
 _CONFIGURE_LOCK = threading.Lock()
 
@@ -61,7 +63,7 @@ def setup_logger(
     level_upper = level.upper()
     level_int = logging.getLevelName(level_upper)
     if not isinstance(level_int, int):
-        raise ValueError(f"无效的日志级别: {level}")
+        raise ValueError(t("logger.invalid_level", level=level))
 
     logger = logging.getLogger(name)
 
@@ -154,7 +156,7 @@ def setup_dependency_logger(
     level_upper = level.upper()
     level_int = logging.getLevelName(level_upper)
     if not isinstance(level_int, int):
-        raise ValueError(f"无效的日志级别: {level}")
+        raise ValueError(t("logger.invalid_level", level=level))
 
     logger = logging.getLogger(name)
 

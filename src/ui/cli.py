@@ -26,9 +26,11 @@ from src.utils.exceptions import (
     SummarizationError,
 )
 from src.utils.logger import setup_logger
-from src.i18n import t
+from src.i18n import t, set_lang, resolve_language
 
-app = typer.Typer(help="Video2Text - 音视频转文本工具")
+set_lang(resolve_language())
+
+app = typer.Typer(help=t("cli.app_help"))
 console = Console()
 
 
@@ -59,13 +61,13 @@ def _init_common(
     return video_processor, file_writer
 
 
-@app.command()
+@app.command(help=t("cli.cmd_transcribe_desc"))
 def transcribe(
-    input_path: str = typer.Argument(..., help="音视频文件路径（视频或音频）"),
+    input_path: str = typer.Argument(..., help=t("cli.transcribe_arg")),
     output_dir: Optional[str] = typer.Option(
-        None, "--output-dir", "-o", help="输出目录"
+        None, "--output-dir", "-o", help=t("cli.output_dir")
     ),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="详细输出"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help=t("cli.verbose")),
 ):
     """转写音视频为文本"""
     try:
@@ -78,11 +80,11 @@ def transcribe(
         cfg = _load_tx_config(settings)
         num_workers = settings.get_int("transcription.num_workers", 1)
 
-        console.print(Panel.fit("[bold blue]Video2Text 转写模式[/bold blue]"))
-        console.print(f"输入文件: {input_path}")
-        console.print(f"输出目录: {output_dir}")
-        console.print(f"模型: {cfg.model_path}")
-        console.print(f"设备: {cfg.device}")
+        console.print(Panel.fit(t("cli.transcribe_panel")))
+        console.print(t("cli.input_file_label", path=input_path))
+        console.print(t("cli.output_dir_label", dir=output_dir))
+        console.print(t("cli.model_label", model=cfg.model_path))
+        console.print(t("cli.device_label", device=cfg.device))
 
         transcriber = Transcriber(
             model_path=cfg.model_path,
@@ -125,30 +127,30 @@ def transcribe(
             service.transcriber.unload_model()
 
         if results:
-            console.print(Panel.fit("[bold green]转写成功！[/bold green]"))
-            console.print(f"输出目录: {output_dir}")
+            console.print(Panel.fit(t("cli.transcribe_success")))
+            console.print(t("cli.output_dir_label", dir=output_dir))
             for r in results:
                 for fmt in cfg.output_formats:
-                    console.print(f"  - {r.video_name}.{fmt}")
+                    console.print(t("cli.transcript_result", name=r.video_name, fmt=fmt))
         else:
-            console.print("[bold red]转写失败[/bold red]")
+            console.print(t("cli.transcribe_fail"))
             sys.exit(2)
 
     except Video2TextError as e:
-        console.print(f"[bold red]错误: {e}[/bold red]")
+        console.print(t("cli.error", error=e))
         sys.exit(2)
     except Exception as e:
-        console.print(f"[bold red]未知错误: {e}[/bold red]")
+        console.print(t("cli.unknown_error", error=e))
         sys.exit(1)
 
 
-@app.command()
+@app.command(help=t("cli.cmd_summarize_desc"))
 def summarize(
-    input_path: str = typer.Argument(..., help="转写文本文件路径"),
+    input_path: str = typer.Argument(..., help=t("cli.summarize_arg")),
     output_dir: Optional[str] = typer.Option(
-        None, "--output-dir", "-o", help="输出目录"
+        None, "--output-dir", "-o", help=t("cli.output_dir")
     ),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="详细输出"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help=t("cli.verbose")),
 ):
     """总结转写文本"""
     try:
@@ -163,16 +165,16 @@ def summarize(
             level=log_level,
         )
 
-        console.print(Panel.fit("[bold blue]Video2Text 总结模式[/bold blue]"))
-        console.print(f"输入文件: {input_path}")
-        console.print(f"输出目录: {output_dir}")
+        console.print(Panel.fit(t("cli.summarize_panel")))
+        console.print(t("cli.input_file_label", path=input_path))
+        console.print(t("cli.output_dir_label", dir=output_dir))
 
         text_path = Path(input_path)
         if not text_path.exists():
-            raise VideoFileError(f"文件不存在: {input_path}")
+            raise VideoFileError(t("cli.file_not_found", path=input_path))
 
         text = text_path.read_text(encoding="utf-8-sig")
-        console.print(f"文本长度: {len(text)} 字符")
+        console.print(t("cli.text_length", count=len(text)))
 
         file_writer = FileWriter(output_dir)
         video_name = text_path.stem
@@ -184,7 +186,7 @@ def summarize(
             if not provider_inst.check_connection():
                 provider_name = settings.get("summarization.provider", "ollama")
                 raise SummarizationError(
-                    f"无法连接到{provider_name}总结服务，请检查配置"
+                    t("cli.cannot_connect", provider=provider_name)
                 )
 
             service = SummarizationService(
@@ -196,8 +198,10 @@ def summarize(
             service.summarize(text, video_name=video_name, index=1, total=1)
 
             summary_fmt = settings.get("output.summary_format", "txt").lower().strip()
-            console.print(Panel.fit("[bold green]总结成功！[/bold green]"))
-            console.print(f"输出文件: {output_dir}/{video_name}_summary.{summary_fmt}")
+            console.print(Panel.fit(t("cli.summarize_success")))
+            console.print(
+                t("cli.output_file_label", dir=output_dir, name=video_name, fmt=summary_fmt)
+            )
         finally:
             if service is not None:
                 service.close()
@@ -205,20 +209,20 @@ def summarize(
                 provider_inst.close()
 
     except Video2TextError as e:
-        console.print(f"[bold red]错误: {e}[/bold red]")
+        console.print(t("cli.error", error=e))
         sys.exit(2)
     except Exception as e:
-        console.print(f"[bold red]未知错误: {e}[/bold red]")
+        console.print(t("cli.unknown_error", error=e))
         sys.exit(1)
 
 
-@app.command()
+@app.command(help=t("cli.cmd_pipeline_desc"))
 def run_pipeline(
-    input_path: str = typer.Argument(..., help="音视频文件路径（视频或音频）"),
+    input_path: str = typer.Argument(..., help=t("cli.transcribe_arg")),
     output_dir: Optional[str] = typer.Option(
-        None, "--output-dir", "-o", help="输出目录"
+        None, "--output-dir", "-o", help=t("cli.output_dir")
     ),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="详细输出"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help=t("cli.verbose")),
 ):
     """运行完整处理管道"""
     try:
@@ -231,11 +235,11 @@ def run_pipeline(
         cfg = _load_tx_config(settings)
         num_workers = settings.get_int("transcription.num_workers", 1)
 
-        console.print(Panel.fit("[bold blue]Video2Text 完整管道模式[/bold blue]"))
-        console.print(f"输入文件: {input_path}")
-        console.print(f"输出目录: {output_dir}")
-        console.print(f"转写模型: {cfg.model_path}")
-        console.print(f"设备: {cfg.device}")
+        console.print(Panel.fit(t("cli.pipeline_panel")))
+        console.print(t("cli.input_file_label", path=input_path))
+        console.print(t("cli.output_dir_label", dir=output_dir))
+        console.print(t("cli.tx_model_label", model=cfg.model_path))
+        console.print(t("cli.device_label", device=cfg.device))
 
         transcriber = Transcriber(
             model_path=cfg.model_path,
@@ -276,7 +280,7 @@ def run_pipeline(
             tx_results = tx_service.run([input_path], output_dir)
 
             if not tx_results:
-                console.print("[bold red]转写失败，无法继续[/bold red]")
+                console.print(t("cli.transcribe_fail_abort"))
                 sys.exit(2)
 
             segment_merger = SegmentMerger(
@@ -296,15 +300,13 @@ def run_pipeline(
                     merged, include_timestamps=False
                 )
                 processed_text = text_cleaner.clean(processed_text)
-                summary_map[tx_result.video_name] = (processed_text, "总结不可用")
+                summary_map[tx_result.video_name] = (processed_text, t("cli.summary_unavailable"))
 
             provider_inst = create_provider(settings)
             sum_available = provider_inst.check_connection()
             if not sum_available:
                 provider_name = settings.get("summarization.provider", "ollama")
-                console.print(
-                    f"[yellow]警告: 无法连接到{provider_name}总结服务，跳过总结[/yellow]"
-                )
+                console.print(t("cli.warn_cannot_connect", provider=provider_name))
                 provider_inst.close()
             else:
                 sum_service = None
@@ -325,11 +327,15 @@ def run_pipeline(
                             )
                             summary_map[tx_result.video_name] = (
                                 processed_text,
-                                summary or "总结不可用",
+                                summary or t("cli.summary_unavailable"),
                             )
                         except Exception as e:
                             console.print(
-                                f"[yellow]警告: {tx_result.video_name} 总结失败: {e}[/yellow]"
+                                t(
+                                    "cli.warn_summarize_fail",
+                                    name=tx_result.video_name,
+                                    error=e,
+                                )
                             )
                 finally:
                     if sum_service is not None:
@@ -337,75 +343,81 @@ def run_pipeline(
                     else:
                         provider_inst.close()
 
-            console.print(Panel.fit("[bold green]处理成功！[/bold green]"))
-            console.print(f"输出目录: {output_dir}")
+            console.print(Panel.fit(t("cli.pipeline_success")))
+            console.print(t("cli.output_dir_label", dir=output_dir))
             summary_fmt = settings.get("output.summary_format", "txt").lower().strip()
             for tx_result in tx_results:
                 for fmt in cfg.output_formats:
-                    console.print(f"  - {tx_result.video_name}.{fmt} (转写结果)")
+                    console.print(
+                        t("cli.transcript_result", name=tx_result.video_name, fmt=fmt)
+                    )
                 console.print(
-                    f"  - {tx_result.video_name}_summary.{summary_fmt} (摘要)"
+                    t(
+                        "cli.summary_result",
+                        name=tx_result.video_name,
+                        fmt=summary_fmt,
+                    )
                 )
         finally:
             tx_service.transcriber.unload_model()
 
     except Video2TextError as e:
-        console.print(f"[bold red]错误: {e}[/bold red]")
+        console.print(t("cli.error", error=e))
         sys.exit(2)
     except Exception as e:
-        console.print(f"[bold red]未知错误: {e}[/bold red]")
+        console.print(t("cli.unknown_error", error=e))
         sys.exit(1)
 
 
-@app.command()
+@app.command(help=t("cli.cmd_version_desc"))
 def version():
     """显示版本信息"""
-    console.print(f"Video2Text v{APP_VERSION}")
+    console.print(t("cli.version", ver=APP_VERSION))
 
 
-@app.command()
+@app.command(help=t("cli.cmd_help_desc"))
 def help_command():
     """显示所有命令的详细用法"""
-    console.print(Panel.fit("[bold blue]Video2Text 命令帮助[/bold blue]"))
-    console.print("\n[bold]可用命令:[/bold]\n")
+    console.print(Panel.fit(t("cli.help_title")))
+    console.print(t("cli.available_commands"))
 
     commands = [
         {
             "name": "transcribe",
-            "description": "转写音视频为文本",
-            "usage": "video2text transcribe <音视频文件路径> [选项]",
+            "description": t("cli.cmd_transcribe_desc"),
+            "usage": t("cli.cmd_transcribe_usage"),
             "options": [
-                ("--output-dir, -o", "输出目录"),
-                ("--verbose, -v", "详细输出"),
+                ("--output-dir, -o", t("cli.output_dir")),
+                ("--verbose, -v", t("cli.verbose")),
             ],
         },
         {
             "name": "summarize",
-            "description": "总结转写文本",
-            "usage": "video2text summarize <转写文本文件路径> [选项]",
+            "description": t("cli.cmd_summarize_desc"),
+            "usage": t("cli.cmd_summarize_usage"),
             "options": [
-                ("--output-dir, -o", "输出目录"),
-                ("--verbose, -v", "详细输出"),
+                ("--output-dir, -o", t("cli.output_dir")),
+                ("--verbose, -v", t("cli.verbose")),
             ],
         },
         {
             "name": "run-pipeline",
-            "description": "运行完整处理管道（转写总结）",
-            "usage": "video2text run-pipeline <音视频文件路径> [选项]",
+            "description": t("cli.cmd_pipeline_desc"),
+            "usage": t("cli.cmd_pipeline_usage"),
             "options": [
-                ("--output-dir, -o", "输出目录"),
-                ("--verbose, -v", "详细输出"),
+                ("--output-dir, -o", t("cli.output_dir")),
+                ("--verbose, -v", t("cli.verbose")),
             ],
         },
         {
             "name": "version",
-            "description": "显示版本信息",
+            "description": t("cli.cmd_version_desc"),
             "usage": "video2text version",
             "options": [],
         },
         {
             "name": "--help",
-            "description": "显示所有命令的详细用法",
+            "description": t("cli.cmd_help_desc"),
             "usage": "video2text help",
             "options": [],
         },
@@ -413,24 +425,20 @@ def help_command():
 
     for cmd in commands:
         console.print(f"[bold cyan]{cmd['name']}[/bold cyan] - {cmd['description']}")
-        console.print(f"  用法: {cmd['usage']}")
+        console.print(f"  {t('cli.usage_label')}: {cmd['usage']}")
         if cmd["options"]:
-            console.print("  选项:")
+            console.print(t("cli.options_label"))
             for opt, desc in cmd["options"]:
                 console.print(f"    {opt:<30} {desc}")
         console.print()
 
-    console.print("[bold]示例:[/bold]")
+    console.print(t("cli.examples_label"))
     console.print("  video2text transcribe video.mp4 -o output")
     console.print("  video2text summarize transcript.txt -o output")
     console.print("  video2text run-pipeline video.mp4 -o output")
-    console.print("\n[bold]提示:[/bold] 1. 使用 --help 查看单个命令的详细选项")
-    console.print(
-        "      2. 所有转写和总结参数（模型、语言、设备、温度等）均通过 config.ini 配置"
-    )
-    console.print(
-        "      3. powershell使用全路径调用可执行文件，如: .\\video2text.exe transcribe video.mp4 -o output"
-    )
+    console.print(f"\n{t('cli.tips_label')} {t('cli.tip1')}")
+    console.print(f"      {t('cli.tip2')}")
+    console.print(f"      {t('cli.tip3')}")
 
 
 if __name__ == "__main__":

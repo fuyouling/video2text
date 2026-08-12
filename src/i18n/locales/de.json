@@ -38,8 +38,8 @@
     "help": "Hilfe",
     "help_donate": "Spenden",
     "help_about": "Über",
-    "settings_api_key_manage": "API-Schlüssel verwalten",
-    "help": "Hilfe",
+    "settings_api_key_manage": "API-Schlüssel verwalten"
+  },
   "main": {
     "input_label": "Eingabe:",
     "input_placeholder": "Video-/Audiodateien oder Ordner auswählen…",
@@ -73,7 +73,7 @@
     "find_action": "Suchen & Ersetzen",
     "tx_prompt_group": "Transkriptions-Prompt",
     "tx_prompt_placeholder": "Szenenanweisungen, Fachbegriffe zur Verbesserung der Genauigkeit, kurz halten",
-    "hotwords_placeholder": "Hotwords, durch Leerzeichen getrennt, wichtige Fachbegriffe, kurz halten",
+    "hotwords_placeholder": "Hotwords/Phrasen als einheitliches Bias-Präfix, wichtige Fachbegriffe, kurz halten",
     "tx_prompt_template_placeholder": "Gespeicherten Prompt auswählen…",
     "summary_prompt_group": "Zusammenfassungs-Prompt",
     "summary_prompt_placeholder": "Benutzerdefinierter Zusammenfassungs-Prompt (optional); leer lassen für Standard",
@@ -601,7 +601,25 @@
     "summary_result": "  - {name}.{fmt} (Zusammenfassung)",
     "version": "Video2Text v{ver}",
     "error": "[bold red]Fehler: {error}[/bold red]",
-    "unknown_error": "[bold red]Unbekannter Fehler: {error}[/bold red]"
+    "unknown_error": "[bold red]Unbekannter Fehler: {error}[/bold red]",
+    "file_not_found": "File not found: {path}",
+    "cmd_transcribe_desc": "Transcribe media to text",
+    "cmd_transcribe_usage": "video2text transcribe <media_path> [options]",
+    "cmd_summarize_desc": "Summarize transcript text",
+    "cmd_summarize_usage": "video2text summarize <transcript_path> [options]",
+    "cmd_pipeline_desc": "Run full pipeline (transcribe + summarize)",
+    "cmd_pipeline_usage": "video2text run-pipeline <media_path> [options]",
+    "cmd_version_desc": "Show version information",
+    "cmd_help_desc": "Show detailed usage for all commands",
+    "help_title": "[bold blue]Video2Text Command Help[/bold blue]",
+    "available_commands": "[bold]Available commands:[/bold]",
+    "usage_label": "Usage:",
+    "options_label": "Options:",
+    "examples_label": "[bold]Examples:[/bold]",
+    "tips_label": "[bold]Tips:[/bold]",
+    "tip1": "1. Use --help to view detailed options for a single command",
+    "tip2": "2. All transcription and summarization parameters (model, language, device, temperature, etc.) are configured via config.ini",
+    "tip3": "3. In PowerShell, call the executable by its full path, e.g.: .\\video2text.exe transcribe video.mp4 -o output"
   },
   "errors": {
     "file_not_found": "Datei nicht gefunden: {path}",
@@ -755,7 +773,22 @@
       },
       "select_conv_first": "Bitte wählen Sie zuerst eine Konversation aus"
     },
-    "log_delete_conv_fail": "Fehler beim Löschen der Konversation {conv_id}: {error}"
+    "log_delete_conv_fail": "Fehler beim Löschen der Konversation {conv_id}: {error}",
+    "widget": {
+      "start_record_failed": "Failed to start recording: {error}",
+      "record_error_exception": "on_record_error exception:\n{error}",
+      "transcribe_done_exception": "_on_transcribe_done exception:\n{error}",
+      "transcribe_error_exception": "_on_transcribe_error exception:\n{error}",
+      "api_call_done_exception": "_start_api_call on_done exception:\n{error}"
+    },
+    "role": {
+      "user": "User",
+      "assistant": "Assistant"
+    },
+    "prompt": {
+      "correct_text": "The user recorded audio using faster-whisper for speech recognition, and some text may be incorrect. Please correct typos and unnatural phrasing in the user's transcribed text, and output in JSON format: {\"source_text\":\"original text\",\"update_text\":\"corrected text\"}. Output only the JSON, without any other content.",
+      "summarize_conversation": "Please summarize the following multi-turn conversation into a well-structured Markdown document. Requirements: output only the Markdown content itself, without any explanatory text, prefix, or suffix.\n\nConversation:\n{text}"
+    }
   },
   "config": {
     "section": {
@@ -1014,7 +1047,8 @@
       "estimate_from_size": "Schätzung anhand Dateigröße: {value}s",
       "estimate_fallback": "Chunk-Dauerschätzung fehlgeschlagen, Fallback auf 0s (kein Zeitstempel-Offset)",
       "cleanup_stale": "Bereinige veralteten Checkpoint: {name}",
-      "history_save_fail": "Fehler beim Speichern des Transkriptionsverlaufs (nicht kritisch): {error}"
+      "history_save_fail": "Fehler beim Speichern des Transkriptionsverlaufs (nicht kritisch): {error}",
+      "write_index_failed": "Failed to write output index: {error}"
     },
     "summarization": {
       "pause_requested": "Zusammenfassungspause angefordert, warte auf Abschluss der aktuellen Aufgabe…",
@@ -1034,6 +1068,9 @@
       "prompt_load_failed": "PromptManager: Laden fehlgeschlagen ({name})",
       "prompt_loaded": "PromptManager: geladen ({name})",
       "prompt_save_error": "PromptManager: Speichern fehlgeschlagen ({error})",
+      "default_prompt": "Sie sind ein professioneller Textzusammenfassungs-Assistent, der Schlüsselinformationen extrahiert und präzise, prägnante Zusammenfassungen erstellt. Geben Sie nur den Zusammenfassungstext aus. **Fügen Sie keine Einleitung, Schlussbemerkung, Erklärungen oder Anmerkungen hinzu.** **Vermeiden Sie zusätzliche Ausschmückungen — geben Sie nur den Zusammenfassungsinhalt aus.** Fügen Sie am Ende keine erneute Zusammenfassung an.",
+      "text_content_label": "Textinhalt:",
+      "markdown_prompt": "\nGib die Zusammenfassung im Markdown-Format wie folgt aus:\n- **Kernpunkt**\n\t- Inhalt\n\t- Inhalt\n- **Kernpunkt**\n\t- Inhalt\n\t- Inhalt\n\nAchte auf korrektes Markdown-Format, damit die Ausgabe direkt gerendert werden kann.\n",
       "ollama": {
         "already_running": "Ollama-Dienst läuft bereits",
         "process_exists": "Ollama-Dienstprozess existiert bereits",
@@ -1101,7 +1138,9 @@
         "stream_json_error": "NvidiaClient: Streaming JSON-Parsing fehlgeschlagen",
         "stream_interrupted": "NvidiaClient: Stream unterbrochen, {count} Zeichen empfangen",
         "stream_connection_failed": "NVIDIA-Streaming-Verbindung fehlgeschlagen: {error}"
-      }
+      },
+      "write_index_failed": "Failed to write output index: {error}",
+      "markdown_tooltip": "Aktiviert die automatische Markdown-Formatierung der Zusammenfassungen in der gewählten Sprache."
     },
     "voice_transcription": {
       "audio_file_not_found": "Audiodatei nicht gefunden: {path}",
@@ -1159,6 +1198,9 @@
     },
     "json": {
       "read_fail": "Fehler beim Lesen der JSON-Datei {name}: {error}"
+    },
+    "output_index": {
+      "save_failed": "Failed to save output index: {error}"
     }
   },
   "text_processing": {
@@ -1321,7 +1363,8 @@
       "passed": "Modellintegritätsprüfung bestanden, zukünftige Prüfungen deaktiviert",
       "not_passed": "Modellintegrität: nicht bestanden (wahrscheinlich Netzwerk nicht erreichbar), zukünftige automatische Prüfungen deaktiviert. Haupt-UI nicht beeinträchtigt; Proxy konfigurieren oder Modell von Cloud-Laufwerk herunterladen und erneut versuchen.",
       "config_update_fail": "Modellintegrität: Konfigurationsaktualisierung fehlgeschlagen (nicht kritisch): {error}"
-    }
+    },
+    "unknown_model": "Unknown model: {model}"
   },
   "output_validator": {
     "file": {
@@ -1390,5 +1433,51 @@
     "error_dup_key": "Schlüsselname existiert bereits (groß-/kleinschreibungsunempfindlich)",
     "save_failed": "Speichern fehlgeschlagen: {error}",
     "saved_msg": "Erfolgreich gespeichert in:\n{path}"
+  },
+  "app": {
+    "result_viewer": {
+      "scan_dir_failed": "Failed to scan directory: {error}",
+      "rerender_summary_failed": "Failed to re-render summary: {error}",
+      "save_bg_config_failed": "Failed to save background image config: {error}"
+    }
+  },
+  "startup": {
+    "dep_detect_exception": "Dependency detection exception"
+  },
+  "logger": {
+    "invalid_level": "Invalid log level: {level}"
+  },
+  "path_resolver": {
+    "path_too_long": "Output directory path is too long (> {max} characters); saving may fail: {path}"
+  },
+  "generate_icon": {
+    "description": "Icon generation tool",
+    "opt_arrows": "Generate only arrow/close-symbol icons",
+    "opt_widgets": "Generate only widget icons (tree collapse/expand, checkmark, refresh)",
+    "opt_main": "Generate only the main icon",
+    "opt_menu": "Generate only menu icons (settings/tools/help and sub-items)",
+    "opt_all": "Generate all icons (default behavior)",
+    "gen_arrow_down": "Generated down arrow: {path}",
+    "gen_arrow_up": "Generated up arrow: {path}",
+    "gen_tree_closed": "Generated tree-collapse icon: {path}",
+    "gen_tree_open": "Generated tree-expand icon: {path}",
+    "gen_check": "Generated checkmark icon: {path}",
+    "gen_close": "Generated close-symbol icon: {path}",
+    "gen_refresh": "Generated refresh icon: {path}",
+    "gen_settings": "Generated settings icon: {path}",
+    "gen_tools": "Generated tools icon: {path}",
+    "gen_help": "Generated help icon: {path}",
+    "gen_edit_config": "Generated edit-config icon: {path}",
+    "gen_bg_image": "Generated background-image icon: {path}",
+    "gen_favorite": "Generated favorites icon: {path}",
+    "gen_api_key": "Generated API Key icon: {path}",
+    "gen_voice": "Generated voice-to-text icon: {path}",
+    "gen_api_test": "Generated API-test icon: {path}",
+    "gen_about": "Generated about icon: {path}",
+    "gen_arrow_right": "Generated right-arrow icon: {path}",
+    "gen_donate": "Generated donate icon: {path}",
+    "gen_main": "Generating video2text icon...",
+    "gen_main_png": "Generated main icon PNG: {path}",
+    "gen_main_ico": "Generated main icon ICO: {path}"
   }
 }

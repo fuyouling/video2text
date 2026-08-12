@@ -95,7 +95,7 @@
     "find_action": "查找替换",
     "tx_prompt_group": "转写提示词配置",
     "tx_prompt_placeholder": "场景指令,不要换行,输入邻域术语提升识别准确率,不宜过长,会影响识别速度",
-    "hotwords_placeholder": "热词,空格分隔,输入核心专有名词,不宜过长,会影响识别速度",
+    "hotwords_placeholder": "热词/短语,作为整体偏置,输入核心专有名词,不宜过长",
     "tx_prompt_template_placeholder": "选择已保存的提示词…",
     "summary_prompt_group": "总结提示词配置",
     "summary_prompt_placeholder": "自定义总结提示词（可选），留空则使用默认提示词",
@@ -876,7 +876,25 @@
     "summary_result": "  - {name}.{fmt} (摘要)",
     "version": "Video2Text v{ver}",
     "error": "[bold red]错误: {error}[/bold red]",
-    "unknown_error": "[bold red]未知错误: {error}[/bold red]"
+    "unknown_error": "[bold red]未知错误: {error}[/bold red]",
+    "file_not_found": "文件不存在: {path}",
+    "cmd_transcribe_desc": "转写音视频为文本",
+    "cmd_transcribe_usage": "video2text transcribe <音视频文件路径> [选项]",
+    "cmd_summarize_desc": "总结转写文本",
+    "cmd_summarize_usage": "video2text summarize <转写文本文件路径> [选项]",
+    "cmd_pipeline_desc": "运行完整处理管道（转写总结）",
+    "cmd_pipeline_usage": "video2text run-pipeline <音视频文件路径> [选项]",
+    "cmd_version_desc": "显示版本信息",
+    "cmd_help_desc": "显示所有命令的详细用法",
+    "help_title": "[bold blue]Video2Text 命令帮助[/bold blue]",
+    "available_commands": "[bold]可用命令:[/bold]",
+    "usage_label": "用法:",
+    "options_label": "选项:",
+    "examples_label": "[bold]示例:[/bold]",
+    "tips_label": "[bold]提示:[/bold]",
+    "tip1": "1. 使用 --help 查看单个命令的详细选项",
+    "tip2": "2. 所有转写和总结参数（模型、语言、设备、温度等）均通过 config.ini 配置",
+    "tip3": "3. powershell使用全路径调用可执行文件，如: .\\video2text.exe transcribe video.mp4 -o output"
   },
   "errors": {
     "file_not_found": "文件不存在: {path}",
@@ -1030,7 +1048,22 @@
       },
       "select_conv_first": "请先选择一个对话会话"
     },
-    "log_delete_conv_fail": "删除会话失败 {conv_id}: {error}"
+    "log_delete_conv_fail": "删除会话失败 {conv_id}: {error}",
+    "widget": {
+      "start_record_failed": "启动录音失败: {error}",
+      "record_error_exception": "on_record_error 异常:\n{error}",
+      "transcribe_done_exception": "_on_transcribe_done 异常:\n{error}",
+      "transcribe_error_exception": "_on_transcribe_error 异常:\n{error}",
+      "api_call_done_exception": "_start_api_call on_done 异常:\n{error}"
+    },
+    "role": {
+      "user": "用户",
+      "assistant": "助手"
+    },
+    "prompt": {
+      "correct_text": "用户使用 faster-whisper 进行语音识别了一段录音,其中有些文字可能不正确。修正用户语音转写文本中的错别字和不通顺的语句，请以JSON格式输出，格式为：{\"source_text\":\"用户原文\",\"update_text\":\"修正后的文本\"}只输出JSON，不要添加任何其他内容。",
+      "summarize_conversation": "请将以下多轮对话内容归纳为一份结构清晰的 Markdown 文档。包含：\n输出要求：只输出 Markdown 内容本身，不要添加任何解释文字、前缀或后缀。\n\n对话内容：\n{text}"
+    }
   },
   "services": {
     "transcription": {
@@ -1066,7 +1099,8 @@
       "estimate_from_size": "使用文件大小估算: {value}s",
       "estimate_fallback": "切片时长估算失败，回退为 0s（不偏移后续时间戳）",
       "cleanup_stale": "清理过期断点: {name}",
-      "history_save_fail": "保存转写历史失败（不影响主流程）: {error}"
+      "history_save_fail": "保存转写历史失败（不影响主流程）: {error}",
+      "write_index_failed": "写入输出索引失败: {error}"
     },
     "summarization": {
       "pause_requested": "总结暂停请求已接收，等待当前任务完成…",
@@ -1086,6 +1120,9 @@
       "prompt_load_failed": "PromptManager: 加载失败 ({name})",
       "prompt_loaded": "PromptManager: 已加载 ({name})",
       "prompt_save_error": "PromptManager: 保存失败 ({error})",
+      "default_prompt": "你是一个专业的文本总结助手，擅长提取关键信息并生成简洁准确的总结，只输出总结正文，**禁止添加任何开头语、结尾说明、解释性语句、备注**，**不要额外修饰、补充话术，纯输出总结内容**，结尾无需再次总结。",
+      "text_content_label": "文本内容：",
+      "markdown_prompt": "\n请将总结内容以 Markdown 格式输出，形式如下：\n- **要点标题**\n\t- 内容\n\t- 内容\n- **要点标题**\n\t- 内容\n\t- 内容\n\n保持 Markdown 格式的正确性，确保输出可以直接渲染。\n",
       "ollama": {
         "already_running": "Ollama 服务已在运行中",
         "process_exists": "Ollama 服务进程已存在",
@@ -1128,7 +1165,8 @@
         "stream_error": "Ollama 流式错误: {error}",
         "service_cmd_not_found": "Ollama 服务: 未找到 ollama 命令",
         "service_unreachable": "Ollama 服务: 已启动但 {count} 次检测均无法连接 ({url})",
-        "api_error": "Ollama API错误: {code}"
+        "api_error": "Ollama API错误: {code}",
+        "check_retry": "Ollama连接检查: 第 {attempt}/{max} 次失败，{wait}s 后重试..."
       },
       "nvidia": {
         "check_start": "NvidiaClient: 开始连接检查...",
@@ -1152,7 +1190,8 @@
         "stream_error": "NVIDIA 流式错误: {error}",
         "stream_json_error": "NvidiaClient: 流式 JSON 解析失败",
         "stream_interrupted": "NvidiaClient: 流式中断，已接收 {count} 字符",
-        "stream_connection_failed": "NVIDIA 流式连接失败: {error}"
+        "stream_connection_failed": "NVIDIA 流式连接失败: {error}",
+        "check_retry": "NvidiaClient: 连接检查第 {attempt}/{max} 次失败，{wait}s 后重试..."
       },
       "mistral": {
         "check_cached": "MistralClient: 使用缓存的连接状态",
@@ -1171,8 +1210,11 @@
         "user_cancelled": "MistralClient: 用户取消",
         "stream_chunk_error": "MistralClient: 流式分片解析失败: {error}",
         "stream_interrupted": "MistralClient: 流式中断，已收到 {count} 字符",
-        "stream_connection_failed": "MistralClient: 流式连接失败: {error}"
-      }
+        "stream_connection_failed": "MistralClient: 流式连接失败: {error}",
+        "check_retry": "MistralClient: 连接检查第 {attempt}/{max} 次失败，{wait}s 后重试..."
+      },
+      "write_index_failed": "写入输出索引失败: {error}",
+      "markdown_tooltip": "勾选后总结输出将自动应用多语言 Markdown 格式指令。"
     },
     "voice_transcription": {
       "audio_file_not_found": "音频文件不存在: {path}",
@@ -1230,6 +1272,9 @@
     },
     "json": {
       "read_fail": "读取 JSON 文件失败 {name}: {error}"
+    },
+    "output_index": {
+      "save_failed": "保存输出索引失败: {error}"
     }
   },
   "text_processing": {
@@ -1392,7 +1437,8 @@
       "passed": "模型完整性检测通过，已关闭后续检测",
       "not_passed": "模型完整性检测: 未通过（多为网络不可达），已关闭后续自动检测。主界面不受影响，可正常使用；请配置代理或从网盘补齐模型后重开。",
       "config_update_fail": "模型完整性检测: 更新配置失败 (不影响使用): {error}"
-    }
+    },
+    "unknown_model": "未知的模型: {model}"
   },
   "output_validator": {
     "file": {
@@ -1439,5 +1485,51 @@
     "timestamp": {
       "out_of_range": "时间戳值越界: {timestamp}"
     }
+  },
+  "app": {
+    "result_viewer": {
+      "scan_dir_failed": "扫描目录失败: {error}",
+      "rerender_summary_failed": "重新渲染摘要失败: {error}",
+      "save_bg_config_failed": "保存背景图片配置失败: {error}"
+    }
+  },
+  "startup": {
+    "dep_detect_exception": "依赖检测异常"
+  },
+  "logger": {
+    "invalid_level": "无效的日志级别: {level}"
+  },
+  "path_resolver": {
+    "path_too_long": "输出目录路径过长（>{max} 字符），保存可能失败: {path}"
+  },
+  "generate_icon": {
+    "description": "图标生成工具",
+    "opt_arrows": "仅生成箭头/关闭符号图标",
+    "opt_widgets": "仅生成控件图标（树形折叠/展开、勾选标记、刷新）",
+    "opt_main": "仅生成主图标",
+    "opt_menu": "仅生成菜单图标（设置/工具/帮助及其子项）",
+    "opt_all": "生成所有图标（默认行为）",
+    "gen_arrow_down": "已生成向下箭头: {path}",
+    "gen_arrow_up": "已生成向上箭头: {path}",
+    "gen_tree_closed": "已生成树形折叠图标: {path}",
+    "gen_tree_open": "已生成树形展开图标: {path}",
+    "gen_check": "已生成勾选标记图标: {path}",
+    "gen_close": "已生成关闭符号: {path}",
+    "gen_refresh": "已生成刷新图标: {path}",
+    "gen_settings": "已生成设置图标: {path}",
+    "gen_tools": "已生成工具图标: {path}",
+    "gen_help": "已生成帮助图标: {path}",
+    "gen_edit_config": "已生成编辑配置图标: {path}",
+    "gen_bg_image": "已生成背景图片图标: {path}",
+    "gen_favorite": "已生成常用目录图标: {path}",
+    "gen_api_key": "已生成 API Key 图标: {path}",
+    "gen_voice": "已生成语音转文字图标: {path}",
+    "gen_api_test": "已生成 API 测试图标: {path}",
+    "gen_about": "已生成关于图标: {path}",
+    "gen_arrow_right": "已生成右向箭头图标: {path}",
+    "gen_donate": "已生成捐赠图标: {path}",
+    "gen_main": "生成 video2text 图标...",
+    "gen_main_png": "已生主图标 PNG: {path}",
+    "gen_main_ico": "已生主图标 ICO: {path}"
   }
 }

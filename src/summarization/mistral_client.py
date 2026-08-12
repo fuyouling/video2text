@@ -50,9 +50,11 @@ class MistralClient:
         timeout: int = 30,
         model: str = "mistral-large-latest",
         base_url: Optional[str] = None,
+        check_retries: int = 3,
     ):
         self.timeout = timeout
         self.max_retries = 3
+        self.check_retries = check_retries
         self._model = model
         self._base_url = base_url
 
@@ -85,6 +87,27 @@ class MistralClient:
             logger.error(t("services.summarization.mistral.api_key_missing"))
             return False
 
+        ok = False
+        for attempt in range(1, self.check_retries + 1):
+            ok, retryable = self._check_once()
+            if ok or not retryable:
+                break
+            if attempt < self.check_retries:
+                wait = 2 ** attempt
+                logger.warning(
+                    t("services.summarization.mistral.check_retry", attempt=attempt, max=self.check_retries, wait=wait),
+                )
+                time.sleep(wait)
+
+        self._remember_connection(ok)
+        return ok
+
+    def _check_once(self) -> tuple[bool, bool]:
+        """执行一次连接探测，返回 (是否成功, 是否可重试)。
+
+        401（鉴权失败）与空响应（模型/配置问题）视为不可重试；
+        其余网络/服务异常视为瞬时故障，可重试。
+        """
         try:
             try:
                 resp = self._client.chat.complete(
@@ -116,20 +139,19 @@ class MistralClient:
                     raise
             if ok:
                 logger.debug(t("services.summarization.mistral.check_ok"))
-            else:
-                logger.error(t("services.summarization.mistral.check_fail_empty"))
+                return True, False
+            logger.error(t("services.summarization.mistral.check_fail_empty"))
+            return False, False
         except SDKError as e:
             status = getattr(e, "status_code", None)
             if status == 401:
                 logger.error(t("services.summarization.mistral.api_key_invalid"))
-            else:
-                logger.error(t("services.summarization.mistral.check_error", error=e))
-            ok = False
+                return False, False
+            logger.error(t("services.summarization.mistral.check_error", error=e))
+            return False, True
         except Exception as e:
             logger.error(t("services.summarization.mistral.check_error", error=e))
-            ok = False
-        self._remember_connection(ok)
-        return ok
+            return False, True
 
     def generate(
         self,

@@ -300,7 +300,7 @@ class TranscriptionService:
                     video_name, transcript_paths=output_paths, source_path=video_path
                 )
             except Exception as exc:
-                logger.warning("写入输出索引失败: %s", exc)
+                logger.warning(t("services.transcription.write_index_failed", error=exc))
 
             return TranscribeResult(
                 video_name=video_name,

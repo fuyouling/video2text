@@ -95,7 +95,7 @@
     "find_action": "Find && Replace",
     "tx_prompt_group": "Transcription Prompt",
     "tx_prompt_placeholder": "Scene instructions, domain terms to improve accuracy, keep concise",
-    "hotwords_placeholder": "Hotwords, space-separated, key domain terms, keep concise",
+    "hotwords_placeholder": "Hotwords/phrases as one bias prefix, key domain terms, keep concise",
     "tx_prompt_template_placeholder": "Select saved prompt…",
     "summary_prompt_group": "Summary Prompt",
     "summary_prompt_placeholder": "Custom summary prompt (optional); leave empty for default",
@@ -648,7 +648,25 @@
     "summary_result": "  - {name}.{fmt} (summary)",
     "version": "Video2Text v{ver}",
     "error": "[bold red]Error: {error}[/bold red]",
-    "unknown_error": "[bold red]Unknown error: {error}[/bold red]"
+    "unknown_error": "[bold red]Unknown error: {error}[/bold red]",
+    "file_not_found": "File not found: {path}",
+    "cmd_transcribe_desc": "Transcribe media to text",
+    "cmd_transcribe_usage": "video2text transcribe <media_path> [options]",
+    "cmd_summarize_desc": "Summarize transcript text",
+    "cmd_summarize_usage": "video2text summarize <transcript_path> [options]",
+    "cmd_pipeline_desc": "Run full pipeline (transcribe + summarize)",
+    "cmd_pipeline_usage": "video2text run-pipeline <media_path> [options]",
+    "cmd_version_desc": "Show version information",
+    "cmd_help_desc": "Show detailed usage for all commands",
+    "help_title": "[bold blue]Video2Text Command Help[/bold blue]",
+    "available_commands": "[bold]Available commands:[/bold]",
+    "usage_label": "Usage:",
+    "options_label": "Options:",
+    "examples_label": "[bold]Examples:[/bold]",
+    "tips_label": "[bold]Tips:[/bold]",
+    "tip1": "1. Use --help to view detailed options for a single command",
+    "tip2": "2. All transcription and summarization parameters (model, language, device, temperature, etc.) are configured via config.ini",
+    "tip3": "3. In PowerShell, call the executable by its full path, e.g.: .\\video2text.exe transcribe video.mp4 -o output"
   },
   "errors": {
     "file_not_found": "File not found: {path}",
@@ -802,7 +820,22 @@
       },
       "select_conv_first": "Please select a conversation first"
     },
-    "log_delete_conv_fail": "Failed to delete conversation {conv_id}: {error}"
+    "log_delete_conv_fail": "Failed to delete conversation {conv_id}: {error}",
+    "widget": {
+      "start_record_failed": "Failed to start recording: {error}",
+      "record_error_exception": "on_record_error exception:\n{error}",
+      "transcribe_done_exception": "_on_transcribe_done exception:\n{error}",
+      "transcribe_error_exception": "_on_transcribe_error exception:\n{error}",
+      "api_call_done_exception": "_start_api_call on_done exception:\n{error}"
+    },
+    "role": {
+      "user": "User",
+      "assistant": "Assistant"
+    },
+    "prompt": {
+      "correct_text": "The user recorded audio using faster-whisper for speech recognition, and some text may be incorrect. Please correct typos and unnatural phrasing in the user's transcribed text, and output in JSON format: {\"source_text\":\"original text\",\"update_text\":\"corrected text\"}. Output only the JSON, without any other content.",
+      "summarize_conversation": "Please summarize the following multi-turn conversation into a well-structured Markdown document. Requirements: output only the Markdown content itself, without any explanatory text, prefix, or suffix.\n\nConversation:\n{text}"
+    }
   },
   "config": {
     "section": {
@@ -1061,7 +1094,8 @@
       "estimate_from_size": "Estimating from file size: {value}s",
       "estimate_fallback": "Chunk duration estimation failed, falling back to 0s (no timestamp offset)",
       "cleanup_stale": "Cleaning stale checkpoint: {name}",
-      "history_save_fail": "Failed to save transcription history (non-fatal): {error}"
+      "history_save_fail": "Failed to save transcription history (non-fatal): {error}",
+      "write_index_failed": "Failed to write output index: {error}"
     },
     "summarization": {
       "pause_requested": "Summarization pause requested, waiting for current task to complete…",
@@ -1081,6 +1115,9 @@
       "prompt_load_failed": "PromptManager: load failed ({name})",
       "prompt_loaded": "PromptManager: loaded ({name})",
       "prompt_save_error": "PromptManager: save failed ({error})",
+      "default_prompt": "You are a professional text summarization assistant, skilled at extracting key information and producing concise, accurate summaries. Output only the summary body. **Do not add any opening remarks, closing notes, explanatory statements, or annotations.** **Do not add extra embellishments or filler — output only the summary content.** Do not add a concluding summary at the end.",
+      "text_content_label": "Text content:",
+      "markdown_prompt": "\nOutput the summary in Markdown format as follows:\n- **Key Point**\n\t- Detail\n\t- Detail\n- **Key Point**\n\t- Detail\n\t- Detail\n\nKeep the Markdown formatting valid so the output renders directly.\n",
       "ollama": {
         "already_running": "Ollama service is already running",
         "process_exists": "Ollama service process already exists",
@@ -1123,7 +1160,8 @@
         "stream_error": "Ollama streaming error: {error}",
         "service_cmd_not_found": "Ollama service: ollama command not found",
         "service_unreachable": "Ollama service: started but {count} checks could not connect ({url})",
-        "api_error": "Ollama API error: {code}"
+        "api_error": "Ollama API error: {code}",
+        "check_retry": "Ollama connection check: attempt {attempt}/{max} failed, retrying in {wait}s..."
       },
       "nvidia": {
         "check_start": "NvidiaClient: starting connection check...",
@@ -1147,7 +1185,8 @@
         "stream_error": "NVIDIA streaming error: {error}",
         "stream_json_error": "NvidiaClient: streaming JSON parse failed",
         "stream_interrupted": "NvidiaClient: stream interrupted, received {count} chars",
-        "stream_connection_failed": "NVIDIA streaming connection failed: {error}"
+        "stream_connection_failed": "NVIDIA streaming connection failed: {error}",
+        "check_retry": "NvidiaClient: connection check attempt {attempt}/{max} failed, retrying in {wait}s..."
       },
       "mistral": {
         "check_cached": "MistralClient: using cached connection status",
@@ -1166,8 +1205,11 @@
         "user_cancelled": "MistralClient: user cancelled",
         "stream_chunk_error": "MistralClient: stream chunk parse failed: {error}",
         "stream_interrupted": "MistralClient: stream interrupted, received {count} chars",
-        "stream_connection_failed": "MistralClient: stream connection failed: {error}"
-      }
+        "stream_connection_failed": "MistralClient: stream connection failed: {error}",
+        "check_retry": "MistralClient: connection check attempt {attempt}/{max} failed, retrying in {wait}s..."
+      },
+      "write_index_failed": "Failed to write output index: {error}",
+      "markdown_tooltip": "When enabled, summaries are automatically formatted with the localized Markdown instruction."
     },
     "voice_transcription": {
       "audio_file_not_found": "Audio file not found: {path}",
@@ -1225,6 +1267,9 @@
     },
     "json": {
       "read_fail": "Failed to read JSON file {name}: {error}"
+    },
+    "output_index": {
+      "save_failed": "Failed to save output index: {error}"
     }
   },
   "text_processing": {
@@ -1387,7 +1432,8 @@
       "passed": "Model integrity check passed, future checks disabled",
       "not_passed": "Model integrity: not passed (likely network unreachable), future auto-checks disabled. Main UI unaffected; configure a proxy or download the model from a cloud drive and retry.",
       "config_update_fail": "Model integrity: config update failed (non-fatal): {error}"
-    }
+    },
+    "unknown_model": "Unknown model: {model}"
   },
   "output_validator": {
     "file": {
@@ -1434,5 +1480,51 @@
     "timestamp": {
       "out_of_range": "Timestamp value out of range: {timestamp}"
     }
+  },
+  "app": {
+    "result_viewer": {
+      "scan_dir_failed": "Failed to scan directory: {error}",
+      "rerender_summary_failed": "Failed to re-render summary: {error}",
+      "save_bg_config_failed": "Failed to save background image config: {error}"
+    }
+  },
+  "startup": {
+    "dep_detect_exception": "Dependency detection exception"
+  },
+  "logger": {
+    "invalid_level": "Invalid log level: {level}"
+  },
+  "path_resolver": {
+    "path_too_long": "Output directory path is too long (> {max} characters); saving may fail: {path}"
+  },
+  "generate_icon": {
+    "description": "Icon generation tool",
+    "opt_arrows": "Generate only arrow/close-symbol icons",
+    "opt_widgets": "Generate only widget icons (tree collapse/expand, checkmark, refresh)",
+    "opt_main": "Generate only the main icon",
+    "opt_menu": "Generate only menu icons (settings/tools/help and sub-items)",
+    "opt_all": "Generate all icons (default behavior)",
+    "gen_arrow_down": "Generated down arrow: {path}",
+    "gen_arrow_up": "Generated up arrow: {path}",
+    "gen_tree_closed": "Generated tree-collapse icon: {path}",
+    "gen_tree_open": "Generated tree-expand icon: {path}",
+    "gen_check": "Generated checkmark icon: {path}",
+    "gen_close": "Generated close-symbol icon: {path}",
+    "gen_refresh": "Generated refresh icon: {path}",
+    "gen_settings": "Generated settings icon: {path}",
+    "gen_tools": "Generated tools icon: {path}",
+    "gen_help": "Generated help icon: {path}",
+    "gen_edit_config": "Generated edit-config icon: {path}",
+    "gen_bg_image": "Generated background-image icon: {path}",
+    "gen_favorite": "Generated favorites icon: {path}",
+    "gen_api_key": "Generated API Key icon: {path}",
+    "gen_voice": "Generated voice-to-text icon: {path}",
+    "gen_api_test": "Generated API-test icon: {path}",
+    "gen_about": "Generated about icon: {path}",
+    "gen_arrow_right": "Generated right-arrow icon: {path}",
+    "gen_donate": "Generated donate icon: {path}",
+    "gen_main": "Generating video2text icon...",
+    "gen_main_png": "Generated main icon PNG: {path}",
+    "gen_main_ico": "Generated main icon ICO: {path}"
   }
 }

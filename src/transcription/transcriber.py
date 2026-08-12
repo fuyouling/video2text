@@ -407,7 +407,7 @@ class Transcriber:
             word_timestamps: 是否生成词级时间戳
             condition_on_previous_text: 是否基于前文条件
             initial_prompt: 领域提示词，留空不启用
-            hotwords: 热词偏置，多个词空格分隔，留空不启用
+            hotwords: 热词/短语偏置，整体作为一条前缀偏置，留空不启用
             compression_ratio_threshold: 压缩比超阈值判重复并重采样
             log_prob_threshold: 平均对数概率低阈值判低置信并重采样
             no_speech_threshold: 无语音概率阈值

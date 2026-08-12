@@ -58,10 +58,12 @@ class NvidiaClient:
         api_key: Optional[str] = None,
         timeout: int = 15,
         model: str = "openai/gpt-oss-120b",
+        check_retries: int = 3,
     ):
         self.api_url = api_url.rstrip("/")
         self.timeout = timeout
         self.max_retries = 3
+        self.check_retries = check_retries
         self._model = model
 
         if not api_key:
@@ -113,6 +115,27 @@ class NvidiaClient:
                 )
             return False
 
+        ok = False
+        for attempt in range(1, self.check_retries + 1):
+            ok, retryable = self._check_once()
+            if ok or not retryable:
+                break
+            if attempt < self.check_retries:
+                wait = 2 ** attempt
+                logger.warning(
+                    t("services.summarization.nvidia.check_retry", attempt=attempt, max=self.check_retries, wait=wait),
+                )
+                time.sleep(wait)
+
+        self._remember_connection(ok)
+        return ok
+
+    def _check_once(self) -> tuple[bool, bool]:
+        """执行一次连接探测，返回 (是否成功, 是否可重试)。
+
+        401（鉴权失败）视为不可重试；其余（429 限流 / 5xx / 网关错误 /
+        网络异常）视为瞬时故障，可重试。
+        """
         try:
             payload = {
                 "model": self._model,
@@ -125,21 +148,34 @@ class NvidiaClient:
             ok = resp.status_code == 200
             if ok:
                 logger.debug(t("services.summarization.nvidia.check_ok"))
-            else:
+                return True, False
+            status = resp.status_code
+            # 401 鉴权问题重试无意义，直接判定失败
+            if status == 401:
                 try:
                     error_detail = resp.json()
                     logger.error(
-                        t("services.summarization.nvidia.check_fail_detail", code=resp.status_code, detail=error_detail),
+                        t("services.summarization.nvidia.check_fail_detail", code=status, detail=error_detail),
                     )
                 except Exception:
                     logger.error(
-                        t("services.summarization.nvidia.check_fail", code=resp.status_code),
+                        t("services.summarization.nvidia.check_fail", code=status),
                     )
+                return False, False
+            # 其余（含 429/5xx）作为可重试的瞬时故障
+            try:
+                error_detail = resp.json()
+                logger.warning(
+                    t("services.summarization.nvidia.check_fail_detail", code=status, detail=error_detail),
+                )
+            except Exception:
+                logger.warning(
+                    t("services.summarization.nvidia.check_fail", code=status),
+                )
+            return False, True
         except Exception as e:
             logger.error(t("services.summarization.nvidia.check_error", error=e))
-            ok = False
-        self._remember_connection(ok)
-        return ok
+            return False, True
 
     def generate(
         self,

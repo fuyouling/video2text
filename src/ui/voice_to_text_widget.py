@@ -405,7 +405,7 @@ class VoiceToTextWidget(QWidget):
             self._recorder.start()
 
         except Exception as exc:
-            logger.error("启动录音失败: %s", exc)
+            logger.error(t("voice.widget.start_record_failed", error=exc))
             QMessageBox.warning(
                 self, t("voice.dialog.record_fail.title"), t("voice.dialog.record_fail.msg", error=str(exc))
             )
@@ -473,7 +473,7 @@ class VoiceToTextWidget(QWidget):
             self.waveform.stop()
             QMessageBox.warning(self, t("voice.dialog.record_error.title"), msg)
         except Exception:
-            logger.error("on_record_error 异常:\n%s", traceback.format_exc())
+            logger.error(t("voice.widget.record_error_exception", error=traceback.format_exc()))
 
     def _cleanup_recorder(self) -> None:
         if self._recorder is not None:
@@ -505,14 +505,14 @@ class VoiceToTextWidget(QWidget):
             try:
                 self._on_transcribe_done(text, wav_path)
             except Exception:
-                logger.error("_on_transcribe_done 异常:\n%s", traceback.format_exc())
+                logger.error(t("voice.widget.transcribe_done_exception", error=traceback.format_exc()))
             bridge.deleteLater()
 
         def _on_err(err: str) -> None:
             try:
                 self._on_transcribe_error(err, wav_path)
             except Exception:
-                logger.error("_on_transcribe_error 异常:\n%s", traceback.format_exc())
+                logger.error(t("voice.widget.transcribe_error_exception", error=traceback.format_exc()))
             bridge.deleteLater()
 
         bridge.result.connect(_on_done)
@@ -995,13 +995,7 @@ class VoiceToTextWidget(QWidget):
         provider_name = self._settings.get("summarization.provider", "ollama")
         conv_id = self._current_conv_id
 
-        custom_prompt = (
-            "用户使用 faster-whisper 进行语音识别了一段录音,其中有些文字可能不正确。"
-            "修正用户语音转写文本中的错别字和不通顺的语句，"
-            "请以JSON格式输出，格式为："
-            '{"source_text":"用户原文","update_text":"修正后的文本"}'
-            "只输出JSON，不要添加任何其他内容。"
-        )
+        custom_prompt = t("voice.prompt.correct_text")
 
         def _call():
             return provider.summarize(text=text, custom_prompt=custom_prompt, stream=False, is_use_gui_markdown_flag=False)
@@ -1084,14 +1078,10 @@ class VoiceToTextWidget(QWidget):
         effective_messages.sort(key=lambda m: m.timestamp)
 
         conversation_text = "\n".join(
-            f"{'用户' if m.role == 'user' else '助手'}: {m.content}"
+            f"{t('voice.role.user') if m.role == 'user' else t('voice.role.assistant')}: {m.content}"
             for m in effective_messages
         )
-        prompt = (
-            "请将以下多轮对话内容归纳为一份结构清晰的 Markdown 文档。包含：\n"
-            "输出要求：只输出 Markdown 内容本身，不要添加任何解释文字、前缀或后缀。\n\n"
-            f"对话内容：\n{conversation_text}"
-        )
+        prompt = t("voice.prompt.summarize_conversation", text=conversation_text)
 
         def _call():
             return provider.summarize(text=prompt, custom_prompt="", stream=False)
@@ -1128,8 +1118,8 @@ class VoiceToTextWidget(QWidget):
             try:
                 on_done(text)
             except Exception:
-                logger.error("_start_api_call on_done 异常:\n%s",
-                             traceback.format_exc())
+                logger.error(t("voice.widget.api_call_done_exception",
+                             error=traceback.format_exc()))
             bridge.deleteLater()
 
         bridge.result.connect(_wrap_on_done)

@@ -142,7 +142,7 @@ class SummarizationService:
                     video_name, summary_path=summary_path
                 )
             except Exception as exc:
-                logger.warning("写入输出索引失败: %s", exc)
+                logger.warning(t("services.summarization.write_index_failed", error=exc))
 
         if total > 0:
             logger.info("  └─ " + t("services.summarization.summary_done", format=self.summary_format))

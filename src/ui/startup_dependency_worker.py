@@ -10,6 +10,7 @@ from PySide6.QtCore import QObject, Signal
 from src.config.settings import Settings
 from src.utils.logger import get_logger
 from src.utils.model_downloader import check_models_integrity
+from src.i18n import t
 
 logger = get_logger("video2text")
 
@@ -83,7 +84,7 @@ class StartupDependencyWorker(QObject):
 
             ok = True
         except Exception:
-            logger.exception("依赖检测异常")
+            logger.exception(t("startup.dep_detect_exception"))
             ok = False
         self.finished.emit(ok)
 

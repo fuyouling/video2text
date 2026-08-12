@@ -525,7 +525,6 @@ stop_service()
         "会议纪要": "请提取会议的关键决策和行动项..."
     },
     "last_used": "会议纪要",
-    "markdown_prompt": "\n请将总结内容以Markdown格式输出...",
     "markdown_enabled": true
 }
 ```
@@ -540,7 +539,7 @@ def build_prompt(self, text: str, custom_prompt: str = "") -> str:
         base = "你是一个专业的文本总结助手，擅长提取关键信息并生成简洁准确的总结，只输出总结正文，**禁止添加任何开头语、结尾说明、解释性语句、备注**，**不要额外修饰、补充话术，纯输出总结内容**。"
 
     if self._markdown_enabled:
-        md_prompt = self._markdown_prompt
+        md_prompt = t("services.summarization.markdown_prompt")
         if md_prompt.strip():
             return f"{base}\n\n{md_prompt}\n\n文本内容：\n{text}"
     return f"{base}\n\n文本内容：\n{text}"

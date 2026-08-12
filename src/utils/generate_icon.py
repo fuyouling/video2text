@@ -14,6 +14,7 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 from src.utils.logger import get_logger, setup_logger
+from src.i18n import t
 
 setup_logger("generate_icon", log_to_console=True, log_to_file=False)
 logger = get_logger("generate_icon")
@@ -406,7 +407,7 @@ def gen_arrow_down(output_dir: Optional[Path] = None) -> Path:
     )
     path = output_dir / "arrow_down.png"
     img.save(path)
-    logger.info("已生成向下箭头: %s", path)
+    logger.info(t("generate_icon.gen_arrow_down", path=path))
     return path
 
 
@@ -437,7 +438,7 @@ def gen_arrow_up(output_dir: Optional[Path] = None) -> Path:
     )
     path = output_dir / "arrow_up.png"
     img.save(path)
-    logger.info("已生成向上箭头: %s", path)
+    logger.info(t("generate_icon.gen_arrow_up", path=path))
     return path
 
 
@@ -455,7 +456,7 @@ def gen_tree_closed(output_dir: Optional[Path] = None) -> Path:
     draw.polygon([(170, 120), (170, 392), (370, 256)], fill=c)
     path = output_dir / "tree_closed.png"
     img.save(path)
-    logger.info("已生成树形折叠图标: %s", path)
+    logger.info(t("generate_icon.gen_tree_closed", path=path))
     return path
 
 
@@ -473,7 +474,7 @@ def gen_tree_open(output_dir: Optional[Path] = None) -> Path:
     draw.polygon([(120, 170), (392, 170), (256, 370)], fill=c)
     path = output_dir / "tree_open.png"
     img.save(path)
-    logger.info("已生成树形展开图标: %s", path)
+    logger.info(t("generate_icon.gen_tree_open", path=path))
     return path
 
 
@@ -491,7 +492,7 @@ def gen_check(output_dir: Optional[Path] = None) -> Path:
     draw.line([(130, 270), (230, 380), (400, 140)], fill=(255, 255, 255, 255), width=w)
     path = output_dir / "check.png"
     img.save(path)
-    logger.info("已生成勾选标记图标: %s", path)
+    logger.info(t("generate_icon.gen_check", path=path))
     return path
 
 
@@ -516,7 +517,7 @@ def gen_close(output_dir: Optional[Path] = None) -> Path:
     draw.line([(end, inset), (inset, end)], fill=ARROW_FILL_COLOR, width=ARROW_STROKE_WIDTH)
     path = output_dir / "close.png"
     img.save(path)
-    logger.info("已生成关闭符号: %s", path)
+    logger.info(t("generate_icon.gen_close", path=path))
     return path
 
 
@@ -567,7 +568,7 @@ def gen_refresh(output_dir: Optional[Path] = None) -> Path:
 
     path = output_dir / "refresh.png"
     img.save(path)
-    logger.info("已生成刷新图标: %s", path)
+    logger.info(t("generate_icon.gen_refresh", path=path))
     return path
 
 
@@ -620,7 +621,7 @@ def gen_settings(output_dir: Optional[Path] = None) -> Path:
     draw.ellipse([cx - hole, cy - hole, cx + hole, cy + hole], fill=(0, 0, 0, 0))
     path = output_dir / "settings.png"
     img.save(path)
-    logger.info("已生成设置图标: %s", path)
+    logger.info(t("generate_icon.gen_settings", path=path))
     return path
 
 
@@ -644,7 +645,7 @@ def gen_tools(output_dir: Optional[Path] = None) -> Path:
                  fill=(0, 0, 0, 0))
     path = output_dir / "tools.png"
     img.save(path)
-    logger.info("已生成工具图标: %s", path)
+    logger.info(t("generate_icon.gen_tools", path=path))
     return path
 
 
@@ -664,7 +665,7 @@ def gen_help(output_dir: Optional[Path] = None) -> Path:
     draw.ellipse([238, 396, 274, 432], fill=_MENU_BLUE)
     path = output_dir / "help.png"
     img.save(path)
-    logger.info("已生成帮助图标: %s", path)
+    logger.info(t("generate_icon.gen_help", path=path))
     return path
 
 
@@ -684,7 +685,7 @@ def gen_edit_config(output_dir: Optional[Path] = None) -> Path:
         draw.ellipse([x - 46, y - 46, x + 46, y + 46], fill=_MENU_BLUE)
     path = output_dir / "edit_config.png"
     img.save(path)
-    logger.info("已生成编辑配置图标: %s", path)
+    logger.info(t("generate_icon.gen_edit_config", path=path))
     return path
 
 
@@ -703,7 +704,7 @@ def gen_bg_image(output_dir: Optional[Path] = None) -> Path:
                  fill=_MENU_BLUE)
     path = output_dir / "bg_image.png"
     img.save(path)
-    logger.info("已生成背景图片图标: %s", path)
+    logger.info(t("generate_icon.gen_bg_image", path=path))
     return path
 
 
@@ -719,7 +720,7 @@ def gen_favorite(output_dir: Optional[Path] = None) -> Path:
     draw.polygon(pts, fill=_MENU_BLUE)
     path = output_dir / "favorite.png"
     img.save(path)
-    logger.info("已生成常用目录图标: %s", path)
+    logger.info(t("generate_icon.gen_favorite", path=path))
     return path
 
 
@@ -740,7 +741,7 @@ def gen_api_key(output_dir: Optional[Path] = None) -> Path:
     draw.line([(382, 256), (382, 322)], fill=_MENU_BLUE, width=30)
     path = output_dir / "api_key.png"
     img.save(path)
-    logger.info("已生成 API Key 图标: %s", path)
+    logger.info(t("generate_icon.gen_api_key", path=path))
     return path
 
 
@@ -758,7 +759,7 @@ def gen_voice(output_dir: Optional[Path] = None) -> Path:
     draw.line([(170, 470), (342, 470)], fill=_MENU_BLUE, width=40)
     path = output_dir / "voice.png"
     img.save(path)
-    logger.info("已生成语音转文字图标: %s", path)
+    logger.info(t("generate_icon.gen_voice", path=path))
     return path
 
 
@@ -779,7 +780,7 @@ def gen_api_test(output_dir: Optional[Path] = None) -> Path:
     draw.ellipse([286, 344, 306, 364], fill=(255, 255, 255, 200))
     path = output_dir / "api_test.png"
     img.save(path)
-    logger.info("已生成 API 测试图标: %s", path)
+    logger.info(t("generate_icon.gen_api_test", path=path))
     return path
 
 
@@ -796,7 +797,7 @@ def gen_about(output_dir: Optional[Path] = None) -> Path:
     draw.line([(256, 150), (256, 344)], fill=_MENU_BLUE, width=46)
     path = output_dir / "about.png"
     img.save(path)
-    logger.info("已生成关于图标: %s", path)
+    logger.info(t("generate_icon.gen_about", path=path))
     return path
 
 
@@ -811,7 +812,7 @@ def gen_arrow_right(output_dir: Optional[Path] = None) -> Path:
     draw.polygon([(190, 150), (190, 362), (382, 256)], fill=_MENU_BLUE)
     path = output_dir / "arrow_right.png"
     img.save(path)
-    logger.info("已生成右向箭头图标: %s", path)
+    logger.info(t("generate_icon.gen_arrow_right", path=path))
     return path
 
 
@@ -873,7 +874,7 @@ def gen_donate(output_dir: Optional[Path] = None) -> Path:
 
     path = output_dir / "heart.png"
     img.save(path)
-    logger.info("已生成捐赠图标: %s", path)
+    logger.info(t("generate_icon.gen_donate", path=path))
     return path
 
 
@@ -900,14 +901,14 @@ def generate_icon_files(output_dir: Optional[Path] = None) -> Tuple[Path, Path]:
     png_path = output_dir / "video2text_logo.png"
     ico_path = output_dir / "video2text_logo.ico"
 
-    logger.info("生成 video2text 图标...")
+    logger.info(t("generate_icon.gen_main"))
     icon = create_icon()
 
     icon.save(png_path, "PNG")
-    logger.info("已生主图标 PNG: %s", png_path)
+    logger.info(t("generate_icon.gen_main_png", path=png_path))
 
     save_as_ico(icon, ico_path)
-    logger.info("已生主图标 ICO: %s", ico_path)
+    logger.info(t("generate_icon.gen_main_ico", path=ico_path))
 
     return png_path, ico_path
 
@@ -920,16 +921,16 @@ def generate_icon_files(output_dir: Optional[Path] = None) -> Tuple[Path, Path]:
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="图标生成工具")
-    parser.add_argument("--arrows", action="store_true", help="仅生成箭头/关闭符号图标")
-    parser.add_argument("--widgets", action="store_true", help="仅生成控件图标（树形折叠/展开、勾选标记、刷新）")
-    parser.add_argument("--main", action="store_true", help="仅生成主图标")
+    parser = argparse.ArgumentParser(description=t("generate_icon.description"))
+    parser.add_argument("--arrows", action="store_true", help=t("generate_icon.opt_arrows"))
+    parser.add_argument("--widgets", action="store_true", help=t("generate_icon.opt_widgets"))
+    parser.add_argument("--main", action="store_true", help=t("generate_icon.opt_main"))
     parser.add_argument(
         "--menu",
         action="store_true",
-        help="仅生成菜单图标（设置/工具/帮助及其子项）",
+        help=t("generate_icon.opt_menu"),
     )
-    parser.add_argument("--all", action="store_true", help="生成所有图标（默认行为）")
+    parser.add_argument("--all", action="store_true", help=t("generate_icon.opt_all"))
     args = parser.parse_args()
 
     if not args.arrows and not args.main and not args.widgets and not args.menu:

@@ -11,13 +11,6 @@ from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-_DEFAULT_MARKDOWN_PROMPT = (
-    "\n请将总结内容以Markdown格式输出，形式如下：\n"
-    "- **要点标题**\n\t- 内容\n\t- 内容\n"
-    "- **要点标题**\n\t- 内容\n\t- 内容\n\n"
-    "保持Markdown格式的正确性，确保输出可以直接渲染。\n"
-)
-
 
 class PromptManager:
     """Prompt template manager — saves user-defined prompt templates with persistence
@@ -52,7 +45,6 @@ class PromptManager:
         self._file_path = base_dir / "prompts.json"
         self._templates: dict[str, str] = {}
         self._last_used: str = ""
-        self._markdown_prompt: str = _DEFAULT_MARKDOWN_PROMPT
         self._markdown_enabled: bool = True
         self._load()
         self._initialized = True
@@ -72,7 +64,6 @@ class PromptManager:
             return
         self._templates = data.get("templates", {})
         self._last_used = data.get("last_used", "")
-        self._markdown_prompt = data.get("markdown_prompt", _DEFAULT_MARKDOWN_PROMPT)
         self._markdown_enabled = data.get("markdown_enabled", True)
         logger.info("PromptManager: ✓ %s", t("services.summarization.prompt_loaded", name=self._file_path.name))
 
@@ -81,7 +72,6 @@ class PromptManager:
             data = {
                 "templates": self._templates,
                 "last_used": self._last_used,
-                "markdown_prompt": self._markdown_prompt,
                 "markdown_enabled": self._markdown_enabled,
             }
             self._file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -121,11 +111,7 @@ class PromptManager:
         return ""
 
     def get_markdown_prompt(self) -> str:
-        return self._markdown_prompt
-
-    def set_markdown_prompt(self, value: str) -> None:
-        self._markdown_prompt = value
-        self.save()
+        return t("services.summarization.markdown_prompt")
 
     def get_markdown_enabled(self) -> bool:
         return self._markdown_enabled
@@ -143,10 +129,11 @@ class PromptManager:
         if custom_prompt and custom_prompt.strip():
             base = custom_prompt.strip()
         else:
-            base = "你是一个专业的文本总结助手，擅长提取关键信息并生成简洁准确的总结，只输出总结正文，**禁止添加任何开头语、结尾说明、解释性语句、备注**，**不要额外修饰、补充话术，纯输出总结内容**，结尾无需再次总结。"
+            base = t("services.summarization.default_prompt")
 
+        text_content_label = t("services.summarization.text_content_label")
         if self._markdown_enabled and is_use_gui_markdown_flag:
-            md_prompt = self._markdown_prompt
+            md_prompt = t("services.summarization.markdown_prompt")
             if md_prompt.strip():
-                return f"{base}\n\n{md_prompt}\n\n文本内容：\n{text}"
-        return f"{base}\n\n文本内容：\n{text}"
+                return f"{base}\n\n{md_prompt}\n\n{text_content_label}\n{text}"
+        return f"{base}\n\n{text_content_label}\n{text}"

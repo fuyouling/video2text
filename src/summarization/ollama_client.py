@@ -23,16 +23,18 @@ class OllamaClient:
     # Class-level process reference, shared across all instances
     _service_process: Optional[subprocess.Popen] = None
 
-    def __init__(self, base_url: str = "http://127.0.0.1:11434", timeout: int = 60):
+    def __init__(self, base_url: str = "http://127.0.0.1:11434", timeout: int = 60, check_retries: int = 3):
         """Initialize Ollama client
 
         Args:
             base_url: Ollama service URL
             timeout: Request timeout (seconds)
+            check_retries: Number of attempts for check_connection()
         """
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.max_retries = 3
+        self.check_retries = check_retries
         self._session = requests.Session()
         ollama_api_key = os.environ.get("OLLAMA_API_KEY") or ""
         if ollama_api_key:
@@ -353,27 +355,49 @@ class OllamaClient:
         Returns:
             Whether connection was successful
         """
-        try:
-            response = self._session.get(f"{self.base_url}/api/tags", timeout=10)
-            success = response.status_code == 200
+        ok = False
+        last_err = None
+        for attempt in range(1, self.check_retries + 1):
+            retryable = True
+            try:
+                response = self._session.get(f"{self.base_url}/api/tags", timeout=10)
+                if response.status_code == 200:
+                    ok = True
+                    break
+                status = response.status_code
+                try:
+                    error_detail = response.json()
+                    last_err = t(
+                        "services.summarization.ollama.check_connection_fail_detail",
+                        code=status,
+                        detail=error_detail,
+                    )
+                except Exception:
+                    last_err = t(
+                        "services.summarization.ollama.check_connection_fail",
+                        code=status,
+                    )
+                # 4xx（不含 429）视为客户端配置问题，重试无意义
+                if 400 <= status < 500 and status != 429:
+                    retryable = False
+            except Exception as e:
+                last_err = t("services.summarization.ollama.check_connection_error", error=e)
+
+            if not retryable or attempt >= self.check_retries:
+                break
+            wait = 2 ** attempt
             if not quiet:
-                if success:
-                    logger.info(t("services.summarization.ollama.check_connection_ok"))
-                else:
-                    try:
-                        error_detail = response.json()
-                        logger.error(
-                            t("services.summarization.ollama.check_connection_fail_detail", code=response.status_code, detail=error_detail),
-                        )
-                    except Exception:
-                        logger.error(
-                            t("services.summarization.ollama.check_connection_fail", code=response.status_code),
-                        )
-            return success
-        except Exception as e:
-            if not quiet:
-                logger.error(t("services.summarization.ollama.check_connection_error", error=e))
-            return False
+                logger.warning(
+                    t("services.summarization.ollama.check_retry", attempt=attempt, max=self.check_retries, wait=wait),
+                )
+            time.sleep(wait)
+
+        if not quiet:
+            if ok:
+                logger.info(t("services.summarization.ollama.check_connection_ok"))
+            elif last_err:
+                logger.error("%s", last_err)
+        return ok
 
     def list_models(self, quiet: bool = False) -> List[str]:
         """List available models

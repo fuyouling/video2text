@@ -898,7 +898,7 @@ class ResultViewerWindow(QMainWindow):
                 all_files.extend(output_path.rglob(f"*{ext}"))
             all_files.sort()
         except OSError as exc:
-            logger.warning("扫描目录失败: %s", exc)
+            logger.warning(t("app.result_viewer.scan_dir_failed", error=exc))
             self._folder_tree.blockSignals(False)
             return
 
@@ -1125,7 +1125,7 @@ class ResultViewerWindow(QMainWindow):
                     summary_text = summary_path.read_text(encoding="utf-8-sig")
                     self._display_markdown(summary_text)
                 except Exception:
-                    logger.warning("重新渲染摘要失败: %s", summary_path.name)
+                    logger.warning(t("app.result_viewer.rerender_summary_failed", error=summary_path.name))
 
     # ─── 全屏 ─────────────────────────────────────────────────
 
@@ -1920,7 +1920,7 @@ class ResultViewerWindow(QMainWindow):
             settings.set("app.result_transparency", str(opacity_int))
             settings.save()
         except Exception as e:
-            logger.warning("保存背景图片配置失败: %s", e)
+            logger.warning(t("app.result_viewer.save_bg_config_failed", error=e))
 
     def _change_bg_image(self) -> None:
         """通过资源管理器选择并更换背景图片"""

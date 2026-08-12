@@ -38,8 +38,8 @@
     "help": "도움말",
     "help_donate": "기부",
     "help_about": "정보",
-    "settings_api_key_manage": "API KEY 설정",
-    "help": "도움말",
+    "settings_api_key_manage": "API KEY 설정"
+  },
   "main": {
     "input_label": "입력:",
     "input_placeholder": "비디오/오디오 파일 또는 폴더 선택…",
@@ -73,7 +73,7 @@
     "find_action": "찾기 및 바꾸기",
     "tx_prompt_group": "변환 프롬프트",
     "tx_prompt_placeholder": "정확도 향상을 위한 장면 지시, 도메인 용어, 간결하게 유지",
-    "hotwords_placeholder": "핫워드, 공백 구분, 주요 도메인 용어, 간결하게",
+    "hotwords_placeholder": "핫워드/구문, 하나의 편향 프리픽스로, 주요 도메인 용어, 간결하게",
     "tx_prompt_template_placeholder": "저장된 프롬프트 선택…",
     "summary_prompt_group": "요약 프롬프트",
     "summary_prompt_placeholder": "사용자 정의 요약 프롬프트 (선택사항); 비워두면 기본값 사용",
@@ -601,7 +601,25 @@
     "summary_result": "  - {name}.{fmt} (요약)",
     "version": "Video2Text v{ver}",
     "error": "[bold red]오류: {error}[/bold red]",
-    "unknown_error": "[bold red]알 수 없는 오류: {error}[/bold red]"
+    "unknown_error": "[bold red]알 수 없는 오류: {error}[/bold red]",
+    "file_not_found": "File not found: {path}",
+    "cmd_transcribe_desc": "Transcribe media to text",
+    "cmd_transcribe_usage": "video2text transcribe <media_path> [options]",
+    "cmd_summarize_desc": "Summarize transcript text",
+    "cmd_summarize_usage": "video2text summarize <transcript_path> [options]",
+    "cmd_pipeline_desc": "Run full pipeline (transcribe + summarize)",
+    "cmd_pipeline_usage": "video2text run-pipeline <media_path> [options]",
+    "cmd_version_desc": "Show version information",
+    "cmd_help_desc": "Show detailed usage for all commands",
+    "help_title": "[bold blue]Video2Text Command Help[/bold blue]",
+    "available_commands": "[bold]Available commands:[/bold]",
+    "usage_label": "Usage:",
+    "options_label": "Options:",
+    "examples_label": "[bold]Examples:[/bold]",
+    "tips_label": "[bold]Tips:[/bold]",
+    "tip1": "1. Use --help to view detailed options for a single command",
+    "tip2": "2. All transcription and summarization parameters (model, language, device, temperature, etc.) are configured via config.ini",
+    "tip3": "3. In PowerShell, call the executable by its full path, e.g.: .\\video2text.exe transcribe video.mp4 -o output"
   },
   "errors": {
     "file_not_found": "파일을 찾을 수 없음: {path}",
@@ -755,7 +773,22 @@
       },
       "select_conv_first": "먼저 대화를 선택하세요"
     },
-    "log_delete_conv_fail": "대화 {conv_id} 삭제 실패: {error}"
+    "log_delete_conv_fail": "대화 {conv_id} 삭제 실패: {error}",
+    "widget": {
+      "start_record_failed": "Failed to start recording: {error}",
+      "record_error_exception": "on_record_error exception:\n{error}",
+      "transcribe_done_exception": "_on_transcribe_done exception:\n{error}",
+      "transcribe_error_exception": "_on_transcribe_error exception:\n{error}",
+      "api_call_done_exception": "_start_api_call on_done exception:\n{error}"
+    },
+    "role": {
+      "user": "User",
+      "assistant": "Assistant"
+    },
+    "prompt": {
+      "correct_text": "The user recorded audio using faster-whisper for speech recognition, and some text may be incorrect. Please correct typos and unnatural phrasing in the user's transcribed text, and output in JSON format: {\"source_text\":\"original text\",\"update_text\":\"corrected text\"}. Output only the JSON, without any other content.",
+      "summarize_conversation": "Please summarize the following multi-turn conversation into a well-structured Markdown document. Requirements: output only the Markdown content itself, without any explanatory text, prefix, or suffix.\n\nConversation:\n{text}"
+    }
   },
   "config": {
     "section": {
@@ -1014,7 +1047,8 @@
       "estimate_from_size": "파일 크기로 추정: {value}s",
       "estimate_fallback": "청크 길이 추정 실패, 0s로 대체 (타임스탬프 오프셋 없음)",
       "cleanup_stale": "오래된 체크포인트 정리: {name}",
-      "history_save_fail": "변환 이력 저장 실패 (치명적이지 않음): {error}"
+      "history_save_fail": "변환 이력 저장 실패 (치명적이지 않음): {error}",
+      "write_index_failed": "Failed to write output index: {error}"
     },
     "summarization": {
       "pause_requested": "요약 일시정지 요청됨, 현재 작업 완료 대기 중…",
@@ -1034,6 +1068,9 @@
       "prompt_load_failed": "PromptManager: 로드 실패 ({name})",
       "prompt_loaded": "PromptManager: 로드됨 ({name})",
       "prompt_save_error": "PromptManager: 저장 실패 ({error})",
+      "default_prompt": "당신은 전문적인 텍스트 요약 비서입니다. 핵심 정보를 추출하고 간결하고 정확한 요약을 생성하는 데 능숙합니다. 요약 본문만 출력하세요. **시작 인사말, 마무리 설명, 해설, 주석을 절대 추가하지 마세요.** **불필요한 꾸밈이나 덧붙임 없이 순수하게 요약 내용만 출력하세요.** 끝에 다시 요약할 필요는 없습니다.",
+      "text_content_label": "텍스트 내용:",
+      "markdown_prompt": "\n요약을 다음과 같은 Markdown 형식으로 출력하세요:\n- **핵심 요점**\n\t- 내용\n\t- 내용\n- **핵심 요점**\n\t- 내용\n\t- 내용\n\nMarkdown 형식이 올바르게 유지되어 출력이 그대로 렌더링되도록 하세요.\n",
       "ollama": {
         "already_running": "Ollama 서비스가 이미 실행 중입니다",
         "process_exists": "Ollama 서비스 프로세스가 이미 존재함",
@@ -1101,7 +1138,9 @@
         "stream_json_error": "NvidiaClient: 스트리밍 JSON 파싱 실패",
         "stream_interrupted": "NvidiaClient: 스트림 중단됨, {count}자 수신됨",
         "stream_connection_failed": "NVIDIA 스트리밍 연결 실패: {error}"
-      }
+      },
+      "write_index_failed": "Failed to write output index: {error}",
+      "markdown_tooltip": "활성화하면 요약에 다국어 Markdown 형식 지시가 자동 적용됩니다."
     },
     "voice_transcription": {
       "audio_file_not_found": "오디오 파일을 찾을 수 없음: {path}",
@@ -1159,6 +1198,9 @@
     },
     "json": {
       "read_fail": "JSON 파일 읽기 실패 {name}: {error}"
+    },
+    "output_index": {
+      "save_failed": "Failed to save output index: {error}"
     }
   },
   "text_processing": {
@@ -1321,7 +1363,8 @@
       "passed": "모델 무결성 검사 통과, 향후 검사 비활성화",
       "not_passed": "모델 무결성: 통과하지 못함 (네트워크 연결 불가 추정), 향후 자동 검사 비활성화. 메인 UI 영향 없음; 프록시를 구성하거나 클라우드 드라이브에서 모델을 다운로드하여 다시 시도하세요.",
       "config_update_fail": "모델 무결성: 구성 업데이트 실패 (치명적이지 않음): {error}"
-    }
+    },
+    "unknown_model": "Unknown model: {model}"
   },
   "output_validator": {
     "file": {
@@ -1390,5 +1433,51 @@
     "error_dup_key": "키 이름이 이미 존재합니다 (대소문자 구분 안 함)",
     "save_failed": "저장 실패: {error}",
     "saved_msg": "성공적으로 저장됨:\n{path}"
+  },
+  "app": {
+    "result_viewer": {
+      "scan_dir_failed": "Failed to scan directory: {error}",
+      "rerender_summary_failed": "Failed to re-render summary: {error}",
+      "save_bg_config_failed": "Failed to save background image config: {error}"
+    }
+  },
+  "startup": {
+    "dep_detect_exception": "Dependency detection exception"
+  },
+  "logger": {
+    "invalid_level": "Invalid log level: {level}"
+  },
+  "path_resolver": {
+    "path_too_long": "Output directory path is too long (> {max} characters); saving may fail: {path}"
+  },
+  "generate_icon": {
+    "description": "Icon generation tool",
+    "opt_arrows": "Generate only arrow/close-symbol icons",
+    "opt_widgets": "Generate only widget icons (tree collapse/expand, checkmark, refresh)",
+    "opt_main": "Generate only the main icon",
+    "opt_menu": "Generate only menu icons (settings/tools/help and sub-items)",
+    "opt_all": "Generate all icons (default behavior)",
+    "gen_arrow_down": "Generated down arrow: {path}",
+    "gen_arrow_up": "Generated up arrow: {path}",
+    "gen_tree_closed": "Generated tree-collapse icon: {path}",
+    "gen_tree_open": "Generated tree-expand icon: {path}",
+    "gen_check": "Generated checkmark icon: {path}",
+    "gen_close": "Generated close-symbol icon: {path}",
+    "gen_refresh": "Generated refresh icon: {path}",
+    "gen_settings": "Generated settings icon: {path}",
+    "gen_tools": "Generated tools icon: {path}",
+    "gen_help": "Generated help icon: {path}",
+    "gen_edit_config": "Generated edit-config icon: {path}",
+    "gen_bg_image": "Generated background-image icon: {path}",
+    "gen_favorite": "Generated favorites icon: {path}",
+    "gen_api_key": "Generated API Key icon: {path}",
+    "gen_voice": "Generated voice-to-text icon: {path}",
+    "gen_api_test": "Generated API-test icon: {path}",
+    "gen_about": "Generated about icon: {path}",
+    "gen_arrow_right": "Generated right-arrow icon: {path}",
+    "gen_donate": "Generated donate icon: {path}",
+    "gen_main": "Generating video2text icon...",
+    "gen_main_png": "Generated main icon PNG: {path}",
+    "gen_main_ico": "Generated main icon ICO: {path}"
   }
 }

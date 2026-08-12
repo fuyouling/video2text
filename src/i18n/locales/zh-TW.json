@@ -38,8 +38,8 @@
     "help": "幫助",
     "help_donate": "捐贈支持",
     "help_about": "關於",
-    "settings_api_key_manage": "設定 API KEY",
-    "help": "幫助",
+    "settings_api_key_manage": "設定 API KEY"
+  },
   "main": {
     "input_label": "輸入:",
     "input_placeholder": "請選擇視頻/音頻文件或文件夾…",
@@ -73,7 +73,7 @@
     "find_action": "查找替換",
     "tx_prompt_group": "轉寫提示詞配置",
     "tx_prompt_placeholder": "場景指令，不要換行，輸入鄰域術語提升識別準確率，不宜過長，會影響識別速度",
-    "hotwords_placeholder": "熱詞，空格分隔，輸入核心專有名詞，不宜過長，會影響識別速度",
+    "hotwords_placeholder": "熱詞/短語,作為整體偏置,輸入核心專有名詞,不宜過長",
     "tx_prompt_template_placeholder": "選擇已保存的提示詞…",
     "summary_prompt_group": "總結提示詞配置",
     "summary_prompt_placeholder": "自定義總結提示詞（可選），留空則使用默認提示詞",
@@ -827,7 +827,25 @@
     "summary_result": "  - {name}.{fmt} (摘要)",
     "version": "Video2Text v{ver}",
     "error": "[bold red]錯誤: {error}[/bold red]",
-    "unknown_error": "[bold red]未知錯誤: {error}[/bold red]"
+    "unknown_error": "[bold red]未知錯誤: {error}[/bold red]",
+    "file_not_found": "File not found: {path}",
+    "cmd_transcribe_desc": "Transcribe media to text",
+    "cmd_transcribe_usage": "video2text transcribe <media_path> [options]",
+    "cmd_summarize_desc": "Summarize transcript text",
+    "cmd_summarize_usage": "video2text summarize <transcript_path> [options]",
+    "cmd_pipeline_desc": "Run full pipeline (transcribe + summarize)",
+    "cmd_pipeline_usage": "video2text run-pipeline <media_path> [options]",
+    "cmd_version_desc": "Show version information",
+    "cmd_help_desc": "Show detailed usage for all commands",
+    "help_title": "[bold blue]Video2Text Command Help[/bold blue]",
+    "available_commands": "[bold]Available commands:[/bold]",
+    "usage_label": "Usage:",
+    "options_label": "Options:",
+    "examples_label": "[bold]Examples:[/bold]",
+    "tips_label": "[bold]Tips:[/bold]",
+    "tip1": "1. Use --help to view detailed options for a single command",
+    "tip2": "2. All transcription and summarization parameters (model, language, device, temperature, etc.) are configured via config.ini",
+    "tip3": "3. In PowerShell, call the executable by its full path, e.g.: .\\video2text.exe transcribe video.mp4 -o output"
   },
   "errors": {
     "file_not_found": "文件不存在: {path}",
@@ -981,7 +999,22 @@
       },
       "select_conv_first": "請先選擇一個對話會話"
     },
-    "log_delete_conv_fail": "刪除會話失敗 {conv_id}: {error}"
+    "log_delete_conv_fail": "刪除會話失敗 {conv_id}: {error}",
+    "widget": {
+      "start_record_failed": "Failed to start recording: {error}",
+      "record_error_exception": "on_record_error exception:\n{error}",
+      "transcribe_done_exception": "_on_transcribe_done exception:\n{error}",
+      "transcribe_error_exception": "_on_transcribe_error exception:\n{error}",
+      "api_call_done_exception": "_start_api_call on_done exception:\n{error}"
+    },
+    "role": {
+      "user": "User",
+      "assistant": "Assistant"
+    },
+    "prompt": {
+      "correct_text": "The user recorded audio using faster-whisper for speech recognition, and some text may be incorrect. Please correct typos and unnatural phrasing in the user's transcribed text, and output in JSON format: {\"source_text\":\"original text\",\"update_text\":\"corrected text\"}. Output only the JSON, without any other content.",
+      "summarize_conversation": "Please summarize the following multi-turn conversation into a well-structured Markdown document. Requirements: output only the Markdown content itself, without any explanatory text, prefix, or suffix.\n\nConversation:\n{text}"
+    }
   },
   "services": {
     "transcription": {
@@ -1017,7 +1050,8 @@
       "estimate_from_size": "使用文件大小估算: {value}s",
       "estimate_fallback": "切片時長估算失敗，回退為 0s（不偏移後續時間戳）",
       "cleanup_stale": "清理過期斷點: {name}",
-      "history_save_fail": "保存轉寫歷史失敗（不影響主流程）: {error}"
+      "history_save_fail": "保存轉寫歷史失敗（不影響主流程）: {error}",
+      "write_index_failed": "Failed to write output index: {error}"
     },
     "summarization": {
       "pause_requested": "總結暫停請求已接收，等待當前任務完成…",
@@ -1037,6 +1071,9 @@
       "prompt_load_failed": "PromptManager: 加載失敗 ({name})",
       "prompt_loaded": "PromptManager: 已加載 ({name})",
       "prompt_save_error": "PromptManager: 保存失敗 ({error})",
+      "default_prompt": "你是一個專業的文字總結助手，擅長提取關鍵資訊並產生簡潔準確的總結，只輸出總結正文，**禁止添加任何開頭語、結尾說明、解釋性語句、備註**，**不要額外修飾、補充話術，純輸出總結內容**，結尾無需再次總結。",
+      "text_content_label": "文字內容：",
+      "markdown_prompt": "\n請將總結內容以 Markdown 格式輸出，形式如下：\n- **要點標題**\n\t- 內容\n\t- 內容\n- **要點標題**\n\t- 內容\n\t- 內容\n\n保持 Markdown 格式的正確性，確保輸出可以直接渲染。\n",
       "ollama": {
         "already_running": "Ollama 服務已在運行中",
         "process_exists": "Ollama 服務進程已存在",
@@ -1104,7 +1141,9 @@
         "stream_json_error": "NvidiaClient: 流式 JSON 解析失敗",
         "stream_interrupted": "NvidiaClient: 流式中斷，已接收 {count} 字符",
         "stream_connection_failed": "NVIDIA 流式連接失敗: {error}"
-      }
+      },
+      "write_index_failed": "Failed to write output index: {error}",
+      "markdown_tooltip": "勾選後總結輸出將自動套用多語言 Markdown 格式指令。"
     },
     "voice_transcription": {
       "audio_file_not_found": "音頻文件不存在: {path}",
@@ -1162,6 +1201,9 @@
     },
     "json": {
       "read_fail": "讀取 JSON 文件失敗 {name}: {error}"
+    },
+    "output_index": {
+      "save_failed": "Failed to save output index: {error}"
     }
   },
   "text_processing": {
@@ -1324,7 +1366,8 @@
       "passed": "模型完整性檢測通過，已關閉後續檢測",
       "not_passed": "模型完整性檢測: 未通過（多為網絡不可達），已關閉後續自動檢測。主界面不受影響，可正常使用；請配置代理或從網盤補齊模型後重開。",
       "config_update_fail": "模型完整性檢測: 更新配置失敗 (不影響使用): {error}"
-    }
+    },
+    "unknown_model": "Unknown model: {model}"
   },
   "output_validator": {
     "file": {
@@ -1393,5 +1436,51 @@
     "error_dup_key": "鍵名已存在（不區分大小寫）",
     "save_failed": "儲存失敗：{error}",
     "saved_msg": "已成功儲存至：\n{path}"
+  },
+  "app": {
+    "result_viewer": {
+      "scan_dir_failed": "Failed to scan directory: {error}",
+      "rerender_summary_failed": "Failed to re-render summary: {error}",
+      "save_bg_config_failed": "Failed to save background image config: {error}"
+    }
+  },
+  "startup": {
+    "dep_detect_exception": "Dependency detection exception"
+  },
+  "logger": {
+    "invalid_level": "Invalid log level: {level}"
+  },
+  "path_resolver": {
+    "path_too_long": "Output directory path is too long (> {max} characters); saving may fail: {path}"
+  },
+  "generate_icon": {
+    "description": "Icon generation tool",
+    "opt_arrows": "Generate only arrow/close-symbol icons",
+    "opt_widgets": "Generate only widget icons (tree collapse/expand, checkmark, refresh)",
+    "opt_main": "Generate only the main icon",
+    "opt_menu": "Generate only menu icons (settings/tools/help and sub-items)",
+    "opt_all": "Generate all icons (default behavior)",
+    "gen_arrow_down": "Generated down arrow: {path}",
+    "gen_arrow_up": "Generated up arrow: {path}",
+    "gen_tree_closed": "Generated tree-collapse icon: {path}",
+    "gen_tree_open": "Generated tree-expand icon: {path}",
+    "gen_check": "Generated checkmark icon: {path}",
+    "gen_close": "Generated close-symbol icon: {path}",
+    "gen_refresh": "Generated refresh icon: {path}",
+    "gen_settings": "Generated settings icon: {path}",
+    "gen_tools": "Generated tools icon: {path}",
+    "gen_help": "Generated help icon: {path}",
+    "gen_edit_config": "Generated edit-config icon: {path}",
+    "gen_bg_image": "Generated background-image icon: {path}",
+    "gen_favorite": "Generated favorites icon: {path}",
+    "gen_api_key": "Generated API Key icon: {path}",
+    "gen_voice": "Generated voice-to-text icon: {path}",
+    "gen_api_test": "Generated API-test icon: {path}",
+    "gen_about": "Generated about icon: {path}",
+    "gen_arrow_right": "Generated right-arrow icon: {path}",
+    "gen_donate": "Generated donate icon: {path}",
+    "gen_main": "Generating video2text icon...",
+    "gen_main_png": "Generated main icon PNG: {path}",
+    "gen_main_ico": "Generated main icon ICO: {path}"
   }
 }

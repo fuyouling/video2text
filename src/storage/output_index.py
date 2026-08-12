@@ -21,6 +21,7 @@ from src.storage.file_writer import (
 )
 from src.utils.json_utils import atomic_write_json, safe_read_json
 from src.utils.logger import get_logger
+from src.i18n import t
 
 logger = get_logger(__name__)
 
@@ -60,7 +61,7 @@ class OutputIndex:
             path.parent.mkdir(parents=True, exist_ok=True)
             atomic_write_json(path, {"entries": entries})
         except OSError as exc:
-            logger.warning("保存输出索引失败: %s", exc)
+            logger.warning(t("storage.output_index.save_failed", error=exc))
 
     def record(
         self,

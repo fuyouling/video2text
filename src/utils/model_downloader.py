@@ -59,7 +59,7 @@ class ModelDownloader:
         self.model_config = MODEL_CONFIG.get(model_name)
 
         if not self.model_config:
-            raise ValueError(f"未知的模型: {model_name}")
+            raise ValueError(t("model_downloader.unknown_model", model=model_name))
 
         self._base_dir = get_base_dir()
 
