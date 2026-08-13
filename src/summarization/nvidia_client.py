@@ -56,7 +56,7 @@ class NvidiaClient:
         self,
         api_url: str = "https://integrate.api.nvidia.com/v1/chat/completions",
         api_key: Optional[str] = None,
-        timeout: int = 15,
+        timeout: int = 30,
         model: str = "openai/gpt-oss-120b",
         check_retries: int = 3,
     ):
