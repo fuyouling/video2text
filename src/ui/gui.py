@@ -574,9 +574,8 @@ class MainWindow(QMainWindow):
 
         # 在窗口显示前加载背景图片和透明样式，避免先显示默认样式再闪变
         self._load_bg_settings()
-
-        # 在所有控件构造完成且样式就绪后才最大化显示
-        self.showMaximized()
+        # 注意：不在 __init__ 内 show()，改由 gui.main() 统一在布局/样式
+        # 完全就绪后再显示，避免构造期窗口提前显示导致首帧白底闪烁。
 
     def _setup_input_row(self, grid: QGridLayout, row: int) -> None:
         """在 grid 的第 row 行构建输入控件行。"""
@@ -2614,6 +2613,11 @@ def main() -> None:
         app = QApplication()
         app.setStyle("Fusion")
 
+        # 应用级基础背景：覆盖窗口中央部件 10px 边距露出的默认白色背景，
+        # 避免启动首帧出现白边。仅作用于 QMainWindow，不影响 BackgroundContent
+        # 的背景图绘制（背景图在其 paintEvent 中绘制在中央部件之上）。
+        app.setStyleSheet("QMainWindow { background-color: #f4f6fa; }")
+
         # ── 国际化：解析并应用语言（须在构建窗口前完成）──
         import os
 
@@ -2628,7 +2632,16 @@ def main() -> None:
         install_qt_translator(app, lang)
 
         window = MainWindow()
+        # 先以最大化状态设置窗口（不直接 show），待布局与样式完全就绪后再显示，
+        # 避免构造期窗口提前显示导致首帧白底闪烁。
+        window.setWindowState(Qt.WindowState.WindowMaximized)
+        # 先以完全透明显示并强制同步绘制一帧到后台缓冲，再恢复不透明，
+        # 消除 Windows DWM 首帧默认白底白边一闪而过的现象。
+        window.setWindowOpacity(0.0)
         window.show()
+        window.repaint()
+        app.processEvents()
+        window.setWindowOpacity(1.0)
         app.exec()
     finally:
         _crash_log.close()
