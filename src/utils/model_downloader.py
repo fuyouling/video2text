@@ -281,8 +281,6 @@ class ModelDownloader:
 
         logger.info(t("model_downloader.download.start", model=self.model_name))
         logger.info(t("model_downloader.download.check_network"))
-        if proxy:
-            logger.info(t("model_downloader.download.using_proxy", proxy=proxy, source=self._proxy_source_hint()))
 
         if self._check_hf_accessible():
             logger.info(t("model_downloader.download.direct_ok"))

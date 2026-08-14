@@ -503,21 +503,9 @@ start "" "%~dp0video2text.exe" %*
                         shutil.copy2(p, dst / p.name)
                 log("  Copied: libs/ (CUDA/cuDNN DLLs, loaded at runtime)", "green")
 
-        # 7za.exe：用于解压 BCJ2 压缩的 7z 包（py7zr 不支持 BCJ2）。
-        # 将 7z/7za.exe 随包分发，确保 DLL 解压在目标机器上可靠运行。
-        seven_zip_src = root / "7z" / "7za.exe"
-        if seven_zip_src.is_file():
-            try:
-                shutil.copy2(seven_zip_src, portable_dir / "7za.exe")
-                log("  Copied: 7za.exe", "green")
-            except Exception as e:
-                log(f"  Warning: Failed to copy 7za.exe: {e}", "yellow")
-        else:
-            log(
-                "  Note: 7z/7za.exe not found; DLL extraction will fail"
-                " (BCJ2 required, py7zr does not support it)",
-                "yellow",
-            )
+        # 7za.exe：由 spec 的 datas ('7z/7za.exe', '.') 已打包进 _internal/，
+        # 运行时由 dll_downloader 通过 sys._MEIPASS / _internal 查找，故此处
+        # 不再重复复制到根目录（避免根目录与 _internal 各存一份）。
 
         ffmpeg_src = root / "ffmpeg"
         if ffmpeg_src.exists():

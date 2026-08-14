@@ -5,7 +5,9 @@ faster-whisper 需要 cuBLAS / cuDNN 9 的 DLL 文件才能启用 GPU 加速。
 cuBLAS.and.cuDNN_CUDA12_win_v3.7z 压缩包并解压到 libs/ 目录。
 """
 
+import sys
 import time
+from pathlib import Path
 from typing import Optional
 
 from src.i18n import t
@@ -142,17 +144,24 @@ class DllDownloader:
         走不同的 CDN，主站可达不代表下载链接可达。
 
         proxy 为空字符串时直连；传入代理地址则经代理探测。
+
+        注意：release 资产会被 302 重定向到 CDN（objects.githubusercontent.com）。
+        必须跟随重定向探测真正可达性——HEAD 默认不跟随，会只看到 github.com 的
+        302 而误判「直连成功」，但真正的下载 GET 会跟随重定向到被直连屏蔽的 CDN，
+        造成「探测通、下载挂」的矛盾。故这里用 GET + stream（与 model_downloader
+        一致，GET 默认跟随重定向），真正探测到 CDN 的可达性。
         """
         try:
             session = self._get_session()
             self._apply_proxy(proxy)
-            r = session.head(
+            r = session.get(
                 DLL_DOWNLOAD_URL,
                 timeout=(5, 5),
+                stream=True,
                 headers={"Cache-Control": "no-store"},
             )
             try:
-                # 允许 2xx/3xx（含 302 重定向到 CDN 下载节点），
+                # 允许 2xx/3xx（含跟随重定向后 CDN 返回的 200/302），
                 # 不允许 4xx（404 URL 不存在 / 403 拒绝访问等）
                 return r.status_code < 400
             finally:
@@ -294,8 +303,14 @@ class DllDownloader:
         py7zr 不支持 BCJ2 会导致解压失败）。其次从系统 PATH 查找 7z/7za。
         返回可执行路径，未找到返回 None。
         """
-        candidates = [
+        # 打包后 7za.exe 由 spec 的 datas 放入 _internal（PyInstaller 的
+        # sys._MEIPASS 目录），优先从 _internal 查找，避免重复打包到根目录。
+        candidates = []
+        if getattr(sys, "_MEIPASS", ""):
+            candidates.append(Path(sys._MEIPASS) / "7za.exe")
+        candidates += [
             self._base_dir / "7za.exe",
+            self._base_dir / "_internal" / "7za.exe",
             self._base_dir / "7z.exe",
             self._base_dir / "7z" / "7za.exe",
             self._base_dir / "assets" / "7za.exe",

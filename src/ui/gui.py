@@ -2154,20 +2154,42 @@ class MainWindow(QMainWindow):
 
         if self._result_viewer is None or not self._result_viewer.isVisible():
             self._result_viewer = ResultViewerWindow()
-
-        # 先强制创建原生 HWND（窗口仍隐藏），使 Windows 使用 resize(1400,900) 的几何信息
-        # 而非 CW_USEDEFAULT 默认小尺寸；再加载内容；最后 showMaximized() 直接在已有 HWND
-        # 上调用 ShowWindow(SW_SHOWMAXIMIZED)，窗口一出场即最大化，消除"小窗口先闪"。
-        self._result_viewer.winId()
-        self._result_viewer.load_files(
-            video_files,
-            output_dir,
-            folder_mode=self._mirror_subdirs,
-            name_to_dir=self._name_to_output_dir,
-        )
-        self._result_viewer.showMaximized()
-        self._result_viewer.raise_()
-        self._result_viewer.activateWindow()
+            # 先设置最大化窗口状态，确保首次 show() 即为最大化，
+            # 避免 showMaximized()「先以普通尺寸 show、再最大化」导致的小窗口闪烁。
+            self._result_viewer.setWindowState(Qt.WindowState.WindowMaximized)
+            # 强制创建原生 HWND（窗口仍隐藏），使 Windows 使用 resize(1400,900) 的几何信息
+            # 而非 CW_USEDEFAULT 默认小尺寸。
+            self._result_viewer.winId()
+            self._result_viewer.load_files(
+                video_files,
+                output_dir,
+                folder_mode=self._mirror_subdirs,
+                name_to_dir=self._name_to_output_dir,
+            )
+            # 以完全透明显示并强制同步绘制首帧到后台缓冲，再恢复不透明，
+            # 消除 Windows DWM 首帧默认白底/小窗一闪而过的现象。
+            # try/finally 确保即使 repaint/processEvents 期间抛出异常，
+            # 也不会留下一个永久透明（不可见但占用焦点）的窗口。
+            self._result_viewer.setWindowOpacity(0.0)
+            try:
+                self._result_viewer.show()
+                self._result_viewer.repaint()
+                QApplication.processEvents()
+            finally:
+                self._result_viewer.setWindowOpacity(1.0)
+            self._result_viewer.raise_()
+            self._result_viewer.activateWindow()
+        else:
+            # 窗口已打开时同样刷新文件列表与输出目录，避免新完成的视频
+            # 或切换输出目录后仍显示旧快照。
+            self._result_viewer.load_files(
+                video_files,
+                output_dir,
+                folder_mode=self._mirror_subdirs,
+                name_to_dir=self._name_to_output_dir,
+            )
+            self._result_viewer.raise_()
+            self._result_viewer.activateWindow()
 
     def _show_file_context_menu(self, pos) -> None:
         item = self.file_list.itemAt(pos)
