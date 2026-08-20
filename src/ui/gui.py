@@ -51,6 +51,7 @@ from src.summarization.prompt_manager import PromptManager
 from src.storage.file_writer import FileWriter, FileLocator
 from src.storage.output_index import OutputIndex
 from src.storage.output_formatter import OutputFormatter
+from src.utils.natural_sort import natural_sorted, natural_sort_key
 from src.utils.path_resolver import resolve_output_path
 from src.summarization.ollama_client import OllamaClient
 from src.ui.background_content import BackgroundContent
@@ -893,12 +894,13 @@ class MainWindow(QMainWindow):
             f"<tr><td style='padding:2px 12px 2px 0;color:#888'>{t('about.author_label')}</td><td>{t('about.author_value')}</td></tr>"
             f"<tr><td style='padding:2px 12px 2px 0;color:#888'>{t('about.license_label')}</td><td>{t('about.license_value')}</td></tr>"
             f"<tr><td style='padding:2px 12px 2px 0;color:#888'>{t('about.tech_label')}</td><td>{t('about.tech_value')}</td></tr>"
-            f"<tr><td style='padding:2px 12px 2px 0;color:#888'>{t('about.qq_label')}</td><td>{t('about.qq_value')}</td></tr>"
+            f"<tr><td style='padding:2px 12px 2px 0;color:#888'>{t('about.email_label')}</td><td><a href='mailto:admin@video2text.dpdns.org'>admin@video2text.dpdns.org</a></td></tr>"
             "</table>"
             "<hr>"
             "<p>"
             f'<a href="https://github.com/fuyouling/video2text">{t("about.repo_link")}</a> · '
-            f'<a href="https://github.com/fuyouling/video2text/wiki">{t("about.docs_link")}</a>'
+            f'<a href="https://video2text.dpdns.org/en/docs/">{t("about.docs_link")}</a> · '
+            f'<a href="https://video2text.dpdns.org/">{t("about.website_link")}</a>'
             "</p>"
             f"<p style='color:#999;font-size:12px'>{t('about.copyright')}</p>"
             "</div>",
@@ -1357,7 +1359,7 @@ class MainWindow(QMainWindow):
             )
             last_dir = Path(folder).name
 
-        self._video_files = selected_files
+        self._video_files = natural_sorted(selected_files)
         self.output_combo.setCurrentText(str(Path(self._default_output_dir) / last_dir))
 
     def _select_output_dir(self) -> None:
@@ -1398,7 +1400,7 @@ class MainWindow(QMainWindow):
         self.file_list.clear()
         self._completed_names.clear()
 
-        for video_name in sorted(found_names, key=str.lower):
+        for video_name in natural_sorted(found_names):
             self._completed_names.add(video_name)
             item = QListWidgetItem(video_name)
             item.setData(Qt.ItemDataRole.UserRole, video_name)

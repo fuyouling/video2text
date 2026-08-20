@@ -11,6 +11,7 @@ from src.config.settings import Settings
 from src.storage.bookmark_manager import BookmarkItem, BookmarkManager
 from src.storage.file_writer import FileLocator
 from src.ui.markdown_renderer import MarkdownRenderer
+from src.utils.natural_sort import natural_sort_key
 from src.utils.paths import get_base_dir as _get_base_dir
 from src.i18n import t
 
@@ -711,7 +712,7 @@ class ResultViewerWindow(QMainWindow):
         self._output_dir = output_dir
         self._root_output_dir = output_dir
         self._name_to_dir = dict(name_to_dir) if name_to_dir else {}
-        self._flat_video_names = sorted(video_names, key=lambda x: x.lower())
+        self._flat_video_names = sorted(video_names, key=natural_sort_key)
         self._all_video_names = list(self._flat_video_names)
         self._file_filter.clear()
 
@@ -896,7 +897,7 @@ class ResultViewerWindow(QMainWindow):
             all_files: list[Path] = []
             for ext in _TRANSCRIPT_EXTS:
                 all_files.extend(output_path.rglob(f"*{ext}"))
-            all_files.sort()
+            all_files.sort(key=lambda p: natural_sort_key(p.name))
         except OSError as exc:
             logger.warning(t("app.result_viewer.scan_dir_failed", error=exc))
             self._folder_tree.blockSignals(False)
@@ -914,9 +915,12 @@ class ResultViewerWindow(QMainWindow):
 
         try:
             summary_files = sorted(
-                p
-                for p in output_path.rglob("*_summary.*")
-                if p.suffix in (".txt", ".md")
+                (
+                    p
+                    for p in output_path.rglob("*_summary.*")
+                    if p.suffix in (".txt", ".md")
+                ),
+                key=lambda p: natural_sort_key(p.name),
             )
         except OSError:
             summary_files = []
@@ -937,7 +941,7 @@ class ResultViewerWindow(QMainWindow):
         self._folder_tree.blockSignals(False)
 
         if video_names:
-            self._all_video_names = sorted(video_names, key=lambda x: x.lower())
+            self._all_video_names = sorted(video_names, key=natural_sort_key)
             target: Optional[QTreeWidgetItem] = None
             for i in range(root.childCount()):
                 child = root.child(i)
@@ -1645,7 +1649,7 @@ class ResultViewerWindow(QMainWindow):
             )
             return
 
-        video_names.sort(key=lambda x: x.lower())
+        video_names.sort(key=natural_sort_key)
         self._flat_video_names = video_names
         self._all_video_names = list(video_names)
         self._name_to_dir = name_to_dir
