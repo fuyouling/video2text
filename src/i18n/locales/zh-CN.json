@@ -240,10 +240,10 @@
     "license_value": "GNU GPL v3",
     "tech_label": "技术栈",
     "tech_value": "faster-whisper · PySide6",
-    "qq_label": "讨论群",
-    "qq_value": "QQ群 296875960",
+    "email_label": "邮箱",
     "repo_link": "GitHub 仓库",
     "docs_link": "使用文档",
+    "website_link": "官方网站",
     "copyright": "版权所有 © 2026 喵王龙"
   },
   "status": {

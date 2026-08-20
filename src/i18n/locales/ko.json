@@ -216,10 +216,10 @@
     "license_value": "GNU GPL v3",
     "tech_label": "기술 스택",
     "tech_value": "faster-whisper · PySide6",
-    "qq_label": "토론",
-    "qq_value": "QQ 그룹 296875960",
+    "email_label": "이메일",
     "repo_link": "GitHub 저장소",
     "docs_link": "사용자 가이드",
+    "website_link": "공식 웹사이트",
     "copyright": "Copyright © 2026 MiaoWangLong"
   },
   "status": {
