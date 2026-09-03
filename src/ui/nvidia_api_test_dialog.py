@@ -2,12 +2,19 @@
 
 自包含模块（解耦设计，见 plans/20260809_nvidia_free_endpoint.md §6）：
   - `fetch_text_summary_models()`：动态拉取第 5.4 节的文本总结可用模型（复用
-    `tests/fetch_free_endpoints.py` 的 NGC 目录翻页 + 关键词筛选逻辑，失败回退离线常量）。
+    `tests/fetch_free_endpoints.py` 的 NGC 目录翻页 + 关键词筛选逻辑，失败或无结果
+    时返回空列表，由 UI 给出空状态提示，不再回退离线常量）。
   - `test_one_model()`：复用 `NvidiaClient` 发一次最小请求，30s 超时即判失败。
   - `ModelCard`：卡片式 UI（状态色条 + 响应时间 + 摘要片段 + 右上角重测按钮）。
   - `_ModelListFetcher`：常驻 QThread，后台拉取模型列表，到位后重建卡片。
   - `NvidiaApiTestWorker`：常驻 QThread，内部线程池最多 5 并发，结果经信号回主线程。
   - `NvidiaApiTestDialog`：对话框本体，`gui.py` 仅通过菜单入口调用，不含任何业务逻辑。
+
+模型列表缓存（`_MODEL_LIST_CACHE`）：
+  - 仅在进程内有效，生命周期为「本次软件打开」；
+  - 首次进入对话框时由后台拉取填充（含空列表，表示拉取成功但无模型）；
+  - 之后再次进入对话框直接复用，避免每次打开都发起 NGC 目录网络请求；
+  - 用户仍可随时点工具栏「刷新列表」手动更新。
 """
 
 from __future__ import annotations
@@ -54,8 +61,9 @@ logger = get_logger(__name__)
 # 常量
 # ============================================================
 
-#: 离线兜底用的文本总结可用模型（plans/20260809_nvidia_free_endpoint.md §5.4，共 27 个）。
-#: 在线拉取 NGC 目录失败时回退到此列表，保证对话框始终能打开（§6.5）。
+#: 文本总结可用模型的离线常量（plans/20260809_nvidia_free_endpoint.md §5.4，共 27 个）。
+#: 仅供单元测试与计划文档交叉校验使用，运行期不再回退到此列表：
+#: 在线拉取失败或结果为空时 UI 直接展示「无可用在线模型」空状态。
 _FALLBACK_TEXT_SUMMARY_MODELS: tuple = (
     "bytedance/seed-oss-36b-instruct",
     "google/diffusiongemma-26b-a4b-it",
@@ -159,11 +167,12 @@ def fetch_text_summary_models(timeout: int = 30) -> List[str]:
     """动态拉取「文本总结可用模型」列表（plans/20260809_nvidia_free_endpoint.md §5）。
 
     复用 `tests/fetch_free_endpoints.py` 的翻页 + `nimType` 过滤 + 关键词筛选逻辑，
-    拼出形如 `openai/gpt-oss-120b` 的模型名。网络异常或结果为空时回退到离线常量，
-    保证对话框始终可用（§6.5）。
+    拼出形如 `openai/gpt-oss-120b` 的模型名。
 
     Returns:
-        List[str]: 排序后的模型名列表（去重）。
+        List[str]: 排序后的模型名列表（去重）。**不再回退到离线常量**：
+        网络异常、目录为空或筛选后无命中时返回空列表，由调用方展示
+        「无可用在线模型」空状态。
     """
     try:
         seen: set = set()
@@ -187,12 +196,11 @@ def fetch_text_summary_models(timeout: int = 30) -> List[str]:
                     models.append(f"{publisher}/{resource['name']}")
         models = sorted(set(models))
         if not models:
-            logger.warning("NGC catalog returned no text-summary models, falling back to offline list")
-            return list(_FALLBACK_TEXT_SUMMARY_MODELS)
+            logger.warning("NGC catalog returned no text-summary models")
         return models
     except Exception as e:
-        logger.warning("Failed to fetch text-summary models dynamically (%s), falling back to offline list", e)
-        return list(_FALLBACK_TEXT_SUMMARY_MODELS)
+        logger.warning("Failed to fetch text-summary models dynamically: %s", e)
+        return []
 
 #: 默认最长响应 30s，超过视为失败（§6.6）
 TEST_TIMEOUT = 30
@@ -694,10 +702,12 @@ _ORPHAN_FETCHERS: set = set()
 
 #: 程序生命周期内是否已自动拉取过一次模型列表；首次打开对话框时触发，
 #: 之后打开复用已拉取结果，不再每次自动联网（手动「刷新列表」仍可随时更新）。
-_MODEL_LIST_AUTO_FETCHED = False
+#: 为 ``None`` 表示尚未拉取；首次拉取成功后写入实际列表（含空列表），
+#: 之后任何一次进入对话框都直接复用，不再自动联网，直到进程结束。
+_MODEL_LIST_CACHE: Optional[List[str]] = None
 
 #: 程序生命周期内已测试模型的最后一次结果，跨多次打开对话框保留状态
-#: （与 _MODEL_LIST_AUTO_FETCHED 同作用域，仅进程内有效）。
+#: （与 _MODEL_LIST_CACHE 同作用域，仅进程内有效）。
 _MODEL_TEST_RESULTS: Dict[str, dict] = {}
 
 
@@ -810,7 +820,7 @@ class NvidiaApiTestDialog(QDialog):
 
     def __init__(self, parent: Optional[QWidget] = None, settings: Optional[Settings] = None):
         super().__init__(parent)
-        global _MODEL_LIST_AUTO_FETCHED
+        global _MODEL_LIST_CACHE
         self._settings = settings or Settings()
         self._api_url = self._settings.get(
             "summarization.nvidia_api_url", _DEFAULT_API_URL
@@ -825,15 +835,19 @@ class NvidiaApiTestDialog(QDialog):
         )
         self._has_api_key = bool(get_api_key("NVIDIA_API_KEY"))
         self._cards: Dict[str, ModelCard] = {}
-        # 先用离线兜底列表立即构建卡片，打开对话框不卡 UI；
-        # 随后在后台拉取最新列表，到位后再重建（见 _init_ui 的自动刷新）。
-        self._models: List[str] = list(_FALLBACK_TEXT_SUMMARY_MODELS)
+        # 进程内缓存的模型列表：首次打开时为 ``None``，随后立即在后台拉取；
+        # 再次打开对话框直接复用缓存（含空列表），保证以在线结果为准且不重复联网。
+        # 本次打开前若已缓存，则 UI 直接按缓存构建；否则先用空列表构建占位卡片区域，
+        # 拉取到位后重建（首次拉取结果无论是否为空都会写入缓存）。
+        cache_hit = _MODEL_LIST_CACHE is not None
+        self._models: List[str] = list(_MODEL_LIST_CACHE) if cache_hit else []
         self._worker: Optional[NvidiaApiTestWorker] = None
         self._list_fetcher: Optional["_ModelListFetcher"] = None
         self._fetch_notify: bool = False
         self._card_area: Optional[QScrollArea] = None
         self._card_host: Optional[QWidget] = None
         self._card_grid: Optional[QGridLayout] = None
+        self._empty_label: Optional[QLabel] = None
 
         self.setWindowTitle(t("nvidia_test.title"))
         self.setStyleSheet(_DIALOG_QSS)
@@ -842,12 +856,11 @@ class NvidiaApiTestDialog(QDialog):
         self.resize(1020, 720)
 
         self._refresh_icon = self._load_refresh_icon()
-        self._init_ui()
+        self._init_ui(is_loading=not cache_hit)
         self._update_progress()
-        # 仅程序首次打开时自动拉取最新模型列表（不弹窗）；之后打开复用已拉取结果，
-        # 用户仍可随时点「刷新列表」手动更新。
-        if not _MODEL_LIST_AUTO_FETCHED:
-            _MODEL_LIST_AUTO_FETCHED = True
+        # 仅在进程内尚未拉取过时自动联网；之后打开直接复用缓存（以在线结果为准），
+        # 用户仍可随时点「刷新列表」手动更新缓存。
+        if not cache_hit:
             self._start_model_fetch(notify=False)
 
     # ── UI 构建 ──
@@ -862,13 +875,13 @@ class NvidiaApiTestDialog(QDialog):
             return QIcon()
         return QIcon(str(icon_path))
 
-    def _init_ui(self) -> None:
+    def _init_ui(self, is_loading: bool = False) -> None:
         root = QVBoxLayout(self)
         root.setContentsMargins(12, 12, 12, 12)
         root.setSpacing(10)
 
         root.addWidget(self._build_tool_bar())
-        self._card_area = self._build_card_area()
+        self._card_area = self._build_card_area(is_loading=is_loading)
         root.addWidget(self._card_area, 1)
         root.addWidget(self._build_status_bar())
 
@@ -924,7 +937,7 @@ class NvidiaApiTestDialog(QDialog):
         layout.addWidget(self._stop_btn)
         return bar
 
-    def _build_card_area(self) -> QScrollArea:
+    def _build_card_area(self, is_loading: bool = False) -> QScrollArea:
         self._card_host = QWidget()
         self._card_host.setObjectName("cardHost")
         self._card_grid = QGridLayout(self._card_host)
@@ -932,7 +945,7 @@ class NvidiaApiTestDialog(QDialog):
         self._card_grid.setHorizontalSpacing(10)
         self._card_grid.setVerticalSpacing(10)
 
-        self._populate_cards(self._models)
+        self._populate_cards(self._models, is_loading=is_loading)
 
         area = QScrollArea()
         area.setObjectName("cardArea")
@@ -940,8 +953,15 @@ class NvidiaApiTestDialog(QDialog):
         area.setWidget(self._card_host)
         return area
 
-    def _populate_cards(self, models: Sequence[str]) -> None:
-        """清空并重建卡片网格（用于初次构建与「刷新列表」）。"""
+    def _populate_cards(self, models: Sequence[str], is_loading: bool = False) -> None:
+        """清空并重建卡片网格（用于初次构建与「刷新列表」）。
+
+        ``models`` 为空时按 ``is_loading`` 区分两种占位：
+          - ``True``（默认）：展示「正在获取在线模型列表…」提示，对应首次打开
+            或手动刷新期间，避免在等待结果时误判为「无可用模型」；
+          - ``False``：展示「无可用在线模型」空状态，并禁用「一键测试」按钮，
+            避免在无可测对象时误发请求。
+        """
         if self._card_grid is None or self._card_host is None:
             return
         while self._card_grid.count():
@@ -950,7 +970,14 @@ class NvidiaApiTestDialog(QDialog):
             if widget is not None:
                 widget.deleteLater()
         self._cards.clear()
+        self._hide_empty_label()
 
+        if not models:
+            self._show_empty_label(loading=is_loading)
+            self._test_all_btn.setEnabled(False)
+            return
+
+        self._test_all_btn.setEnabled(True)
         for index, model in enumerate(models):
             card = ModelCard(model, self._refresh_icon, self._card_host)
             card.retest_clicked.connect(self._on_retest)
@@ -967,6 +994,32 @@ class NvidiaApiTestDialog(QDialog):
         for column in range(_CARD_COLUMNS):
             self._card_grid.setColumnStretch(column, 1)
         self._card_grid.setRowStretch(self._card_grid.rowCount(), 1)
+
+    def _show_empty_label(self, loading: bool = False) -> None:
+        """在卡片区域居中显示空状态提示。
+
+        ``loading=True`` 时显示「正在获取…」（首次打开 / 手动刷新期间）；
+        ``loading=False`` 时显示「无可用在线模型」（拉取结果确认为空时）。
+        """
+        if self._card_grid is None:
+            return
+        key = "nvidia_test.models_loading" if loading else "nvidia_test.models_empty"
+        label = QLabel(t(key))
+        label.setObjectName("modelsEmptyLabel")
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setStyleSheet(
+            "color: #9e9e9e; font-size: 14px; padding: 32px;"
+        )
+        # 跨所有列、跨所有行居中显示
+        self._card_grid.addWidget(label, 0, 0, self._card_grid.rowCount(), _CARD_COLUMNS)
+        self._empty_label = label
+
+    def _hide_empty_label(self) -> None:
+        if self._empty_label is None or self._card_grid is None:
+            return
+        self._card_grid.removeWidget(self._empty_label)
+        self._empty_label.deleteLater()
+        self._empty_label = None
 
     def _build_status_bar(self) -> QWidget:
         bar = QFrame()
@@ -1048,6 +1101,9 @@ class NvidiaApiTestDialog(QDialog):
         self._list_fetcher = None
         notify = self._fetch_notify
         self._fetch_notify = False
+        # 写入进程内缓存：含空列表（表示「拉取成功但当前无模型」），后续打开直接复用
+        global _MODEL_LIST_CACHE
+        _MODEL_LIST_CACHE = list(models)
         self._models = list(models)
         self._populate_cards(self._models)
         self._refresh_list_btn.setEnabled(True)
@@ -1065,9 +1121,12 @@ class NvidiaApiTestDialog(QDialog):
         self._list_fetcher = None
         notify = self._fetch_notify
         self._fetch_notify = False
+        # 写入进程内缓存为空列表，避免下次打开重复触发同一次失败的网络请求
+        global _MODEL_LIST_CACHE
+        _MODEL_LIST_CACHE = []
+        self._models = []
+        self._populate_cards(self._models)
         self._refresh_list_btn.setEnabled(True)
-        # 刷新失败未重建卡片，恢复「重测」按钮（仍在测试中的卡片保持禁用）
-        self._set_cards_retest_enabled(True)
         # 按当前是否有在跑的测试恢复「一键测试」/「停止」按钮
         self._set_busy(self._has_active_cards())
         self._update_progress()

@@ -547,7 +547,9 @@
     "refresh_list": "Refresh list",
     "refresh_list_loading": "Refreshing model list…",
     "refresh_list_done": "Model list refreshed ({count} models)",
-    "refresh_list_failed": "Failed to refresh model list: {error}"
+    "refresh_list_failed": "Failed to refresh model list: {error}",
+    "models_empty": "No online models available. Please retry later or click \"Refresh list\".",
+    "models_loading": "Fetching online model list…"
   },
   "donate": {
     "title": "Donate",

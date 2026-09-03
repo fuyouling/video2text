@@ -56,12 +56,16 @@ def _zh_locale():
 
 @pytest.fixture(autouse=True)
 def _no_auto_fetch(monkeypatch):
-    """测试中不发起真实的模型列表网络拉取，固定使用离线兜底列表。"""
+    """测试中不发起真实的模型列表网络拉取，并把缓存预填为离线常量。
+
+    这样既有 27 张卡片的测试在缓存命中场景下行为不变；
+    想验证「空缓存 / 自动拉取」的场景只需在用例里手动重置缓存。
+    """
     monkeypatch.setattr(
         dlg_mod.NvidiaApiTestDialog, "_start_model_fetch", lambda self, notify=False: None
     )
-    # 隔离模块级状态（自动拉取标志 / 已测试模型结果），保证每个用例独立
-    dlg_mod._MODEL_LIST_AUTO_FETCHED = False
+    # 隔离模块级状态（缓存列表 / 已测试模型结果），保证每个用例独立
+    dlg_mod._MODEL_LIST_CACHE = list(dlg_mod._FALLBACK_TEXT_SUMMARY_MODELS)
     dlg_mod._MODEL_TEST_RESULTS.clear()
 
 
@@ -97,6 +101,32 @@ def test_model_list_matches_plan():
 def test_constants():
     assert dlg_mod.TEST_TIMEOUT == 30
     assert dlg_mod.MAX_CONCURRENCY == 5
+
+
+def test_fetch_returns_empty_on_no_match(monkeypatch):
+    """NGC 目录无命中时直接返回空列表，不再回退离线常量。"""
+    monkeypatch.setattr(dlg_mod, "_NGC_PAGE_COUNT", 1)
+    monkeypatch.setattr(
+        dlg_mod, "_query_ngc_page",
+        lambda page, timeout: [
+            {"resourceId": "x/y", "name": "y",
+             "labels": [
+                 {"key": "nimType", "unresolvedValues": ["nim_type_preview"]},
+                 {"key": "publisher", "unresolvedValues": ["openai"]},
+                 {"key": "general", "values": ["vision image"]},  # 被 EXCLUDE 命中
+             ]},
+        ],
+    )
+    assert dlg_mod.fetch_text_summary_models() == []
+
+
+def test_fetch_returns_empty_on_network_error(monkeypatch):
+    """网络异常时返回空列表，由 UI 给出空状态提示。"""
+    def boom(page, timeout):
+        raise RuntimeError("network down")
+    monkeypatch.setattr(dlg_mod, "_NGC_PAGE_COUNT", 1)
+    monkeypatch.setattr(dlg_mod, "_query_ngc_page", boom)
+    assert dlg_mod.fetch_text_summary_models() == []
 
 
 # ── 2. test_one_model 各分支 ────────────────────────────────
@@ -396,6 +426,117 @@ def test_dialog_without_api_key_warns(qapp, monkeypatch):
         dialog._on_test_all()
         assert warned == [t("nvidia_test.api_key_missing_msg")]
         assert dialog._worker is None
+    finally:
+        dialog.close()
+
+
+def test_dialog_shows_empty_label_when_no_models(qapp):
+    """缓存已确认为空（拉取结果）时展示「无可用在线模型」空状态并禁用一键测试。"""
+    dlg_mod._MODEL_LIST_CACHE = []
+    dialog = dlg_mod.NvidiaApiTestDialog()
+    try:
+        assert dialog._cards == {}
+        assert dialog._empty_label is not None
+        assert dialog._empty_label.text() == t("nvidia_test.models_empty")
+        assert not dialog._test_all_btn.isEnabled(), "无可测模型时一键测试必须禁用"
+    finally:
+        dialog.close()
+
+
+def test_dialog_first_open_shows_loading_label(qapp, monkeypatch):
+    """进程内首次打开（缓存为 None）展示「正在获取…」占位，不触发空状态。"""
+    dlg_mod._MODEL_LIST_CACHE = None
+    monkeypatch.setattr(
+        dlg_mod.NvidiaApiTestDialog, "_start_model_fetch",
+        lambda self, notify=False: None,
+    )
+    dialog = dlg_mod.NvidiaApiTestDialog()
+    try:
+        assert dialog._cards == {}
+        assert dialog._empty_label is not None
+        assert dialog._empty_label.text() == t("nvidia_test.models_loading")
+        assert not dialog._test_all_btn.isEnabled()
+    finally:
+        dialog.close()
+
+
+def test_dialog_reuses_model_cache_across_reopens(qapp, monkeypatch):
+    """同一进程内第二次打开对话框复用首次拉取的列表，不再自动联网。"""
+    online_only = ["openai/gpt-oss-120b", "openai/gpt-oss-20b"]
+    dlg_mod._MODEL_LIST_CACHE = list(online_only)
+    started = []
+    monkeypatch.setattr(
+        dlg_mod.NvidiaApiTestDialog, "_start_model_fetch",
+        lambda self, notify=False: started.append(("called", notify)),
+    )
+
+    dlg1 = dlg_mod.NvidiaApiTestDialog()
+    try:
+        assert set(dlg1._cards) == set(online_only)
+        assert started == []
+    finally:
+        dlg1.close()
+
+    dlg2 = dlg_mod.NvidiaApiTestDialog()
+    try:
+        assert set(dlg2._cards) == set(online_only)
+        assert started == [], "第二次进入不应再触发自动拉取"
+    finally:
+        dlg2.close()
+
+
+def test_dialog_first_open_triggers_fetch_when_cache_empty(qapp, monkeypatch):
+    """进程内首次进入（缓存为 None）应触发后台拉取，并把结果写入缓存。"""
+    dlg_mod._MODEL_LIST_CACHE = None
+    called = []
+    fake_models = ["meta/llama-3.2-1b-instruct"]
+    monkeypatch.setattr(
+        dlg_mod.NvidiaApiTestDialog, "_start_model_fetch",
+        lambda self, notify=False: called.append(notify),
+    )
+
+    dialog = dlg_mod.NvidiaApiTestDialog()
+    try:
+        # 首次进入：自动后台拉取且不弹窗
+        assert called == [False]
+        # 模拟拉取成功回填缓存
+        dialog._on_models_ready(fake_models)
+        assert dlg_mod._MODEL_LIST_CACHE == fake_models
+        # 再次进入应直接复用缓存，不再触发拉取
+        called.clear()
+    finally:
+        dialog.close()
+
+    dialog2 = dlg_mod.NvidiaApiTestDialog()
+    try:
+        assert called == []
+        assert set(dialog2._cards) == set(fake_models)
+    finally:
+        dialog2.close()
+
+
+def test_models_ready_writes_cache_and_renders(qapp):
+    """_on_models_ready 把拉取结果（含空列表）写入进程缓存并重建卡片。"""
+    dlg_mod._MODEL_LIST_CACHE = list(dlg_mod._FALLBACK_TEXT_SUMMARY_MODELS)
+    dialog = dlg_mod.NvidiaApiTestDialog()
+    try:
+        online = ["openai/gpt-oss-120b"]
+        dialog._on_models_ready(online)
+        assert dlg_mod._MODEL_LIST_CACHE == online
+        assert set(dialog._cards) == set(online)
+    finally:
+        dialog.close()
+
+
+def test_models_fetch_failed_writes_empty_cache(qapp):
+    """_on_models_fetch_failed 把空列表写入缓存，避免下次重复触发同一次失败。"""
+    dlg_mod._MODEL_LIST_CACHE = None
+    dialog = dlg_mod.NvidiaApiTestDialog()
+    try:
+        dialog._on_models_fetch_failed("boom")
+        assert dlg_mod._MODEL_LIST_CACHE == []
+        assert dialog._cards == {}
+        assert dialog._empty_label is not None
     finally:
         dialog.close()
 

@@ -500,7 +500,9 @@
     "refresh_list": "リストを更新",
     "refresh_list_loading": "モデルリストを更新中…",
     "refresh_list_done": "モデルリストを更新しました（{count} 件）",
-    "refresh_list_failed": "モデルリストの更新に失敗しました: {error}"
+    "refresh_list_failed": "モデルリストの更新に失敗しました: {error}",
+    "models_empty": "利用可能なオンラインモデルがありません。しばらくしてから再試行するか、「リストを更新」をクリックしてください",
+    "models_loading": "オンラインモデルリストを取得中…"
   },
   "donate": {
     "title": "寄付",

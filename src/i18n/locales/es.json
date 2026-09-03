@@ -500,7 +500,9 @@
     "refresh_list": "Actualizar lista",
     "refresh_list_loading": "Actualizando lista de modelos…",
     "refresh_list_done": "Lista de modelos actualizada ({count} modelos)",
-    "refresh_list_failed": "No se pudo actualizar la lista de modelos: {error}"
+    "refresh_list_failed": "No se pudo actualizar la lista de modelos: {error}",
+    "models_empty": "No hay modelos en línea disponibles. Vuelve a intentarlo más tarde o haz clic en \"Actualizar lista\"",
+    "models_loading": "Obteniendo lista de modelos en línea…"
   },
   "donate": {
     "title": "Donar",

@@ -500,7 +500,9 @@
     "refresh_list": "Liste aktualisieren",
     "refresh_list_loading": "Modellliste wird aktualisiert…",
     "refresh_list_done": "Modellliste aktualisiert ({count} Modelle)",
-    "refresh_list_failed": "Modellliste konnte nicht aktualisiert werden: {error}"
+    "refresh_list_failed": "Modellliste konnte nicht aktualisiert werden: {error}",
+    "models_empty": "Keine Online-Modelle verfügbar. Bitte später erneut versuchen oder auf „Liste aktualisieren" klicken",
+    "models_loading": "Online-Modellliste wird abgerufen…"
   },
   "donate": {
     "title": "Spenden",

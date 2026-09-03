@@ -775,7 +775,9 @@
     "refresh_list": "刷新列表",
     "refresh_list_loading": "正在刷新模型列表…",
     "refresh_list_done": "已刷新模型列表（共 {count} 个）",
-    "refresh_list_failed": "刷新模型列表失败: {error}"
+    "refresh_list_failed": "刷新模型列表失败: {error}",
+    "models_empty": "无可用在线模型，请稍后重试或点击「刷新列表」",
+    "models_loading": "正在获取在线模型列表…"
   },
   "donate": {
     "title": "捐赠支持",

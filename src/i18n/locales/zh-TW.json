@@ -726,7 +726,9 @@
     "refresh_list": "重新整理清單",
     "refresh_list_loading": "正在重新整理模型清單…",
     "refresh_list_done": "已重新整理模型清單（共 {count} 個）",
-    "refresh_list_failed": "重新整理模型清單失敗：{error}"
+    "refresh_list_failed": "重新整理模型清單失敗：{error}",
+    "models_empty": "目前沒有可用的線上模型，請稍後重試或點擊「重新整理清單」",
+    "models_loading": "正在取得線上模型清單…"
   },
   "donate": {
     "title": "捐贈支持",
