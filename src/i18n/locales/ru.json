@@ -204,7 +204,9 @@
     "dep_check_label_done": "Готово",
     "dep_check_label_failed": "Ошибка",
     "dep_download_start": "Начало загрузки зависимостей: модель=%s, dll=%s, keep_archive=%s",
-    "failed_log_write": "Не удалось записать журнал ошибок: %s"
+    "failed_log_write": "Не удалось записать журнал ошибок: %s",
+    "tx_prompt_load_fail": "Не удалось загрузить шаблон промпта транскрипции",
+    "summary_prompt_load_fail": "Не удалось загрузить шаблон промпта резюме"
   },
   "about": {
     "title": "О программе Video2Text",
@@ -289,7 +291,10 @@
       "cancel": "Отмена",
       "browse_dir": "Выбрать папку",
       "browse_image": "Выбрать фоновое изображение",
-      "image_filter": "Файлы изображений (*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp);;Все файлы (*.*)"
+      "image_filter": "Файлы изображений (*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp);;Все файлы (*.*)",
+      "other_group": "Другое",
+      "browse_tooltip_image": "Выбрать фоновое изображение",
+      "browse_tooltip_dir": "Выбрать каталог"
     },
     "result_viewer": {
       "title": "Результаты - Video2Text",
@@ -429,7 +434,21 @@
     "log_ollama_start_ok": "Сервис Ollama: ✓ запущен",
     "log_ollama_start_not_found": "Сервис Ollama: ✗ команда ollama не найдена",
     "log_ollama_start_timeout": "Сервис Ollama: ✗ таймаут",
-    "log_ollama_start_fail": "Сервис Ollama: ✗ ошибка запуска"
+    "log_ollama_start_fail": "Сервис Ollama: ✗ ошибка запуска",
+    "radio_mistral": "Онлайн модель Mistral",
+    "mistral_group": "Конфигурация Mistral",
+    "mistral_mode_label": "Режим обработки",
+    "mistral_stream_label": "Потоковый вывод",
+    "mistral_threads_label": "Потоки",
+    "log_mistral_ok": "MistralClient: подключено, задержка {latency_ms:.0f} мс, модель {model}",
+    "log_mistral_fail": "MistralClient: ошибка подключения, модель {model}",
+    "radio_amd": "Онлайн модель AMD",
+    "amd_group": "Конфигурация AMD",
+    "amd_mode_label": "Режим обработки",
+    "amd_stream_label": "Потоковый вывод",
+    "amd_threads_label": "Потоки",
+    "log_amd_ok": "AmdClient: подключено, задержка {latency_ms:.0f} мс, модель {model}",
+    "log_amd_fail": "AmdClient: ошибка подключения, модель {model}"
   },
   "summ_labels": {
     "ollama_url": "URL Ollama",
@@ -447,7 +466,24 @@
     "nvidia_timeout": "Таймаут NVIDIA",
     "nvidia_mode": "Режим NVIDIA",
     "nvidia_thread_count": "Количество потоков NVIDIA",
-    "nvidia_stream": "Потоковый вывод NVIDIA"
+    "nvidia_stream": "Потоковый вывод NVIDIA",
+    "mistral_model": "Модель",
+    "mistral_max_tokens": "Макс. токенов вывода",
+    "mistral_temperature": "Температура",
+    "mistral_timeout": "Таймаут (с)",
+    "mistral_mode": "Режим обработки",
+    "mistral_thread_count": "Потоки",
+    "mistral_stream": "Потоковый вывод",
+    "mistral_base_url": "URL API",
+    "mistral_rate_limit": "Частота API (запр/сек)",
+    "amd_api_url": "URL API",
+    "amd_model": "Модель",
+    "amd_max_tokens": "Макс. токенов вывода",
+    "amd_temperature": "Температура",
+    "amd_timeout": "Таймаут (с)",
+    "amd_mode": "Режим обработки",
+    "amd_thread_count": "Потоки",
+    "amd_stream": "Потоковый вывод"
   },
   "summ_tooltips": {
     "ollama_url": "URL сервиса Ollama, по умолчанию http://127.0.0.1:11434",
@@ -465,7 +501,24 @@
     "nvidia_timeout": "Таймаут NVIDIA (сек), для длинного текста рекомендуется 600+",
     "nvidia_mode": "Режим NVIDIA: single (один поток, поддерживает потоковую передачу), multi (многопоточный одновременный)",
     "nvidia_thread_count": "Количество одновременных потоков для многопоточного режима",
-    "nvidia_stream": "Включить потоковый вывод (только для одного потока): true / false"
+    "nvidia_stream": "Включить потоковый вывод (только для одного потока): true / false",
+    "mistral_model": "Имя модели Mistral, по умолчанию codestral-2508",
+    "mistral_max_tokens": "Максимальное количество токенов на одно резюме",
+    "mistral_temperature": "Температура выборки, выше = более случайно (0~2), по умолчанию 0.7",
+    "mistral_timeout": "Таймаут запроса в секундах, по умолчанию 60",
+    "mistral_mode": "single=последовательно; multi=параллельные потоки (поток отключен в multi)",
+    "mistral_thread_count": "Количество параллельных потоков в режиме multi",
+    "mistral_stream": "Потоковый вывод токен за токеном (только в режиме single)",
+    "mistral_base_url": "URL эндпоинта API Mistral, оставьте пустым для значения по умолчанию",
+    "mistral_rate_limit": "Макс. запросов к API Mistral в секунду, рекомендуется 2.0 для codestral-2508",
+    "amd_api_url": "URL эндпоинта API AMD Radeon Cloud, по умолчанию https://developer.amd.com.cn/radeon/api/v1/chat/completions",
+    "amd_model": "Имя модели AMD, по умолчанию Qwen3.8-Flash-Next",
+    "amd_max_tokens": "Максимальное количество токенов на одно резюме",
+    "amd_temperature": "Температура выборки, выше = более случайно (0~2), по умолчанию 0.7",
+    "amd_timeout": "Таймаут запроса в секундах, по умолчанию 60",
+    "amd_mode": "single=последовательно; multi=параллельные потоки (поток отключен в multi)",
+    "amd_thread_count": "Количество параллельных потоков в режиме multi",
+    "amd_stream": "Потоковый вывод токен за токеном (только в режиме single)"
   },
   "nvidia_test": {
     "title": "Тест отклика NVIDIA API",
@@ -1115,7 +1168,8 @@
         "stream_error": "Ошибка потоковой передачи Ollama: {error}",
         "service_cmd_not_found": "Сервис Ollama: команда ollama не найдена",
         "service_unreachable": "Сервис Ollama: запущен, но {count} проверок не смогли подключиться ({url})",
-        "api_error": "Ошибка API Ollama: {code}"
+        "api_error": "Ошибка API Ollama: {code}",
+        "check_retry": "Проверка подключения Ollama: попытка {attempt}/{max} не удалась, повтор через {wait} с..."
       },
       "nvidia": {
         "check_start": "NvidiaClient: запуск проверки подключения...",
@@ -1139,10 +1193,56 @@
         "stream_error": "Ошибка потоковой передачи NVIDIA: {error}",
         "stream_json_error": "NvidiaClient: ошибка разбора JSON потока",
         "stream_interrupted": "NvidiaClient: поток прерван, получено {count} символов",
-        "stream_connection_failed": "Ошибка подключения потоковой передачи NVIDIA: {error}"
+        "stream_connection_failed": "Ошибка подключения потоковой передачи NVIDIA: {error}",
+        "check_retry": "NvidiaClient: попытка проверки подключения {attempt}/{max} не удалась, повтор через {wait} с..."
       },
       "write_index_failed": "Failed to write output index: {error}",
-      "markdown_tooltip": "При включении краткие сводки автоматически форматируются локализованной инструкцией Markdown."
+      "markdown_tooltip": "При включении краткие сводки автоматически форматируются локализованной инструкцией Markdown.",
+      "amd": {
+        "check_cached": "AmdClient: используется кэшированный статус подключения",
+        "check_start": "AmdClient: запуск проверки подключения...",
+        "check_ok": "AmdClient: проверка подключения успешна",
+        "api_key_missing": "AmdClient: API Key не настроен, укажите AMD_API_KEY в .env",
+        "env_missing_key": "AmdClient: AMD_API_KEY не найден в файле .env",
+        "env_not_found": "AmdClient: файл .env не найден",
+        "check_retry": "AmdClient: попытка проверки подключения {attempt}/{max} не удалась, повтор через {wait} с...",
+        "check_fail": "AmdClient: ошибка проверки подключения, HTTP {code}",
+        "check_fail_detail": "AmdClient: ошибка проверки подключения, HTTP {code}: {detail}",
+        "check_error": "AmdClient: исключение при проверке подключения: {error}",
+        "rate_limited": "AmdClient: превышен лимит запросов, повтор через {wait} с",
+        "rate_limited_log": "AmdClient: повтор из-за лимита ({attempt}/{max}), ожидание {wait} с",
+        "api_error": "AmdClient: ошибка API: {code}",
+        "request_timeout": "AmdClient: таймаут запроса",
+        "connection_failed": "AmdClient: ошибка подключения: {error}",
+        "request_failed": "AmdClient: ошибка запроса: {error}",
+        "retry_log": "AmdClient: повтор, ожидание {wait} с",
+        "unknown_error": "AmdClient: неизвестная ошибка",
+        "user_cancelled": "AmdClient: отменено пользователем",
+        "stream_error": "AmdClient: ошибка потока: {error}",
+        "stream_json_error": "AmdClient: ошибка разбора потокового JSON",
+        "stream_interrupted": "AmdClient: поток прерван, получено символов: {count}",
+        "stream_connection_failed": "AmdClient: сбой потокового подключения: {error}"
+      },
+      "mistral": {
+        "check_cached": "MistralClient: используется кэшированный статус подключения",
+        "check_start": "MistralClient: запуск проверки подключения...",
+        "check_ok": "MistralClient: проверка подключения успешна",
+        "check_fail_empty": "MistralClient: проверка подключения вернула пустой ответ",
+        "api_key_missing": "MistralClient: API Key не настроен",
+        "api_key_invalid": "MistralClient: недействительный API Key (401), проверьте MISTRAL_API_KEY",
+        "check_error": "MistralClient: исключение при проверке подключения: {error}",
+        "rate_limited": "MistralClient: превышен лимит запросов, повтор через {wait} с",
+        "rate_limited_log": "MistralClient: повтор из-за лимита ({attempt}/{max}), ожидание {wait} с",
+        "api_error": "MistralClient: ошибка API: {error}",
+        "request_failed": "MistralClient: ошибка запроса: {error}",
+        "retry_log": "MistralClient: повтор, ожидание {wait} с",
+        "unknown_error": "MistralClient: неизвестная ошибка",
+        "user_cancelled": "MistralClient: отменено пользователем",
+        "stream_chunk_error": "MistralClient: ошибка разбора фрагмента потока: {error}",
+        "stream_interrupted": "MistralClient: поток прерван, получено символов: {count}",
+        "stream_connection_failed": "MistralClient: сбой потокового подключения: {error}",
+        "check_retry": "MistralClient: попытка проверки подключения {attempt}/{max} не удалась, повтор через {wait} с..."
+      }
     },
     "voice_transcription": {
       "audio_file_not_found": "Аудиофайл не найден: {path}",

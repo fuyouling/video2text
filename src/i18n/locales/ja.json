@@ -204,7 +204,9 @@
     "dep_check_label_done": "完了",
     "dep_check_label_failed": "失敗",
     "dep_download_start": "依存関係のダウンロードを開始: model=%s, dll=%s, keep_archive=%s",
-    "failed_log_write": "失敗ログの書き込みに失敗しました: %s"
+    "failed_log_write": "失敗ログの書き込みに失敗しました: %s",
+    "tx_prompt_load_fail": "文字起こしプロンプトテンプレートの読み込みに失敗しました",
+    "summary_prompt_load_fail": "要約プロンプトテンプレートの読み込みに失敗しました"
   },
   "about": {
     "title": "Video2Text について",
@@ -289,7 +291,10 @@
       "cancel": "キャンセル",
       "browse_dir": "ディレクトリを選択",
       "browse_image": "背景画像を選択",
-      "image_filter": "画像ファイル (*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp);;すべてのファイル (*.*)"
+      "image_filter": "画像ファイル (*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp);;すべてのファイル (*.*)",
+      "other_group": "その他",
+      "browse_tooltip_image": "背景画像を選択",
+      "browse_tooltip_dir": "ディレクトリを選択"
     },
     "result_viewer": {
       "title": "結果 - Video2Text",
@@ -429,7 +434,21 @@
     "log_ollama_start_ok": "Ollamaサービス: ✓ 起動",
     "log_ollama_start_not_found": "Ollamaサービス: ✗ ollamaコマンドが見つかりません",
     "log_ollama_start_timeout": "Ollamaサービス: ✗ タイムアウト",
-    "log_ollama_start_fail": "Ollamaサービス: ✗ 起動失敗"
+    "log_ollama_start_fail": "Ollamaサービス: ✗ 起動失敗",
+    "radio_mistral": "オンラインMistralモデル",
+    "mistral_group": "Mistral設定",
+    "mistral_mode_label": "処理モード",
+    "mistral_stream_label": "ストリーム出力",
+    "mistral_threads_label": "スレッド数",
+    "log_mistral_ok": "MistralClient: 接続成功、遅延 {latency_ms:.0f}ms、モデル {model}",
+    "log_mistral_fail": "MistralClient: 接続失敗、モデル {model}",
+    "radio_amd": "オンラインAMDモデル",
+    "amd_group": "AMD設定",
+    "amd_mode_label": "処理モード",
+    "amd_stream_label": "ストリーム出力",
+    "amd_threads_label": "スレッド数",
+    "log_amd_ok": "AmdClient: 接続成功、遅延 {latency_ms:.0f}ms、モデル {model}",
+    "log_amd_fail": "AmdClient: 接続失敗、モデル {model}"
   },
   "summ_labels": {
     "ollama_url": "Ollama URL",
@@ -447,7 +466,24 @@
     "nvidia_timeout": "NVIDIAタイムアウト",
     "nvidia_mode": "NVIDIAモード",
     "nvidia_thread_count": "NVIDIAスレッド数",
-    "nvidia_stream": "NVIDIAストリーム出力"
+    "nvidia_stream": "NVIDIAストリーム出力",
+    "mistral_model": "モデル",
+    "mistral_max_tokens": "最大出力トークン",
+    "mistral_temperature": "温度",
+    "mistral_timeout": "タイムアウト(秒)",
+    "mistral_mode": "処理モード",
+    "mistral_thread_count": "スレッド数",
+    "mistral_stream": "ストリーム出力",
+    "mistral_base_url": "API URL",
+    "mistral_rate_limit": "APIレート (リクエスト/秒)",
+    "amd_api_url": "API URL",
+    "amd_model": "モデル",
+    "amd_max_tokens": "最大出力トークン",
+    "amd_temperature": "温度",
+    "amd_timeout": "タイムアウト(秒)",
+    "amd_mode": "処理モード",
+    "amd_thread_count": "スレッド数",
+    "amd_stream": "ストリーム出力"
   },
   "summ_tooltips": {
     "ollama_url": "OllamaサービスのURL、デフォルト http://127.0.0.1:11434",
@@ -465,7 +501,24 @@
     "nvidia_timeout": "NVIDIAタイムアウト（秒）、長文の場合は600以上を推奨",
     "nvidia_mode": "NVIDIAモード: single（シングルスレッド、ストリーム対応）、multi（マルチスレッド並列）",
     "nvidia_thread_count": "マルチスレッドモードの並列スレッド数",
-    "nvidia_stream": "ストリーム出力を有効にする（シングルスレッドのみ）: true / false"
+    "nvidia_stream": "ストリーム出力を有効にする（シングルスレッドのみ）: true / false",
+    "mistral_model": "Mistralモデル名、デフォルト codestral-2508",
+    "mistral_max_tokens": "1回の要約で生成される最大トークン数",
+    "mistral_temperature": "サンプリング温度、高いほどランダム (0〜2)、デフォルト 0.7",
+    "mistral_timeout": "リクエストタイムアウト（秒）、デフォルト 60",
+    "mistral_mode": "single=直列処理、multi=マルチスレッド並行（multiではストリーム無効）",
+    "mistral_thread_count": "multiモードでの並行スレッド数",
+    "mistral_stream": "トークンごとのストリーム出力（singleモードのみ有効）",
+    "mistral_base_url": "Mistral APIエンドポイントURL、空欄で公式デフォルトを使用",
+    "mistral_rate_limit": "Mistral APIの1秒あたりの最大リクエスト数、codestral-2508は2.0を推奨",
+    "amd_api_url": "AMD Radeon Cloud APIエンドポイントURL、デフォルト https://developer.amd.com.cn/radeon/api/v1/chat/completions",
+    "amd_model": "AMDモデル名、デフォルト Qwen3.8-Flash-Next",
+    "amd_max_tokens": "1回の要約で生成される最大トークン数",
+    "amd_temperature": "サンプリング温度、高いほどランダム (0〜2)、デフォルト 0.7",
+    "amd_timeout": "リクエストタイムアウト（秒）、デフォルト 60",
+    "amd_mode": "single=直列処理、multi=マルチスレッド並行（multiではストリーム無効）",
+    "amd_thread_count": "multiモードでの並行スレッド数",
+    "amd_stream": "トークンごとのストリーム出力（singleモードのみ有効）"
   },
   "nvidia_test": {
     "title": "Nvidia API 応答テスト",
@@ -1115,7 +1168,8 @@
         "stream_error": "Ollamaストリーミングエラー: {error}",
         "service_cmd_not_found": "Ollamaサービス: ollamaコマンドが見つかりません",
         "service_unreachable": "Ollamaサービス: 起動しましたが {count} 回のチェックで接続できませんでした ({url})",
-        "api_error": "Ollama APIエラー: {code}"
+        "api_error": "Ollama APIエラー: {code}",
+        "check_retry": "Ollama接続チェック: 試行 {attempt}/{max} が失敗しました。{wait}秒後に再試行します..."
       },
       "nvidia": {
         "check_start": "NvidiaClient: 接続チェックを開始...",
@@ -1139,10 +1193,56 @@
         "stream_error": "NVIDIA ストリーミングエラー: {error}",
         "stream_json_error": "NvidiaClient: ストリーミングJSON解析失敗",
         "stream_interrupted": "NvidiaClient: ストリーム中断、{count} 文字受信",
-        "stream_connection_failed": "NVIDIA ストリーミング接続失敗: {error}"
+        "stream_connection_failed": "NVIDIA ストリーミング接続失敗: {error}",
+        "check_retry": "NvidiaClient: 接続チェックの試行 {attempt}/{max} が失敗しました。{wait}秒後に再試行します..."
       },
       "write_index_failed": "Failed to write output index: {error}",
-      "markdown_tooltip": "有効にすると、要約に多言語の Markdown 書式指示が自動適用されます。"
+      "markdown_tooltip": "有効にすると、要約に多言語の Markdown 書式指示が自動適用されます。",
+      "amd": {
+        "check_cached": "AmdClient: キャッシュされた接続ステータスを使用",
+        "check_start": "AmdClient: 接続チェックを開始...",
+        "check_ok": "AmdClient: 接続チェック OK",
+        "api_key_missing": "AmdClient: API Keyが設定されていません。.envでAMD_API_KEYを設定してください",
+        "env_missing_key": "AmdClient: .envファイルにAMD_API_KEYが見つかりません",
+        "env_not_found": "AmdClient: .envファイルが見つかりません",
+        "check_retry": "AmdClient: 接続チェックの試行 {attempt}/{max} が失敗しました。{wait}秒後に再試行します...",
+        "check_fail": "AmdClient: 接続チェックに失敗しました、HTTP {code}",
+        "check_fail_detail": "AmdClient: 接続チェックに失敗しました、HTTP {code}: {detail}",
+        "check_error": "AmdClient: 接続チェックエラー: {error}",
+        "rate_limited": "AmdClient: レート制限に達しました。{wait}秒後に再試行します",
+        "rate_limited_log": "AmdClient: レート制限による再試行 ({attempt}/{max})、{wait}秒待機",
+        "api_error": "AmdClient: API エラー: {code}",
+        "request_timeout": "AmdClient: リクエストがタイムアウトしました",
+        "connection_failed": "AmdClient: 接続に失敗しました: {error}",
+        "request_failed": "AmdClient: リクエストが失敗しました: {error}",
+        "retry_log": "AmdClient: 再試行中、{wait}秒待機",
+        "unknown_error": "AmdClient: 不明なエラー",
+        "user_cancelled": "AmdClient: ユーザーによってキャンセルされました",
+        "stream_error": "AmdClient: ストリーミングエラー: {error}",
+        "stream_json_error": "AmdClient: ストリーミングJSON解析に失敗しました",
+        "stream_interrupted": "AmdClient: ストリームが中断されました。{count}文字を受信",
+        "stream_connection_failed": "AmdClient: ストリーム接続に失敗しました: {error}"
+      },
+      "mistral": {
+        "check_cached": "MistralClient: キャッシュされた接続ステータスを使用",
+        "check_start": "MistralClient: 接続チェックを開始...",
+        "check_ok": "MistralClient: 接続チェック OK",
+        "check_fail_empty": "MistralClient: 接続チェックで空の応答が返されました",
+        "api_key_missing": "MistralClient: API Keyが設定されていません",
+        "api_key_invalid": "MistralClient: API Keyが無効です (401)。MISTRAL_API_KEYを確認してください",
+        "check_error": "MistralClient: 接続チェックエラー: {error}",
+        "rate_limited": "MistralClient: レート制限に達しました。{wait}秒後に再試行します",
+        "rate_limited_log": "MistralClient: レート制限による再試行 ({attempt}/{max})、{wait}秒待機",
+        "api_error": "MistralClient: API エラー: {error}",
+        "request_failed": "MistralClient: リクエストが失敗しました: {error}",
+        "retry_log": "MistralClient: 再試行中、{wait}秒待機",
+        "unknown_error": "MistralClient: 不明なエラー",
+        "user_cancelled": "MistralClient: ユーザーによってキャンセルされました",
+        "stream_chunk_error": "MistralClient: ストリームチャンクの解析に失敗しました: {error}",
+        "stream_interrupted": "MistralClient: ストリームが中断されました。{count}文字を受信",
+        "stream_connection_failed": "MistralClient: ストリーム接続に失敗しました: {error}",
+        "check_retry": "MistralClient: 接続チェックの試行 {attempt}/{max} が失敗しました。{wait}秒後に再試行します..."
+      }
     },
     "voice_transcription": {
       "audio_file_not_found": "音声ファイルが見つかりません: {path}",

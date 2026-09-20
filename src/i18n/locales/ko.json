@@ -204,7 +204,9 @@
     "dep_check_label_done": "완료",
     "dep_check_label_failed": "실패",
     "dep_download_start": "종속성 다운로드 시작: 모델=%s, DLL=%s, 보관=%s",
-    "failed_log_write": "실패 로그 기록 실패: %s"
+    "failed_log_write": "실패 로그 기록 실패: %s",
+    "tx_prompt_load_fail": "전사 프롬프트 템플릿 로드 실패",
+    "summary_prompt_load_fail": "요약 프롬프트 템플릿 로드 실패"
   },
   "about": {
     "title": "Video2Text 정보",
@@ -289,7 +291,10 @@
       "cancel": "취소",
       "browse_dir": "디렉토리 선택",
       "browse_image": "배경 이미지 선택",
-      "image_filter": "이미지 파일 (*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp);;모든 파일 (*.*)"
+      "image_filter": "이미지 파일 (*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp);;모든 파일 (*.*)",
+      "other_group": "기타",
+      "browse_tooltip_image": "배경 이미지 선택",
+      "browse_tooltip_dir": "디렉터리 선택"
     },
     "result_viewer": {
       "title": "결과 - Video2Text",
@@ -429,7 +434,21 @@
     "log_ollama_start_ok": "Ollama 서비스: ✓ 시작됨",
     "log_ollama_start_not_found": "Ollama 서비스: ✗ ollama 명령을 찾을 수 없음",
     "log_ollama_start_timeout": "Ollama 서비스: ✗ 시간 초과",
-    "log_ollama_start_fail": "Ollama 서비스: ✗ 시작 실패"
+    "log_ollama_start_fail": "Ollama 서비스: ✗ 시작 실패",
+    "radio_mistral": "온라인 Mistral 모델",
+    "mistral_group": "Mistral 구성",
+    "mistral_mode_label": "처리 모드",
+    "mistral_stream_label": "스트림 출력",
+    "mistral_threads_label": "스레드 수",
+    "log_mistral_ok": "MistralClient: 연결 성공, 대기 시간 {latency_ms:.0f}ms, 모델 {model}",
+    "log_mistral_fail": "MistralClient: 연결 실패, 모델 {model}",
+    "radio_amd": "온라인 AMD 모델",
+    "amd_group": "AMD 구성",
+    "amd_mode_label": "처리 모드",
+    "amd_stream_label": "스트림 출력",
+    "amd_threads_label": "스레드 수",
+    "log_amd_ok": "AmdClient: 연결 성공, 대기 시간 {latency_ms:.0f}ms, 모델 {model}",
+    "log_amd_fail": "AmdClient: 연결 실패, 모델 {model}"
   },
   "summ_labels": {
     "ollama_url": "Ollama URL",
@@ -447,7 +466,24 @@
     "nvidia_timeout": "NVIDIA 시간 초과",
     "nvidia_mode": "NVIDIA 모드",
     "nvidia_thread_count": "NVIDIA 스레드 수",
-    "nvidia_stream": "NVIDIA 스트림 출력"
+    "nvidia_stream": "NVIDIA 스트림 출력",
+    "mistral_model": "모델",
+    "mistral_max_tokens": "최대 출력 토큰",
+    "mistral_temperature": "온도",
+    "mistral_timeout": "시간 초과(초)",
+    "mistral_mode": "처리 모드",
+    "mistral_thread_count": "스레드 수",
+    "mistral_stream": "스트림 출력",
+    "mistral_base_url": "API URL",
+    "mistral_rate_limit": "API 속도 (요청/초)",
+    "amd_api_url": "API URL",
+    "amd_model": "모델",
+    "amd_max_tokens": "최대 출력 토큰",
+    "amd_temperature": "온도",
+    "amd_timeout": "시간 초과(초)",
+    "amd_mode": "처리 모드",
+    "amd_thread_count": "스레드 수",
+    "amd_stream": "스트림 출력"
   },
   "summ_tooltips": {
     "ollama_url": "Ollama 서비스 URL, 기본값 http://127.0.0.1:11434",
@@ -465,7 +501,24 @@
     "nvidia_timeout": "NVIDIA 시간 초과 (초), 긴 텍스트는 600+ 권장",
     "nvidia_mode": "NVIDIA 모드: 단일 (단일 스레드, 스트림 지원), 멀티 (멀티 스레드 동시)",
     "nvidia_thread_count": "멀티 스레드 모드의 동시 스레드 수",
-    "nvidia_stream": "스트림 출력 활성화 (단일 스레드만): true / false"
+    "nvidia_stream": "스트림 출력 활성화 (단일 스레드만): true / false",
+    "mistral_model": "Mistral 모델 이름, 기본값 codestral-2508",
+    "mistral_max_tokens": "요약당 생성되는 최대 토큰 수",
+    "mistral_temperature": "샘플링 온도, 높을수록 무작위 (0~2), 기본값 0.7",
+    "mistral_timeout": "요청 시간 초과(초), 기본값 60",
+    "mistral_mode": "single=순차 처리; multi=다중 스레드 병렬 (multi에서는 스트림 비활성화)",
+    "mistral_thread_count": "multi 모드의 동시 스레드 수",
+    "mistral_stream": "토큰별 스트림 출력 (single 모드에서만 사용 가능)",
+    "mistral_base_url": "Mistral API 엔드포인트 URL, 비워두면 공식 기본값 사용",
+    "mistral_rate_limit": "초당 최대 Mistral API 요청 수, codestral-2508의 경우 2.0 권장",
+    "amd_api_url": "AMD Radeon Cloud API 엔드포인트 URL, 기본값 https://developer.amd.com.cn/radeon/api/v1/chat/completions",
+    "amd_model": "AMD 모델 이름, 기본값 Qwen3.8-Flash-Next",
+    "amd_max_tokens": "요약당 생성되는 최대 토큰 수",
+    "amd_temperature": "샘플링 온도, 높을수록 무작위 (0~2), 기본값 0.7",
+    "amd_timeout": "요청 시간 초과(초), 기본값 60",
+    "amd_mode": "single=순차 처리; multi=다중 스레드 병렬 (multi에서는 스트림 비활성화)",
+    "amd_thread_count": "multi 모드의 동시 스레드 수",
+    "amd_stream": "토큰별 스트림 출력 (single 모드에서만 사용 가능)"
   },
   "nvidia_test": {
     "title": "Nvidia API 응답 테스트",
@@ -1115,7 +1168,8 @@
         "stream_error": "Ollama 스트리밍 오류: {error}",
         "service_cmd_not_found": "Ollama 서비스: ollama 명령을 찾을 수 없음",
         "service_unreachable": "Ollama 서비스: 시작되었으나 {count}회 확인에서 연결 실패 ({url})",
-        "api_error": "Ollama API 오류: {code}"
+        "api_error": "Ollama API 오류: {code}",
+        "check_retry": "Ollama 연결 확인: 시도 {attempt}/{max} 실패, {wait}초 후 재시도..."
       },
       "nvidia": {
         "check_start": "NvidiaClient: 연결 확인 시작...",
@@ -1139,10 +1193,56 @@
         "stream_error": "NVIDIA 스트리밍 오류: {error}",
         "stream_json_error": "NvidiaClient: 스트리밍 JSON 파싱 실패",
         "stream_interrupted": "NvidiaClient: 스트림 중단됨, {count}자 수신됨",
-        "stream_connection_failed": "NVIDIA 스트리밍 연결 실패: {error}"
+        "stream_connection_failed": "NVIDIA 스트리밍 연결 실패: {error}",
+        "check_retry": "NvidiaClient: 연결 확인 시도 {attempt}/{max} 실패, {wait}초 후 재시도..."
       },
       "write_index_failed": "Failed to write output index: {error}",
-      "markdown_tooltip": "활성화하면 요약에 다국어 Markdown 형식 지시가 자동 적용됩니다."
+      "markdown_tooltip": "활성화하면 요약에 다국어 Markdown 형식 지시가 자동 적용됩니다.",
+      "amd": {
+        "check_cached": "AmdClient: 캐시된 연결 상태 사용",
+        "check_start": "AmdClient: 연결 확인 시작...",
+        "check_ok": "AmdClient: 연결 확인 OK",
+        "api_key_missing": "AmdClient: API Key가 구성되지 않았습니다. .env에서 AMD_API_KEY를 설정하세요",
+        "env_missing_key": "AmdClient: .env 파일에서 AMD_API_KEY를 찾을 수 없습니다",
+        "env_not_found": "AmdClient: .env 파일을 찾을 수 없습니다",
+        "check_retry": "AmdClient: 연결 확인 시도 {attempt}/{max} 실패, {wait}초 후 재시도...",
+        "check_fail": "AmdClient: 연결 확인 실패, HTTP {code}",
+        "check_fail_detail": "AmdClient: 연결 확인 실패, HTTP {code}: {detail}",
+        "check_error": "AmdClient: 연결 확인 오류: {error}",
+        "rate_limited": "AmdClient: 속도 제한됨, {wait}초 후 재시도",
+        "rate_limited_log": "AmdClient: 속도 제한 재시도 ({attempt}/{max}), {wait}초 대기",
+        "api_error": "AmdClient: API 오류: {code}",
+        "request_timeout": "AmdClient: 요청 시간 초과",
+        "connection_failed": "AmdClient: 연결 실패: {error}",
+        "request_failed": "AmdClient: 요청 실패: {error}",
+        "retry_log": "AmdClient: 재시도, {wait}초 대기",
+        "unknown_error": "AmdClient: 알 수 없는 오류",
+        "user_cancelled": "AmdClient: 사용자가 취소함",
+        "stream_error": "AmdClient: 스트리밍 오류: {error}",
+        "stream_json_error": "AmdClient: 스트리밍 JSON 구문 분석 실패",
+        "stream_interrupted": "AmdClient: 스트림 중단됨, {count}자 수신됨",
+        "stream_connection_failed": "AmdClient: 스트림 연결 실패: {error}"
+      },
+      "mistral": {
+        "check_cached": "MistralClient: 캐시된 연결 상태 사용",
+        "check_start": "MistralClient: 연결 확인 시작...",
+        "check_ok": "MistralClient: 연결 확인 OK",
+        "check_fail_empty": "MistralClient: 연결 확인에서 빈 응답이 반환됨",
+        "api_key_missing": "MistralClient: API Key가 구성되지 않음",
+        "api_key_invalid": "MistralClient: API Key가 유효하지 않음 (401), MISTRAL_API_KEY를 확인하세요",
+        "check_error": "MistralClient: 연결 확인 오류: {error}",
+        "rate_limited": "MistralClient: 속도 제한됨, {wait}초 후 재시도",
+        "rate_limited_log": "MistralClient: 속도 제한 재시도 ({attempt}/{max}), {wait}초 대기",
+        "api_error": "MistralClient: API 오류: {error}",
+        "request_failed": "MistralClient: 요청 실패: {error}",
+        "retry_log": "MistralClient: 재시도, {wait}초 대기",
+        "unknown_error": "MistralClient: 알 수 없는 오류",
+        "user_cancelled": "MistralClient: 사용자가 취소함",
+        "stream_chunk_error": "MistralClient: 스트림 청크 구문 분석 실패: {error}",
+        "stream_interrupted": "MistralClient: 스트림 중단됨, {count}자 수신됨",
+        "stream_connection_failed": "MistralClient: 스트림 연결 실패: {error}",
+        "check_retry": "MistralClient: 연결 확인 시도 {attempt}/{max} 실패, {wait}초 후 재시도..."
+      }
     },
     "voice_transcription": {
       "audio_file_not_found": "오디오 파일을 찾을 수 없음: {path}",

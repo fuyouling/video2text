@@ -226,7 +226,9 @@
     "dep_check_label_done": "Done",
     "dep_check_label_failed": "Failed",
     "dep_download_start": "Starting dependency download: model=%s, dll=%s, keep_archive=%s",
-    "failed_log_write": "Failed to write fail log: %s"
+    "failed_log_write": "Failed to write fail log: %s",
+    "tx_prompt_load_fail": "Failed to load transcription prompt template",
+    "summary_prompt_load_fail": "Failed to load summarization prompt template"
   },
   "about": {
     "title": "About Video2Text",
@@ -311,7 +313,10 @@
       "cancel": "Cancel",
       "browse_dir": "Select Directory",
       "browse_image": "Select Background Image",
-      "image_filter": "Image Files (*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp);;All Files (*.*)"
+      "image_filter": "Image Files (*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp);;All Files (*.*)",
+      "other_group": "Other",
+      "browse_tooltip_image": "Select background image",
+      "browse_tooltip_dir": "Select directory"
     },
     "result_viewer": {
       "title": "Results - Video2Text",

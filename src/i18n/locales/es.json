@@ -204,7 +204,9 @@
     "dep_check_label_done": "Hecho",
     "dep_check_label_failed": "Falló",
     "dep_download_start": "Iniciando descarga de dependencias: modelo=%s, dll=%s, keep_archive=%s",
-    "failed_log_write": "Error al escribir el registro de fallos: %s"
+    "failed_log_write": "Error al escribir el registro de fallos: %s",
+    "tx_prompt_load_fail": "Error al cargar la plantilla de aviso de transcripción",
+    "summary_prompt_load_fail": "Error al cargar la plantilla de aviso de resumen"
   },
   "about": {
     "title": "Acerca de Video2Text",
@@ -289,7 +291,10 @@
       "cancel": "Cancelar",
       "browse_dir": "Seleccionar directorio",
       "browse_image": "Seleccionar imagen de fondo",
-      "image_filter": "Archivos de imagen (*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp);;Todos los archivos (*.*)"
+      "image_filter": "Archivos de imagen (*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp);;Todos los archivos (*.*)",
+      "other_group": "Otros",
+      "browse_tooltip_image": "Seleccionar imagen de fondo",
+      "browse_tooltip_dir": "Seleccionar directorio"
     },
     "result_viewer": {
       "title": "Resultados - Video2Text",
@@ -429,7 +434,21 @@
     "log_ollama_start_ok": "Servicio Ollama: ✓ iniciado",
     "log_ollama_start_not_found": "Servicio Ollama: ✗ comando ollama no encontrado",
     "log_ollama_start_timeout": "Servicio Ollama: ✗ tiempo de espera agotado",
-    "log_ollama_start_fail": "Servicio Ollama: ✗ falló al iniciar"
+    "log_ollama_start_fail": "Servicio Ollama: ✗ falló al iniciar",
+    "radio_mistral": "Modelo en línea Mistral",
+    "mistral_group": "Configuración de Mistral",
+    "mistral_mode_label": "Modo de procesamiento",
+    "mistral_stream_label": "Salida de transmisión",
+    "mistral_threads_label": "Hilos",
+    "log_mistral_ok": "MistralClient: conectado, latencia {latency_ms:.0f}ms, modelo {model}",
+    "log_mistral_fail": "MistralClient: conexión fallida, modelo {model}",
+    "radio_amd": "Modelo en línea AMD",
+    "amd_group": "Configuración de AMD",
+    "amd_mode_label": "Modo de procesamiento",
+    "amd_stream_label": "Salida de transmisión",
+    "amd_threads_label": "Hilos",
+    "log_amd_ok": "AmdClient: conectado, latencia {latency_ms:.0f}ms, modelo {model}",
+    "log_amd_fail": "AmdClient: conexión fallida, modelo {model}"
   },
   "summ_labels": {
     "ollama_url": "URL de Ollama",
@@ -447,7 +466,24 @@
     "nvidia_timeout": "Tiempo de espera NVIDIA",
     "nvidia_mode": "Modo NVIDIA",
     "nvidia_thread_count": "Número de hilos NVIDIA",
-    "nvidia_stream": "Salida de transmisión NVIDIA"
+    "nvidia_stream": "Salida de transmisión NVIDIA",
+    "mistral_model": "Modelo",
+    "mistral_max_tokens": "Tokens de salida máx",
+    "mistral_temperature": "Temperatura",
+    "mistral_timeout": "Tiempo de espera (s)",
+    "mistral_mode": "Modo de procesamiento",
+    "mistral_thread_count": "Hilos",
+    "mistral_stream": "Salida de transmisión",
+    "mistral_base_url": "URL de API",
+    "mistral_rate_limit": "Tasa de API (sol./s)",
+    "amd_api_url": "URL de API",
+    "amd_model": "Modelo",
+    "amd_max_tokens": "Tokens de salida máx",
+    "amd_temperature": "Temperatura",
+    "amd_timeout": "Tiempo de espera (s)",
+    "amd_mode": "Modo de procesamiento",
+    "amd_thread_count": "Hilos",
+    "amd_stream": "Salida de transmisión"
   },
   "summ_tooltips": {
     "ollama_url": "URL del servicio Ollama, predeterminada http://127.0.0.1:11434",
@@ -465,7 +501,24 @@
     "nvidia_timeout": "Tiempo de espera NVIDIA (segundos), para textos largos se recomienda 600+",
     "nvidia_mode": "Modo NVIDIA: único (hilo único, admite transmisión), múltiple (varios hilos concurrentes)",
     "nvidia_thread_count": "Número de hilos concurrentes para el modo múltiple",
-    "nvidia_stream": "Activar salida de transmisión (solo hilo único): verdadero / falso"
+    "nvidia_stream": "Activar salida de transmisión (solo hilo único): verdadero / falso",
+    "mistral_model": "Nombre del modelo Mistral, por defecto codestral-2508",
+    "mistral_max_tokens": "Tokens máximos generados por resumen",
+    "mistral_temperature": "Temperatura de muestreo, mayor = más aleatorio (0~2), por defecto 0.7",
+    "mistral_timeout": "Tiempo de espera de solicitud en segundos, por defecto 60",
+    "mistral_mode": "single=en serie; multi=hilos concurrentes (transmisión deshabilitada en multi)",
+    "mistral_thread_count": "Hilos concurrentes en modo multi",
+    "mistral_stream": "Salida de transmisión token por token (solo modo single)",
+    "mistral_base_url": "URL de endpoint de API de Mistral, dejar vacío para el valor oficial por defecto",
+    "mistral_rate_limit": "Solicitudes máximas por segundo para API de Mistral, se recomienda 2.0 para codestral-2508",
+    "amd_api_url": "URL de endpoint de API de AMD Radeon Cloud, por defecto https://developer.amd.com.cn/radeon/api/v1/chat/completions",
+    "amd_model": "Nombre del modelo AMD, por defecto Qwen3.8-Flash-Next",
+    "amd_max_tokens": "Tokens máximos generados por resumen",
+    "amd_temperature": "Temperatura de muestreo, mayor = más aleatorio (0~2), por defecto 0.7",
+    "amd_timeout": "Tiempo de espera de solicitud en segundos, por defecto 60",
+    "amd_mode": "single=en serie; multi=hilos concurrentes (transmisión deshabilitada en multi)",
+    "amd_thread_count": "Hilos concurrentes en modo multi",
+    "amd_stream": "Salida de transmisión token por token (solo modo single)"
   },
   "nvidia_test": {
     "title": "Prueba de respuesta de la API de Nvidia",
@@ -1115,7 +1168,8 @@
         "stream_error": "Error de transmisión Ollama: {error}",
         "service_cmd_not_found": "Servicio Ollama: comando ollama no encontrado",
         "service_unreachable": "Servicio Ollama: iniciado pero {count} verificaciones no pudieron conectar ({url})",
-        "api_error": "Error de API Ollama: {code}"
+        "api_error": "Error de API Ollama: {code}",
+        "check_retry": "Verificación de conexión Ollama: intento {attempt}/{max} fallido, reintentando en {wait}s..."
       },
       "nvidia": {
         "check_start": "NvidiaClient: iniciando verificación de conexión...",
@@ -1139,10 +1193,56 @@
         "stream_error": "Error de transmisión NVIDIA: {error}",
         "stream_json_error": "NvidiaClient: error al analizar JSON de transmisión",
         "stream_interrupted": "NvidiaClient: transmisión interrumpida, se recibieron {count} caracteres",
-        "stream_connection_failed": "Conexión de transmisión NVIDIA fallida: {error}"
+        "stream_connection_failed": "Conexión de transmisión NVIDIA fallida: {error}",
+        "check_retry": "NvidiaClient: intento {attempt}/{max} de verificación fallido, reintentando en {wait}s..."
       },
       "write_index_failed": "Failed to write output index: {error}",
-      "markdown_tooltip": "Al activarlo, los resúmenes se formatean automáticamente con la instrucción Markdown localizada."
+      "markdown_tooltip": "Al activarlo, los resúmenes se formatean automáticamente con la instrucción Markdown localizada.",
+      "amd": {
+        "check_cached": "AmdClient: usando estado de conexión en caché",
+        "check_start": "AmdClient: iniciando verificación de conexión...",
+        "check_ok": "AmdClient: verificación de conexión OK",
+        "api_key_missing": "AmdClient: clave API no configurada, configure AMD_API_KEY en .env",
+        "env_missing_key": "AmdClient: AMD_API_KEY no encontrada en archivo .env",
+        "env_not_found": "AmdClient: archivo .env no encontrado",
+        "check_retry": "AmdClient: intento {attempt}/{max} de verificación fallido, reintentando en {wait}s...",
+        "check_fail": "AmdClient: verificación de conexión fallida, HTTP {code}",
+        "check_fail_detail": "AmdClient: verificación de conexión fallida, HTTP {code}: {detail}",
+        "check_error": "AmdClient: error de verificación de conexión: {error}",
+        "rate_limited": "AmdClient: límite de velocidad alcanzado, reintentar en {wait}s",
+        "rate_limited_log": "AmdClient: reintento por límite de velocidad ({attempt}/{max}), esperar {wait}s",
+        "api_error": "AmdClient: error de API: {code}",
+        "request_timeout": "AmdClient: solicitud agotada por tiempo de espera",
+        "connection_failed": "AmdClient: conexión fallida: {error}",
+        "request_failed": "AmdClient: solicitud fallida: {error}",
+        "retry_log": "AmdClient: reintento, esperar {wait}s",
+        "unknown_error": "AmdClient: error desconocido",
+        "user_cancelled": "AmdClient: cancelado por el usuario",
+        "stream_error": "AmdClient: error de transmisión: {error}",
+        "stream_json_error": "AmdClient: error al analizar JSON de transmisión",
+        "stream_interrupted": "AmdClient: transmisión interrumpida, recibidos {count} caracteres",
+        "stream_connection_failed": "AmdClient: conexión de transmisión fallida: {error}"
+      },
+      "mistral": {
+        "check_cached": "MistralClient: usando estado de conexión en caché",
+        "check_start": "MistralClient: iniciando verificación de conexión...",
+        "check_ok": "MistralClient: verificación de conexión OK",
+        "check_fail_empty": "MistralClient: la verificación devolvió una respuesta vacía",
+        "api_key_missing": "MistralClient: clave API no configurada",
+        "api_key_invalid": "MistralClient: clave API no válida (401), verifique MISTRAL_API_KEY",
+        "check_error": "MistralClient: error de verificación de conexión: {error}",
+        "rate_limited": "MistralClient: límite de velocidad alcanzado, reintentar en {wait}s",
+        "rate_limited_log": "MistralClient: reintento por límite de velocidad ({attempt}/{max}), esperar {wait}s",
+        "api_error": "MistralClient: error de API: {error}",
+        "request_failed": "MistralClient: solicitud fallida: {error}",
+        "retry_log": "MistralClient: reintento, esperar {wait}s",
+        "unknown_error": "MistralClient: error desconocido",
+        "user_cancelled": "MistralClient: cancelado por el usuario",
+        "stream_chunk_error": "MistralClient: error al analizar fragmento de transmisión: {error}",
+        "stream_interrupted": "MistralClient: transmisión interrumpida, recibidos {count} caracteres",
+        "stream_connection_failed": "MistralClient: conexión de transmisión fallida: {error}",
+        "check_retry": "MistralClient: intento {attempt}/{max} de verificación fallido, reintentando en {wait}s..."
+      }
     },
     "voice_transcription": {
       "audio_file_not_found": "Archivo de audio no encontrado: {path}",
