@@ -145,7 +145,7 @@ def _build_rate_limiter(settings: Settings, provider_name: str, max_workers: int
       转换为 min_interval = 1 / rate_limit，防止 codestral 等强制流式模型触发限流。
     - 其余情况返回 None（不限速）。
     """
-    if max_workers > 1 and provider_name in ("nvidia", "mistral"):
+    if max_workers > 1 and provider_name in ("nvidia", "mistral", "amd"):
         return RateLimiter(1.5)
     if provider_name == "mistral" and max_workers <= 1:
         rps = settings.get_float("summarization.mistral_rate_limit", 2.0)
@@ -155,9 +155,12 @@ def _build_rate_limiter(settings: Settings, provider_name: str, max_workers: int
 
 
 def _get_provider_label(provider: str) -> str:
-    return {"ollama": "Ollama", "nvidia": "NVIDIA API", "mistral": "Mistral AI"}.get(
-        provider, provider
-    )
+    return {
+        "ollama": "Ollama",
+        "nvidia": "NVIDIA API",
+        "mistral": "Mistral AI",
+        "amd": "AMD Radeon Cloud",
+    }.get(provider, provider)
 
 
 def _check_summarization_connection(
@@ -497,7 +500,7 @@ class SummarizeWorker(QObject):
                 mode = _get_online_cfg(self.settings, "mode", "single")
                 max_workers = (
                     _get_online_cfg(self.settings, "thread_count", 5)
-                    if provider_name in ("nvidia", "mistral") and _is_multi_mode(mode)
+                    if provider_name in ("nvidia", "mistral", "amd") and _is_multi_mode(mode)
                     else 1
                 )
                 stream = self.stream and max_workers <= 1
@@ -780,7 +783,7 @@ class PipelineWorker(QObject):
                     mode = _get_online_cfg(self.settings, "mode", "single")
                     max_workers = (
                         _get_online_cfg(self.settings, "thread_count", 5)
-                        if provider_name in ("nvidia", "mistral") and _is_multi_mode(mode)
+                        if provider_name in ("nvidia", "mistral", "amd") and _is_multi_mode(mode)
                         else 1
                     )
                     stream = self.stream and max_workers <= 1
@@ -864,6 +867,8 @@ class CheckWorker(QObject):
                 ok, detail = self._check_nvidia()
             elif self.provider_type == "mistral":
                 ok, detail = self._check_mistral()
+            elif self.provider_type == "amd":
+                ok, detail = self._check_amd()
             else:
                 ok, detail = False, "unknown_provider"
             latency_ms = (time.monotonic() - t0) * 1000
@@ -903,6 +908,19 @@ class CheckWorker(QObject):
 
         client = MistralClient(
             api_key=get_api_key("MISTRAL_API_KEY"),
+            model=self.kwargs.get("model", ""),
+        )
+        try:
+            return client.check_connection(), ""
+        finally:
+            client.close()
+
+    def _check_amd(self) -> tuple[bool, str]:
+        from src.summarization.amd_client import AmdClient
+
+        client = AmdClient(
+            api_url=self.kwargs.get("api_url", "https://developer.amd.com.cn/radeon/api/v1/chat/completions"),
+            api_key=get_api_key("AMD_API_KEY"),
             model=self.kwargs.get("model", ""),
         )
         try:

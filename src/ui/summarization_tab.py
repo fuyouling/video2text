@@ -55,7 +55,14 @@ _SUMM_KEY_LABELS: dict[str, str] = {
     "summarization.mistral_mode": "summ_labels.mistral_mode",
     "summarization.mistral_thread_count": "summ_labels.mistral_thread_count",
     "summarization.mistral_stream": "summ_labels.mistral_stream",
-
+    "summarization.amd_api_url": "summ_labels.amd_api_url",
+    "summarization.amd_model": "summ_labels.amd_model",
+    "summarization.amd_max_tokens": "summ_labels.amd_max_tokens",
+    "summarization.amd_temperature": "summ_labels.amd_temperature",
+    "summarization.amd_timeout": "summ_labels.amd_timeout",
+    "summarization.amd_mode": "summ_labels.amd_mode",
+    "summarization.amd_thread_count": "summ_labels.amd_thread_count",
+    "summarization.amd_stream": "summ_labels.amd_stream",
 }
 
 _SUMM_KEY_TOOLTIPS: dict[str, str] = {
@@ -84,7 +91,14 @@ _SUMM_KEY_TOOLTIPS: dict[str, str] = {
     "summarization.mistral_mode": "summ_tooltips.mistral_mode",
     "summarization.mistral_thread_count": "summ_tooltips.mistral_thread_count",
     "summarization.mistral_stream": "summ_tooltips.mistral_stream",
-
+    "summarization.amd_api_url": "summ_tooltips.amd_api_url",
+    "summarization.amd_model": "summ_tooltips.amd_model",
+    "summarization.amd_max_tokens": "summ_tooltips.amd_max_tokens",
+    "summarization.amd_temperature": "summ_tooltips.amd_temperature",
+    "summarization.amd_timeout": "summ_tooltips.amd_timeout",
+    "summarization.amd_mode": "summ_tooltips.amd_mode",
+    "summarization.amd_thread_count": "summ_tooltips.amd_thread_count",
+    "summarization.amd_stream": "summ_tooltips.amd_stream",
 }
 
 
@@ -102,7 +116,9 @@ class SummarizationTab(QWidget):
         return self._section_edits
 
     def get_provider(self) -> str:
-        """获取当前选择的总结提供商名称（'ollama' / 'nvidia' / 'mistral'）。"""
+        """获取当前选择的总结提供商名称（'ollama' / 'nvidia' / 'mistral' / 'amd'）。"""
+        if self._radio_amd.isChecked():
+            return "amd"
         if self._radio_mistral.isChecked():
             return "mistral"
         if self._radio_nvidia.isChecked():
@@ -111,9 +127,10 @@ class SummarizationTab(QWidget):
 
     def set_provider(self, provider: str) -> None:
         """设置 provider 选择（用于 _reset）"""
-        self._radio_ollama.setChecked(provider not in ("nvidia", "mistral"))
+        self._radio_ollama.setChecked(provider not in ("nvidia", "mistral", "amd"))
         self._radio_nvidia.setChecked(provider == "nvidia")
         self._radio_mistral.setChecked(provider == "mistral")
+        self._radio_amd.setChecked(provider == "amd")
 
     def cleanup_threads(self) -> None:
         """关闭所有异步线程，供 closeEvent 调用"""
@@ -124,6 +141,7 @@ class SummarizationTab(QWidget):
             "_ollama_stop_thread",
             "_nvidia_check_thread",
             "_mistral_check_thread",
+            "_amd_check_thread",
         ):
             thread = getattr(self, attr, None)
             if thread is not None:
@@ -151,16 +169,20 @@ class SummarizationTab(QWidget):
         self._radio_ollama = QRadioButton(t("summarization_tab.radio_ollama"))
         self._radio_nvidia = QRadioButton(t("summarization_tab.radio_nvidia"))
         self._radio_mistral = QRadioButton(t("summarization_tab.radio_mistral"))
+        self._radio_amd = QRadioButton(t("summarization_tab.radio_amd"))
         current_provider = self._settings.get("summarization.provider", "ollama")
         if current_provider == "nvidia":
             self._radio_nvidia.setChecked(True)
         elif current_provider == "mistral":
             self._radio_mistral.setChecked(True)
+        elif current_provider == "amd":
+            self._radio_amd.setChecked(True)
         else:
             self._radio_ollama.setChecked(True)
         provider_layout.addWidget(self._radio_ollama)
         provider_layout.addWidget(self._radio_nvidia)
         provider_layout.addWidget(self._radio_mistral)
+        provider_layout.addWidget(self._radio_amd)
         main_layout.addWidget(provider_group)
 
         # ---- Ollama 区域 ----
@@ -386,19 +408,182 @@ class SummarizationTab(QWidget):
         self._add_mistral_test_button(mistral_form)
         main_layout.addWidget(self._mistral_group)
 
+        # ---- AMD 区域 ----
+        self._amd_group = QGroupBox(t("summarization_tab.amd_group"))
+        amd_form = QFormLayout(self._amd_group)
+        amd_form.setContentsMargins(8, 8, 8, 8)
+
+        amd_items = {
+            "amd_api_url": self._settings.get(
+                "summarization.amd_api_url",
+                "https://developer.amd.com.cn/radeon/api/v1/chat/completions",
+            ),
+            "amd_model": self._settings.get(
+                "summarization.amd_model", "Qwen3.8-Flash-Next"
+            ),
+            "amd_max_tokens": self._settings.get(
+                "summarization.amd_max_tokens", "8192"
+            ),
+            "amd_temperature": self._settings.get(
+                "summarization.amd_temperature", "0.7"
+            ),
+            "amd_timeout": self._settings.get(
+                "summarization.amd_timeout", "60"
+            ),
+        }
+
+        for key, value in amd_items.items():
+            full_key = f"summarization.{key}"
+            widget = QLineEdit(value)
+            tooltip_key = _SUMM_KEY_TOOLTIPS.get(full_key)
+            if tooltip_key:
+                widget.setToolTip(t(tooltip_key))
+            label_key = _SUMM_KEY_LABELS.get(full_key)
+            label = t(label_key) if label_key else key
+            amd_form.addRow(f"{label}:", widget)
+            self._section_edits[key] = widget
+
+        self._amd_mode_combo = QComboBox()
+        self._amd_mode_combo.setProperty(
+            "_combo_key", "summarization.amd_mode"
+        )
+        self._amd_mode_combo.addItem(t("summarization_tab.mode_single"), "single")
+        self._amd_mode_combo.addItem(t("summarization_tab.mode_multi"), "multi")
+        amd_mode_val = self._settings.get("summarization.amd_mode", "single")
+        if _is_multi_mode(amd_mode_val):
+            amd_mode_val = "multi"
+        else:
+            amd_mode_val = "single"
+        self._set_widget_text(self._amd_mode_combo, amd_mode_val)
+        self._amd_mode_combo.setToolTip(
+            _SUMM_KEY_TOOLTIPS.get("summarization.amd_mode", "")
+        )
+        amd_form.addRow(t("summarization_tab.amd_mode_label"), self._amd_mode_combo)
+        self._section_edits["amd_mode"] = self._amd_mode_combo
+
+        self._amd_stream_combo = QComboBox()
+        self._amd_stream_combo.setProperty(
+            "_combo_key", "summarization.amd_stream"
+        )
+        self._amd_stream_combo.addItem(t("common.yes"))
+        self._amd_stream_combo.addItem(t("common.no"))
+        amd_stream_val = self._settings.get("summarization.amd_stream", "true")
+        self._set_widget_text(self._amd_stream_combo, amd_stream_val)
+        self._amd_stream_combo.setToolTip(
+            _SUMM_KEY_TOOLTIPS.get("summarization.amd_stream", "")
+        )
+        self._amd_stream_row_label = QLabel(t("summarization_tab.amd_stream_label"))
+        amd_form.addRow(
+            self._amd_stream_row_label, self._amd_stream_combo
+        )
+        self._section_edits["amd_stream"] = self._amd_stream_combo
+
+        amd_thread_count = self._settings.get(
+            "summarization.amd_thread_count", "4"
+        )
+        self._amd_thread_edit = QLineEdit(amd_thread_count)
+        self._amd_thread_edit.setToolTip(
+            _SUMM_KEY_TOOLTIPS.get("summarization.amd_thread_count", "")
+        )
+        self._amd_thread_row_label = QLabel(t("summarization_tab.amd_threads_label"))
+        amd_form.addRow(
+            self._amd_thread_row_label, self._amd_thread_edit
+        )
+        self._section_edits["amd_thread_count"] = self._amd_thread_edit
+
+        self._amd_mode_combo.currentIndexChanged.connect(
+            self._on_amd_mode_changed
+        )
+        self._on_amd_mode_changed()
+
+        self._add_amd_test_button(amd_form)
+        main_layout.addWidget(self._amd_group)
+
         main_layout.addStretch()
 
         # 连接信号
         self._radio_ollama.toggled.connect(self._on_provider_changed)
         self._radio_nvidia.toggled.connect(self._on_provider_changed)
         self._radio_mistral.toggled.connect(self._on_provider_changed)
+        self._radio_amd.toggled.connect(self._on_provider_changed)
         self._on_provider_changed()
 
     def _on_provider_changed(self) -> None:
-        """切换 Ollama / NVIDIA / Mistral 区域的显示"""
+        """切换 Ollama / NVIDIA / Mistral / AMD 区域的显示"""
         self._ollama_group.setVisible(self._radio_ollama.isChecked())
         self._nvidia_group.setVisible(self._radio_nvidia.isChecked())
         self._mistral_group.setVisible(self._radio_mistral.isChecked())
+        self._amd_group.setVisible(self._radio_amd.isChecked())
+
+    def _on_amd_mode_changed(self) -> None:
+        """切换 single/multi 模式时联动显隐流式输出和线程数"""
+        is_multi = self._amd_mode_combo.currentData() == "multi"
+        self._amd_stream_combo.setVisible(not is_multi)
+        self._amd_stream_row_label.setVisible(not is_multi)
+        self._amd_thread_edit.setVisible(is_multi)
+        self._amd_thread_row_label.setVisible(is_multi)
+
+    def _add_amd_test_button(self, form: QFormLayout) -> None:
+        """添加 AMD 测试连接按钮"""
+        btn_row = QHBoxLayout()
+        self._amd_test_btn = QPushButton(t("summarization_tab.test_btn"))
+        self._amd_test_btn.clicked.connect(self._test_amd)
+        btn_row.addWidget(self._amd_test_btn)
+        self._amd_status_label = QLabel("")
+        btn_row.addWidget(self._amd_status_label, 1)
+        form.addRow(btn_row)
+
+        self._amd_check_thread: Optional[QThread] = None
+        self._amd_check_worker: Optional[CheckWorker] = None
+
+    def _test_amd(self) -> None:
+        """测试 AMD API 连接"""
+        api_url = self._section_edits.get("amd_api_url")
+        url = (
+            api_url.text().strip()
+            if api_url
+            else "https://developer.amd.com.cn/radeon/api/v1/chat/completions"
+        )
+        model_edit = self._section_edits.get("amd_model")
+        model = model_edit.text().strip() if model_edit else ""
+
+        self._amd_status_label.setText(t("summarization_tab.testing"))
+        self._amd_status_label.setStyleSheet("color: orange")
+        self._amd_test_btn.setEnabled(False)
+
+        self._wait_async_thread("_amd_check_thread")
+        thread = QThread()
+        worker = CheckWorker("amd", api_url=url, model=model)
+        worker.moveToThread(thread)
+
+        def _on_result(ok: bool, latency_ms: float, _detail: str = ""):
+            if ok:
+                self._amd_status_label.setText(t("summarization_tab.status_connected", latency_ms=latency_ms))
+                self._amd_status_label.setStyleSheet("color: green")
+                get_logger("video2text").info(
+                    t("summarization_tab.log_amd_ok", latency_ms=latency_ms, model=model)
+                )
+            else:
+                self._amd_status_label.setText(t("summarization_tab.status_connect_fail"))
+                self._amd_status_label.setStyleSheet("color: red")
+                get_logger("video2text").warning(
+                    t("summarization_tab.log_amd_fail", model=model)
+                )
+
+        def _cleanup():
+            self._amd_check_thread = None
+            self._amd_check_worker = None
+            self._amd_test_btn.setEnabled(True)
+
+        worker.result.connect(_on_result)
+        thread.finished.connect(_cleanup)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(worker.deleteLater)
+        thread.started.connect(worker.run)
+        worker.finished.connect(thread.quit)
+        thread.start()
+        self._amd_check_thread = thread
+        self._amd_check_worker = worker
 
     def _on_mistral_mode_changed(self) -> None:
         """切换 single/multi 模式时联动显隐流式输出和线程数"""

@@ -43,7 +43,7 @@ logger = get_logger(__name__)
 
 _DEFAULT_ENV_NAME = ".env"
 #: 新建 `.env` 时默认预置的键（值为空，供用户填写）
-_DEFAULT_ENV_KEYS: tuple = ("OLLAMA_API_KEY", "NVIDIA_API_KEY", "MISTRAL_API_KEY")
+_DEFAULT_ENV_KEYS: tuple = ("OLLAMA_API_KEY", "NVIDIA_API_KEY", "MISTRAL_API_KEY", "AMD_API_KEY")
 #: 合法 key：字母 / 数字 / 下划线，且以字母或下划线开头
 _KEY_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 #: key 的唯一性比较统一忽略大小写

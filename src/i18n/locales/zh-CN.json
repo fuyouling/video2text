@@ -686,7 +686,14 @@
     "mistral_stream_label": "流式输出",
     "mistral_threads_label": "线程数",
     "log_mistral_ok": "MistralClient: 连接成功，延迟 {latency_ms:.0f}ms，模型 {model}",
-    "log_mistral_fail": "MistralClient: 连接失败，模型 {model}"
+    "log_mistral_fail": "MistralClient: 连接失败，模型 {model}",
+    "radio_amd": "在线 AMD 模型",
+    "amd_group": "AMD 配置",
+    "amd_mode_label": "处理模式",
+    "amd_stream_label": "流式输出",
+    "amd_threads_label": "线程数",
+    "log_amd_ok": "AmdClient: 连接成功，延迟 {latency_ms:.0f}ms，模型 {model}",
+    "log_amd_fail": "AmdClient: 连接失败，模型 {model}"
   },
   "summ_labels": {
     "ollama_url": "Ollama服务地址",
@@ -713,7 +720,15 @@
     "mistral_thread_count": "线程数",
     "mistral_stream": "流式输出",
     "mistral_base_url": "API 地址",
-    "mistral_rate_limit": "API 调用速率 (请求/秒)"
+    "mistral_rate_limit": "API 调用速率 (请求/秒)",
+    "amd_api_url": "API 地址",
+    "amd_model": "模型",
+    "amd_max_tokens": "最大输出 Token",
+    "amd_temperature": "温度",
+    "amd_timeout": "超时(秒)",
+    "amd_mode": "处理模式",
+    "amd_thread_count": "线程数",
+    "amd_stream": "流式输出"
   },
   "summ_tooltips": {
     "ollama_url": "Ollama 服务地址，默认 http://127.0.0.1:11434",
@@ -740,7 +755,15 @@
     "mistral_thread_count": "multi 模式下的并发线程数",
     "mistral_stream": "是否逐字流式输出（仅 single 模式生效）",
     "mistral_base_url": "Mistral API 端点地址，留空使用官方默认地址",
-    "mistral_rate_limit": "Mistral API 每秒最大请求数，codestral-2508 建议 2.0"
+    "mistral_rate_limit": "Mistral API 每秒最大请求数，codestral-2508 建议 2.0",
+    "amd_api_url": "AMD Radeon Cloud API 端点地址，默认 https://developer.amd.com.cn/radeon/api/v1/chat/completions",
+    "amd_model": "AMD 模型名，默认 Qwen3.8-Flash-Next",
+    "amd_max_tokens": "单次总结最大生成 Token 数",
+    "amd_temperature": "采样温度，越高越随机 (0~2)，默认 0.7",
+    "amd_timeout": "请求超时时间（秒），默认 60",
+    "amd_mode": "single=单线程串行；multi=多线程并发（仅 multi 生效流式关闭）",
+    "amd_thread_count": "multi 模式下的并发线程数",
+    "amd_stream": "是否逐字流式输出（仅 single 模式生效）"
   },
   "nvidia_test": {
     "title": "Nvidia API 响应测试",
@@ -1214,6 +1237,31 @@
         "stream_interrupted": "MistralClient: 流式中断，已收到 {count} 字符",
         "stream_connection_failed": "MistralClient: 流式连接失败: {error}",
         "check_retry": "MistralClient: 连接检查第 {attempt}/{max} 次失败，{wait}s 后重试..."
+      },
+      "amd": {
+        "check_cached": "AmdClient: 使用缓存的连接状态",
+        "check_start": "AmdClient: 开始连接检查...",
+        "check_ok": "AmdClient: 连接检查成功",
+        "api_key_missing": "AmdClient: API Key 未配置，请在 .env 中设置 AMD_API_KEY",
+        "env_missing_key": "AmdClient: .env 文件中未找到 AMD_API_KEY 配置",
+        "env_not_found": "AmdClient: 未找到 .env 文件",
+        "check_retry": "AmdClient: 连接检查第 {attempt}/{max} 次失败，{wait}s 后重试...",
+        "check_fail": "AmdClient: 连接检查失败，HTTP {code}",
+        "check_fail_detail": "AmdClient: 连接检查失败，HTTP {code}: {detail}",
+        "check_error": "AmdClient: 连接检查异常: {error}",
+        "rate_limited": "AmdClient: 触发限流，{wait} 秒后重试",
+        "rate_limited_log": "AmdClient: 限流重试 ({attempt}/{max})，等待 {wait}s",
+        "api_error": "AmdClient: API 错误: {code}",
+        "request_timeout": "AmdClient: 请求超时",
+        "connection_failed": "AmdClient: 连接失败: {error}",
+        "request_failed": "AmdClient: 请求失败: {error}",
+        "retry_log": "AmdClient: 重试，等待 {wait}s",
+        "unknown_error": "AmdClient: 未知错误",
+        "user_cancelled": "AmdClient: 用户取消",
+        "stream_error": "AmdClient: 流式错误: {error}",
+        "stream_json_error": "AmdClient: 流式 JSON 解析失败",
+        "stream_interrupted": "AmdClient: 流式中断，已收到 {count} 字符",
+        "stream_connection_failed": "AmdClient: 流式连接失败: {error}"
       },
       "write_index_failed": "写入输出索引失败: {error}",
       "markdown_tooltip": "勾选后总结输出将自动应用多语言 Markdown 格式指令。"

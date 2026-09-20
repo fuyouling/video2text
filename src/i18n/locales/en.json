@@ -458,7 +458,14 @@
     "mistral_stream_label": "Stream output",
     "mistral_threads_label": "Threads",
     "log_mistral_ok": "MistralClient: connected, latency {latency_ms:.0f}ms, model {model}",
-    "log_mistral_fail": "MistralClient: connection failed, model {model}"
+    "log_mistral_fail": "MistralClient: connection failed, model {model}",
+    "radio_amd": "Online AMD model",
+    "amd_group": "AMD Config",
+    "amd_mode_label": "Process mode",
+    "amd_stream_label": "Stream output",
+    "amd_threads_label": "Threads",
+    "log_amd_ok": "AmdClient: connected, latency {latency_ms:.0f}ms, model {model}",
+    "log_amd_fail": "AmdClient: connection failed, model {model}"
   },
   "summ_labels": {
     "ollama_url": "Ollama URL",
@@ -485,7 +492,15 @@
     "mistral_thread_count": "Threads",
     "mistral_stream": "Stream output",
     "mistral_base_url": "API URL",
-    "mistral_rate_limit": "API rate (req/sec)"
+    "mistral_rate_limit": "API rate (req/sec)",
+    "amd_api_url": "API URL",
+    "amd_model": "Model",
+    "amd_max_tokens": "Max output tokens",
+    "amd_temperature": "Temperature",
+    "amd_timeout": "Timeout(s)",
+    "amd_mode": "Process mode",
+    "amd_thread_count": "Threads",
+    "amd_stream": "Stream output"
   },
   "summ_tooltips": {
     "ollama_url": "Ollama service URL, default http://127.0.0.1:11434",
@@ -512,7 +527,15 @@
     "mistral_thread_count": "Concurrent threads in multi mode",
     "mistral_stream": "Stream output token by token (single mode only)",
     "mistral_base_url": "Mistral API endpoint URL, leave empty for the official default",
-    "mistral_rate_limit": "Max Mistral API requests per second, 2.0 recommended for codestral-2508"
+    "mistral_rate_limit": "Max Mistral API requests per second, 2.0 recommended for codestral-2508",
+    "amd_api_url": "AMD Radeon Cloud API endpoint URL, default https://developer.amd.com.cn/radeon/api/v1/chat/completions",
+    "amd_model": "AMD model name, default Qwen3.8-Flash-Next",
+    "amd_max_tokens": "Max tokens generated per summary",
+    "amd_temperature": "Sampling temperature, higher = more random (0~2), default 0.7",
+    "amd_timeout": "Request timeout in seconds, default 60",
+    "amd_mode": "single=serial; multi=concurrent threads (stream disabled in multi)",
+    "amd_thread_count": "Concurrent threads in multi mode",
+    "amd_stream": "Stream output token by token (single mode only)"
   },
   "nvidia_test": {
     "title": "Nvidia API Response Test",
@@ -1209,6 +1232,31 @@
         "stream_interrupted": "MistralClient: stream interrupted, received {count} chars",
         "stream_connection_failed": "MistralClient: stream connection failed: {error}",
         "check_retry": "MistralClient: connection check attempt {attempt}/{max} failed, retrying in {wait}s..."
+      },
+      "amd": {
+        "check_cached": "AmdClient: using cached connection status",
+        "check_start": "AmdClient: starting connection check...",
+        "check_ok": "AmdClient: connection check OK",
+        "api_key_missing": "AmdClient: API Key not configured, please set AMD_API_KEY in .env",
+        "env_missing_key": "AmdClient: AMD_API_KEY not found in .env file",
+        "env_not_found": "AmdClient: .env file not found",
+        "check_retry": "AmdClient: connection check attempt {attempt}/{max} failed, retrying in {wait}s...",
+        "check_fail": "AmdClient: connection check failed, HTTP {code}",
+        "check_fail_detail": "AmdClient: connection check failed, HTTP {code}: {detail}",
+        "check_error": "AmdClient: connection check error: {error}",
+        "rate_limited": "AmdClient: rate limited, retry after {wait}s",
+        "rate_limited_log": "AmdClient: rate-limit retry ({attempt}/{max}), wait {wait}s",
+        "api_error": "AmdClient: API error: {code}",
+        "request_timeout": "AmdClient: request timed out",
+        "connection_failed": "AmdClient: connection failed: {error}",
+        "request_failed": "AmdClient: request failed: {error}",
+        "retry_log": "AmdClient: retry, wait {wait}s",
+        "unknown_error": "AmdClient: unknown error",
+        "user_cancelled": "AmdClient: user cancelled",
+        "stream_error": "AmdClient: streaming error: {error}",
+        "stream_json_error": "AmdClient: streaming JSON parse failed",
+        "stream_interrupted": "AmdClient: stream interrupted, received {count} chars",
+        "stream_connection_failed": "AmdClient: stream connection failed: {error}"
       },
       "write_index_failed": "Failed to write output index: {error}",
       "markdown_tooltip": "When enabled, summaries are automatically formatted with the localized Markdown instruction."

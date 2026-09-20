@@ -1485,7 +1485,7 @@ class MainWindow(QMainWindow):
         """更新多线程标志"""
         provider = self.settings.get("summarization.provider", "ollama")
         mode = self.settings.get(f"summarization.{provider}_mode", "single")
-        self._is_multi_thread = provider in ("nvidia", "mistral") and _is_multi_mode(mode)
+        self._is_multi_thread = provider in ("nvidia", "mistral", "amd") and _is_multi_mode(mode)
 
     def _start_worker(self, thread: QThread, worker) -> bool:
         """启动 worker 线程并连接通用信号。

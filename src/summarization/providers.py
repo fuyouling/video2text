@@ -10,6 +10,7 @@ from src.summarization.prompt_manager import PromptManager
 from src.summarization.nvidia_client import NvidiaClient
 from src.summarization.ollama_client import OllamaClient
 from src.summarization.mistral_client import MistralClient
+from src.summarization.amd_client import AmdClient
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -186,6 +187,54 @@ class MistralProvider:
         self._client.close()
 
 
+class AmdProvider:
+    """AMD provider — online API summarization via AMD Radeon Cloud"""
+
+    def __init__(self, settings: Settings) -> None:
+        amd_timeout = settings.get_int("summarization.amd_timeout", 60)
+        self._model = settings.get("summarization.amd_model", "Qwen3.8-Flash-Next")
+        self._max_tokens = settings.get_int("summarization.amd_max_tokens", 8192)
+        self._temperature = settings.get_float("summarization.amd_temperature", 0.7)
+
+        self._client = AmdClient(
+            api_url=settings.get(
+                "summarization.amd_api_url",
+                "https://developer.amd.com.cn/radeon/api/v1/chat/completions",
+            ),
+            api_key=os.environ.get("AMD_API_KEY", ""),
+            timeout=amd_timeout,
+            model=self._model,
+        )
+
+    def check_connection(self) -> bool:
+        return self._client.check_connection()
+
+    def summarize(
+        self,
+        text: str,
+        custom_prompt: str = "",
+        stream: bool = False,
+        on_token: Optional[Callable[[str], None]] = None,
+        cancel_check: Optional[Callable[[], bool]] = None,
+        pause_event: Optional[threading.Event] = None,
+        is_use_gui_markdown_flag: bool = True
+    ) -> str:
+        prompt = PromptManager().build_prompt(text, custom_prompt, is_use_gui_markdown_flag=is_use_gui_markdown_flag)
+        return self._client.generate(
+            model=self._model,
+            prompt=prompt,
+            temperature=self._temperature,
+            max_tokens=self._max_tokens,
+            stream=stream,
+            on_token=on_token,
+            cancel_check=cancel_check,
+            pause_event=pause_event,
+        )
+
+    def close(self) -> None:
+        self._client.close()
+
+
 def create_provider(settings: Settings) -> SummarizationProvider:
     """Factory function — creates the appropriate provider based on config"""
     provider_name = settings.get("summarization.provider", "ollama")
@@ -193,6 +242,8 @@ def create_provider(settings: Settings) -> SummarizationProvider:
         return NvidiaProvider(settings)
     if provider_name == "mistral":
         return MistralProvider(settings)
+    if provider_name == "amd":
+        return AmdProvider(settings)
     if provider_name != "ollama":
         logger.warning(t("services.summarization.unknown_provider", provider=provider_name))
     return OllamaProvider(settings)
