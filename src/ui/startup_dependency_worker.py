@@ -62,6 +62,7 @@ class StartupDependencyWorker(QObject):
                 self.finished.emit(False)
                 return
 
+            model_ok = True
             # Phase 2a: 模型下载
             if self._download_model:
                 self.phase_changed.emit("model")
@@ -70,22 +71,17 @@ class StartupDependencyWorker(QObject):
                     progress_callback=self._make_model_cb(),
                     target_models=self._target_models,
                 )
-                if not model_ok:
-                    self.finished.emit(False)
-                    return
 
-            # Phase 2b: DLL 下载
+            # Phase 2b: DLL 下载（即使模型下载失败，用户勾选了 DLL 也继续尝试补齐）
+            dll_ok = True
             if self._download_dll:
                 if self._cancelled:
                     self.finished.emit(False)
                     return
                 self.phase_changed.emit("dll")
                 dll_ok = self._run_dll_phase()
-                if not dll_ok:
-                    self.finished.emit(False)
-                    return
 
-            ok = True
+            ok = bool(model_ok and dll_ok and not self._cancelled)
         except Exception:
             logger.exception(t("startup.dep_detect_exception"))
             ok = False

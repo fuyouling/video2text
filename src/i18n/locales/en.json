@@ -268,6 +268,7 @@
     "repo_link": "GitHub Repository",
     "docs_link": "User Guide",
     "website_link": "Official Website",
+    "netdisk_link": "Cloud Drive",
     "copyright": "Copyright © 2026 MiaoWangLong"
   },
   "status": {
@@ -1393,7 +1394,9 @@
       "start": "Model download ({model})",
       "check_network": "Checking network connection",
       "using_proxy": "Using proxy {proxy} ({source})",
-      "direct_ok": "Direct HuggingFace connection successful",
+      "direct_ok": "Direct {source} connection successful",
+      "switch_mirror": "Direct HuggingFace unreachable, trying mirror ({mirror})...",
+      "mirror_ok": "Switched to mirror ({mirror}) successfully",
       "direct_fail_proxy": "Direct connection failed, trying proxy {proxy}",
       "proxy_ok": "Proxy connection successful",
       "proxy_fail": "Proxy connection failed, please check {source} proxy",

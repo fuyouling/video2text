@@ -222,6 +222,7 @@
     "repo_link": "GitHub 倉庫",
     "docs_link": "使用文檔",
     "website_link": "官方網站",
+    "netdisk_link": "網盤地址",
     "copyright": "版權所有 © 2026 喵王龍"
   },
   "status": {
@@ -1430,7 +1431,9 @@
       "start": "模型下載 ({model})",
       "check_network": "檢查網絡連接",
       "using_proxy": "使用代理 {proxy}（{source}）",
-      "direct_ok": "直連 HuggingFace 成功",
+      "direct_ok": "直連 {source} 成功",
+      "switch_mirror": "HuggingFace 直連未通，嘗試切換至國內鏡像源 ({mirror})…",
+      "mirror_ok": "切換至國內鏡像源 ({mirror}) 連接成功",
       "direct_fail_proxy": "直連失敗，嘗試代理 {proxy}",
       "proxy_ok": "代理連接成功",
       "proxy_fail": "代理連接失敗，請檢查 {source} 的代理是否可用",

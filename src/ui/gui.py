@@ -932,7 +932,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             t("about.title"),
-            "<div style='min-width:420px'>"
+            "<div style='min-width:450px'>"
             "<h2 style='margin-bottom:4px'>🎬 Video2Text</h2>"
             f"<p style='color:#666;margin-top:0'>{t('about.version', version=APP_VERSION)}</p>"
             "<hr>"
@@ -948,7 +948,8 @@ class MainWindow(QMainWindow):
             "<p>"
             f'<a href="https://github.com/fuyouling/video2text">{t("about.repo_link")}</a> · '
             f'<a href="https://video2text.dpdns.org/en/docs/">{t("about.docs_link")}</a> · '
-            f'<a href="https://video2text.dpdns.org/">{t("about.website_link")}</a>'
+            f'<a href="https://video2text.dpdns.org/">{t("about.website_link")}</a> · '
+            f'<a href="https://video2text.dpdns.org/zh/blog/access-github-download/">{t("about.netdisk_link")}</a>'
             "</p>"
             f"<p style='color:#999;font-size:12px'>{t('about.copyright')}</p>"
             "</div>",

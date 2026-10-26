@@ -34,6 +34,8 @@ TURBO_CT2_BASE = "https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-c
 
 DEFAULT_MODEL_NAME = "faster-whisper-large-v3-turbo-ct2"
 
+HF_MIRROR_BASE = "https://hf-mirror.com"
+
 PARAFORMER_FILES = {
     # asr: speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-onnx
     "asr/model_quant.onnx": "https://www.modelscope.cn/api/v1/models/damo/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-onnx/repo?Revision=master&FilePath=model_quant.onnx",
@@ -171,15 +173,34 @@ class ModelDownloader:
         return self._session
 
     def _check_hf_accessible(self, proxy: str = "") -> bool:
+        session = self._get_session(proxy)
+        url = "https://huggingface.co"
+        # 探测连通性时留足 5s 连接与 4s 读取超时并支持重试一次，
+        # 避免在 VPN TUN 模式或代理握手冷启动时因极短超时误判不通。
+        for attempt in range(2):
+            try:
+                r = session.get(
+                    url,
+                    timeout=(5, 4),
+                    stream=True,
+                    headers={"Cache-Control": "no-store"},
+                )
+                try:
+                    return r.status_code < 400
+                finally:
+                    r.close()
+            except Exception:
+                if attempt == 0:
+                    time.sleep(0.3)
+        return False
+
+    def _check_mirror_accessible(self, proxy: str = "") -> bool:
         try:
             session = self._get_session(proxy)
-            url = "https://huggingface.co"
-            # 使用极短超时 + 禁用重试，仅用于快速探测连通性。
-            # timeout=(connect, read) —— 连接 2s、读取 1s，任何一端超时都立即
-            # 失败，避免卡住后台线程导致 closeEvent 等待窗口关闭。
+            url = HF_MIRROR_BASE
             r = session.get(
                 url,
-                timeout=(2, 1),
+                timeout=(5, 4),
                 stream=True,
                 headers={"Cache-Control": "no-store"},
             )
@@ -196,7 +217,7 @@ class ModelDownloader:
             url = "https://www.modelscope.cn"
             r = session.get(
                 url,
-                timeout=(3, 2),
+                timeout=(5, 4),
                 stream=True,
                 headers={"Cache-Control": "no-store"},
             )
@@ -332,7 +353,7 @@ class ModelDownloader:
         is_modelscope = self.model_config.get("source") == "modelscope"
         if is_modelscope:
             if self._check_modelscope_accessible():
-                logger.info(t("model_downloader.download.direct_ok"))
+                logger.info(t("model_downloader.download.direct_ok", source="ModelScope"))
                 proxy = ""
             elif proxy and self._check_modelscope_accessible(proxy=proxy):
                 logger.info(t("model_downloader.download.proxy_ok"))
@@ -340,17 +361,26 @@ class ModelDownloader:
                 logger.info("ModelScope 探测完成，尝试直连下载...")
                 proxy = ""
         else:
+            # HuggingFace 模型：依次尝试 直连 -> 代理 -> 国内镜像源 (hf-mirror.com)
             if self._check_hf_accessible():
-                logger.info(t("model_downloader.download.direct_ok"))
+                logger.info(t("model_downloader.download.direct_ok", source="HuggingFace"))
                 proxy = ""
             elif proxy:
                 logger.info(t("model_downloader.download.direct_fail_proxy", proxy=proxy))
                 if self._check_hf_accessible(proxy=proxy):
                     logger.info(t("model_downloader.download.proxy_ok"))
+                elif self._check_mirror_accessible():
+                    logger.info(t("model_downloader.download.switch_mirror", mirror="hf-mirror.com"))
+                    base_url = base_url.replace("https://huggingface.co", HF_MIRROR_BASE)
+                    proxy = ""
                 else:
                     logger.error(t("model_downloader.download.proxy_fail", source=self._proxy_source_hint()))
                     self._clean_incomplete_core_files()
                     return False
+            elif self._check_mirror_accessible():
+                logger.info(t("model_downloader.download.switch_mirror", mirror="hf-mirror.com"))
+                base_url = base_url.replace("https://huggingface.co", HF_MIRROR_BASE)
+                proxy = ""
             else:
                 logger.error(t("model_downloader.download.no_access"))
                 logger.error(t("model_downloader.download.config_hint"))
@@ -511,7 +541,6 @@ def check_models_integrity(
             logger.info(t("model_downloader.integrity.repaired", model=model_name))
         else:
             all_ok = False
-            logger.info(t("model_downloader.integrity.skipped"))
             logger.error(t("model_downloader.integrity.failed", model=model_name))
 
     # 无论本次检测结果如何，只标记内存中的配置值，不写磁盘。

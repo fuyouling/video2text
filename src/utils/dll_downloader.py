@@ -45,6 +45,11 @@ DLL_DOWNLOAD_URL = (
     "cuBLAS.and.cuDNN_CUDA12_win_v3.7z"
 )
 
+DLL_MIRROR_URL = (
+    "https://ghfast.top/https://github.com/Purfview/whisper-standalone-win/releases/download/libs/"
+    "cuBLAS.and.cuDNN_CUDA12_win_v3.7z"
+)
+
 DLL_ARCHIVE_NAME = "cuBLAS.and.cuDNN_CUDA12_win_v3.7z"
 
 
@@ -137,7 +142,7 @@ class DllDownloader:
 
     # ── 网络探测 ──────────────────────────────────────────
 
-    def _check_github_accessible(self, proxy: str = "") -> bool:
+    def _check_github_accessible(self, proxy: str = "", url: str = DLL_DOWNLOAD_URL) -> bool:
         """探测 GitHub release 下载链接是否可达。
 
         直接使用 DLL_DOWNLOAD_URL 而非 github.com 首页，因为 release 下载
@@ -155,7 +160,7 @@ class DllDownloader:
             session = self._get_session()
             self._apply_proxy(proxy)
             r = session.get(
-                DLL_DOWNLOAD_URL,
+                url,
                 timeout=(5, 5),
                 stream=True,
                 headers={"Cache-Control": "no-store"},
@@ -171,7 +176,9 @@ class DllDownloader:
 
     # ── 下载 ──────────────────────────────────────────────
 
-    def _download_archive(self, progress_callback=None, proxy: str = "") -> bool:
+    def _download_archive(
+        self, progress_callback=None, proxy: str = "", download_url: str = DLL_DOWNLOAD_URL
+    ) -> bool:
         """下载 7z 压缩包到基目录，支持断点续传和重试。
 
         重试策略：只对网络层异常（超时、连接错误、5xx）重试；
@@ -206,7 +213,7 @@ class DllDownloader:
                     headers["Range"] = f"bytes={existing_size}-"
 
                 response = self._get_session().get(
-                    DLL_DOWNLOAD_URL,
+                    download_url,
                     stream=True,
                     timeout=(connect_timeout, read_timeout),
                     headers=headers,
@@ -399,6 +406,7 @@ class DllDownloader:
 
         # 先尝试直连，直连不通再使用代理（与 model_downloader 逻辑一致）。
         # 复用同一 session：_check_github_accessible 会按传入的 proxy 设置会话代理。
+        download_url = DLL_DOWNLOAD_URL
         self._get_session()
         if self._check_github_accessible():
             logger.info(t("dll_downloader.status.direct_ok"))
@@ -407,9 +415,17 @@ class DllDownloader:
             logger.info(t("dll_downloader.status.direct_fail_proxy", proxy=proxy))
             if self._check_github_accessible(proxy=proxy):
                 logger.info(t("dll_downloader.status.proxy_ok"))
+            elif self._check_github_accessible(url=DLL_MIRROR_URL):
+                logger.info("GitHub 直连未通，切换至国内镜像源下载 DLL...")
+                download_url = DLL_MIRROR_URL
+                proxy = ""
             else:
                 logger.error(t("dll_downloader.status.proxy_fail"))
                 return False
+        elif self._check_github_accessible(url=DLL_MIRROR_URL):
+            logger.info("GitHub 直连未通，切换至国内镜像源下载 DLL...")
+            download_url = DLL_MIRROR_URL
+            proxy = ""
         else:
             logger.error(t("dll_downloader.status.no_access"))
             logger.error(t("dll_downloader.status.config_hint"))
@@ -421,7 +437,7 @@ class DllDownloader:
             logger.info(t("dll_downloader.status.direct_download"))
 
         logger.info(t("dll_downloader.status.check_and_fill"))
-        ok = self._download_archive(progress_callback, proxy=proxy)
+        ok = self._download_archive(progress_callback, proxy=proxy, download_url=download_url)
         if not ok:
             logger.error(t("dll_downloader.status.download_fail"))
             return False
