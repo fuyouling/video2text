@@ -26,6 +26,8 @@ Requires: Python 3.8+, PyInstaller, requests
     python build_portable.py --copy DIR
     # 不复制 DLL 文件到便携目录（仅在构建时有效）
     python build_portable.py --not-copy-dll
+    # 纯 CPU 版本（排除 ONNX Runtime CUDA 提供者并跳过 libs/）
+    python build_portable.py --cpu-only
 
     # 复制示例（部署到安装目录）
     python build_portable.py --copy C:\\dev\\windowsTools\\video2text
@@ -96,7 +98,9 @@ def get_file_hash(filepath):
 
 
 def run_cmd(cmd, check=True, verbose=False):
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, encoding="utf-8", errors="replace"
+    )
     if verbose and result.stdout:
         print(result.stdout)
     if check and result.returncode != 0:
@@ -114,6 +118,8 @@ def run_cmd_stream(cmd, verbose=False):
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         bufsize=1,
     )
     for line in proc.stdout:
@@ -262,7 +268,17 @@ def main():
         action="store_true",
         help="Do not copy DLL files from libs/ into the portable directory",
     )
+    parser.add_argument(
+        "--cpu-only",
+        action="store_true",
+        help="Build CPU-only package (excludes ONNX Runtime CUDA provider and skips copying libs/)",
+    )
     args = parser.parse_args()
+    if args.cpu_only:
+        args.not_copy_dll = True
+        os.environ["V2T_EXCLUDE_CUDA"] = "1"
+    else:
+        os.environ.pop("V2T_EXCLUDE_CUDA", None)
     install_dir_arg = args.copy[0] if args.copy else None
     only_copy_dir_arg = args.only_copy[0] if args.only_copy else None
 

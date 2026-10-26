@@ -33,8 +33,8 @@
     "settings_fav_clear_input": "移除所有输入目录",
     "settings_fav_clear_output": "移除所有输出目录",
     "tools": "工具",
-    "tools_voice_to_text": "声音转文本",
     "tools_nvidia_api_test": "Nvidia API 响应测试",
+    "tools_amd_api_test": "AMD API 响应测试",
     "settings_api_key_manage": "设置 API KEY",
     "help": "帮助",
     "help_donate": "捐赠支持",
@@ -42,7 +42,7 @@
   },
   "api_key": {
     "title": "API Key 管理",
-    "subtitle": "管理项目根目录 .env 中的密钥。密钥值默认以掩码显示，新增后可修改或删除。",
+    "subtitle": "管理项目根目录 .env 中的密钥。厂商名称可自由编辑，已有 Key 锁定保护，密钥默认掩码显示。",
     "path_label": "配置文件：{path}",
     "file_missing": "文件不存在，保存后将新建",
     "list_section": "密钥列表",
@@ -53,7 +53,12 @@
     "show": "显示",
     "hide": "隐藏",
     "delete": "删除",
-    "key_placeholder": "键名（已有项不可修改）",
+    "col_vendor": "模型厂商",
+    "col_key": "环境变量 Key",
+    "col_value": "密钥值",
+    "col_action": "操作",
+    "vendor_placeholder": "厂商名称（如 OpenAI）",
+    "key_placeholder": "环境变量 Key（如 OPENAI_API_KEY）",
     "value_placeholder": "密钥值",
     "empty_hint": "暂无密钥，点击「添加」新增一条",
     "error_empty_key": "键名不能为空",
@@ -96,12 +101,31 @@
     "tx_prompt_group": "转写提示词配置",
     "tx_prompt_placeholder": "场景指令,不要换行,输入邻域术语提升识别准确率,不宜过长,会影响识别速度",
     "hotwords_placeholder": "热词/短语,作为整体偏置,输入核心专有名词,不宜过长",
-    "tx_prompt_template_placeholder": "选择已保存的提示词…",
+    "tx_prompt_template_placeholder": "选择提示词模板…",
+    "tx_prompt_none": "不使用提示词 (留空)",
+    "tx_prompt_reset_btn": "重置",
+    "tx_prompt_reset_tooltip": "重置为当前模板的初始内容",
+    "tx_prompt_reset_confirm_title": "确认重置转写提示词",
+    "tx_prompt_reset_confirm_msg": "确定要将当前内容重置为「{name}」的初始内容吗？当前未保存的修改将被覆盖。",
+    "tx_prompt_cannot_delete_builtin": "内置预设模板无法删除。",
+    "tx_prompt_len_warning": "初始提示词过长（当前 {count} 字，建议 300 字以内以防挤占 448 解码窗口）",
+    "tx_hotwords_count_warning": "热词数量过多（当前 {count} 词，建议 50 词以内以防超出预算）",
+    "tx_prompt_tooltip": "Whisper 解码初始提示词：引导标点符号格式、繁简中文规范及特定专有名词拼写（建议 300 字以内）",
+    "tx_hotwords_tooltip": "Whisper 偏置热词：空格或逗号分隔，提高专有名词识别准确率（建议 50 词以内）",
+    "tx_prompt_funasr_disabled_hint": "FunASR（非自回归模型）不使用整句前缀，请使用下方热词进行识别增强",
+    "tx_hotwords_funasr_hint": "输入专有名词或热词，空格或逗号分隔（如：人工智能 深度学习 达摩院）",
+    "tx_hotwords_funasr_tooltip": "FunASR 重点依赖热词偏置进行专有名词识别增强",
     "summary_prompt_group": "总结提示词配置",
-    "summary_prompt_placeholder": "自定义总结提示词（可选），留空则使用默认提示词",
-    "summary_prompt_template_placeholder": "选择已保存的提示词…",
-    "markdown_cb": "Markdown格式",
-    "markdown_tooltip": "勾选后总结输出将自动应用Markdown格式指令。\n如需自定义Markdown格式，请直接编辑 prompts.json 中的 markdown_prompt 字段。",
+    "summary_prompt_placeholder": "自定义总结提示词，包含角色与排版要求，所见即所得",
+    "summary_prompt_template_placeholder": "选择提示词模板…",
+    "prompt_builtin_group": "── 内置预设 ──",
+    "prompt_custom_group": "── 自定义模板 ──",
+    "prompt_reset_btn": "重置",
+    "prompt_reset_tooltip": "重置编辑框为当前模板的初始内容",
+    "prompt_reset_confirm_title": "确认重置",
+    "prompt_reset_confirm_msg": "确定要将当前内容重置为「{name}」的初始提示词吗？当前未保存的修改将被覆盖。",
+    "prompt_cannot_delete_builtin": "内置预设模板无法删除。",
+    "prompt_save_as": "另存为新模板",
     "log_panel_title": "日志输出",
     "placeholder_new": "新建",
     "placeholder_new_tx": "新建",
@@ -269,6 +293,10 @@
       "model_yes": "是，下载模型（首次使用必需）",
       "model_no": "否，跳过（转写将无法运行）",
       "model_ready": "✓ 模型已完整，无需处理",
+      "whisper_opt": "下载 Faster-Whisper (多语种通用, Large-v3-Turbo, ~1.4GB)",
+      "whisper_ready": "✓ Faster-Whisper 模型已完整",
+      "funasr_opt": "下载 FunASR Paraformer (中文高精度, ~540MB, 国内ModelScope源)",
+      "funasr_ready": "✓ FunASR Paraformer 模型已完整",
       "dll_group": "DLL 依赖（cuBLAS / cuDNN，用于 GPU 加速）",
       "dll_yes": "是，下载 DLL（推荐有独显的用户）",
       "dll_no": "否，跳过（使用 CPU 运行，速度较慢）",
@@ -419,8 +447,7 @@
       "output": "输出",
       "paths": "路径",
       "tools": "工具",
-      "text_processing": "文本处理",
-      "voice_to_text": "声音转文本"
+      "text_processing": "文本处理"
     },
     "group": {
       "app": {
@@ -432,7 +459,8 @@
         "decode": "解码参数",
         "vad": "VAD 语音检测",
         "quality": "质量控制",
-        "repeat": "重复抑制"
+        "repeat": "重复抑制",
+        "prompt": "提示词与热词"
       },
       "preprocessing": {
         "audio": "音频处理",
@@ -444,13 +472,6 @@
       },
       "text_processing": {
         "merge": "合并与清理"
-      },
-      "voice_to_text": {
-        "basic": "基础参数",
-        "audio_vad": "音频与 VAD",
-        "endpoint": "实时端点检测",
-        "prompt": "提示词",
-        "background": "背景图片配置"
       }
     },
     "label": {
@@ -469,6 +490,7 @@
         "main_transparency": "主界面透明度"
       },
       "transcription": {
+        "engine": "转写引擎",
         "model_path": "模型路径",
         "device": "设备",
         "language": "语言",
@@ -488,7 +510,9 @@
         "vad_threshold": "VAD 语音阈值",
         "vad_min_silence_ms": "VAD 最小静音时长",
         "vad_speech_pad_ms": "VAD 语音补齐",
-        "vad_max_speech_s": "VAD 单段最长时长"
+        "vad_max_speech_s": "VAD 单段最长时长",
+        "initial_prompt": "转写初始提示词",
+        "hotwords": "转写偏置热词"
       },
       "preprocessing": {
         "audio_sample_rate": "音频采样率",
@@ -513,32 +537,6 @@
         "max_gap": "合并最大间隔",
         "min_length": "最小合并长度",
         "filler_words": "填充词列表"
-      },
-      "voice_to_text": {
-        "voice_dir": "语音存储目录",
-        "summary_dir": "摘要存储目录",
-        "realtime_auto_send_interval": "实时录入自动发送间隔",
-        "model_path": "转写模型路径",
-        "device": "推理设备",
-        "compute_type": "计算精度",
-        "language": "转写语言",
-        "num_workers": "推理线程数",
-        "audio_sample_rate": "音频采样率",
-        "audio_channels": "音频声道数",
-        "vad_filter": "VAD 过滤",
-        "vad_threshold": "VAD 阈值",
-        "vad_min_silence_ms": "VAD 静音断句(毫秒)",
-        "vad_speech_pad_ms": "VAD 首尾补静音(毫秒)",
-        "vad_max_speech_s": "VAD 单段最长时长",
-        "initial_prompt": "初始提示词",
-        "bg_image_path": "背景图片路径",
-        "bg_transparency": "背景透明度",
-        "vad_endpoint_detection": "VAD 端点检测",
-        "vad_energy_threshold": "VAD 能量阈值",
-        "vad_silence_frames": "VAD 静音帧数",
-        "vad_min_speech_frames": "VAD 最小语音帧数",
-        "vad_calibration_frames": "VAD 校准帧数",
-        "context_max_chars": "上下文最大字符数"
       }
     },
     "tooltip": {
@@ -555,6 +553,7 @@
         "main_transparency": "主界面背景图片透明度 (0~255)，0=完全透明，255=完全不透明"
       },
       "transcription": {
+        "engine": "选择语音转写引擎：Faster-Whisper（多语种通用）或 FunASR（阿里达摩院中文工业级高精度转写）",
         "model_path": "faster-whisper 模型目录名称,也可填写全路径",
         "device": "推理设备: cuda (NVIDIA GPU), cpu, auto (自动选择)",
         "language": "转写语言代码: zh (中文), en (英文), ja (日文) 等，留空或 auto 自动检测",
@@ -574,7 +573,9 @@
         "vad_threshold": "VAD 语音判定阈值(0~1)，嘈杂/有背景音乐时调高(0.6~0.7)，默认 0.5",
         "vad_min_silence_ms": "静音持续多久才断句(毫秒)，调小断句更细，默认 2000",
         "vad_speech_pad_ms": "每段语音首尾补静音(毫秒)，防止吞字，建议 300~500，默认 400",
-        "vad_max_speech_s": "VAD 单段最长秒数，0 表示不限制"
+        "vad_max_speech_s": "VAD 单段最长秒数，0 表示不限制",
+        "initial_prompt": "Whisper 解码初始提示词，用于引导标点符号、繁简字体与专业语境",
+        "hotwords": "Whisper 偏置热词，空格或逗号分隔，强制增强专有名词识别概率"
       },
       "preprocessing": {
         "audio_sample_rate": "音频采样率 (Hz)，Whisper 推荐 16000",
@@ -599,38 +600,14 @@
         "max_gap": "段落合并最大时间间隔 (秒)，间隔超过此值的段落不会合并",
         "min_length": "最小文本长度，短于此长度的段落会尝试与相邻段落合并",
         "filler_words": "需要清除的填充词，逗号分隔"
-      },
-      "voice_to_text": {
-        "voice_dir": "语音录入与对话记录存储目录，支持相对路径 (相对程序目录) 和绝对路径",
-        "summary_dir": "语音转写摘要的存储目录，支持相对路径和绝对路径",
-        "realtime_auto_send_interval": "实时录入模式下自动分段转写并发送的间隔 (秒)",
-        "model_path": "Whisper 模型目录名称或路径",
-        "device": "推理设备: cuda (NVIDIA GPU), cpu, auto (自动选择)",
-        "compute_type": "计算精度: float16, int8, float32。注意: CPU 不支持 float16，仅可选 int8 / float32",
-        "language": "转写语言代码: zh (中文), en (英文), ja (日文) 等，留空或 auto 自动检测",
-        "num_workers": "CTranslate2 推理引擎线程数 (1~CPU核心数)",
-        "audio_sample_rate": "音频采样率 (Hz)，Whisper 推荐 16000",
-        "audio_channels": "音频声道数: 1=单声道 (推荐), 2=立体声",
-        "vad_filter": "是否启用 VAD 语音活动检测，过滤静音段可减少幻觉: True / False",
-        "vad_threshold": "VAD 语音判定阈值(0~1)，嘈杂/有背景音乐时调高(0.6~0.7)，默认 0.5",
-        "vad_min_silence_ms": "静音持续多久才断句(毫秒)，调小断句更细，默认 2000",
-        "vad_speech_pad_ms": "每段语音首尾补静音(毫秒)，防止吞字，建议 300~500，默认 400",
-        "vad_max_speech_s": "VAD 单段最长秒数，0 表示不限制",
-        "initial_prompt": "转写初始提示词，可用于上下文增强",
-        "bg_image_path": "声音转文本界面背景图片路径，可填写相对路径（相对于程序目录）或绝对路径，留空则不使用背景图片",
-        "bg_transparency": "声音转文本界面背景图片透明度 (0~255)，0=完全透明，255=完全不透明",
-        "vad_endpoint_detection": "是否启用实时 VAD 端点检测，语音结束后自动发送转写: True / False",
-        "vad_energy_threshold": "手动指定 VAD 噪底能量阈值 (0~N)，设为 0 自动校准",
-        "vad_silence_frames": "VAD 判定语音结束的连续静音帧数 (每帧约32ms)",
-        "vad_min_speech_frames": "VAD 判定为有效语音的最小帧数 (每帧约32ms)",
-        "vad_calibration_frames": "VAD 自动校准噪底时采集的静音帧数 (每帧约10ms)",
-        "context_max_chars": "连续转写时保留的上文最大字符数"
       }
     },
     "combo": {
       "auto_language": "跟随系统",
       "mode_single": "单线程",
-      "mode_multi": "多线程"
+      "mode_multi": "多线程",
+      "engine_whisper": "Faster-Whisper (多语种通用)",
+      "engine_funasr": "FunASR Paraformer (中文高精度)"
     }
   },
   "summarization_tab": {
@@ -802,6 +779,43 @@
     "models_empty": "无可用在线模型，请稍后重试或点击「刷新列表」",
     "models_loading": "正在获取在线模型列表…"
   },
+  "amd_test": {
+    "title": "AMD API 响应测试",
+    "one_click": "一键测试",
+    "stop": "停止",
+    "api_key_ok": "API Key: 已加载",
+    "api_key_missing": "API Key: 缺失",
+    "api_key_missing_msg": "未检测到 AMD_API_KEY，请先在 .env 中配置后再进行测试。",
+    "timeout_label": "超时 {seconds}s",
+    "concurrency_label": "并发 {workers}",
+    "current_model": "当前模型: {model}",
+    "latency_label": "响应时间",
+    "latency_value": "{seconds} s",
+    "latency_over": "> {seconds}s",
+    "latency_none": "—",
+    "status_pending": "待测试",
+    "status_queued": "排队中",
+    "status_testing": "测试中",
+    "status_ok": "成功",
+    "status_fail": "失败",
+    "status_rate_limited": "限流",
+    "progress": "进度 {done}/{total}  ·  成功 {ok}  ·  失败 {fail}  ·  限流 {limited}",
+    "retest_tooltip": "重新测试该模型",
+    "card_tooltip": "双击「成功」的卡片可将该模型写入配置",
+    "error_no_key": "API Key 缺失",
+    "error_timeout": "响应超时（{latency}s > {limit}s）",
+    "error_empty": "返回内容为空",
+    "apply_title": "设为总结模型",
+    "apply_confirm": "将 {model} 写入配置项 summarization.amd_model？",
+    "apply_done": "已将 {model} 设为 AMD 总结模型",
+    "apply_failed": "写入配置失败: {error}",
+    "refresh_list": "刷新列表",
+    "refresh_list_loading": "正在刷新模型列表…",
+    "refresh_list_done": "已刷新模型列表（共 {count} 个）",
+    "refresh_list_failed": "刷新模型列表失败: {error}",
+    "models_empty": "无可用在线模型，请稍后重试或点击「刷新列表」",
+    "models_loading": "正在获取在线模型列表…"
+  },
   "donate": {
     "title": "捐赠支持",
     "image_not_found": "图片未找到: {path}"
@@ -919,7 +933,10 @@
     "tips_label": "[bold]提示:[/bold]",
     "tip1": "1. 使用 --help 查看单个命令的详细选项",
     "tip2": "2. 所有转写和总结参数（模型、语言、设备、温度等）均通过 config.ini 配置",
-    "tip3": "3. powershell使用全路径调用可执行文件，如: .\\video2text.exe transcribe video.mp4 -o output"
+    "tip3": "3. powershell使用全路径调用可执行文件，如: .\\video2text.exe transcribe video.mp4 -o output",
+    "opt_initial_prompt": "临时覆盖初始转写提示词",
+    "opt_hotwords": "临时覆盖转写热词（空格或逗号分隔）",
+    "opt_prompt_template": "转写提示词预设或模板名称（例如: general, meeting, ecommerce, tech, bilingual）"
   },
   "errors": {
     "file_not_found": "文件不存在: {path}",
@@ -979,117 +996,6 @@
       "frame_rate_parse_failed": "VideoProcessor: ⚠ 帧率解析失败 (%s)，默认 0"
     }
   },
-  "voice": {
-    "user_prefix": "[用户] ",
-    "summary_prefix": "[归纳摘要] ",
-    "sidebar": {
-      "title": "会话列表"
-    },
-    "chat": {
-      "placeholder": "点击顶部开始录音，开启语音转写"
-    },
-    "back_main": "返回主界面",
-    "new_conv": "新建",
-    "record_start": "开始录音",
-    "record_stop": "停止录音",
-    "conv": {
-      "meta": "{time}  ·  {count}条消息"
-    },
-    "summary_saved": "总结完成，已保存至: {path}",
-    "status": {
-      "initializing": "● 初始化...",
-      "ready": "● 就绪",
-      "model_not_ready": "● 模型尚未加载完成，请稍候...",
-      "recording_vad": "● 录音中 (VAD)...",
-      "recording_timer": "● 录音中 (定时切片)...",
-      "stopped": "● 已停止",
-      "recording_done": "● 录音完成，正在转写...",
-      "transcribing": "● 转写中...",
-      "no_speech": "● 未检测到语音内容",
-      "transcribe_done": "● 转写完成",
-      "transcribe_fail": "● 转写失败: {error}",
-      "record_fail": "● 录音失败: {error}",
-      "selected_count": "已选中 {count} 个会话",
-      "conv_deleted": "会话已删除",
-      "deleted_count": "已删除 {count} 个会话",
-      "multi_select": "多选模式：点击列表项选中，右键菜单可批量删除",
-      "edit_mode": "编辑模式：修改内容后右键选择[保存]完成",
-      "msg_saved": "消息已保存",
-      "edit_cancelled": "已取消编辑",
-      "copied": "已复制到剪贴板",
-      "correcting": "正在纠正语法...",
-      "correct_done": "语法纠正完成",
-      "msg_deleted": "消息已删除",
-      "summarizing": "正在总结...",
-      "summary_done": "总结完成",
-      "op_fail": "操作失败: {error}",
-      "loading_model": "● 加载模型中...",
-      "model_load_fail": "● 模型加载失败: {error}"
-    },
-    "menu": {
-      "exit_multi_select": "退出多选模式",
-      "delete_selected": "删除选中的会话",
-      "select_toggle_all": "全选/取消全选",
-      "delete_all": "全部删除",
-      "multi_select": "多选",
-      "delete_conv": "删除此会话",
-      "save": "保存",
-      "cancel_edit": "取消编辑",
-      "copy": "复制",
-      "edit": "编辑",
-      "delete": "删除",
-      "grammar": "纠正",
-      "summarize": "总结"
-    },
-    "dialog": {
-      "record_error": {
-        "title": "录音错误"
-      },
-      "record_fail": {
-        "title": "录音失败",
-        "msg": "无法启动录音: {error}"
-      },
-      "delete_conv": {
-        "title": "删除会话",
-        "msg": "确定要删除此会话吗？\n该操作会同时删除磁盘上的 JSON 文件，且无法恢复。"
-      },
-      "delete_fail": {
-        "title": "删除失败",
-        "msg": "删除会话时出错: {error}"
-      },
-      "no_selection": "请先选择要删除的会话",
-      "batch_delete": {
-        "title": "批量删除",
-        "msg": "确定要删除选中的 {count} 个会话吗？\n该操作不可恢复。"
-      },
-      "no_convs": "当前没有会话",
-      "delete_all": {
-        "title": "全部删除",
-        "msg": "确定要删除全部 {count} 个会话吗？\n该操作不可恢复。"
-      },
-      "delete_msg": {
-        "title": "删除消息",
-        "msg": "确定要删除此消息吗？"
-      },
-      "select_conv_first": "请先选择一个对话会话"
-    },
-    "log_delete_conv_fail": "删除会话失败 {conv_id}: {error}",
-    "widget": {
-      "start_record_failed": "启动录音失败: {error}",
-      "record_error_exception": "on_record_error 异常:\n{error}",
-      "transcribe_done_exception": "_on_transcribe_done 异常:\n{error}",
-      "transcribe_error_exception": "_on_transcribe_error 异常:\n{error}",
-      "api_call_done_exception": "_start_api_call on_done 异常:\n{error}"
-    },
-    "role": {
-      "user": "用户",
-      "assistant": "助手"
-    },
-    "prompt": {
-      "correct_text": "用户使用 faster-whisper 进行语音识别了一段录音,其中有些文字可能不正确。修正用户语音转写文本中的错别字和不通顺的语句，请以JSON格式输出，格式为：{\"source_text\":\"用户原文\",\"update_text\":\"修正后的文本\"}只输出JSON，不要添加任何其他内容。",
-      "summarize_conversation": "请将以下多轮对话内容归纳为一份结构清晰的 Markdown 文档。包含：\n输出要求：只输出 Markdown 内容本身，不要添加任何解释文字、前缀或后缀。\n\n对话内容：\n{text}"
-    }
-  },
   "services": {
     "transcription": {
       "pause_requested": "转写暂停请求已接收，等待当前任务完成…",
@@ -1145,9 +1051,36 @@
       "prompt_load_failed": "PromptManager: 加载失败 ({name})",
       "prompt_loaded": "PromptManager: 已加载 ({name})",
       "prompt_save_error": "PromptManager: 保存失败 ({error})",
-      "default_prompt": "你是一个专业的文本总结助手，擅长提取关键信息并生成简洁准确的总结，只输出总结正文，**禁止添加任何开头语、结尾说明、解释性语句、备注**，**不要额外修饰、补充话术，纯输出总结内容**，结尾无需再次总结。",
+      "default_prompt": "你是一个专业的文本总结助手。你的任务是对文本进行全面完整的总结，不遗漏任何核心要点与重要事实。只输出总结正文，**禁止添加任何开头语、结尾说明、解释性语句、备注**，**不要额外修饰、补充话术，纯输出总结内容**，结尾无需再次总结。",
       "text_content_label": "文本内容：",
       "markdown_prompt": "\n请将总结内容以 Markdown 格式输出，形式如下：\n- **要点标题**\n\t- 内容\n\t- 内容\n- **要点标题**\n\t- 内容\n\t- 内容\n\n保持 Markdown 格式的正确性，确保输出可以直接渲染。\n",
+      "presets": {
+        "default": {
+          "name": "标准要点总结",
+          "desc": "全面完整总结全篇内容，条理清晰，不漏掉任何核心要点与关键细节",
+          "prompt": "你是一个专业的文本总结助手。你的任务是对输入的文本进行全面、完整且深入的结构化总结，确保不遗漏任何核心要点、重要事实、论据与关键细节。\n\n总结要求：\n1. 全面详尽：全面梳理原文脉络，根据内容的实际长短与信息量充分展开，不设要点数量上限，完整覆盖所有关键论点与事实，绝不漏点。\n2. 结构规范：以规范的 Markdown 格式输出，采用层级清晰的要点列表组织：\n   - **核心要点标题**：提炼明确主题\n     - 详细展开阐述支撑事实、逻辑脉络、数据或具体细节\n3. 纯净输出：只输出总结正文，**禁止添加任何开头语、结尾说明、解释性语句或备注**，**不要额外修饰、补充话术，纯输出总结内容**，结尾无需再次总结。"
+        },
+        "meeting": {
+          "name": "会议与访谈纪要",
+          "desc": "提取议题背景、共识决议与明确的后续待办行动项(Action Items)",
+          "prompt": "你是一个专业的高级会议纪要整理助手。请从文本中提炼会议的核心要点，以规范的 Markdown 格式输出：\n\n### 1. 讨论议题与背景\n- 核心讨论背景与议题\n\n### 2. 共识决议与结论\n- 各方达成的重要共识与明确结论\n\n### 3. 后续行动项 (Action Items)\n- [ ] **行动事项**: 明确具体内容与负责人（如有）\n\n条理清晰，客观准确，只输出纪要正文，不添加无意义的开场白或客套话。"
+        },
+        "lecture": {
+          "name": "深度学习笔记",
+          "desc": "系统梳理学术/讲座内容，涵盖概念解释、核心原理与案例支撑",
+          "prompt": "你是一个专业的学术与知识整理助手。请将以下学习内容以结构化 Markdown 提炼为系统性的深度学习笔记：\n\n## 一、核心主题与背景概念\n## 二、关键知识点与理论阐述\n## 三、典型案例与论据支撑\n## 四、总结与启发反思\n\n层次分明，深入浅出，纯输出笔记内容。"
+        },
+        "tldr": {
+          "name": "一句话速览 (TL;DR)",
+          "desc": "控制在150字内，极简概括最核心结论与事件",
+          "prompt": "你是一个极简摘要助手。请用最精炼的语言（控制在150字以内）对输入文本进行极简概述（TL;DR），直接给出最核心的结论、主要事件或论点。禁止任何开场白或废话，直奔主题。"
+        },
+        "takeaways": {
+          "name": "金句与观点提炼",
+          "desc": "提取对话亮点、精彩金句原话及启发性观点",
+          "prompt": "你是一个金句与核心观点提炼助手。请从文本中提炼出最有启发性、深刻的观点与金句原话，以清晰的 Markdown 格式输出：\n\n### 💡 核心观点速览\n- 核心观点梳理\n\n### 💬 精彩金句摘录\n> 金句原话（简要标明上下文语境）\n\n### 🔍 启发与反思\n- 启发性思考\n\n纯输出提炼正文，无需多余寒暄。"
+        }
+      },
       "ollama": {
         "already_running": "Ollama 服务已在运行中",
         "process_exists": "Ollama 服务进程已存在",
@@ -1265,23 +1198,6 @@
       },
       "write_index_failed": "写入输出索引失败: {error}",
       "markdown_tooltip": "勾选后总结输出将自动应用多语言 Markdown 格式指令。"
-    },
-    "voice_transcription": {
-      "audio_file_not_found": "音频文件不存在: {path}",
-      "context_prefix": "上文: {context}",
-      "no_speech_detected": "(未检测到语音内容)",
-      "transcribe_failed": "VoiceTranscriptionService 转写失败: {error}",
-      "transcribe_failed_short": "转写失败: {error}"
-    },
-    "voice_recorder": {
-      "vad_calibrated": "VoiceRecorder VAD 校准完成, noise_floor={value}",
-      "vad_chunk_save_failed": "VAD chunk 保存失败: {error}",
-      "missing_sounddevice": "缺少 sounddevice 库: {error}",
-      "recording_exception": "录音异常: {error}",
-      "save_recording_failed": "保存录音失败: {error}",
-      "callback_status": "VoiceRecorder 回调状态: {status}",
-      "no_audio_data": "没有录制到音频数据",
-      "save_wav_failed": "保存 WAV 失败: {error}"
     }
   },
   "storage": {
@@ -1312,13 +1228,6 @@
     "bookmark": {
       "load_fail": "读取失败: %s",
       "save_fail": "写入失败: %s"
-    },
-    "voice_store": {
-      "create_conv": "新建会话 %s",
-      "read_conv_fail": "读取会话失败 %s: %s",
-      "read_list_fail": "读取会话列表失败 %s: %s",
-      "delete_conv": "删除会话 %s",
-      "conv_not_found": "会话不存在: {conv_id}"
     },
     "json": {
       "read_fail": "读取 JSON 文件失败 {name}: {error}"
@@ -1394,7 +1303,39 @@
   "transcription_prompt_manager": {
     "load_failed": "TranscriptionPromptManager: ✗ 加载失败 ({name})",
     "loaded": "TranscriptionPromptManager: ✓ 加载 ({name})",
-    "save_failed": "TranscriptionPromptManager: ✗ 保存失败 ({error})"
+    "save_failed": "TranscriptionPromptManager: ✗ 保存失败 ({error})",
+    "presets": {
+      "general": {
+        "name": "通用标准规范",
+        "desc": "引导标准规范与完整标点符号输出，适合各类常规音视频",
+        "prompt": "请进行准确规范的转写输出，并添加完整的标点符号。",
+        "hotwords": ""
+      },
+      "meeting": {
+        "name": "职场会议与访谈",
+        "desc": "强化会议讨论、团队协作与业务汇报等高频职场词汇",
+        "prompt": "这是一场工作会议与深度访谈对话，包含业务讨论、决策和任务分工，请准确识别发言并保留专业语境。",
+        "hotwords": "会议 议题 决议 协同 同步 汇报 对齐 复盘 进度 方案 痛点 落地 抓手 赋能"
+      },
+      "ecommerce": {
+        "name": "电商带货与运营",
+        "desc": "针对电商直播、平台运营、投流投放与短视频带货黑话提供精准热词偏置",
+        "prompt": "电商教学与直播带货视频，包含平台运营、短视频带货与流量投放，请准确转写专业电商术语与行业词汇。",
+        "hotwords": "抖店 淘宝 拼多多 小红书 淘系 SKU 一件代发 无货源 GMV 千川 随心推 DOU+ 憋单 拉停留 达人带货 精选联盟 挂车 起店 破零 测款 动销 投流 私域 促活 复购"
+      },
+      "tech": {
+        "name": "IT科技与编程",
+        "desc": "针对软件开发、AI算法与计算机前沿技术，保持中英文术语大小写与准确拼写",
+        "prompt": "软件开发、AI算法与计算机技术的教程与分享，包含专业术语与代码概念，请保持准确拼写与大小写规范。",
+        "hotwords": "Python API Docker Linux PyTorch Git GPU CUDA Front-end Back-end Framework Bug Debug Web CI/CD LLM PySide PySide6"
+      },
+      "bilingual": {
+        "name": "双语混合日常交流",
+        "desc": "针对日常工作、双语夹杂口语交流，准确识别常见外来词汇与缩写",
+        "prompt": "日常工作交流与双语混合对话，请保持专有名词与语句的自然过渡。",
+        "hotwords": "OK PPT follow up update meeting schedule review project team catch up sync call deck demo"
+      }
+    }
   },
   "dll_downloader": {
     "proxy_source": {
@@ -1573,7 +1514,6 @@
     "gen_bg_image": "已生成背景图片图标: {path}",
     "gen_favorite": "已生成常用目录图标: {path}",
     "gen_api_key": "已生成 API Key 图标: {path}",
-    "gen_voice": "已生成语音转文字图标: {path}",
     "gen_api_test": "已生成 API 测试图标: {path}",
     "gen_about": "已生成关于图标: {path}",
     "gen_arrow_right": "已生成右向箭头图标: {path}",
@@ -1581,5 +1521,74 @@
     "gen_main": "生成 video2text 图标...",
     "gen_main_png": "已生主图标 PNG: {path}",
     "gen_main_ico": "已生主图标 ICO: {path}"
+  },
+  "transcription_tab": {
+    "engine_group": "转写引擎 / 模型选择",
+    "radio_whisper": "Faster-Whisper (多语种通用)",
+    "radio_funasr": "FunASR (中文高精度)",
+    "whisper_group": "Faster-Whisper 模型参数",
+    "funasr_group": "FunASR Paraformer 模型参数"
+  },
+  "tx_labels": {
+    "whisper_model": "模型选择/路径",
+    "whisper_device": "推理设备",
+    "whisper_compute_type": "计算精度",
+    "whisper_language": "转写语言",
+    "whisper_num_workers": "推理线程数",
+    "whisper_beam_size": "Beam Size",
+    "whisper_best_of": "Best Of 采样数",
+    "whisper_temperature": "采样温度",
+    "whisper_vad_filter": "VAD 静音过滤",
+    "whisper_vad_threshold": "VAD 语音阈值",
+    "whisper_vad_min_silence_ms": "VAD 最短静音(ms)",
+    "whisper_vad_speech_pad_ms": "VAD 边界扩展(ms)",
+    "whisper_vad_max_speech_s": "VAD 最长分段(s)",
+    "whisper_condition_on_previous_text": "基于前文条件",
+    "whisper_word_timestamps": "词级时间戳",
+    "whisper_compression_ratio_threshold": "压缩比阈值",
+    "whisper_log_prob_threshold": "对数概率阈值",
+    "whisper_no_speech_threshold": "无语音阈值",
+    "whisper_repetition_penalty": "重复惩罚因子",
+    "whisper_no_repeat_ngram_size": "N-gram 防重复尺寸",
+    "funasr_model": "模型选择/路径",
+    "funasr_device": "推理设备",
+    "funasr_language": "转写语言",
+    "funasr_num_workers": "推理线程数",
+    "funasr_compute_type": "计算精度",
+    "funasr_quantize": "INT8 量化加速",
+    "funasr_punc_filter": "标点符号恢复",
+    "funasr_vad_filter": "FSMN-VAD 过滤",
+    "funasr_vad_max_end_sil": "VAD 断句静音(ms)"
+  },
+  "tx_tooltips": {
+    "whisper_model": "选择 Faster-Whisper 模型版本或点击右侧浏览自定义路径",
+    "whisper_device": "推理计算设备: cuda (NVIDIA GPU), cpu, auto (自动检测)",
+    "whisper_compute_type": "计算精度: float16, int8, float32。注: CPU 不支持 float16",
+    "whisper_language": "转写语言代码: zh (中文), en (英文), ja (日文) 等，auto 为自动识别",
+    "whisper_num_workers": "CTranslate2 推理线程数 (1 ~ CPU核心数)",
+    "whisper_beam_size": "Beam search 大小 (1~10)，数值越大越精确但速度减慢",
+    "whisper_best_of": "采样候选数 (temperature > 0 时有效)",
+    "whisper_temperature": "采样温度，支持逗号分隔多个值回退（如 0.0,0.2,0.4）",
+    "whisper_vad_filter": "启用 Silero VAD 过滤静音并防止幻觉",
+    "whisper_vad_threshold": "VAD 语音检测阈值 (0~1)，嘈杂环境建议提高至 0.6~0.7",
+    "whisper_vad_min_silence_ms": "切分段落的最短静音持续毫秒数，默认 2000",
+    "whisper_vad_speech_pad_ms": "分段边界填充毫秒数，默认 400",
+    "whisper_vad_max_speech_s": "VAD 单段最长秒数，0 表示不限制",
+    "whisper_condition_on_previous_text": "是否基于前文生成，长音频建议 False",
+    "whisper_word_timestamps": "是否生成词级时间戳",
+    "whisper_compression_ratio_threshold": "Gzip 压缩比重复检测阈值，默认 2.4",
+    "whisper_log_prob_threshold": "平均对数概率阈值，默认 -1.0",
+    "whisper_no_speech_threshold": "无语音概率阈值，默认 0.6",
+    "whisper_repetition_penalty": "重复惩罚因子 (>1 抑制重复)",
+    "whisper_no_repeat_ngram_size": "防止重复的 n-gram 大小，0 表示禁用",
+    "funasr_model": "选择 FunASR Paraformer 模型或点击右侧浏览自定义路径",
+    "funasr_device": "推理计算设备: auto (自动检测), cuda (GPU), cpu",
+    "funasr_language": "转写语言，支持 zh (中文) 或 auto",
+    "funasr_num_workers": "ONNX Runtime CPU 推理线程数 (默认 4，多核 CPU 调大可加速推理)",
+    "funasr_compute_type": "计算精度: float16, int8, float32。ONNX 模型支持 INT8 量化加速与 float32 原生精度",
+    "funasr_quantize": "启用 INT8 模型量化加速 (速度更快、显存占用更少)，关闭则使用 FP32 原始精度",
+    "funasr_punc_filter": "启用 CT-Transformer 标点恢复。关闭可提速约 30% 并输出无标点分词文本",
+    "funasr_vad_filter": "启用 FSMN-VAD 语音活动检测切分静音",
+    "funasr_vad_max_end_sil": "FSMN-VAD 判定停顿分句的最长静音毫秒数 (默认 800ms，数值越大断句越长越完整)"
   }
 }

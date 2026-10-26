@@ -4,8 +4,12 @@ import threading
 import time
 from typing import Callable, Optional
 
-from mistralai.client import Mistral
-from mistralai.client.errors.sdkerror import SDKError
+try:
+    from mistralai.client import Mistral
+    from mistralai.client.errors.sdkerror import SDKError
+except (ImportError, ModuleNotFoundError):
+    Mistral = None
+    SDKError = Exception
 
 from src.i18n import t
 from src.utils.env_loader import ensure_env_loaded, get_api_key
@@ -157,6 +161,8 @@ class MistralClient:
         self,
         model: str = "mistral-large-latest",
         prompt: str = "",
+        system_prompt: Optional[str] = None,
+        messages: Optional[list[dict[str, str]]] = None,
         temperature: float = 0.7,
         max_tokens: int = 10000,
         stream: bool = False,
@@ -164,6 +170,16 @@ class MistralClient:
         cancel_check: Optional[Callable[[], bool]] = None,
         pause_event: Optional[threading.Event] = None,
     ) -> str:
+        if messages is not None:
+            chat_messages = messages
+        elif system_prompt:
+            chat_messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt},
+            ]
+        else:
+            chat_messages = [{"role": "user", "content": prompt}]
+
         last_exc = None
         for attempt in range(1, self.max_retries + 1):
             try:
@@ -171,7 +187,7 @@ class MistralClient:
                     # 流式：使用 chat.stream(...)，返回 EventStream[CompletionEvent]
                     stream_resp = self._client.chat.stream(
                         model=model,
-                        messages=[{"role": "user", "content": prompt}],
+                        messages=chat_messages,
                         temperature=temperature,
                         max_tokens=max_tokens,
                     )
@@ -186,7 +202,7 @@ class MistralClient:
                     try:
                         response = self._client.chat.complete(
                             model=model,
-                            messages=[{"role": "user", "content": prompt}],
+                            messages=chat_messages,
                             temperature=temperature,
                             max_tokens=max_tokens,
                         )

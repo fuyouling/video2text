@@ -49,28 +49,17 @@ class TestBuildPrompt:
         assert "Markdown" in prompt
         assert "**要点标题**" in prompt
 
-    def test_build_prompt_markdown_disabled(self):
+    def test_build_prompt_custom_without_markdown(self):
         pm = PromptManager()
-        pm._markdown_enabled = False
-        result = pm.build_prompt("测试文本")
-        assert "专业的文本总结助手" in result
+        result = pm.build_prompt("测试文本", custom_prompt="请用纯文本列举要点")
+        assert "请用纯文本列举要点" in result
         assert "Markdown" not in result
         assert "测试文本" in result
 
-    def test_build_prompt_markdown_enabled(self):
+    def test_build_prompt_custom_with_markdown(self):
         pm = PromptManager()
-        pm._markdown_enabled = True
-        result = pm.build_prompt("测试文本")
-        assert "专业的文本总结助手" in result
+        result = pm.build_prompt("测试文本", custom_prompt="请输出 Markdown 格式表格")
         assert "Markdown" in result
-        assert "测试文本" in result
-
-    def test_build_prompt_markdown_disabled_skips_format(self):
-        pm = PromptManager()
-        pm._markdown_enabled = False
-        result = pm.build_prompt("测试文本")
-        assert "专业的文本总结助手" in result
-        assert "Markdown" not in result
         assert "测试文本" in result
 
 

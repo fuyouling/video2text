@@ -1,17 +1,23 @@
 import os
-from ollama import Client
+import pytest
 
-client = Client(
-    host="https://ollama.com",
-    headers={"Authorization": "Bearer " + os.environ.get("OLLAMA_API_KEY", "")},
-)
+pytestmark = pytest.mark.skip(reason="manual ollama model test")
 
-messages = [
-    {
-        "role": "user",
-        "content": "Why is the sky blue?",
-    },
-]
 
-for part in client.chat("kimi-k2.5:cloud", messages=messages, stream=True):
-    print(part["message"]["content"], end="", flush=True)
+def test_ollama_model():
+    from ollama import Client
+
+    client = Client(
+        host="https://ollama.com",
+        headers={"Authorization": "Bearer " + os.environ.get("OLLAMA_API_KEY", "")},
+    )
+
+    messages = [
+        {
+            "role": "user",
+            "content": "Why is the sky blue?",
+        },
+    ]
+
+    for part in client.chat("kimi-k2.5:cloud", messages=messages, stream=True):
+        print(part["message"]["content"], end="", flush=True)

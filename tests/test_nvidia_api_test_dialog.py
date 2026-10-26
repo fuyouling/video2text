@@ -99,8 +99,10 @@ def test_model_list_matches_plan():
 
 
 def test_constants():
-    assert dlg_mod.TEST_TIMEOUT == 30
+    assert dlg_mod.TEST_TIMEOUT == 15
     assert dlg_mod.MAX_CONCURRENCY == 5
+    assert dlg_mod.TEST_PROMPT == "Hi"
+    assert dlg_mod.TEST_MAX_TOKENS == 10
 
 
 def test_fetch_returns_empty_on_no_match(monkeypatch):
@@ -538,6 +540,29 @@ def test_models_fetch_failed_writes_empty_cache(qapp):
         assert dialog._cards == {}
         assert dialog._empty_label is not None
     finally:
+        dialog.close()
+
+
+def test_dialog_apply_model_sets_provider_and_model(qapp, monkeypatch):
+    """_on_apply_model 把模型与 provider=nvidia 写入配置并更新当前模型标签。"""
+    from src.config.settings import Settings
+
+    settings = Settings()
+    orig_model = settings.get("summarization.nvidia_model")
+    orig_provider = settings.get("summarization.provider")
+    monkeypatch.setattr(settings, "save", lambda: None)
+    dialog = dlg_mod.NvidiaApiTestDialog(None, settings)
+    try:
+        target_model = "meta/llama-3.1-70b-instruct"
+        dialog._on_apply_model(target_model)
+        assert settings.get("summarization.provider") == "nvidia"
+        assert settings.get("summarization.nvidia_model") == target_model
+        assert target_model in dialog._current_model_label.text()
+    finally:
+        if orig_model is not None:
+            settings.set("summarization.nvidia_model", orig_model)
+        if orig_provider is not None:
+            settings.set("summarization.provider", orig_provider)
         dialog.close()
 
 

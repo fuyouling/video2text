@@ -18,7 +18,8 @@ from src.storage.file_writer import FileWriter
 from src.summarization.providers import create_provider
 from src.text_processing.segment_merger import SegmentMerger
 from src.text_processing.text_cleaner import TextCleaner
-from src.transcription.transcriber import Transcriber
+from src.transcription.transcriber import Transcriber, get_cached_transcriber
+from src.transcription.transcription_prompt_manager import TranscriptionPromptManager
 from src.storage.output_formatter import OutputFormatter
 from src.utils.exceptions import (
     Video2TextError,
@@ -37,6 +38,38 @@ console = Console()
 def get_settings() -> Settings:
     """获取全局配置单例。"""
     return Settings()
+
+
+def _resolve_cli_prompts(
+    cfg_prompt: str,
+    cfg_hotwords: str,
+    cli_prompt: Optional[str] = None,
+    cli_hotwords: Optional[str] = None,
+    template_name: Optional[str] = None,
+) -> tuple[str, str]:
+    """计算最终用于转写的 initial_prompt 与 hotwords。
+    优先级：命令行显式参数 > 指定模板名称 > config.ini 默认值
+    """
+    initial_prompt = cfg_prompt
+    hotwords = cfg_hotwords
+
+    if template_name:
+        mgr = TranscriptionPromptManager()
+        tmpl = mgr.get_template(template_name)
+        if tmpl:
+            initial_prompt = tmpl.initial_prompt
+            hotwords = tmpl.hotwords
+        else:
+            console.print(
+                f"[yellow]Warning: Template '{template_name}' not found, using config defaults.[/yellow]"
+            )
+
+    if cli_prompt is not None:
+        initial_prompt = cli_prompt
+    if cli_hotwords is not None:
+        hotwords = cli_hotwords
+
+    return initial_prompt, hotwords
 
 
 def _init_common(
@@ -67,6 +100,15 @@ def transcribe(
     output_dir: Optional[str] = typer.Option(
         None, "--output-dir", "-o", help=t("cli.output_dir")
     ),
+    prompt: Optional[str] = typer.Option(
+        None, "--prompt", "-p", help=t("cli.opt_initial_prompt")
+    ),
+    hotwords: Optional[str] = typer.Option(
+        None, "--hotwords", "-w", help=t("cli.opt_hotwords")
+    ),
+    prompt_template: Optional[str] = typer.Option(
+        None, "--prompt-template", help=t("cli.opt_prompt_template")
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help=t("cli.verbose")),
 ):
     """转写音视频为文本"""
@@ -79,6 +121,13 @@ def transcribe(
 
         cfg = _load_tx_config(settings)
         num_workers = settings.get_int("transcription.num_workers", 1)
+        actual_prompt, actual_hotwords = _resolve_cli_prompts(
+            cfg.initial_prompt,
+            cfg.hotwords,
+            cli_prompt=prompt,
+            cli_hotwords=hotwords,
+            template_name=prompt_template,
+        )
 
         console.print(Panel.fit(t("cli.transcribe_panel")))
         console.print(t("cli.input_file_label", path=input_path))
@@ -86,11 +135,15 @@ def transcribe(
         console.print(t("cli.model_label", model=cfg.model_path))
         console.print(t("cli.device_label", device=cfg.device))
 
-        transcriber = Transcriber(
+        transcriber = get_cached_transcriber(
             model_path=cfg.model_path,
             device=cfg.device,
             compute_type=cfg.compute_type,
-            num_workers=num_workers,
+            num_workers=cfg.num_workers,
+            engine=cfg.engine,
+            quantize=getattr(cfg, "quantize", True),
+            punc_filter=getattr(cfg, "punc_filter", True),
+            vad_max_end_sil=getattr(cfg, "vad_max_end_sil", 800),
         )
 
         service = TranscriptionService(
@@ -105,8 +158,8 @@ def transcribe(
             word_timestamps=cfg.word_timestamps,
             vad_filter=cfg.vad_filter,
             vad_parameters=cfg.vad_parameters,
-            initial_prompt=cfg.initial_prompt,
-            hotwords=cfg.hotwords,
+            initial_prompt=actual_prompt,
+            hotwords=actual_hotwords,
             compression_ratio_threshold=cfg.compression_ratio_threshold,
             log_prob_threshold=cfg.log_prob_threshold,
             no_speech_threshold=cfg.no_speech_threshold,
@@ -222,6 +275,15 @@ def run_pipeline(
     output_dir: Optional[str] = typer.Option(
         None, "--output-dir", "-o", help=t("cli.output_dir")
     ),
+    prompt: Optional[str] = typer.Option(
+        None, "--prompt", "-p", help=t("cli.opt_initial_prompt")
+    ),
+    hotwords: Optional[str] = typer.Option(
+        None, "--hotwords", "-w", help=t("cli.opt_hotwords")
+    ),
+    prompt_template: Optional[str] = typer.Option(
+        None, "--prompt-template", help=t("cli.opt_prompt_template")
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help=t("cli.verbose")),
 ):
     """运行完整处理管道"""
@@ -234,6 +296,13 @@ def run_pipeline(
 
         cfg = _load_tx_config(settings)
         num_workers = settings.get_int("transcription.num_workers", 1)
+        actual_prompt, actual_hotwords = _resolve_cli_prompts(
+            cfg.initial_prompt,
+            cfg.hotwords,
+            cli_prompt=prompt,
+            cli_hotwords=hotwords,
+            template_name=prompt_template,
+        )
 
         console.print(Panel.fit(t("cli.pipeline_panel")))
         console.print(t("cli.input_file_label", path=input_path))
@@ -241,11 +310,15 @@ def run_pipeline(
         console.print(t("cli.tx_model_label", model=cfg.model_path))
         console.print(t("cli.device_label", device=cfg.device))
 
-        transcriber = Transcriber(
+        transcriber = get_cached_transcriber(
             model_path=cfg.model_path,
             device=cfg.device,
             compute_type=cfg.compute_type,
-            num_workers=num_workers,
+            num_workers=cfg.num_workers,
+            engine=cfg.engine,
+            quantize=getattr(cfg, "quantize", True),
+            punc_filter=getattr(cfg, "punc_filter", True),
+            vad_max_end_sil=getattr(cfg, "vad_max_end_sil", 800),
         )
 
         tx_service = TranscriptionService(
@@ -260,8 +333,8 @@ def run_pipeline(
             word_timestamps=cfg.word_timestamps,
             vad_filter=cfg.vad_filter,
             vad_parameters=cfg.vad_parameters,
-            initial_prompt=cfg.initial_prompt,
-            hotwords=cfg.hotwords,
+            initial_prompt=actual_prompt,
+            hotwords=actual_hotwords,
             compression_ratio_threshold=cfg.compression_ratio_threshold,
             log_prob_threshold=cfg.log_prob_threshold,
             no_speech_threshold=cfg.no_speech_threshold,

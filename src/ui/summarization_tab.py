@@ -197,7 +197,7 @@ class SummarizationTab(QWidget):
             "model_name": self._settings.get("summarization.model_name", ""),
             "max_length": self._settings.get("summarization.max_length", "10000"),
             "temperature": self._settings.get("summarization.temperature", "0.7"),
-            "timeout": self._settings.get("summarization.timeout", "600"),
+            "timeout": self._settings.get("summarization.timeout", "30"),
         }
 
         for key, value in ollama_items.items():
@@ -243,7 +243,7 @@ class SummarizationTab(QWidget):
             "nvidia_presence_penalty": self._settings.get(
                 "summarization.nvidia_presence_penalty", "0.0"
             ),
-            "nvidia_timeout": self._settings.get("summarization.nvidia_timeout", "600"),
+            "nvidia_timeout": self._settings.get("summarization.nvidia_timeout", "30"),
         }
 
         for key, value in nvidia_items.items():
@@ -337,7 +337,7 @@ class SummarizationTab(QWidget):
                 "summarization.mistral_temperature", "0.7"
             ),
             "mistral_timeout": self._settings.get(
-                "summarization.mistral_timeout", "600"
+                "summarization.mistral_timeout", "30"
             ),
         }
 
@@ -428,7 +428,7 @@ class SummarizationTab(QWidget):
                 "summarization.amd_temperature", "0.7"
             ),
             "amd_timeout": self._settings.get(
-                "summarization.amd_timeout", "60"
+                "summarization.amd_timeout", "30"
             ),
         }
 

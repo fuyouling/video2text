@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
 from src.config.settings import Settings
 from src.i18n import available_languages, language_meta, t
 from src.ui.summarization_tab import SummarizationTab
+from src.ui.transcription_tab import TranscriptionTab
 
 
 def _format_file_size(size_bytes: int) -> str:
@@ -969,7 +970,6 @@ _SECTION_LABEL_KEYS: dict[str, str] = {
     "paths": "config.section.paths",
     "tools": "config.section.tools",
     "text_processing": "config.section.text_processing",
-    "voice_to_text": "config.section.voice_to_text",
 }
 
 _KEY_LABEL_KEYS: dict[str, str] = {
@@ -985,6 +985,7 @@ _KEY_LABEL_KEYS: dict[str, str] = {
     "app.result_transparency": "config.label.app.result_transparency",
     "app.main_image_path": "config.label.app.main_image_path",
     "app.main_transparency": "config.label.app.main_transparency",
+    "transcription.engine": "config.label.transcription.engine",
     "transcription.model_path": "config.label.transcription.model_path",
     "transcription.device": "config.label.transcription.device",
     "transcription.language": "config.label.transcription.language",
@@ -1005,6 +1006,8 @@ _KEY_LABEL_KEYS: dict[str, str] = {
     "transcription.vad_min_silence_ms": "config.label.transcription.vad_min_silence_ms",
     "transcription.vad_speech_pad_ms": "config.label.transcription.vad_speech_pad_ms",
     "transcription.vad_max_speech_s": "config.label.transcription.vad_max_speech_s",
+    "transcription.initial_prompt": "config.label.transcription.initial_prompt",
+    "transcription.hotwords": "config.label.transcription.hotwords",
     "preprocessing.audio_sample_rate": "config.label.preprocessing.audio_sample_rate",
     "preprocessing.audio_channels": "config.label.preprocessing.audio_channels",
     "preprocessing.max_chunk_duration": "config.label.preprocessing.max_chunk_duration",
@@ -1021,30 +1024,6 @@ _KEY_LABEL_KEYS: dict[str, str] = {
     "text_processing.max_gap": "config.label.text_processing.max_gap",
     "text_processing.min_length": "config.label.text_processing.min_length",
     "text_processing.filler_words": "config.label.text_processing.filler_words",
-    "voice_to_text.voice_dir": "config.label.voice_to_text.voice_dir",
-    "voice_to_text.summary_dir": "config.label.voice_to_text.summary_dir",
-    "voice_to_text.realtime_auto_send_interval": "config.label.voice_to_text.realtime_auto_send_interval",
-    "voice_to_text.model_path": "config.label.voice_to_text.model_path",
-    "voice_to_text.device": "config.label.voice_to_text.device",
-    "voice_to_text.compute_type": "config.label.voice_to_text.compute_type",
-    "voice_to_text.language": "config.label.voice_to_text.language",
-    "voice_to_text.num_workers": "config.label.voice_to_text.num_workers",
-    "voice_to_text.audio_sample_rate": "config.label.voice_to_text.audio_sample_rate",
-    "voice_to_text.audio_channels": "config.label.voice_to_text.audio_channels",
-    "voice_to_text.vad_filter": "config.label.voice_to_text.vad_filter",
-    "voice_to_text.vad_threshold": "config.label.voice_to_text.vad_threshold",
-    "voice_to_text.vad_min_silence_ms": "config.label.voice_to_text.vad_min_silence_ms",
-    "voice_to_text.vad_speech_pad_ms": "config.label.voice_to_text.vad_speech_pad_ms",
-    "voice_to_text.vad_max_speech_s": "config.label.voice_to_text.vad_max_speech_s",
-    "voice_to_text.initial_prompt": "config.label.voice_to_text.initial_prompt",
-    "voice_to_text.bg_image_path": "config.label.voice_to_text.bg_image_path",
-    "voice_to_text.bg_transparency": "config.label.voice_to_text.bg_transparency",
-    "voice_to_text.vad_endpoint_detection": "config.label.voice_to_text.vad_endpoint_detection",
-    "voice_to_text.vad_energy_threshold": "config.label.voice_to_text.vad_energy_threshold",
-    "voice_to_text.vad_silence_frames": "config.label.voice_to_text.vad_silence_frames",
-    "voice_to_text.vad_min_speech_frames": "config.label.voice_to_text.vad_min_speech_frames",
-    "voice_to_text.vad_calibration_frames": "config.label.voice_to_text.vad_calibration_frames",
-    "voice_to_text.context_max_chars": "config.label.voice_to_text.context_max_chars",
 }
 
 _KEY_TOOLTIP_KEYS: dict[str, str] = {
@@ -1054,6 +1033,7 @@ _KEY_TOOLTIP_KEYS: dict[str, str] = {
     "app.is_check_dll_file": "config.tooltip.app.is_check_dll_file",
     "app.proxy": "config.tooltip.app.proxy",
     "app.ui_language": "config.tooltip.app.ui_language",
+    "transcription.engine": "config.tooltip.transcription.engine",
     "transcription.model_path": "config.tooltip.transcription.model_path",
     "transcription.device": "config.tooltip.transcription.device",
     "transcription.language": "config.tooltip.transcription.language",
@@ -1074,6 +1054,8 @@ _KEY_TOOLTIP_KEYS: dict[str, str] = {
     "transcription.vad_min_silence_ms": "config.tooltip.transcription.vad_min_silence_ms",
     "transcription.vad_speech_pad_ms": "config.tooltip.transcription.vad_speech_pad_ms",
     "transcription.vad_max_speech_s": "config.tooltip.transcription.vad_max_speech_s",
+    "transcription.initial_prompt": "config.tooltip.transcription.initial_prompt",
+    "transcription.hotwords": "config.tooltip.transcription.hotwords",
     "preprocessing.audio_sample_rate": "config.tooltip.preprocessing.audio_sample_rate",
     "preprocessing.audio_channels": "config.tooltip.preprocessing.audio_channels",
     "preprocessing.max_chunk_duration": "config.tooltip.preprocessing.max_chunk_duration",
@@ -1090,30 +1072,6 @@ _KEY_TOOLTIP_KEYS: dict[str, str] = {
     "text_processing.max_gap": "config.tooltip.text_processing.max_gap",
     "text_processing.min_length": "config.tooltip.text_processing.min_length",
     "text_processing.filler_words": "config.tooltip.text_processing.filler_words",
-    "voice_to_text.voice_dir": "config.tooltip.voice_to_text.voice_dir",
-    "voice_to_text.summary_dir": "config.tooltip.voice_to_text.summary_dir",
-    "voice_to_text.realtime_auto_send_interval": "config.tooltip.voice_to_text.realtime_auto_send_interval",
-    "voice_to_text.model_path": "config.tooltip.voice_to_text.model_path",
-    "voice_to_text.device": "config.tooltip.voice_to_text.device",
-    "voice_to_text.compute_type": "config.tooltip.voice_to_text.compute_type",
-    "voice_to_text.language": "config.tooltip.voice_to_text.language",
-    "voice_to_text.num_workers": "config.tooltip.voice_to_text.num_workers",
-    "voice_to_text.audio_sample_rate": "config.tooltip.voice_to_text.audio_sample_rate",
-    "voice_to_text.audio_channels": "config.tooltip.voice_to_text.audio_channels",
-    "voice_to_text.vad_filter": "config.tooltip.voice_to_text.vad_filter",
-    "voice_to_text.vad_threshold": "config.tooltip.voice_to_text.vad_threshold",
-    "voice_to_text.vad_min_silence_ms": "config.tooltip.voice_to_text.vad_min_silence_ms",
-    "voice_to_text.vad_speech_pad_ms": "config.tooltip.voice_to_text.vad_speech_pad_ms",
-    "voice_to_text.vad_max_speech_s": "config.tooltip.voice_to_text.vad_max_speech_s",
-    "voice_to_text.initial_prompt": "config.tooltip.voice_to_text.initial_prompt",
-    "voice_to_text.bg_image_path": "config.tooltip.voice_to_text.bg_image_path",
-    "voice_to_text.bg_transparency": "config.tooltip.voice_to_text.bg_transparency",
-    "voice_to_text.vad_endpoint_detection": "config.tooltip.voice_to_text.vad_endpoint_detection",
-    "voice_to_text.vad_energy_threshold": "config.tooltip.voice_to_text.vad_energy_threshold",
-    "voice_to_text.vad_silence_frames": "config.tooltip.voice_to_text.vad_silence_frames",
-    "voice_to_text.vad_min_speech_frames": "config.tooltip.voice_to_text.vad_min_speech_frames",
-    "voice_to_text.vad_calibration_frames": "config.tooltip.voice_to_text.vad_calibration_frames",
-    "voice_to_text.context_max_chars": "config.tooltip.voice_to_text.context_max_chars",
     "app.result_image_path": "config.tooltip.app.result_image_path",
     "app.result_transparency": "config.tooltip.app.result_transparency",
     "app.main_image_path": "config.tooltip.app.main_image_path",
@@ -1131,7 +1089,7 @@ _SECTION_GROUP_KEYS: dict[str, dict[str, list[str]]] = {
         ],
     },
     "transcription": {
-        "config.group.transcription.basic": ["model_path", "device", "language", "compute_type", "num_workers"],
+        "config.group.transcription.basic": ["engine", "model_path", "device", "language", "compute_type", "num_workers"],
         "config.group.transcription.decode": ["beam_size", "best_of", "temperature"],
         "config.group.transcription.vad": [
             "vad_filter",
@@ -1160,34 +1118,11 @@ _SECTION_GROUP_KEYS: dict[str, dict[str, list[str]]] = {
     "text_processing": {
         "config.group.text_processing.merge": ["max_gap", "min_length", "filler_words"],
     },
-    "voice_to_text": {
-        "config.group.voice_to_text.basic": ["voice_dir", "summary_dir", "realtime_auto_send_interval", "model_path", "device", "compute_type", "language", "num_workers"],
-        "config.group.voice_to_text.audio_vad": [
-            "audio_sample_rate",
-            "audio_channels",
-            "vad_filter",
-            "vad_threshold",
-            "vad_min_silence_ms",
-            "vad_speech_pad_ms",
-            "vad_max_speech_s",
-        ],
-        "config.group.voice_to_text.endpoint": [
-            "vad_endpoint_detection",
-            "vad_energy_threshold",
-            "vad_silence_frames",
-            "vad_min_speech_frames",
-            "vad_calibration_frames",
-            "context_max_chars",
-        ],
-        "config.group.voice_to_text.prompt": ["initial_prompt"],
-        "config.group.voice_to_text.background": ["bg_image_path", "bg_transparency"],
-    },
 }
 
 _FILE_KEYS: set[str] = {
     "app.result_image_path",
     "app.main_image_path",
-    "voice_to_text.bg_image_path",
 }
 
 _BOOL_COMBO_KEYS: set[str] = {
@@ -1198,8 +1133,6 @@ _BOOL_COMBO_KEYS: set[str] = {
     "transcription.condition_on_previous_text",
     "transcription.word_timestamps",
     "output.mirror_enabled",
-    "voice_to_text.vad_filter",
-    "voice_to_text.vad_endpoint_detection",
 }
 
 _COMBO_KEYS: set[str] = set(_BOOL_COMBO_KEYS) | {
@@ -1207,10 +1140,10 @@ _COMBO_KEYS: set[str] = set(_BOOL_COMBO_KEYS) | {
     "summarization.nvidia_stream",
     "summarization.nvidia_mode",
     "app.log_level",
+    "transcription.engine",
+    "transcription.model_path",
     "transcription.device",
     "transcription.compute_type",
-    "voice_to_text.device",
-    "voice_to_text.compute_type",
 }
 
 _COMBO_OPTIONS: dict[str, list[str]] = {
@@ -1221,6 +1154,12 @@ _COMBO_OPTIONS.update(
     {
         "summarization.nvidia_stream": ["common.yes", "common.no"],
         "summarization.nvidia_mode": ["config.combo.mode_single", "config.combo.mode_multi"],
+        "transcription.engine": ["config.combo.engine_whisper", "config.combo.engine_funasr"],
+        "transcription.model_path": [
+            "faster-whisper-large-v3-turbo-ct2",
+            "large-v3",
+            "paraformer-large-vad-punc",
+        ],
     }
 )
 
@@ -1232,16 +1171,24 @@ _COMBO_VALUE_MAP.update(
     {
         "summarization.nvidia_stream": {"common.yes": "True", "common.no": "False"},
         "summarization.nvidia_mode": {"config.combo.mode_single": "single", "config.combo.mode_multi": "multi"},
+        "transcription.engine": {
+            "config.combo.engine_whisper": "faster-whisper",
+            "config.combo.engine_funasr": "funasr",
+        },
+        "transcription.model_path": {
+            "faster-whisper-large-v3-turbo-ct2": "faster-whisper-large-v3-turbo-ct2",
+            "large-v3": "large-v3",
+            "paraformer-large-vad-punc": "paraformer-large-vad-punc",
+        },
     }
 )
+
 
 _COMBO_OPTIONS.update(
     {
         "app.log_level": ["DEBUG", "INFO", "WARNING", "ERROR"],
         "transcription.device": ["cuda", "cpu", "auto"],
         "transcription.compute_type": ["float16", "int8", "float32"],
-        "voice_to_text.device": ["cuda", "cpu", "auto"],
-        "voice_to_text.compute_type": ["float16", "int8", "float32"],
     }
 )
 
@@ -1259,16 +1206,6 @@ _COMBO_VALUE_MAP.update(
             "auto": "auto",
         },
         "transcription.compute_type": {
-            "float16": "float16",
-            "int8": "int8",
-            "float32": "float32",
-        },
-        "voice_to_text.device": {
-            "cuda": "cuda",
-            "cpu": "cpu",
-            "auto": "auto",
-        },
-        "voice_to_text.compute_type": {
             "float16": "float16",
             "int8": "int8",
             "float32": "float32",
@@ -1452,9 +1389,6 @@ class ConfigEditorDialog(QDialog):
         for section in self.settings.config.sections():
             self._add_section_tab(section)
 
-        # device 与 compute_type 联动: 选择 cpu 时禁用 float16
-        self._setup_device_compute_links()
-
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
         sep.setFrameShadow(QFrame.Shadow.Sunken)
@@ -1476,6 +1410,16 @@ class ConfigEditorDialog(QDialog):
         layout.addWidget(btn_box)
 
     def _add_section_tab(self, section: str) -> None:
+        if section == "transcription":
+            self._transcription_tab = TranscriptionTab(self.settings)
+            self._edits["transcription"] = self._transcription_tab.get_section_edits()
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setWidget(self._transcription_tab)
+            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            self.tab_widget.addTab(scroll, t("config.section.transcription"))
+            return
+
         if section == "summarization":
             self._summarization_tab = SummarizationTab(self.settings)
             self._edits["summarization"] = self._summarization_tab.get_section_edits()
@@ -1573,59 +1517,6 @@ class ConfigEditorDialog(QDialog):
         self.tab_widget.addTab(scroll, tab_label)
 
 
-    def _setup_device_compute_links(self) -> None:
-        """建立 device 与 compute_type 联动: 选择 cpu 时 compute_type 仅保留 int8 / float32。
-
-        CTranslate2/faster-whisper 在 CPU 上不支持 float16，故 device=cpu 时
-        动态移除 compute_type 下拉中的 float16 选项，切回 cuda/auto 时恢复。
-        """
-        pairs = [
-            ("transcription", "device", "compute_type"),
-            ("voice_to_text", "device", "compute_type"),
-        ]
-        for section, device_key, compute_key in pairs:
-            edits = self._edits.get(section, {})
-            device_widget = edits.get(device_key)
-            compute_widget = edits.get(compute_key)
-            if not isinstance(device_widget, QComboBox) or not isinstance(
-                compute_widget, QComboBox
-            ):
-                continue
-
-            def _make_handler(
-                dev: QComboBox = device_widget, comp: QComboBox = compute_widget
-            ):
-                def _on_device_changed(_text: str = "") -> None:
-                    self._update_compute_options(dev, comp)
-
-                return _on_device_changed
-
-            handler = _make_handler()
-            device_widget.currentTextChanged.connect(handler)
-            # 初始化一次, 使加载配置后即刻应用限制
-            handler()
-
-    @staticmethod
-    def _update_compute_options(
-        device_widget: QComboBox, compute_widget: QComboBox
-    ) -> None:
-        """根据当前 device 刷新 compute_type 可选项。"""
-        device = device_widget.currentText().strip().lower()
-        if device == "cpu":
-            allowed = ["int8", "float32"]
-        else:
-            allowed = ["float16", "int8", "float32"]
-
-        current = compute_widget.currentText().strip()
-        compute_widget.blockSignals(True)
-        compute_widget.clear()
-        compute_widget.addItems(allowed)
-        if current in allowed:
-            compute_widget.setCurrentText(current)
-        else:
-            # 原值不可用(如 cpu 下的 float16), 回退到 int8
-            compute_widget.setCurrentText("int8")
-        compute_widget.blockSignals(False)
 
     def _create_edit_widget(
         self, full_key: str, value: str, tooltip: Optional[str]
@@ -1827,6 +1718,10 @@ class ConfigEditorDialog(QDialog):
             self.settings.set(
                 "summarization.provider", self._summarization_tab.get_provider()
             )
+        if hasattr(self, "_transcription_tab"):
+            self.settings.set(
+                "transcription.engine", self._transcription_tab.get_engine()
+            )
 
         self.settings.save()
         self.accept()
@@ -1840,3 +1735,6 @@ class ConfigEditorDialog(QDialog):
         if hasattr(self, "_summarization_tab"):
             provider = self.settings.get("summarization.provider", "ollama")
             self._summarization_tab.set_provider(provider)
+        if hasattr(self, "_transcription_tab"):
+            engine = self.settings.get("transcription.engine", "faster-whisper")
+            self._transcription_tab.set_engine(engine)

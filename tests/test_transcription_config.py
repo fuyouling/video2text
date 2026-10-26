@@ -234,3 +234,66 @@ class TestTranscriptionServicePassthrough:
         assert kwargs["initial_prompt"] == "专有名词"
         assert kwargs["no_repeat_ngram_size"] == 3
         assert kwargs["vad_parameters"] == {"threshold": 0.5}
+
+
+class TestFunASRConfig:
+    def test_load_funasr_config(self, tmp_path):
+        s = _settings_with(
+            tmp_path,
+            "[transcription]\n"
+            "engine = funasr\n"
+            "funasr_model = paraformer-large-vad-punc\n"
+            "funasr_device = cpu\n"
+            "funasr_language = zh\n"
+            "funasr_num_workers = 8\n"
+            "funasr_compute_type = float32\n"
+            "funasr_punc_filter = False\n"
+            "funasr_vad_filter = True\n"
+            "funasr_vad_max_end_sil = 1200\n"
+            "hotwords = 阿里巴巴 达摩院\n"
+        )
+        cfg = _load_tx_config(s)
+        assert cfg.engine == "funasr"
+        assert cfg.device == "cpu"
+        assert cfg.language == "zh"
+        assert cfg.num_workers == 8
+        assert cfg.compute_type == "float32"
+        assert cfg.quantize is False
+        assert cfg.punc_filter is False
+        assert cfg.vad_filter is True
+        assert cfg.vad_max_end_sil == 1200
+        assert cfg.hotwords == "阿里巴巴 达摩院"
+
+    def test_load_funasr_config_legacy_quantize(self, tmp_path):
+        s = _settings_with(
+            tmp_path,
+            "[transcription]\n"
+            "engine = funasr\n"
+            "funasr_quantize = False\n"
+        )
+        cfg = _load_tx_config(s)
+        assert cfg.quantize is False
+        assert cfg.compute_type == "float32"
+
+        Settings._reset()
+        s2 = _settings_with(
+            tmp_path,
+            "[transcription]\n"
+            "engine = funasr\n"
+            "funasr_quantize = True\n"
+        )
+        cfg2 = _load_tx_config(s2)
+        assert cfg2.quantize is True
+        assert cfg2.compute_type == "int8"
+
+    def test_funasr_config_defaults_without_hotwords(self, tmp_path):
+        s = _settings_with(
+            tmp_path,
+            "[transcription]\n"
+            "engine = funasr\n"
+        )
+        cfg = _load_tx_config(s)
+        assert cfg.hotwords == ""
+        assert cfg.initial_prompt == ""
+        assert cfg.compute_type == "int8"
+        assert cfg.quantize is True

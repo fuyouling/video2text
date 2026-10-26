@@ -33,8 +33,8 @@
     "settings_fav_clear_input": "すべての入力ディレクトリをクリア",
     "settings_fav_clear_output": "すべての出力ディレクトリをクリア",
     "tools": "ツール",
-    "tools_voice_to_text": "音声テキスト化",
     "tools_nvidia_api_test": "Nvidia API 応答テスト",
+    "tools_amd_api_test": "AMD API 応答テスト",
     "help": "ヘルプ",
     "help_donate": "寄付",
     "help_about": "について",
@@ -74,12 +74,18 @@
     "tx_prompt_group": "文字起こしプロンプト",
     "tx_prompt_placeholder": "シーンの指示、精度向上のための専門用語、簡潔に",
     "hotwords_placeholder": "ホットワード/フレーズ, 単一のバイアス前置として, 重要な専門用語, 簡潔に",
-    "tx_prompt_template_placeholder": "保存したプロンプトを選択…",
+    "tx_prompt_template_placeholder": "プロンプトテンプレートを選択…",
     "summary_prompt_group": "要約プロンプト",
-    "summary_prompt_placeholder": "カスタム要約プロンプト（任意）; 空の場合はデフォルト",
-    "summary_prompt_template_placeholder": "保存したプロンプトを選択…",
-    "markdown_cb": "Markdown形式",
-    "markdown_tooltip": "有効にすると要約にMarkdown書式を自動適用します。\nカスタムMarkdownについては、prompts.jsonのmarkdown_promptフィールドを直接編集してください。",
+    "summary_prompt_placeholder": "役割とフォーマットの要件を含むカスタム要約プロンプト（WYSIWYG）",
+    "summary_prompt_template_placeholder": "プロンプトテンプレートを選択…",
+    "prompt_builtin_group": "── 組み込みプリセット ──",
+    "prompt_custom_group": "── カスタムテンプレート ──",
+    "prompt_reset_btn": "リセット",
+    "prompt_reset_tooltip": "エディタを現在のテンプレートの初期内容に復元",
+    "prompt_reset_confirm_title": "リセットの確認",
+    "prompt_reset_confirm_msg": "現在の内容を「{name}」の初期プロンプトにリセットしますか？未保存の変更は失われます。",
+    "prompt_cannot_delete_builtin": "組み込みプリセットは削除できません。",
+    "prompt_save_as": "新しいテンプレートとして保存",
     "log_panel_title": "ログ出力",
     "placeholder_new": "新規",
     "placeholder_new_tx": "新規",
@@ -182,8 +188,8 @@
     "stop_force_terminate": "  ├─ ⚠ ワーカースレッドが終了要求に応答しませんでした。強制終了します...",
     "dep_check_skip_warn": "起動時の依存関係チェックに失敗しましたが、スキップされました（メインUIは動作します）",
     "dep_check_start": "起動時依存関係チェック: 開始",
-    "dep_model_complete": "モデルが完全です (%s)",
-    "dep_model_missing": "モデルが不足しています (%s)",
+    "dep_model_complete": "モデルが完全です ({name})",
+    "dep_model_missing": "モデルが不足しています ({name})",
     "dep_dll_complete": "DLL依存関係が完全です",
     "dep_dll_missing": "DLL依存関係が不足しています",
     "dep_all_ready": "すべての依存関係が準備完了、ダウンロード不要",
@@ -206,7 +212,20 @@
     "dep_download_start": "依存関係のダウンロードを開始: model=%s, dll=%s, keep_archive=%s",
     "failed_log_write": "失敗ログの書き込みに失敗しました: %s",
     "tx_prompt_load_fail": "文字起こしプロンプトテンプレートの読み込みに失敗しました",
-    "summary_prompt_load_fail": "要約プロンプトテンプレートの読み込みに失敗しました"
+    "summary_prompt_load_fail": "要約プロンプトテンプレートの読み込みに失敗しました",
+    "tx_prompt_none": "プロンプトを使用しない (クリア)",
+    "tx_prompt_reset_btn": "リセット",
+    "tx_prompt_reset_tooltip": "現在のテンプレートの初期内容に復元",
+    "tx_prompt_reset_confirm_title": "リセットの確認",
+    "tx_prompt_reset_confirm_msg": "現在の内容を「{name}」の初期設定にリセットしますか？未保存の変更は失われます。",
+    "tx_prompt_cannot_delete_builtin": "組み込みプリセットは削除できません。",
+    "tx_prompt_len_warning": "初期プロンプトが長すぎます（現在 {count} 文字、デコード枠確保のため300文字以内を推奨）",
+    "tx_hotwords_count_warning": "ホットワードが多すぎます（現在 {count} 語、予算超過防止のため50語以内を推奨）",
+    "tx_prompt_tooltip": "Whisper初期プロンプト：句読点、表記ゆれ防止、専門用語の綴りを誘導（300文字以内を推奨）",
+    "tx_hotwords_tooltip": "Whisperバイアスホットワード：空白またはカンマ区切りで専門用語の認識精度を向上（50語以内を推奨）",
+    "tx_hotwords_funasr_hint": "固有名詞やホットワードをスペースまたはカンマで区切って入力 (例: 人工知能 深層学習)",
+    "tx_hotwords_funasr_tooltip": "FunASR はホットワードバイアスにより固有名詞の認識率を向上させます",
+    "tx_prompt_funasr_disabled_hint": "FunASR (非自己回帰モデル) は文全体のプロンプトを使用しません。下のホットワードで認識を強化してください"
   },
   "about": {
     "title": "Video2Text について",
@@ -253,7 +272,11 @@
       "keep_label": "ダウンロード後：",
       "keep_yes": "アーカイブを保持",
       "keep_no": "削除（容量節約）",
-      "dll_ready": "✓ DLLは完全です。何もする必要はありません"
+      "dll_ready": "✓ DLLは完全です。何もする必要はありません",
+      "funasr_opt": "FunASR Paraformer をダウンロード (中国語高精度, ~540MB, ModelScope)",
+      "funasr_ready": "✓ FunASR Paraformer モデル準備完了",
+      "whisper_opt": "Faster-Whisper をダウンロード (多言語対応, Large-v3-Turbo, ~1.4GB)",
+      "whisper_ready": "✓ Faster-Whisper モデル準備完了"
     },
     "file_select": {
       "title": "メディアファイルを選択",
@@ -557,6 +580,43 @@
     "models_empty": "利用可能なオンラインモデルがありません。しばらくしてから再試行するか、「リストを更新」をクリックしてください",
     "models_loading": "オンラインモデルリストを取得中…"
   },
+  "amd_test": {
+    "title": "AMD API 応答テスト",
+    "one_click": "一括テスト",
+    "stop": "停止",
+    "api_key_ok": "API Key: 読み込み済み",
+    "api_key_missing": "API Key: 未設定",
+    "api_key_missing_msg": "AMD_API_KEY が見つかりません。テスト前に .env で設定してください。",
+    "timeout_label": "タイムアウト {seconds}s",
+    "concurrency_label": "並列 {workers}",
+    "current_model": "現在のモデル: {model}",
+    "latency_label": "応答時間",
+    "latency_value": "{seconds} s",
+    "latency_over": "> {seconds}s",
+    "latency_none": "—",
+    "status_pending": "未テスト",
+    "status_queued": "待機中",
+    "status_testing": "テスト中",
+    "status_ok": "成功",
+    "status_fail": "失敗",
+    "status_rate_limited": "レート制限",
+    "progress": "進捗 {done}/{total}  ·  成功 {ok}  ·  失敗 {fail}  ·  レート制限 {limited}",
+    "retest_tooltip": "このモデルを再テスト",
+    "card_tooltip": "「成功」のカードをダブルクリックすると、そのモデルを設定に保存します",
+    "error_no_key": "API Key がありません",
+    "error_timeout": "応答タイムアウト（{latency}s > {limit}s）",
+    "error_empty": "応答が空です",
+    "apply_title": "要約モデルに設定",
+    "apply_confirm": "{model} を summarization.amd_model に書き込みますか？",
+    "apply_done": "{model} を AMD 要約モデルに設定しました",
+    "apply_failed": "設定の保存に失敗しました: {error}",
+    "refresh_list": "リストを更新",
+    "refresh_list_loading": "モデルリストを更新中…",
+    "refresh_list_done": "モデルリストを更新しました（{count} 件）",
+    "refresh_list_failed": "モデルリストの更新に失敗しました: {error}",
+    "models_empty": "利用可能なオンラインモデルがありません。しばらくしてから再試行するか、「リストを更新」をクリックしてください",
+    "models_loading": "オンラインモデルリストを取得中…"
+  },
   "donate": {
     "title": "寄付",
     "image_not_found": "画像が見つかりません: {path}"
@@ -674,7 +734,10 @@
     "tips_label": "[bold]Tips:[/bold]",
     "tip1": "1. Use --help to view detailed options for a single command",
     "tip2": "2. All transcription and summarization parameters (model, language, device, temperature, etc.) are configured via config.ini",
-    "tip3": "3. In PowerShell, call the executable by its full path, e.g.: .\\video2text.exe transcribe video.mp4 -o output"
+    "tip3": "3. In PowerShell, call the executable by its full path, e.g.: .\\video2text.exe transcribe video.mp4 -o output",
+    "opt_initial_prompt": "初期文字起こしプロンプトを一時的に上書き",
+    "opt_hotwords": "文字起こしホットワードを一時的に上書き（空白またはカンマ区切り）",
+    "opt_prompt_template": "プロンプトプリセットまたはテンプレート名（例: general, meeting, ecommerce, tech, bilingual）"
   },
   "errors": {
     "file_not_found": "ファイルが見つかりません: {path}",
@@ -734,117 +797,6 @@
       "frame_rate_parse_failed": "VideoProcessor: ⚠ フレームレート解析失敗 (%s)、デフォルト 0"
     }
   },
-  "voice": {
-    "user_prefix": "[ユーザー] ",
-    "summary_prefix": "[要約] ",
-    "sidebar": {
-      "title": "会話"
-    },
-    "chat": {
-      "placeholder": "上の録音ボタンをクリックして音声文字起こしを開始"
-    },
-    "back_main": "メインに戻る",
-    "new_conv": "新規",
-    "record_start": "録音開始",
-    "record_stop": "録音停止",
-    "conv": {
-      "meta": "{time}  ·  {count} メッセージ"
-    },
-    "summary_saved": "要約を保存しました: {path}",
-    "status": {
-      "initializing": "● 初期化中...",
-      "ready": "● 準備完了",
-      "model_not_ready": "● モデルがまだ読み込まれていません。お待ちください...",
-      "recording_vad": "● 録音中 (VAD)...",
-      "recording_timer": "● 録音中 (タイマーチャンク)...",
-      "stopped": "● 停止",
-      "recording_done": "● 録音終了、文字起こし中...",
-      "transcribing": "● 文字起こし中...",
-      "no_speech": "● 音声が検出されませんでした",
-      "transcribe_done": "● 文字起こし完了",
-      "transcribe_fail": "● 文字起こし失敗: {error}",
-      "record_fail": "● 録音失敗: {error}",
-      "selected_count": "{count} 件の会話を選択中",
-      "conv_deleted": "会話を削除しました",
-      "deleted_count": "{count} 件の会話を削除しました",
-      "multi_select": "複数選択: クリックで項目を選択、右クリックで一括操作",
-      "edit_mode": "編集モード: 内容を変更して右クリックメニューから[保存]で完了",
-      "msg_saved": "メッセージを保存しました",
-      "edit_cancelled": "編集をキャンセルしました",
-      "copied": "クリップボードにコピーしました",
-      "correcting": "文法を修正中...",
-      "correct_done": "文法修正が完了しました",
-      "msg_deleted": "メッセージを削除しました",
-      "summarizing": "要約中...",
-      "summary_done": "要約が完了しました",
-      "op_fail": "操作に失敗しました: {error}",
-      "loading_model": "● モデルを読み込み中...",
-      "model_load_fail": "● モデルの読み込みに失敗しました: {error}"
-    },
-    "menu": {
-      "exit_multi_select": "複数選択を終了",
-      "delete_selected": "選択を削除",
-      "select_toggle_all": "すべて選択 / 選択解除",
-      "delete_all": "すべて削除",
-      "multi_select": "複数選択",
-      "delete_conv": "この会話を削除",
-      "save": "保存",
-      "cancel_edit": "編集をキャンセル",
-      "copy": "コピー",
-      "edit": "編集",
-      "delete": "削除",
-      "grammar": "修正",
-      "summarize": "要約"
-    },
-    "dialog": {
-      "record_error": {
-        "title": "録音エラー"
-      },
-      "record_fail": {
-        "title": "録音失敗",
-        "msg": "録音を開始できませんでした: {error}"
-      },
-      "delete_conv": {
-        "title": "会話の削除",
-        "msg": "この会話を削除してもよろしいですか？\nディスク上のJSONファイルも削除され、元に戻せません。"
-      },
-      "delete_fail": {
-        "title": "削除失敗",
-        "msg": "会話の削除中にエラーが発生しました: {error}"
-      },
-      "no_selection": "最初に削除する会話を選択してください",
-      "batch_delete": {
-        "title": "一括削除",
-        "msg": "選択した {count} 件の会話を削除してもよろしいですか？\nこの操作は元に戻せません。"
-      },
-      "no_convs": "利用可能な会話がありません",
-      "delete_all": {
-        "title": "すべて削除",
-        "msg": "すべての {count} 件の会話を削除してもよろしいですか？\nこの操作は元に戻せません。"
-      },
-      "delete_msg": {
-        "title": "メッセージの削除",
-        "msg": "このメッセージを削除してもよろしいですか？"
-      },
-      "select_conv_first": "最初に会話を選択してください"
-    },
-    "log_delete_conv_fail": "会話 {conv_id} の削除に失敗しました: {error}",
-    "widget": {
-      "start_record_failed": "Failed to start recording: {error}",
-      "record_error_exception": "on_record_error exception:\n{error}",
-      "transcribe_done_exception": "_on_transcribe_done exception:\n{error}",
-      "transcribe_error_exception": "_on_transcribe_error exception:\n{error}",
-      "api_call_done_exception": "_start_api_call on_done exception:\n{error}"
-    },
-    "role": {
-      "user": "User",
-      "assistant": "Assistant"
-    },
-    "prompt": {
-      "correct_text": "The user recorded audio using faster-whisper for speech recognition, and some text may be incorrect. Please correct typos and unnatural phrasing in the user's transcribed text, and output in JSON format: {\"source_text\":\"original text\",\"update_text\":\"corrected text\"}. Output only the JSON, without any other content.",
-      "summarize_conversation": "Please summarize the following multi-turn conversation into a well-structured Markdown document. Requirements: output only the Markdown content itself, without any explanatory text, prefix, or suffix.\n\nConversation:\n{text}"
-    }
-  },
   "config": {
     "section": {
       "app": "アプリケーション",
@@ -854,8 +806,7 @@
       "output": "出力",
       "paths": "パス",
       "tools": "ツール",
-      "text_processing": "テキスト処理",
-      "voice_to_text": "音声テキスト化"
+      "text_processing": "テキスト処理"
     },
     "group": {
       "app": {
@@ -867,7 +818,8 @@
         "decode": "デコード",
         "vad": "VAD検出",
         "quality": "品質管理",
-        "repeat": "繰り返し抑制"
+        "repeat": "繰り返し抑制",
+        "prompt": "プロンプトとホットワード"
       },
       "preprocessing": {
         "audio": "音声処理",
@@ -879,19 +831,14 @@
       },
       "text_processing": {
         "merge": "マージとクリーン"
-      },
-      "voice_to_text": {
-        "basic": "基本",
-        "audio_vad": "音声とVAD",
-        "endpoint": "リアルタイムエンドポイント",
-        "prompt": "プロンプト",
-        "background": "背景画像"
       }
     },
     "combo": {
       "auto_language": "システム言語に従う",
       "mode_single": "シングルスレッド",
-      "mode_multi": "マルチスレッド"
+      "mode_multi": "マルチスレッド",
+      "engine_funasr": "FunASR Paraformer (中国語高精度)",
+      "engine_whisper": "Faster-Whisper (多言語対応)"
     },
     "label": {
       "app": {
@@ -928,7 +875,10 @@
         "vad_threshold": "VAD閾値",
         "vad_min_silence_ms": "VAD最小無音 (ms)",
         "vad_speech_pad_ms": "VAD音声パッド (ms)",
-        "vad_max_speech_s": "VAD最大音声 (s)"
+        "vad_max_speech_s": "VAD最大音声 (s)",
+        "initial_prompt": "文字起こし初期プロンプト",
+        "hotwords": "文字起こしホットワード",
+        "engine": "文字起こしエンジン"
       },
       "preprocessing": {
         "audio_sample_rate": "音声サンプルレート",
@@ -953,32 +903,6 @@
         "max_gap": "最大ギャップ",
         "min_length": "最小長",
         "filler_words": "フィラー単語"
-      },
-      "voice_to_text": {
-        "voice_dir": "音声保存ディレクトリ",
-        "summary_dir": "要約保存ディレクトリ",
-        "realtime_auto_send_interval": "自動送信間隔",
-        "model_path": "モデルパス",
-        "device": "デバイス",
-        "compute_type": "計算タイプ",
-        "language": "言語",
-        "num_workers": "推論スレッド数",
-        "audio_sample_rate": "音声サンプルレート",
-        "audio_channels": "音声チャンネル",
-        "vad_filter": "VADフィルタ",
-        "vad_threshold": "VAD閾値",
-        "vad_min_silence_ms": "VAD最小無音 (ms)",
-        "vad_speech_pad_ms": "VAD音声パッド (ms)",
-        "vad_max_speech_s": "VAD最大音声 (s)",
-        "initial_prompt": "初期プロンプト",
-        "bg_image_path": "背景画像パス",
-        "bg_transparency": "背景透明度",
-        "vad_endpoint_detection": "VADエンドポイント検出",
-        "vad_energy_threshold": "VADエネルギー閾値",
-        "vad_silence_frames": "VAD無音フレーム",
-        "vad_min_speech_frames": "VAD最小音声フレーム",
-        "vad_calibration_frames": "VADキャリブレーションフレーム",
-        "context_max_chars": "コンテキスト最大文字数"
       }
     },
     "tooltip": {
@@ -1014,7 +938,10 @@
         "vad_threshold": "VAD音声閾値 (0~1)。騒がしい環境では上げる (0.6~0.7)、デフォルト0.5",
         "vad_min_silence_ms": "セグメント分割の最小無音時間 (ms)、デフォルト2000",
         "vad_speech_pad_ms": "セグメント境界の音声パディング (ms)、デフォルト400",
-        "vad_max_speech_s": "VAD最大セグメント長 (秒)、0 = 無制限"
+        "vad_max_speech_s": "VAD最大セグメント長 (秒)、0 = 無制限",
+        "initial_prompt": "Whisperデコードの初期プロンプト。句読点や専門用語の誘導に使用",
+        "hotwords": "Whisperバイアスホットワード（空白/カンマ区切り）。専門用語の認識確率を強制的に強化",
+        "engine": "音声文字起こしエンジンを選択: Faster-Whisper (多言語対応) または FunASR (アリババDAMOアカデミーの中国語高精度モデル)"
       },
       "preprocessing": {
         "audio_sample_rate": "音声サンプルレート (Hz)、Whisper推奨16000",
@@ -1039,32 +966,6 @@
         "max_gap": "セグメントマージの最大ギャップ (秒)。離れすぎたセグメントはマージしない",
         "min_length": "マージの最小テキスト長。短いセグメントは隣接とマージを試みる",
         "filler_words": "除去するフィラー単語、カンマ区切り"
-      },
-      "voice_to_text": {
-        "voice_dir": "音声録音と会話保存ディレクトリ",
-        "summary_dir": "音声文字起こし要約保存ディレクトリ",
-        "realtime_auto_send_interval": "音声文字起こしのリアルタイム自動送信間隔 (秒)",
-        "model_path": "Whisperモデルのディレクトリ名またはパス",
-        "device": "推論デバイス: cuda (NVIDIA GPU)、cpu、auto",
-        "compute_type": "計算タイプ: float16、int8、float32。CPUはfloat16非対応",
-        "language": "文字起こし言語コード: zh、en、ja など。空または 'auto'",
-        "num_workers": "CTranslate2推論スレッド数 (1~CPUコア数)",
-        "audio_sample_rate": "音声サンプルレート (Hz)、Whisper推奨16000",
-        "audio_channels": "音声チャンネル: 1=モノラル（推奨）、2=ステレオ",
-        "vad_filter": "VADを有効にして無音をフィルタし、幻覚を減らす: True / False",
-        "vad_threshold": "VAD音声閾値 (0~1)。騒がしい環境では上げる、デフォルト0.5",
-        "vad_min_silence_ms": "セグメント分割の最小無音時間 (ms)、デフォルト2000",
-        "vad_speech_pad_ms": "セグメント境界の音声パディング (ms)、デフォルト400",
-        "vad_max_speech_s": "VAD最大セグメント長 (秒)、0 = 無制限",
-        "initial_prompt": "文字起こし用の初期プロンプト。コンテキスト強化に有用",
-        "bg_image_path": "音声テキスト化インターフェースの背景画像パス。空で無効",
-        "bg_transparency": "背景画像の透明度 (0~255)、0=透明、255=不透明",
-        "vad_endpoint_detection": "リアルタイムVADエンドポイント検出を有効にする: True / False",
-        "vad_energy_threshold": "VADエネルギー閾値 (0~N)、0で自動キャリブレーション",
-        "vad_silence_frames": "発話終了とみなす連続無音フレーム数（各約32ms）",
-        "vad_min_speech_frames": "有効な発話とみなす最小音声フレーム数（各約32ms）",
-        "vad_calibration_frames": "VADキャリブレーション用無音フレーム数（各約10ms）",
-        "context_max_chars": "連続文字起こしの最大コンテキスト文字数"
       }
     }
   },
@@ -1123,9 +1024,36 @@
       "prompt_load_failed": "PromptManager: 読み込み失敗 ({name})",
       "prompt_loaded": "PromptManager: 読み込み完了 ({name})",
       "prompt_save_error": "PromptManager: 保存失敗 ({error})",
-      "default_prompt": "あなたはプロのテキスト要約アシスタントです。重要な情報を抽出し、簡潔で正確な要約を生成するのが得意です。要約本文のみを出力してください。**冒頭の挨拶、結びの説明、解説、注釈は一切追加しないでください。** **余計な装飾や引き伸ばしをせず、純粋に要約内容のみを出力してください。** 末尾に再度まとめを書く必要はありません。",
+      "default_prompt": "あなたはプロのテキスト要約アシスタントです。重要な核心ポイントや事実を一切漏らさず、テキスト全体を網羅的かつ完全に要約してください。要約本文のみを出力してください。**冒頭の挨拶、結びの説明、解説、注釈は一切追加しないでください。** **余計な装飾や引き伸ばしをせず、純粋に要約内容のみを出力してください。** 末尾に再度まとめを書く必要はありません。",
       "text_content_label": "テキスト内容：",
       "markdown_prompt": "\n要約を以下の Markdown 形式で出力してください：\n- **要点**\n\t- 内容\n\t- 内容\n- **要点**\n\t- 内容\n\t- 内容\n\nMarkdown の書式を正しく保ち、そのままレンダリングできるようにしてください。\n",
+      "presets": {
+        "default": {
+          "name": "標準要点まとめ",
+          "desc": "内容全体を網羅的かつ完全に要約し、重要な要点や詳細を漏らさず整理して出力",
+          "prompt": "あなたはプロのテキスト要約アシスタントです。入力されたテキストに対して網羅的かつ完全に、重要な論点、事実、データ、詳細を漏らすことなく構造的に要約してください。\n\n要約要件：\n1. 完全な網羅性：原文の流れを余すところなく整理し、テキストの長さや情報量に応じて十分に展開してください。項目数に上限は設けず、重要なポイントを一切漏らさないでください。\n2. 構造化：明確な階層構造を持つ Markdown リスト形式で出力してください：\n   - **核心要点タイトル**：明確なテーマを提示\n     - 根拠となる事実、論理の展開、データ、具体的な詳細を記述\n3. 純粋な出力：要約本文のみを出力してください。**冒頭の挨拶、結びの説明、解説、注釈は一切追加しないでください。** **余計な装飾や引き伸ばしをせず、純粋に要約内容のみを出力してください。** 末尾に再度まとめを書く必要はありません。"
+        },
+        "meeting": {
+          "name": "会議・インタビュー議事録",
+          "desc": "議題の背景、合意事項、明確なネクストアクション(Action Items)を抽出",
+          "prompt": "あなたはプロのエグゼクティブ議事録アシスタントです。テキストから会議の重要事項を抽出し、整ったMarkdown形式で出力してください：\n\n### 1. 議題と背景\n- 主な議論の背景とテーマ\n\n### 2. 合意事項と決定事項\n- 参加者間で合意された重要結論\n\n### 3. アクションアイテム (Action Items)\n- [ ] **担当事項**: 具体的なタスクと担当者（言及がある場合）\n\n論理的かつ客観的にまとめ、挨拶や前置きなしで議事録本文のみを出力してください。"
+        },
+        "lecture": {
+          "name": "学習・講義ノート",
+          "desc": "学術・講義内容を体系化し、概念解説、中核理論、具体例を整理",
+          "prompt": "あなたはプロの学術・知識整理アシスタントです。以下の学習内容を構造化されたMarkdown形式で体系的な学習ノートとしてまとめてください：\n\n## 一、テーマと背景概念\n## 二、重要ポイントと理論の解説\n## 三、具体例と論拠\n## 四、まとめと考察\n\n分かりやすく体系的に整理し、ノート本文のみを出力してください。"
+        },
+        "tldr": {
+          "name": "一目でわかる要約 (TL;DR)",
+          "desc": "150字以内で最も重要な結論や出来事を極めて簡潔に要約",
+          "prompt": "あなたは超要約アシスタントです。150字以内で最も核心的な結論や主要な論点を簡潔に要約（TL;DR）してください。前置きや無駄な挨拶は一切含めず、要点のみを直接述べてください。"
+        },
+        "takeaways": {
+          "name": "名言・ハイライト抽出",
+          "desc": "対話のハイライト、印象的な名言、示唆に富む視点を抽出",
+          "prompt": "あなたは名言・視点抽出アシスタントです。テキストから最も示唆に富む視点や印象的な名言を抽出し、Markdown形式で出力してください：\n\n### 💡 核心的な視点\n- 重要視点のまとめ\n\n### 💬 印象的な名言・発言\n> 発言の引用（文脈を簡潔に付記）\n\n### 🔍 気づきと考察\n- 示唆に富む考察\n\n本文のみを出力し、挨拶等は不要です。"
+        }
+      },
       "ollama": {
         "already_running": "Ollamaサービスは既に実行中です",
         "process_exists": "Ollamaサービスプロセスが既に存在します",
@@ -1243,23 +1171,6 @@
         "stream_connection_failed": "MistralClient: ストリーム接続に失敗しました: {error}",
         "check_retry": "MistralClient: 接続チェックの試行 {attempt}/{max} が失敗しました。{wait}秒後に再試行します..."
       }
-    },
-    "voice_transcription": {
-      "audio_file_not_found": "音声ファイルが見つかりません: {path}",
-      "context_prefix": "前のコンテキスト: {context}",
-      "no_speech_detected": "(音声が検出されませんでした)",
-      "transcribe_failed": "VoiceTranscriptionService 文字起こし失敗: {error}",
-      "transcribe_failed_short": "文字起こし失敗: {error}"
-    },
-    "voice_recorder": {
-      "vad_calibrated": "VoiceRecorder VADキャリブレーション完了、noise_floor={value}",
-      "vad_chunk_save_failed": "VADチャンク保存失敗: {error}",
-      "missing_sounddevice": "sounddevice ライブラリがありません: {error}",
-      "recording_exception": "録音例外: {error}",
-      "save_recording_failed": "録音保存失敗: {error}",
-      "callback_status": "VoiceRecorder コールバックステータス: {status}",
-      "no_audio_data": "音声データが録音されていません",
-      "save_wav_failed": "WAV保存失敗: {error}"
     }
   },
   "storage": {
@@ -1290,13 +1201,6 @@
     "bookmark": {
       "load_fail": "読み取り失敗: %s",
       "save_fail": "書き込み失敗: %s"
-    },
-    "voice_store": {
-      "create_conv": "新しい会話 %s",
-      "read_conv_fail": "会話 %s の読み取りに失敗: %s",
-      "read_list_fail": "会話リスト %s の読み取りに失敗: %s",
-      "delete_conv": "会話 %s を削除しました",
-      "conv_not_found": "会話が見つかりません: {conv_id}"
     },
     "json": {
       "read_fail": "JSONファイル {name} の読み取りに失敗: {error}"
@@ -1372,7 +1276,39 @@
   "transcription_prompt_manager": {
     "load_failed": "TranscriptionPromptManager: ✗ 読み込み失敗 ({name})",
     "loaded": "TranscriptionPromptManager: ✓ 読み込み完了 ({name})",
-    "save_failed": "TranscriptionPromptManager: ✗ 保存失敗 ({error})"
+    "save_failed": "TranscriptionPromptManager: ✗ 保存失敗 ({error})",
+    "presets": {
+      "general": {
+        "name": "標準規範と句読点",
+        "desc": "標準的な発話と句読点の出力を誘導し、一般的な音声・動画に最適",
+        "prompt": "標準的な表記で文字起こしを行い、適切な句読点を補完してください。",
+        "hotwords": ""
+      },
+      "meeting": {
+        "name": "会議・インタビュー",
+        "desc": "アジェンダ、決定事項、共有、進捗報告など職場の頻出用語を強化",
+        "prompt": "ビジネス会議およびインタビューの会話です。発言内容を正確に認識し、ビジネス文脈を維持してください。",
+        "hotwords": "アジェンダ 議事録 決定事項 共有 報告 進捗 課題 アクションアイテム レビュー"
+      },
+      "ecommerce": {
+        "name": "EC・ライブコマース",
+        "desc": "EC運営、ライブ配信、広告出稿、動画販売用語などのホットワードを偏置",
+        "prompt": "EC運営およびライブコマースのチュートリアルです。専門用語や業界用語を正確に文字起こししてください。",
+        "hotwords": "SKU GMV ライブコマース カート 出品 販促 配信 広告 CV 転換率"
+      },
+      "tech": {
+        "name": "IT・プログラミング",
+        "desc": "開発技術、AIアルゴリズム、大文字小文字のコード用語を正確に維持",
+        "prompt": "ソフトウェア開発、AI、IT技術に関する内容です。専門用語の綴りやコードの大文字・小文字を正確に維持してください。",
+        "hotwords": "Python API Docker Linux PyTorch Git GPU CUDA Front-end Back-end Framework Bug Debug Web CI/CD LLM"
+      },
+      "bilingual": {
+        "name": "バイリンガル・日常会話",
+        "desc": "外来語や日常会話が混ざる音声をスムーズに認識",
+        "prompt": "日常会話や混在する表現を含む対話です。固有名詞と自然な文脈を維持してください。",
+        "hotwords": "OK PPT follow up update meeting schedule review project team catch up sync call demo"
+      }
+    }
   },
   "dll_downloader": {
     "proxy_source": {
@@ -1516,7 +1452,7 @@
   },
   "api_key": {
     "title": "API Key 管理",
-    "subtitle": "プロジェクトルートの .env 内のシークレットを管理します。値はデフォルトでマスク表示され、追加後に編集・削除できます。",
+    "subtitle": "プロジェクトルートの .env 内のシークレットを管理します。ベンダー名は自由に編集可能で、既存のキーは保護され、値はマスク表示されます。",
     "path_label": "設定ファイル: {path}",
     "file_missing": "ファイルが存在しません。保存時に作成されます",
     "list_section": "シークレット一覧",
@@ -1527,7 +1463,12 @@
     "show": "表示",
     "hide": "非表示",
     "delete": "削除",
-    "key_placeholder": "キー名（既存のものは変更不可）",
+    "col_vendor": "モデルベンダー",
+    "col_key": "環境変数 Key",
+    "col_value": "シークレット値",
+    "col_action": "操作",
+    "vendor_placeholder": "ベンダー名（例: OpenAI）",
+    "key_placeholder": "環境変数 Key（例: OPENAI_API_KEY）",
     "value_placeholder": "シークレット値",
     "empty_hint": "シークレットはまだありません。「追加」をクリックしてください",
     "error_empty_key": "キー名を空にすることはできません",
@@ -1573,7 +1514,6 @@
     "gen_bg_image": "Generated background-image icon: {path}",
     "gen_favorite": "Generated favorites icon: {path}",
     "gen_api_key": "Generated API Key icon: {path}",
-    "gen_voice": "Generated voice-to-text icon: {path}",
     "gen_api_test": "Generated API-test icon: {path}",
     "gen_about": "Generated about icon: {path}",
     "gen_arrow_right": "Generated right-arrow icon: {path}",
@@ -1581,5 +1521,72 @@
     "gen_main": "Generating video2text icon...",
     "gen_main_png": "Generated main icon PNG: {path}",
     "gen_main_ico": "Generated main icon ICO: {path}"
+  },
+  "transcription_tab": {
+    "engine_group": "文字起こしエンジン / モデル選択",
+    "funasr_group": "FunASR Paraformer モデルパラメータ",
+    "radio_funasr": "FunASR (中国語高精度)",
+    "radio_whisper": "Faster-Whisper (多言語対応)",
+    "whisper_group": "Faster-Whisper モデルパラメータ"
+  },
+  "tx_labels": {
+    "funasr_device": "推論デバイス",
+    "funasr_language": "言語",
+    "funasr_model": "モデル選択 / パス",
+    "funasr_num_workers": "推論スレッド数",
+    "funasr_punc_filter": "句読点復元",
+    "funasr_quantize": "INT8 量子化高速化",
+    "funasr_vad_filter": "FSMN-VAD フィルター",
+    "funasr_vad_max_end_sil": "VAD 文末無音判定(ms)",
+    "whisper_beam_size": "ビームサイズ",
+    "whisper_best_of": "Best Of サンプル数",
+    "whisper_compression_ratio_threshold": "圧縮率しきい値",
+    "whisper_compute_type": "計算タイプ",
+    "whisper_condition_on_previous_text": "前の文を条件とする",
+    "whisper_device": "推論デバイス",
+    "whisper_language": "言語",
+    "whisper_log_prob_threshold": "対数確率しきい値",
+    "whisper_model": "モデル選択 / パス",
+    "whisper_no_repeat_ngram_size": "N-gram 重複防止サイズ",
+    "whisper_no_speech_threshold": "無音判定しきい値",
+    "whisper_num_workers": "推論スレッド数",
+    "whisper_repetition_penalty": "繰り返しペナルティ",
+    "whisper_temperature": "サンプリング温度",
+    "whisper_vad_filter": "VAD 無音フィルター",
+    "whisper_vad_max_speech_s": "VAD 最大セグメント長(s)",
+    "whisper_vad_min_silence_ms": "VAD 最小無音時間(ms)",
+    "whisper_vad_speech_pad_ms": "VAD 音声パディング(ms)",
+    "whisper_vad_threshold": "VAD 音声しきい値",
+    "whisper_word_timestamps": "単語レベルのタイムスタンプ"
+  },
+  "tx_tooltips": {
+    "funasr_device": "推論計算デバイス: auto (自動検出), cuda (GPU), cpu",
+    "funasr_language": "文字起こし言語: zh (中国語) または auto",
+    "funasr_model": "FunASR Paraformer モデルを選択するか、右側の参照からカスタムフォルダを指定",
+    "funasr_num_workers": "ONNX Runtime CPU 推論スレッド数 (デフォルト 4、マルチコアCPUで増やすと高速化)",
+    "funasr_punc_filter": "CT-Transformer 句読点復元を有効化。無効にすると約30%高速化し句読点なしで出力",
+    "funasr_quantize": "INT8 モデル量子化による高速化 (より高速・低メモリ)。無効時は元の FP32 精度を使用",
+    "funasr_vad_filter": "FSMN-VAD 音声活動検出を有効にして無音区間を分割",
+    "funasr_vad_max_end_sil": "文末の区切りと判定する最大無音ミリ秒数 (デフォルト 800ms、大きいほど長い文になる)",
+    "whisper_beam_size": "ビームサーチ幅 (1~10)。大きいほど正確ですが速度が低下します",
+    "whisper_best_of": "サンプリング候補数 (temperature > 0 のとき有効)",
+    "whisper_compression_ratio_threshold": "Gzip 圧縮率による重複検出のしきい値、デフォルト 2.4",
+    "whisper_compute_type": "計算精度: float16, int8, float32。注: CPUはfloat16に非対応",
+    "whisper_condition_on_previous_text": "前の文脈に基づいて生成するかどうか。長尺音声では False を推奨",
+    "whisper_device": "推論デバイス: cuda (NVIDIA GPU), cpu, auto (自動検出)",
+    "whisper_language": "言語コード: zh (中国語), en (英語), ja (日本語) など。auto は自動検出",
+    "whisper_log_prob_threshold": "平均対数確率のしきい値、デフォルト -1.0",
+    "whisper_model": "Faster-Whisper モデルを選択するか、右側の参照からカスタムフォルダを指定",
+    "whisper_no_repeat_ngram_size": "繰り返しを防ぐ n-gram サイズ。0 で無効化",
+    "whisper_no_speech_threshold": "無音判定の確率しきい値、デフォルト 0.6",
+    "whisper_num_workers": "CTranslate2 推論スレッド数 (1 ~ CPUコア数)",
+    "whisper_repetition_penalty": "繰り返しペナルティ係数 (>1 で繰り返しを抑制)",
+    "whisper_temperature": "サンプリング温度。カンマ区切りでフォールバックに対応 (例: 0.0,0.2,0.4)",
+    "whisper_vad_filter": "Silero VAD を有効にして無音区間を除去し、幻覚を抑制",
+    "whisper_vad_max_speech_s": "VAD 1セグメントの最大秒数、0 は無制限",
+    "whisper_vad_min_silence_ms": "セグメント分割に必要な最小無音時間 (ミリ秒)、デフォルト 2000",
+    "whisper_vad_speech_pad_ms": "セグメント境界の音声パディング (ミリ秒)、デフォルト 400",
+    "whisper_vad_threshold": "VAD 音声検出のしきい値 (0~1)。騒音環境では 0.6~0.7 を推奨",
+    "whisper_word_timestamps": "単語レベルのタイムスタンプを生成するかどうか"
   }
 }

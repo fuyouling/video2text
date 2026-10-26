@@ -20,8 +20,9 @@ class TestTextCleaner:
         assert self.cleaner.remove_extra_whitespace("hello\r\nworld") == "hello\nworld"
 
     def test_remove_fillers(self):
+        cleaner = TextCleaner({"filler_words": ["嗯", "嗯嗯"]})
         text = "嗯今天嗯嗯我们讨论一下"
-        result = self.cleaner.remove_fillers(text)
+        result = cleaner.remove_fillers(text)
         assert result == "今天我们讨论一下"
 
     def test_remove_fillers_preserves_semantic_words(self):

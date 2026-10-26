@@ -745,23 +745,6 @@ def gen_api_key(output_dir: Optional[Path] = None) -> Path:
     return path
 
 
-def gen_voice(output_dir: Optional[Path] = None) -> Path:
-    """生成「语音转文字」麦克风图标 PNG。"""
-    if output_dir is None:
-        output_dir = Path(__file__).resolve().parent.parent.parent / "assets"
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    img, draw = _new_canvas()
-    draw.rounded_rectangle([196, 120, 316, 300], radius=60, fill=_MENU_BLUE)
-    draw.line([(256, 300), (256, 384)], fill=_MENU_BLUE, width=30)
-    draw.arc([150, 300, 362, 512], start=180, end=360, fill=_MENU_BLUE, width=40)
-    draw.line([(170, 470), (342, 470)], fill=_MENU_BLUE, width=40)
-    path = output_dir / "voice.png"
-    img.save(path)
-    logger.info(t("generate_icon.gen_voice", path=path))
-    return path
-
 
 def gen_api_test(output_dir: Optional[Path] = None) -> Path:
     """生成「Nvidia API 测试」烧瓶图标 PNG。"""
@@ -949,7 +932,6 @@ if __name__ == "__main__":
         gen_bg_image()
         gen_favorite()
         gen_api_key()
-        gen_voice()
         gen_api_test()
         gen_about()
         gen_arrow_right()
@@ -975,7 +957,6 @@ if __name__ == "__main__":
             gen_bg_image()
             gen_favorite()
             gen_api_key()
-            gen_voice()
             gen_api_test()
             gen_about()
             gen_arrow_right()

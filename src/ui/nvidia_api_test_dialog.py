@@ -4,7 +4,7 @@
   - `fetch_text_summary_models()`：动态拉取第 5.4 节的文本总结可用模型（复用
     `tests/fetch_free_endpoints.py` 的 NGC 目录翻页 + 关键词筛选逻辑，失败或无结果
     时返回空列表，由 UI 给出空状态提示，不再回退离线常量）。
-  - `test_one_model()`：复用 `NvidiaClient` 发一次最小请求，30s 超时即判失败。
+  - `test_one_model()`：复用 `NvidiaClient` 发一次极轻量请求（Prompt: "Hi", max_tokens: 10），15s 超时即判失败。
   - `ModelCard`：卡片式 UI（状态色条 + 响应时间 + 摘要片段 + 右上角重测按钮）。
   - `_ModelListFetcher`：常驻 QThread，后台拉取模型列表，到位后重建卡片。
   - `NvidiaApiTestWorker`：常驻 QThread，内部线程池最多 5 并发，结果经信号回主线程。
@@ -202,13 +202,12 @@ def fetch_text_summary_models(timeout: int = 30) -> List[str]:
         logger.warning("Failed to fetch text-summary models dynamically: %s", e)
         return []
 
-#: 默认最长响应 30s，超过视为失败（§6.6）
-TEST_TIMEOUT = 30
+#: 急速探测最长响应 15s，超过视为失败
+TEST_TIMEOUT = 15
 #: 探测用的最小请求
-TEST_PROMPT = "In a nutshell: It's sunny today, perfect for a walk outside."
-#: 探测预算需足够推理模型（如 openai/gpt-oss）留出 reasoning 余量，
-#: 否则整段 max_tokens 被 reasoning 占满、message.content 为 null 被误判为「空响应」。
-TEST_MAX_TOKENS = 512
+TEST_PROMPT = "Hi"
+#: 极简探测 Token 预算
+TEST_MAX_TOKENS = 10
 #: 并发上限（§6.7）
 MAX_CONCURRENCY = 5
 #: 卡片内展示的返回摘要片段长度
@@ -221,7 +220,7 @@ _CARD_COLUMNS = 3
 _POLL_INTERVAL = 0.1
 _IDLE_POLL_INTERVAL = 0.2
 
-#: 状态 -> (前景色, 背景色)，与 voice_to_text_widget 的配色保持一致
+#: 状态 -> (前景色, 背景色)
 _STATUS_COLORS: Dict[str, tuple] = {
     "pending": ("#9e9e9e", "#f5f5f5"),
     "queued": ("#7e57c2", "#ede7f6"),
@@ -1218,8 +1217,9 @@ class NvidiaApiTestDialog(QDialog):
         self._update_progress()
 
     def _on_apply_model(self, model: str) -> None:
-        """双击「成功」卡片：直接把该模型写入配置，不做弹窗确认/提示。"""
+        """双击「成功」卡片：把该模型写入配置项 summarization.nvidia_model，并同步切换 summarization.provider 为 nvidia。"""
         try:
+            self._settings.set("summarization.provider", "nvidia")
             self._settings.set("summarization.nvidia_model", model)
             self._settings.save()
         except Exception as e:

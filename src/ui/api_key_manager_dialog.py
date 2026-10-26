@@ -5,9 +5,10 @@
 - `ApiKeyManagerDialog` 仅负责 UI 与交互，通过菜单入口被 `gui.py` 调用，不含文件格式细节。
 
 交互要点（与需求一致）：
+- 包含【模型厂商】+【环境变量 Key】+【密钥值】+【操作】4 列，带有规范对齐表头。
 - value 默认以密码掩码显示，可逐条或一键切换显示 / 隐藏。
-- 已有条目的 key 为只读（不可修改），避免误改键名导致配置失效。
-- 可新增（key 可编辑、带校验）、可修改 value、可删除。
+- 所有条目的厂商名称均可自由编辑修改，保存时写入 .env 行尾注释。
+- 已有条目的 key 为只读锁定（避免误改底层配置导致调用失效）；新增条目 key 可编辑，且输入厂商名时自动联动推荐 key 名。
 - 保存时原子写入 `get_base_dir() / ".env"`，并把改动同步进 `os.environ`（运行时立即生效）。
 """
 
@@ -42,16 +43,57 @@ from src.utils.paths import get_base_dir
 logger = get_logger(__name__)
 
 _DEFAULT_ENV_NAME = ".env"
-#: 新建 `.env` 时默认预置的键（值为空，供用户填写）
-_DEFAULT_ENV_KEYS: tuple = ("OLLAMA_API_KEY", "NVIDIA_API_KEY", "MISTRAL_API_KEY", "AMD_API_KEY")
+#: 新建 `.env` 时默认预置的 (厂商名称, 环境变量名)
+_DEFAULT_ENV_PRESETS: tuple = (
+    ("Ollama", "OLLAMA_API_KEY"),
+    ("NVIDIA", "NVIDIA_API_KEY"),
+    ("Mistral AI", "MISTRAL_API_KEY"),
+    ("AMD Radeon Cloud", "AMD_API_KEY"),
+)
 #: 合法 key：字母 / 数字 / 下划线，且以字母或下划线开头
 _KEY_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 #: key 的唯一性比较统一忽略大小写
 _KEY_NORM = str.upper
 
 
+def suggest_key_from_vendor(vendor_text: str) -> str:
+    """根据输入的厂商名称自动生成建议的环境变量 Key 名。"""
+    raw = vendor_text.strip()
+    if not raw:
+        return ""
+    mapped = {
+        "ollama": "OLLAMA_API_KEY",
+        "nvidia": "NVIDIA_API_KEY",
+        "mistral": "MISTRAL_API_KEY",
+        "mistral ai": "MISTRAL_API_KEY",
+        "amd": "AMD_API_KEY",
+        "amd radeon": "AMD_API_KEY",
+        "amd radeon cloud": "AMD_API_KEY",
+        "openai": "OPENAI_API_KEY",
+        "deepseek": "DEEPSEEK_API_KEY",
+        "anthropic": "ANTHROPIC_API_KEY",
+        "claude": "CLAUDE_API_KEY",
+        "siliconflow": "SILICONFLOW_API_KEY",
+        "groq": "GROQ_API_KEY",
+        "gemini": "GEMINI_API_KEY",
+        "moonshot": "MOONSHOT_API_KEY",
+        "zhipu": "ZHIPU_API_KEY",
+        "zhipu ai": "ZHIPU_API_KEY",
+        "qwen": "QWEN_API_KEY",
+    }.get(raw.lower())
+    if mapped:
+        return mapped
+
+    clean = re.sub(r"[^A-Za-z0-9_]+", "_", raw).strip("_").upper()
+    if not clean:
+        return ""
+    if not clean.endswith("_API_KEY") and not clean.endswith("_KEY"):
+        return f"{clean}_API_KEY"
+    return clean
+
+
 class _ApiKeyRow(QFrame):
-    """单个键值行：key（只读或可编辑）+ value（默认掩码）+ 显示切换 + 删除。"""
+    """单个键值行：vendor（可编辑）+ key（只读或可编辑）+ value（默认掩码）+ 显示切换 + 删除。"""
 
     def __init__(
         self,
@@ -63,6 +105,7 @@ class _ApiKeyRow(QFrame):
         super().__init__(parent)
         self._entry = entry
         self._is_new = is_new
+        self._key_manually_edited = False
         self.setObjectName("apiKeyRow")
         self.setFrameShape(QFrame.Shape.NoFrame)
 
@@ -70,35 +113,50 @@ class _ApiKeyRow(QFrame):
         layout.setContentsMargins(10, 8, 10, 8)
         layout.setSpacing(8)
 
+        # 1) 模型厂商名称：所有条目均可随时修改
+        self.vendor_edit = QLineEdit()
+        self.vendor_edit.setObjectName("vendorEdit")
+        self.vendor_edit.setPlaceholderText(t("api_key.vendor_placeholder"))
+        self.vendor_edit.setText(entry.vendor)
+        self.vendor_edit.setMinimumWidth(130)
+        layout.addWidget(self.vendor_edit, 3)
+
+        # 2) 环境变量 Key：已有条目只读置灰，新增条目可编辑
         self.key_edit = QLineEdit()
         self.key_edit.setObjectName("keyEdit")
         self.key_edit.setPlaceholderText(t("api_key.key_placeholder"))
         self.key_edit.setText(entry.key)
-        self.key_edit.setMinimumWidth(180)
+        self.key_edit.setMinimumWidth(160)
         if not is_new:
             # 已有条目：key 不可修改（只读 + 置灰）
             self.key_edit.setReadOnly(True)
             self.key_edit.setEnabled(False)
-        layout.addWidget(self.key_edit, 2)
+        else:
+            self.key_edit.textEdited.connect(self._on_key_edited)
+            self.vendor_edit.textEdited.connect(self._on_vendor_edited)
+        layout.addWidget(self.key_edit, 3)
 
+        # 3) 密钥值（默认密码掩码）
         self.value_edit = QLineEdit()
         self.value_edit.setObjectName("valueEdit")
         self.value_edit.setPlaceholderText(t("api_key.value_placeholder"))
         self.value_edit.setText(entry.value)
-        self.value_edit.setMinimumWidth(220)
+        self.value_edit.setMinimumWidth(200)
         if not show_toggled:
             self.value_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        layout.addWidget(self.value_edit, 3)
+        layout.addWidget(self.value_edit, 4)
 
+        # 4) 显示 / 隐藏切换
         self.toggle_btn = QPushButton(t("api_key.show") if not show_toggled else t("api_key.hide"))
         self.toggle_btn.setObjectName("rowToggleBtn")
         self.toggle_btn.setCheckable(True)
         self.toggle_btn.setChecked(show_toggled)
-        self.toggle_btn.setFixedWidth(56)
+        self.toggle_btn.setFixedWidth(54)
         self.toggle_btn.clicked.connect(self._on_toggle)
         self.toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         layout.addWidget(self.toggle_btn)
 
+        # 5) 删除
         self.delete_btn = QPushButton(t("api_key.delete"))
         self.delete_btn.setObjectName("rowDeleteBtn")
         self.delete_btn.setFixedWidth(48)
@@ -112,6 +170,15 @@ class _ApiKeyRow(QFrame):
     @property
     def is_new(self) -> bool:
         return self._is_new
+
+    def _on_key_edited(self, text: str) -> None:
+        self._key_manually_edited = bool(text.strip())
+
+    def _on_vendor_edited(self, text: str) -> None:
+        if self._is_new and not self._key_manually_edited:
+            suggested = suggest_key_from_vendor(text)
+            if suggested:
+                self.key_edit.setText(suggested)
 
     def _on_toggle(self, checked: bool) -> None:
         self.value_edit.setEchoMode(
@@ -131,12 +198,22 @@ class _ApiKeyRow(QFrame):
 _DIALOG_QSS = """
 QDialog {
     background-color: #f0f2f5;
-    font-family: "Microsoft YaHei", "PingFang SC", "Segoi UI", sans-serif;
+    font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
 }
 #headerBar, #toolBar, #footerBar {
     background: #ffffff;
     border: 1px solid #e0e0e0;
     border-radius: 8px;
+}
+#tableHeaderBar {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+}
+#tableHeaderLabel {
+    font-size: 12px;
+    font-weight: 600;
+    color: #475569;
 }
 #subtitleLabel { font-size: 12px; color: #757575; }
 #pathLabel { font-size: 12px; color: #9e9e9e; }
@@ -147,7 +224,7 @@ QDialog {
     border: 1px solid #ececec;
     border-radius: 8px;
 }
-#keyEdit, #valueEdit {
+#vendorEdit, #keyEdit, #valueEdit {
     border: 1px solid #dcdcdc;
     border-radius: 6px;
     padding: 5px 8px;
@@ -156,7 +233,7 @@ QDialog {
     color: #212121;
 }
 #keyEdit:disabled { background: #f0f0f0; color: #9e9e9e; }
-#valueEdit:focus, #keyEdit:focus { border: 1px solid #1976d2; background: #ffffff; }
+#vendorEdit:focus, #valueEdit:focus, #keyEdit:focus { border: 1px solid #1976d2; background: #ffffff; }
 #rowToggleBtn, #rowDeleteBtn {
     background: transparent;
     border: 1px solid #dcdcdc;
@@ -221,13 +298,12 @@ class ApiKeyManagerDialog(QDialog):
         self._entries: List[EnvLine]
         self._file_exists: bool
         self._entries, self._file_exists = load_env_file(env_path)
-        # 文件不存在：预置三个默认键并写入 `.env`，避免保存路径歧义
-        # （兼容便携版 exe 目录；get_base_dir 在 frozen 下返回 exe 所在目录）。
+        # 文件不存在：预置 4 个内置厂商与默认键并写入 `.env`，避免保存路径歧义
         if not self._file_exists:
             try:
                 self._entries = [
-                    EnvLine(kind="kv", key=key, value="")
-                    for key in _DEFAULT_ENV_KEYS
+                    EnvLine(kind="kv", vendor=vendor, key=key, value="")
+                    for vendor, key in _DEFAULT_ENV_PRESETS
                 ]
                 save_env_file(env_path, self._entries)
                 self._file_exists = True
@@ -240,7 +316,7 @@ class ApiKeyManagerDialog(QDialog):
         self.setWindowTitle(t("api_key.title"))
         self.setStyleSheet(_DIALOG_QSS)
         self.setWindowFlags(self.windowFlags() | Qt.WindowMaximizeButtonHint)
-        self.resize(720, 560)
+        self.resize(780, 560)
 
         self._init_ui()
         self._populate_rows()
@@ -258,6 +334,7 @@ class ApiKeyManagerDialog(QDialog):
 
         root.addWidget(self._build_header())
         root.addWidget(self._build_tool_bar())
+        root.addWidget(self._build_table_header())
         root.addWidget(self._build_row_area(), 1)
         root.addWidget(self._build_footer())
 
@@ -305,6 +382,33 @@ class ApiKeyManagerDialog(QDialog):
         self._reveal_check.setObjectName("revealCheck")
         self._reveal_check.stateChanged.connect(self._on_reveal_all)
         layout.addWidget(self._reveal_check)
+        return bar
+
+    def _build_table_header(self) -> QWidget:
+        bar = QFrame()
+        bar.setObjectName("tableHeaderBar")
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(14, 6, 14, 6)
+        layout.setSpacing(8)
+
+        lbl_vendor = QLabel(t("api_key.col_vendor"))
+        lbl_vendor.setObjectName("tableHeaderLabel")
+        layout.addWidget(lbl_vendor, 3)
+
+        lbl_key = QLabel(t("api_key.col_key"))
+        lbl_key.setObjectName("tableHeaderLabel")
+        layout.addWidget(lbl_key, 3)
+
+        lbl_val = QLabel(t("api_key.col_value"))
+        lbl_val.setObjectName("tableHeaderLabel")
+        layout.addWidget(lbl_val, 4)
+
+        lbl_act = QLabel(t("api_key.col_action"))
+        lbl_act.setObjectName("tableHeaderLabel")
+        lbl_act.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl_act.setFixedWidth(110)
+        layout.addWidget(lbl_act)
+
         return bar
 
     def _build_row_area(self) -> QScrollArea:
@@ -389,13 +493,13 @@ class ApiKeyManagerDialog(QDialog):
             row.set_revealed(self._reveal_all)
 
     def _on_add(self) -> None:
-        entry = EnvLine(kind="kv", key="", value="")
+        entry = EnvLine(kind="kv", vendor="", key="", value="")
         self._entries.append(entry)
         if getattr(self, "_empty_hint", None) is not None:
             self._empty_hint.deleteLater()
             self._empty_hint = None
         row = self._insert_row(entry, is_new=True)
-        row.key_edit.setFocus()
+        row.vendor_edit.setFocus()
 
     def _on_delete(self, row: _ApiKeyRow) -> None:
         entry = row.entry
@@ -413,6 +517,7 @@ class ApiKeyManagerDialog(QDialog):
             entry = row.entry
             if entry.kind != "kv":
                 continue
+            entry.vendor = row.vendor_edit.text().strip()
             if row.is_new:
                 entry.key = row.key_edit.text().strip()
             entry.value = row.value_edit.text()
@@ -453,10 +558,11 @@ class ApiKeyManagerDialog(QDialog):
             return
 
         # 4) 同步到当前进程环境变量（运行时立即生效）
-        for row in self._rows:
-            entry = row.entry
+        for entry in self._entries:
             if entry.kind == "kv" and entry.key:
                 os.environ[entry.key] = entry.value
+            elif entry.kind == "deleted" and entry.key:
+                os.environ.pop(entry.key, None)
 
         from PySide6.QtWidgets import QMessageBox
 

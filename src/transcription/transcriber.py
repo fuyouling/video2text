@@ -5,12 +5,12 @@ import sys
 import threading
 from collections import OrderedDict
 from pathlib import Path
-from typing import List, Optional, Dict, Any, Callable, Tuple
+from typing import List, Optional, Dict, Any, Callable, Tuple, Union
 from dataclasses import dataclass
 from src.utils.exceptions import TranscriptionError, TranscriptionCancelledError
 from src.i18n import t
 from src.utils.logger import get_logger
-from src.utils.paths import get_base_dir as _get_base_dir
+from src.utils.paths import get_base_dir as _get_base_dir, ensure_cuda_libs
 from src.text_processing.text_cleaner import remove_replacement_chars
 
 logger = get_logger(__name__)
@@ -37,13 +37,27 @@ def get_cached_transcriber(
     compute_type: str = "float16",
     num_workers: int = 1,
     download_root: Optional[str] = None,
-) -> "Transcriber":
+    engine: str = "faster-whisper",
+    quantize: bool = True,
+    punc_filter: bool = True,
+    vad_max_end_sil: int = 800,
+) -> Union["Transcriber", Any]:
     """获取缓存的 Transcriber 实例，避免重复加载模型。
 
-    相同 (model_path, device, compute_type, num_workers) 组合只创建一次实例。
+    支持根据 engine（faster-whisper / funasr）分发到不同的转写后端。
+    相同组合只创建一次实例。
     缓存最多保留 _MAX_MODEL_CACHE 个实例，超出时淘汰最久未使用的条目。
     """
-    cache_key = f"{model_path}|{device}|{compute_type}|{num_workers}"
+    is_funasr = (
+        str(engine).lower() == "funasr"
+        or "funasr" in str(model_path).lower()
+        or "paraformer" in str(model_path).lower()
+    )
+    actual_engine = "funasr" if is_funasr else "faster-whisper"
+    if is_funasr:
+        cache_key = f"{actual_engine}|{model_path}|{device}|{compute_type}|{num_workers}|{quantize}|{punc_filter}|{vad_max_end_sil}"
+    else:
+        cache_key = f"{actual_engine}|{model_path}|{device}|{compute_type}|{num_workers}"
     with _model_cache_lock:
         if cache_key in _model_cache:
             cached = _model_cache[cache_key]
@@ -60,13 +74,27 @@ def get_cached_transcriber(
                 evicted.unload_model()
             logger.info(t("transcriber.evict_cache", key=evicted_key))
 
-        transcriber = Transcriber(
-            model_path=model_path,
-            device=device,
-            compute_type=compute_type,
-            num_workers=num_workers,
-            download_root=download_root,
-        )
+        if is_funasr:
+            from src.transcription.funasr_transcriber import FunASRTranscriber
+
+            transcriber = FunASRTranscriber(
+                model_path=model_path,
+                device=device,
+                compute_type=compute_type,
+                num_workers=num_workers,
+                download_root=download_root,
+                quantize=quantize,
+                punc_filter=punc_filter,
+                vad_max_end_sil=vad_max_end_sil,
+            )
+        else:
+            transcriber = Transcriber(
+                model_path=model_path,
+                device=device,
+                compute_type=compute_type,
+                num_workers=num_workers,
+                download_root=download_root,
+            )
         _model_cache[cache_key] = transcriber
     return transcriber
 
@@ -260,6 +288,7 @@ class Transcriber:
 
         # 加载 CUDA 模型前先确认 cuBLAS/cuDNN 依赖，缺失会导致转写阶段挂起。
         if self.device != "cpu":
+            ensure_cuda_libs()
             self._check_cuda_dlls()
 
         try:
@@ -283,6 +312,9 @@ class Transcriber:
                 download_root=self.download_root,
                 local_files_only=True,
             )
+
+            if hasattr(self.model, "model") and hasattr(self.model.model, "device"):
+                self.device = str(self.model.model.device)
 
             self._loaded = True
             logger.debug(t("transcriber.model_loaded_success"))
@@ -339,6 +371,8 @@ class Transcriber:
                     download_root=self.download_root,
                     local_files_only=True,
                 )
+                if hasattr(self.model, "model") and hasattr(self.model.model, "device"):
+                    self.device = str(self.model.model.device)
                 self.compute_type = ct
                 self._loaded = True
                 logger.info(t("transcriber.fallback_success", device=self.device, ct=ct))

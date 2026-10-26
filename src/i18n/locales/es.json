@@ -33,8 +33,8 @@
     "settings_fav_clear_input": "Limpiar todas las carpetas de entrada",
     "settings_fav_clear_output": "Limpiar todas las carpetas de salida",
     "tools": "Herramientas",
-    "tools_voice_to_text": "Voz a texto",
     "tools_nvidia_api_test": "Prueba de respuesta de la API de Nvidia",
+    "tools_amd_api_test": "Prueba de respuesta de la API de AMD",
     "help": "Ayuda",
     "help_donate": "Donar",
     "help_about": "Acerca de",
@@ -74,12 +74,18 @@
     "tx_prompt_group": "Indicación de transcripción",
     "tx_prompt_placeholder": "Instrucciones de escena, términos del dominio para mejorar la precisión, sea conciso",
     "hotwords_placeholder": "Palabras clave/frases como un único prefijo de sesgo, términos clave del dominio, sea conciso",
-    "tx_prompt_template_placeholder": "Seleccionar indicación guardada…",
+    "tx_prompt_template_placeholder": "Seleccionar plantilla…",
     "summary_prompt_group": "Indicación de resumen",
-    "summary_prompt_placeholder": "Indicación de resumen personalizada (opcional); dejar vacío para usar la predeterminada",
-    "summary_prompt_template_placeholder": "Seleccionar indicación guardada…",
-    "markdown_cb": "Formato Markdown",
-    "markdown_tooltip": "Activar para aplicar formato Markdown automáticamente a los resúmenes.\nPara Markdown personalizado, edite el campo markdown_prompt en prompts.json directamente.",
+    "summary_prompt_placeholder": "Prompt de resumen personalizado con rol y requisitos de formato, WYSIWYG",
+    "summary_prompt_template_placeholder": "Seleccionar plantilla de prompt…",
+    "prompt_builtin_group": "── Plantillas integradas ──",
+    "prompt_custom_group": "── Plantillas personalizadas ──",
+    "prompt_reset_btn": "Restablecer",
+    "prompt_reset_tooltip": "Restablecer el editor al contenido inicial de la plantilla",
+    "prompt_reset_confirm_title": "Confirmar restablecimiento",
+    "prompt_reset_confirm_msg": "¿Está seguro de que desea restablecer el contenido al prompt inicial de '{name}'? Se perderán los cambios no guardados.",
+    "prompt_cannot_delete_builtin": "Las plantillas predeterminadas no se pueden eliminar.",
+    "prompt_save_as": "Guardar como nueva plantilla",
     "log_panel_title": "Salida de registro",
     "placeholder_new": "Nuevo",
     "placeholder_new_tx": "Nuevo",
@@ -182,8 +188,8 @@
     "stop_force_terminate": "  ├─ ⚠ El hilo de trabajo no respondió a la solicitud de salida, forzando la terminación...",
     "dep_check_skip_warn": "La verificación de dependencias de inicio falló, se omitió (la interfaz principal sigue funcionando)",
     "dep_check_start": "Verificación de dependencias de inicio: comenzando",
-    "dep_model_complete": "Modelo completo (%s)",
-    "dep_model_missing": "Falta el modelo (%s)",
+    "dep_model_complete": "Modelo completo ({name})",
+    "dep_model_missing": "Falta el modelo ({name})",
     "dep_dll_complete": "Dependencias DLL completas",
     "dep_dll_missing": "Faltan dependencias DLL",
     "dep_all_ready": "Todas las dependencias listas, no se necesita descarga",
@@ -206,7 +212,20 @@
     "dep_download_start": "Iniciando descarga de dependencias: modelo=%s, dll=%s, keep_archive=%s",
     "failed_log_write": "Error al escribir el registro de fallos: %s",
     "tx_prompt_load_fail": "Error al cargar la plantilla de aviso de transcripción",
-    "summary_prompt_load_fail": "Error al cargar la plantilla de aviso de resumen"
+    "summary_prompt_load_fail": "Error al cargar la plantilla de aviso de resumen",
+    "tx_prompt_none": "Sin indicación (Borrar)",
+    "tx_prompt_reset_btn": "Restablecer",
+    "tx_prompt_reset_tooltip": "Restablecer al contenido inicial de esta plantilla",
+    "tx_prompt_reset_confirm_title": "Confirmar restablecimiento",
+    "tx_prompt_reset_confirm_msg": "¿Está seguro de que desea restablecer el contenido a '{name}'? Se perderán los cambios no guardados.",
+    "tx_prompt_cannot_delete_builtin": "Las plantillas predeterminadas no se pueden eliminar.",
+    "tx_prompt_len_warning": "La indicación es demasiado larga ({count} caracteres, se recomienda <= 300)",
+    "tx_hotwords_count_warning": "Demasiadas palabras clave ({count} palabras, se recomienda <= 50)",
+    "tx_prompt_tooltip": "Indicación inicial Whisper: guía puntuación y terminología (se recomienda <= 300 caracteres)",
+    "tx_hotwords_tooltip": "Palabras clave Whisper: separadas por espacios o comas (se recomienda <= 50 palabras)",
+    "tx_hotwords_funasr_hint": "Introduzca nombres propios o palabras clave separados por espacios o comas (ej.: IA DeepLearning)",
+    "tx_hotwords_funasr_tooltip": "FunASR se basa principalmente en palabras clave para mejorar el reconocimiento de vocabulario específico",
+    "tx_prompt_funasr_disabled_hint": "FunASR (no autorregresivo) no utiliza indicaciones de frase; use las palabras clave siguientes para mejorar el reconocimiento"
   },
   "about": {
     "title": "Acerca de Video2Text",
@@ -253,7 +272,11 @@
       "keep_label": "Después de descargar:",
       "keep_yes": "Conservar archivo",
       "keep_no": "Eliminar (ahorrar espacio)",
-      "dll_ready": "✓ DLL completo, nada que hacer"
+      "dll_ready": "✓ DLL completo, nada que hacer",
+      "funasr_opt": "Descargar FunASR Paraformer (Chino alta precisión, ~540MB, ModelScope)",
+      "funasr_ready": "✓ Modelo FunASR Paraformer listo",
+      "whisper_opt": "Descargar Faster-Whisper (Multilingüe, Large-v3-Turbo, ~1.4GB)",
+      "whisper_ready": "✓ Modelo Faster-Whisper listo"
     },
     "file_select": {
       "title": "Seleccionar archivos multimedia",
@@ -557,6 +580,43 @@
     "models_empty": "No hay modelos en línea disponibles. Vuelve a intentarlo más tarde o haz clic en \"Actualizar lista\"",
     "models_loading": "Obteniendo lista de modelos en línea…"
   },
+  "amd_test": {
+    "title": "Prueba de respuesta de la API de AMD",
+    "one_click": "Probar todo",
+    "stop": "Detener",
+    "api_key_ok": "Clave API: cargada",
+    "api_key_missing": "Clave API: falta",
+    "api_key_missing_msg": "No se encontró AMD_API_KEY. Configúrala en .env antes de probar.",
+    "timeout_label": "Tiempo límite {seconds}s",
+    "concurrency_label": "Concurrencia {workers}",
+    "current_model": "Modelo actual: {model}",
+    "latency_label": "Tiempo de respuesta",
+    "latency_value": "{seconds} s",
+    "latency_over": "> {seconds}s",
+    "latency_none": "—",
+    "status_pending": "Pendiente",
+    "status_queued": "En cola",
+    "status_testing": "Probando",
+    "status_ok": "Correcto",
+    "status_fail": "Fallido",
+    "status_rate_limited": "Límite de velocidad",
+    "progress": "Progreso {done}/{total}  ·  Correctos {ok}  ·  Fallidos {fail}  ·  Limitados {limited}",
+    "retest_tooltip": "Volver a probar este modelo",
+    "card_tooltip": "Haz doble clic en una tarjeta correcta para guardar ese modelo en la configuración",
+    "error_no_key": "Falta la clave API",
+    "error_timeout": "Tiempo de respuesta agotado ({latency}s > {limit}s)",
+    "error_empty": "Respuesta vacía",
+    "apply_title": "Establecer como modelo de resumen",
+    "apply_confirm": "¿Escribir {model} en summarization.amd_model?",
+    "apply_done": "{model} ahora es el modelo de resumen de AMD",
+    "apply_failed": "Error al guardar la configuración: {error}",
+    "refresh_list": "Actualizar lista",
+    "refresh_list_loading": "Actualizando lista de modelos…",
+    "refresh_list_done": "Lista de modelos actualizada ({count} modelos)",
+    "refresh_list_failed": "No se pudo actualizar la lista de modelos: {error}",
+    "models_empty": "No hay modelos en línea disponibles. Vuelve a intentarlo más tarde o haz clic en \"Actualizar lista\"",
+    "models_loading": "Obteniendo lista de modelos en línea…"
+  },
   "donate": {
     "title": "Donar",
     "image_not_found": "Imagen no encontrada: {path}"
@@ -674,7 +734,10 @@
     "tips_label": "[bold]Tips:[/bold]",
     "tip1": "1. Use --help to view detailed options for a single command",
     "tip2": "2. All transcription and summarization parameters (model, language, device, temperature, etc.) are configured via config.ini",
-    "tip3": "3. In PowerShell, call the executable by its full path, e.g.: .\\video2text.exe transcribe video.mp4 -o output"
+    "tip3": "3. In PowerShell, call the executable by its full path, e.g.: .\\video2text.exe transcribe video.mp4 -o output",
+    "opt_initial_prompt": "Sobrescribir temporalmente la indicación inicial de transcripción",
+    "opt_hotwords": "Sobrescribir temporalmente las palabras clave (separadas por espacios o comas)",
+    "opt_prompt_template": "Nombre de ajuste o plantilla (ej.: general, meeting, ecommerce, tech, bilingual)"
   },
   "errors": {
     "file_not_found": "Archivo no encontrado: {path}",
@@ -734,117 +797,6 @@
       "frame_rate_parse_failed": "VideoProcessor: ⚠ Error al analizar la tasa de fotogramas (%s), por defecto 0"
     }
   },
-  "voice": {
-    "user_prefix": "[Usuario] ",
-    "summary_prefix": "[Resumen] ",
-    "sidebar": {
-      "title": "Conversaciones"
-    },
-    "chat": {
-      "placeholder": "Haga clic en el botón de grabar arriba para iniciar la transcripción de voz"
-    },
-    "back_main": "Volver al principal",
-    "new_conv": "Nueva",
-    "record_start": "Iniciar grabación",
-    "record_stop": "Detener grabación",
-    "conv": {
-      "meta": "{time}  ·  {count} mensajes"
-    },
-    "summary_saved": "Resumen guardado en: {path}",
-    "status": {
-      "initializing": "● Inicializando...",
-      "ready": "● Listo",
-      "model_not_ready": "● Modelo no cargado aún, por favor espere...",
-      "recording_vad": "● Grabando (VAD)...",
-      "recording_timer": "● Grabando (fragmentos temporizados)...",
-      "stopped": "● Detenido",
-      "recording_done": "● Grabación terminada, transcribiendo...",
-      "transcribing": "● Transcribiendo...",
-      "no_speech": "● No se detectó voz",
-      "transcribe_done": "● Transcripción completa",
-      "transcribe_fail": "● Transcripción fallida: {error}",
-      "record_fail": "● Grabación fallida: {error}",
-      "selected_count": "{count} conversación(es) seleccionada(s)",
-      "conv_deleted": "Conversación eliminada",
-      "deleted_count": "{count} conversación(es) eliminada(s)",
-      "multi_select": "Selección múltiple: haga clic en elementos para seleccionar, clic derecho para operaciones por lote",
-      "edit_mode": "Modo de edición: modifique el contenido, luego clic derecho y elija [Guardar] para finalizar",
-      "msg_saved": "Mensaje guardado",
-      "edit_cancelled": "Edición cancelada",
-      "copied": "Copiado al portapapeles",
-      "correcting": "Corrigiendo gramática...",
-      "correct_done": "Corrección gramatical completa",
-      "msg_deleted": "Mensaje eliminado",
-      "summarizing": "Resumiendo...",
-      "summary_done": "Resumen completo",
-      "op_fail": "Operación fallida: {error}",
-      "loading_model": "● Cargando modelo...",
-      "model_load_fail": "● Error al cargar el modelo: {error}"
-    },
-    "menu": {
-      "exit_multi_select": "Salir de selección múltiple",
-      "delete_selected": "Eliminar seleccionados",
-      "select_toggle_all": "Seleccionar / Deseleccionar todo",
-      "delete_all": "Eliminar todo",
-      "multi_select": "Selección múltiple",
-      "delete_conv": "Eliminar esta conversación",
-      "save": "Guardar",
-      "cancel_edit": "Cancelar edición",
-      "copy": "Copiar",
-      "edit": "Editar",
-      "delete": "Eliminar",
-      "grammar": "Corregir",
-      "summarize": "Resumir"
-    },
-    "dialog": {
-      "record_error": {
-        "title": "Error de grabación"
-      },
-      "record_fail": {
-        "title": "Grabación fallida",
-        "msg": "No se pudo iniciar la grabación: {error}"
-      },
-      "delete_conv": {
-        "title": "Eliminar conversación",
-        "msg": "¿Está seguro de que desea eliminar esta conversación?\nEsto también eliminará el archivo JSON en el disco y no se puede deshacer."
-      },
-      "delete_fail": {
-        "title": "Error al eliminar",
-        "msg": "Error al eliminar la conversación: {error}"
-      },
-      "no_selection": "Seleccione primero las conversaciones a eliminar",
-      "batch_delete": {
-        "title": "Eliminación en lote",
-        "msg": "¿Está seguro de que desea eliminar las {count} conversaciones seleccionadas?\nEsta operación no se puede deshacer."
-      },
-      "no_convs": "No hay conversaciones disponibles",
-      "delete_all": {
-        "title": "Eliminar todo",
-        "msg": "¿Está seguro de que desea eliminar todas las {count} conversaciones?\nEsta operación no se puede deshacer."
-      },
-      "delete_msg": {
-        "title": "Eliminar mensaje",
-        "msg": "¿Está seguro de que desea eliminar este mensaje?"
-      },
-      "select_conv_first": "Seleccione una conversación primero"
-    },
-    "log_delete_conv_fail": "Error al eliminar la conversación {conv_id}: {error}",
-    "widget": {
-      "start_record_failed": "Failed to start recording: {error}",
-      "record_error_exception": "on_record_error exception:\n{error}",
-      "transcribe_done_exception": "_on_transcribe_done exception:\n{error}",
-      "transcribe_error_exception": "_on_transcribe_error exception:\n{error}",
-      "api_call_done_exception": "_start_api_call on_done exception:\n{error}"
-    },
-    "role": {
-      "user": "User",
-      "assistant": "Assistant"
-    },
-    "prompt": {
-      "correct_text": "The user recorded audio using faster-whisper for speech recognition, and some text may be incorrect. Please correct typos and unnatural phrasing in the user's transcribed text, and output in JSON format: {\"source_text\":\"original text\",\"update_text\":\"corrected text\"}. Output only the JSON, without any other content.",
-      "summarize_conversation": "Please summarize the following multi-turn conversation into a well-structured Markdown document. Requirements: output only the Markdown content itself, without any explanatory text, prefix, or suffix.\n\nConversation:\n{text}"
-    }
-  },
   "config": {
     "section": {
       "app": "Aplicación",
@@ -854,8 +806,7 @@
       "output": "Salida",
       "paths": "Rutas",
       "tools": "Herramientas",
-      "text_processing": "Procesamiento de texto",
-      "voice_to_text": "Voz a texto"
+      "text_processing": "Procesamiento de texto"
     },
     "group": {
       "app": {
@@ -867,7 +818,8 @@
         "decode": "Decodificación",
         "vad": "Detección VAD",
         "quality": "Control de calidad",
-        "repeat": "Supresión de repeticiones"
+        "repeat": "Supresión de repeticiones",
+        "prompt": "Indicación y Palabras clave"
       },
       "preprocessing": {
         "audio": "Procesamiento de audio",
@@ -879,19 +831,14 @@
       },
       "text_processing": {
         "merge": "Fusionar y limpiar"
-      },
-      "voice_to_text": {
-        "basic": "Básico",
-        "audio_vad": "Audio y VAD",
-        "endpoint": "Punto final en tiempo real",
-        "prompt": "Indicación",
-        "background": "Imagen de fondo"
       }
     },
     "combo": {
       "auto_language": "Idioma del sistema",
       "mode_single": "Hilo único",
-      "mode_multi": "Múltiples hilos"
+      "mode_multi": "Múltiples hilos",
+      "engine_funasr": "FunASR Paraformer (Chino alta precisión)",
+      "engine_whisper": "Faster-Whisper (Multilingüe)"
     },
     "label": {
       "app": {
@@ -928,7 +875,10 @@
         "vad_threshold": "Umbral VAD",
         "vad_min_silence_ms": "Silencio mínimo VAD (ms)",
         "vad_speech_pad_ms": "Relleno de voz VAD (ms)",
-        "vad_max_speech_s": "Voz máxima VAD (s)"
+        "vad_max_speech_s": "Voz máxima VAD (s)",
+        "initial_prompt": "Indicación de transcripción",
+        "hotwords": "Palabras clave de transcripción",
+        "engine": "Motor de transcripción"
       },
       "preprocessing": {
         "audio_sample_rate": "Frecuencia de muestreo de audio",
@@ -953,32 +903,6 @@
         "max_gap": "Brecha máxima",
         "min_length": "Longitud mínima",
         "filler_words": "Palabras de relleno"
-      },
-      "voice_to_text": {
-        "voice_dir": "Directorio de almacenamiento de voz",
-        "summary_dir": "Directorio de almacenamiento de resúmenes",
-        "realtime_auto_send_interval": "Intervalo de envío automático",
-        "model_path": "Ruta del modelo",
-        "device": "Dispositivo",
-        "compute_type": "Tipo de cómputo",
-        "language": "Idioma",
-        "num_workers": "Hilos de inferencia",
-        "audio_sample_rate": "Frecuencia de muestreo de audio",
-        "audio_channels": "Canales de audio",
-        "vad_filter": "Filtro VAD",
-        "vad_threshold": "Umbral VAD",
-        "vad_min_silence_ms": "Silencio mínimo VAD (ms)",
-        "vad_speech_pad_ms": "Relleno de voz VAD (ms)",
-        "vad_max_speech_s": "Voz máxima VAD (s)",
-        "initial_prompt": "Indicación inicial",
-        "bg_image_path": "Ruta de imagen de fondo",
-        "bg_transparency": "Opacidad del fondo",
-        "vad_endpoint_detection": "Detección de punto final VAD",
-        "vad_energy_threshold": "Umbral de energía VAD",
-        "vad_silence_frames": "Fotogramas de silencio VAD",
-        "vad_min_speech_frames": "Fotogramas mínimos de voz VAD",
-        "vad_calibration_frames": "Fotogramas de calibración VAD",
-        "context_max_chars": "Caracteres máximos de contexto"
       }
     },
     "tooltip": {
@@ -1014,7 +938,10 @@
         "vad_threshold": "Umbral de voz VAD (0~1), aumente para entornos ruidosos (0.6~0.7), predeterminado 0.5",
         "vad_min_silence_ms": "Duración mínima de silencio (ms) para dividir segmentos, predeterminado 2000",
         "vad_speech_pad_ms": "Relleno de voz (ms) en los límites del segmento, predeterminado 400",
-        "vad_max_speech_s": "Duración máxima del segmento VAD (s), 0 = ilimitado"
+        "vad_max_speech_s": "Duración máxima del segmento VAD (s), 0 = ilimitado",
+        "initial_prompt": "Indicación inicial Whisper para guiar puntuación y términos del dominio",
+        "hotwords": "Palabras clave sesgadas de Whisper (separadas por espacios o comas)",
+        "engine": "Seleccionar motor de transcripción: Faster-Whisper (multilingüe) o FunASR (alta precisión industrial para chino)"
       },
       "preprocessing": {
         "audio_sample_rate": "Frecuencia de muestreo de audio (Hz), Whisper recomienda 16000",
@@ -1039,32 +966,6 @@
         "max_gap": "Brecha máxima (s) para fusionar segmentos, los segmentos más separados no se fusionarán",
         "min_length": "Longitud mínima de texto para fusionar, los segmentos más cortos intentan fusionarse con los vecinos",
         "filler_words": "Palabras de relleno a eliminar, separadas por comas"
-      },
-      "voice_to_text": {
-        "voice_dir": "Directorio de almacenamiento de grabaciones de voz y conversaciones",
-        "summary_dir": "Directorio de almacenamiento de resúmenes de transcripción de voz",
-        "realtime_auto_send_interval": "Intervalo de envío automático en tiempo real (s) para transcripción de voz",
-        "model_path": "Nombre o ruta del directorio del modelo Whisper",
-        "device": "Dispositivo de inferencia: cuda (GPU NVIDIA), cpu, auto",
-        "compute_type": "Tipo de cómputo: float16, int8, float32. CPU no soporta float16",
-        "language": "Código de idioma de transcripción: zh, en, ja, etc. Dejar vacío o 'auto'",
-        "num_workers": "Hilos de inferencia CTranslate2 (1~núcleos de CPU)",
-        "audio_sample_rate": "Frecuencia de muestreo de audio (Hz), Whisper recomienda 16000",
-        "audio_channels": "Canales de audio: 1=mono (recomendado), 2=estéreo",
-        "vad_filter": "Activar VAD para filtrar silencio y reducir alucinaciones: True / False",
-        "vad_threshold": "Umbral de voz VAD (0~1), aumente para entornos ruidosos, predeterminado 0.5",
-        "vad_min_silence_ms": "Silencio mínimo (ms) para dividir segmentos, predeterminado 2000",
-        "vad_speech_pad_ms": "Relleno de voz (ms) en los límites del segmento, predeterminado 400",
-        "vad_max_speech_s": "Duración máxima del segmento VAD (s), 0 = ilimitado",
-        "initial_prompt": "Indicación inicial para la transcripción, útil para mejorar el contexto",
-        "bg_image_path": "Ruta de la imagen de fondo para la interfaz de Voz a Texto, dejar vacío para desactivar",
-        "bg_transparency": "Opacidad de la imagen de fondo (0~255), 0=transparente, 255=opaco",
-        "vad_endpoint_detection": "Activar detección de punto final VAD en tiempo real: True / False",
-        "vad_energy_threshold": "Umbral de energía VAD (0~N), 0 para calibración automática",
-        "vad_silence_frames": "Fotogramas de silencio consecutivos para finalizar la voz (cada ~32ms)",
-        "vad_min_speech_frames": "Fotogramas mínimos de voz para voz válida (cada ~32ms)",
-        "vad_calibration_frames": "Fotogramas de silencio de calibración VAD (cada ~10ms)",
-        "context_max_chars": "Caracteres máximos de contexto para transcripción continua"
       }
     }
   },
@@ -1123,9 +1024,36 @@
       "prompt_load_failed": "PromptManager: error al cargar ({name})",
       "prompt_loaded": "PromptManager: cargado ({name})",
       "prompt_save_error": "PromptManager: error al guardar ({error})",
-      "default_prompt": "Eres un asistente profesional de resumen de texto, experto en extraer información clave y generar resúmenes concisos y precisos. Solo muestra el cuerpo del resumen. **No añadas ninguna introducción, nota final, explicación ni anotación.** **No añadas adornos ni relleno adicional — muestra únicamente el contenido del resumen.** No incluyas un resumen final al final.",
+      "default_prompt": "Eres un asistente profesional de resumen de texto. Tu tarea es proporcionar un resumen exhaustivo y completo del texto sin omitir ningún punto clave ni hecho fundamental. Solo muestra el cuerpo del resumen. **No añadas ninguna introducción, nota final, explicación ni anotación.** **No añadas adornos ni relleno adicional — muestra únicamente el contenido del resumen.** No incluyas un resumen final al final.",
       "text_content_label": "Contenido del texto:",
       "markdown_prompt": "\nPresenta el resumen en formato Markdown de la siguiente manera:\n- **Punto clave**\n\t- Contenido\n\t- Contenido\n- **Punto clave**\n\t- Contenido\n\t- Contenido\n\nMantén el formato Markdown correcto para que la salida se renderice directamente.\n",
+      "presets": {
+        "default": {
+          "name": "Resumen estándar",
+          "desc": "Resumen exhaustivo y completo que cubre todos los puntos clave y detalles esenciales sin omisiones",
+          "prompt": "Eres un asistente profesional de resumen de texto. Tu misión es proporcionar un resumen estructurado, exhaustivo, completo y profundo del texto ingresado, asegurando que no se omita ningún punto central, hecho clave, argumento o detalle esencial.\n\nRequisitos:\n1. Cobertura completa: Analiza minuciosamente todo el texto. Desarrolla según la extensión y densidad de la información sin límite en la cantidad de puntos, garantizando que se recojan todos los datos importantes sin omisiones.\n2. Estructura clara: Presenta en formato Markdown con una lista jerárquica bien definida:\n   - **Título del punto clave**: Identifica el tema principal\n     - Explicación detallada de hechos de respaldo, contexto lógico, datos y detalles específicos\n3. Salida limpia: Solo muestra el cuerpo del resumen. **No añadas ninguna introducción, nota final, explicación ni anotación.** **No añadas adornos ni relleno adicional — muestra únicamente el contenido del resumen.** No incluyas un resumen final al final."
+        },
+        "meeting": {
+          "name": "Acta de reunión",
+          "desc": "Extraer temas de debate, acuerdos adoptados y tareas pendientes (Action Items)",
+          "prompt": "Eres un asistente profesional de actas ejecutivas. Extrae los puntos clave en un formato Markdown impecable:\n\n### 1. Temas de debate y contexto\n- Temas principales y contexto\n\n### 2. Acuerdos y decisiones\n- Conclusiones y decisiones adoptadas\n\n### 3. Tareas pendientes (Action Items)\n- [ ] **Tarea**: Descripción específica y responsable\n\nEstructurado, objetivo y preciso. Solo muestra el cuerpo del acta sin fórmulas de cortesía."
+        },
+        "lecture": {
+          "name": "Notas de estudio profundas",
+          "desc": "Organización sistemática de conferencias/clases con conceptos, teorías y ejemplos",
+          "prompt": "Eres un asistente académico profesional. Transforma el contenido en notas de estudio estructuradas en Markdown:\n\n## 1. Temas centrales y conceptos\n## 2. Puntos clave y teorías\n## 3. Casos prácticos y argumentos\n## 4. Conclusiones y reflexiones\n\nBien organizado, muestra únicamente el contenido de las notas."
+        },
+        "tldr": {
+          "name": "Vistazo rápido (TL;DR)",
+          "desc": "Menos de 150 palabras, resumen ultracompacto de conclusiones clave",
+          "prompt": "Eres un asistente de resúmenes ultracompactos. Resume el texto en menos de 150 palabras (TL;DR), presentando directamente las conclusiones y hechos principales sin preámbulos ni rodeos."
+        },
+        "takeaways": {
+          "name": "Citas e ideas destacadas",
+          "desc": "Extraer citas textuales memorables, puntos de vista e ideas inspiradoras",
+          "prompt": "Eres un asistente para recopilar ideas y citas memorables. Extrae los puntos más destacados en formato Markdown:\n\n### 💡 Ideas fundamentales\n- Puntos de vista esenciales\n\n### 💬 Citas destacadas\n> Cita textual (breve contexto)\n\n### 🔍 Reflexiones y aprendizajes\n- Ideas inspiradoras\n\nSolo muestra el contenido curado."
+        }
+      },
       "ollama": {
         "already_running": "El servicio Ollama ya está en ejecución",
         "process_exists": "El proceso del servicio Ollama ya existe",
@@ -1243,23 +1171,6 @@
         "stream_connection_failed": "MistralClient: conexión de transmisión fallida: {error}",
         "check_retry": "MistralClient: intento {attempt}/{max} de verificación fallido, reintentando en {wait}s..."
       }
-    },
-    "voice_transcription": {
-      "audio_file_not_found": "Archivo de audio no encontrado: {path}",
-      "context_prefix": "Contexto anterior: {context}",
-      "no_speech_detected": "(No se detectó voz)",
-      "transcribe_failed": "El servicio de transcripción de voz falló: {error}",
-      "transcribe_failed_short": "Transcripción fallida: {error}"
-    },
-    "voice_recorder": {
-      "vad_calibrated": "Calibración VAD de VoiceRecorder completa, piso_ruido={value}",
-      "vad_chunk_save_failed": "Error al guardar fragmento VAD: {error}",
-      "missing_sounddevice": "Falta la biblioteca sounddevice: {error}",
-      "recording_exception": "Excepción en grabación: {error}",
-      "save_recording_failed": "Error al guardar la grabación: {error}",
-      "callback_status": "Estado de callback de VoiceRecorder: {status}",
-      "no_audio_data": "No se grabaron datos de audio",
-      "save_wav_failed": "Error al guardar WAV: {error}"
     }
   },
   "storage": {
@@ -1290,13 +1201,6 @@
     "bookmark": {
       "load_fail": "Error de lectura: %s",
       "save_fail": "Error de escritura: %s"
-    },
-    "voice_store": {
-      "create_conv": "Nueva conversación %s",
-      "read_conv_fail": "Error al leer la conversación %s: %s",
-      "read_list_fail": "Error al leer la lista de conversaciones %s: %s",
-      "delete_conv": "Conversación eliminada %s",
-      "conv_not_found": "Conversación no encontrada: {conv_id}"
     },
     "json": {
       "read_fail": "Error al leer el archivo JSON {name}: {error}"
@@ -1372,7 +1276,39 @@
   "transcription_prompt_manager": {
     "load_failed": "TranscriptionPromptManager: ✗ Error al cargar ({name})",
     "loaded": "TranscriptionPromptManager: ✓ Cargado ({name})",
-    "save_failed": "TranscriptionPromptManager: ✗ Error al guardar ({error})"
+    "save_failed": "TranscriptionPromptManager: ✗ Error al guardar ({error})",
+    "presets": {
+      "general": {
+        "name": "Estándar y Puntuación",
+        "desc": "Guía una salida precisa con puntuación completa, ideal para audio general",
+        "prompt": "Por favor, transcriba el audio con precisión utilizando una puntuación completa y adecuada.",
+        "hotwords": ""
+      },
+      "meeting": {
+        "name": "Reuniones y Entrevistas",
+        "desc": "Refuerza términos de trabajo en equipo, decisiones y tareas",
+        "prompt": "Esta es una reunión de trabajo o entrevista. Conserve los términos del dominio y el contexto profesional.",
+        "hotwords": "Reunión Agenda Acuerdo Sincronización Informe Revisión Seguimiento"
+      },
+      "ecommerce": {
+        "name": "Comercio electrónico y Ventas",
+        "desc": "Sesgado hacia términos de comercio electrónico, directos y tiendas en línea",
+        "prompt": "Contenido sobre comercio electrónico y ventas. Transcriba con precisión los términos comerciales.",
+        "hotwords": "SKU GMV Tienda Carrito Conversión Campaña Pasarela Pedido"
+      },
+      "tech": {
+        "name": "Tecnología y Programación",
+        "desc": "Conserva mayúsculas y minúsculas y términos de desarrollo de software",
+        "prompt": "Contenido sobre desarrollo de software e informática. Conserve los términos técnicos y su formato exacto.",
+        "hotwords": "Python API Docker Linux PyTorch Git GPU CUDA Front-end Back-end Framework Bug Debug Web CI/CD LLM"
+      },
+      "bilingual": {
+        "name": "Bilingüe y Conversación",
+        "desc": "Transición fluida para conversaciones que mezclan términos habituales",
+        "prompt": "Conversación con expresiones bilingües. Conserve los nombres propios y la fluidez natural del diálogo.",
+        "hotwords": "OK PPT follow up update meeting schedule review project team catch up sync call demo"
+      }
+    }
   },
   "dll_downloader": {
     "proxy_source": {
@@ -1573,7 +1509,6 @@
     "gen_bg_image": "Generated background-image icon: {path}",
     "gen_favorite": "Generated favorites icon: {path}",
     "gen_api_key": "Generated API Key icon: {path}",
-    "gen_voice": "Generated voice-to-text icon: {path}",
     "gen_api_test": "Generated API-test icon: {path}",
     "gen_about": "Generated about icon: {path}",
     "gen_arrow_right": "Generated right-arrow icon: {path}",
@@ -1581,5 +1516,72 @@
     "gen_main": "Generating video2text icon...",
     "gen_main_png": "Generated main icon PNG: {path}",
     "gen_main_ico": "Generated main icon ICO: {path}"
+  },
+  "transcription_tab": {
+    "engine_group": "Motor de transcripción / Selección de modelo",
+    "funasr_group": "Parámetros del modelo FunASR Paraformer",
+    "radio_funasr": "FunASR (Chino alta precisión)",
+    "radio_whisper": "Faster-Whisper (Multilingüe)",
+    "whisper_group": "Parámetros del modelo Faster-Whisper"
+  },
+  "tx_labels": {
+    "funasr_device": "Dispositivo de inferencia",
+    "funasr_language": "Idioma",
+    "funasr_model": "Selección de modelo / Ruta",
+    "funasr_num_workers": "Hilos de inferencia",
+    "funasr_punc_filter": "Restauración de puntuación",
+    "funasr_quantize": "Aceleración por cuantización INT8",
+    "funasr_vad_filter": "Filtro FSMN-VAD",
+    "funasr_vad_max_end_sil": "Silencio fin de frase VAD (ms)",
+    "whisper_beam_size": "Tamaño de haz (Beam Size)",
+    "whisper_best_of": "Muestras Best Of",
+    "whisper_compression_ratio_threshold": "Umbral de ratio de compresión",
+    "whisper_compute_type": "Tipo de cómputo",
+    "whisper_condition_on_previous_text": "Condición basada en texto anterior",
+    "whisper_device": "Dispositivo de inferencia",
+    "whisper_language": "Idioma",
+    "whisper_log_prob_threshold": "Umbral de probabilidad logarítmica",
+    "whisper_model": "Selección de modelo / Ruta",
+    "whisper_no_repeat_ngram_size": "Tamaño N-gram antirrepetición",
+    "whisper_no_speech_threshold": "Umbral de no voz",
+    "whisper_num_workers": "Hilos de inferencia",
+    "whisper_repetition_penalty": "Penalización por repetición",
+    "whisper_temperature": "Temperatura",
+    "whisper_vad_filter": "Filtro de silencio VAD",
+    "whisper_vad_max_speech_s": "Segmento máx. VAD (s)",
+    "whisper_vad_min_silence_ms": "Silencio mín. VAD (ms)",
+    "whisper_vad_speech_pad_ms": "Relleno de voz VAD (ms)",
+    "whisper_vad_threshold": "Umbral de voz VAD",
+    "whisper_word_timestamps": "Marcas de tiempo por palabra"
+  },
+  "tx_tooltips": {
+    "funasr_device": "Dispositivo de cómputo de inferencia: auto (detección automática), cuda (GPU), cpu",
+    "funasr_language": "Idioma de transcripción: zh (Chino) o auto",
+    "funasr_model": "Seleccione el modelo FunASR Paraformer o examine una carpeta personalizada a la derecha",
+    "funasr_num_workers": "Hilos de CPU de ONNX Runtime (por defecto 4, aumentar en CPU multinúcleo para acelerar)",
+    "funasr_punc_filter": "Activar restauración de puntuación CT-Transformer. Desactivar para acelerar un ~30%",
+    "funasr_quantize": "Activar cuantización INT8 (más rápido, menor memoria). Desactivado usa precisión FP32 original",
+    "funasr_vad_filter": "Activar detección de actividad de voz FSMN-VAD para dividir silencios",
+    "funasr_vad_max_end_sil": "Duración máxima de silencio (ms) para detectar fin de frase (por defecto 800ms)",
+    "whisper_beam_size": "Tamaño de búsqueda de haz (1~10), mayor es más preciso pero más lento",
+    "whisper_best_of": "Número de candidatos cuando temperature > 0",
+    "whisper_compression_ratio_threshold": "Umbral de ratio de compresión gzip para detección de repetición, por defecto 2.4",
+    "whisper_compute_type": "Precisión de cómputo: float16, int8, float32. Nota: la CPU no admite float16",
+    "whisper_condition_on_previous_text": "Condicionar la generación al texto anterior. Se recomienda False para audios largos",
+    "whisper_device": "Dispositivo de inferencia: cuda (GPU NVIDIA), cpu, auto (automático)",
+    "whisper_language": "Código de idioma: zh, en, ja, etc. auto para detección automática",
+    "whisper_log_prob_threshold": "Umbral de probabilidad logarítmica promedio, por defecto -1.0",
+    "whisper_model": "Seleccione una versión del modelo Faster-Whisper o busque una carpeta personalizada",
+    "whisper_no_repeat_ngram_size": "Tamaño de n-gram para evitar repeticiones, 0 para desactivar",
+    "whisper_no_speech_threshold": "Umbral de probabilidad de no voz, por defecto 0.6",
+    "whisper_num_workers": "Hilos de inferencia CTranslate2 (1~núcleos de CPU)",
+    "whisper_repetition_penalty": "Penalización por repetición (>1 suprime repeticiones)",
+    "whisper_temperature": "Temperatura de muestreo, valores separados por comas para retroceso (ej. 0.0,0.2,0.4)",
+    "whisper_vad_filter": "Activar Silero VAD para filtrar silencio y suprimir alucinaciones",
+    "whisper_vad_max_speech_s": "Duración máxima de segmento VAD (s), 0 = ilimitado",
+    "whisper_vad_min_silence_ms": "Duración mínima de silencio (ms) para división de segmentos, por defecto 2000",
+    "whisper_vad_speech_pad_ms": "Relleno de voz (ms) en límites de segmentos, por defecto 400",
+    "whisper_vad_threshold": "Umbral de detección de voz VAD (0~1), se recomienda 0.6~0.7 en entornos ruidosos",
+    "whisper_word_timestamps": "Generar marcas de tiempo a nivel de palabra: True / False"
   }
 }

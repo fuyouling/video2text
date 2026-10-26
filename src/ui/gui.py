@@ -268,7 +268,6 @@ class MainWindow(QMainWindow):
             parent=self,
         )
         self._fav_helper.load()
-        self._load_prompt_config()
         # 两者独立加载并做异常隔离：任一方失败都不影响另一方恢复 last_used
         try:
             self._load_tx_prompt_templates()
@@ -329,21 +328,36 @@ class MainWindow(QMainWindow):
         dll_missing = False
 
         # ── 检查模型（仅标记，不修改缺失项的 is_check_model_file） ──
+        whisper_missing = False
+        funasr_missing = False
         if do_check_model:
-            model_name = self.settings.get(
+            whisper_name = self.settings.get(
                 "transcription.model_path", DEFAULT_MODEL_NAME
             )
-            if model_name in MODEL_CONFIG:
+            if whisper_name in MODEL_CONFIG:
                 try:
-                    downloader = ModelDownloader(model_name)
+                    downloader = ModelDownloader(whisper_name)
+                    if not downloader.is_model_exists():
+                        whisper_missing = True
                 except ValueError:
-                    downloader = None
-                if downloader and downloader.is_model_exists():
-                    logger.info(t("main.dep_model_complete", name=model_name))
-                    self.settings.set("app.is_check_model_file", "false")
-                else:
-                    model_missing = True
-                    logger.info(t("main.dep_model_missing", name=model_name))
+                    pass
+
+            try:
+                funasr_downloader = ModelDownloader("paraformer-large-vad-punc")
+                if not funasr_downloader.is_model_exists():
+                    funasr_missing = True
+            except ValueError:
+                pass
+
+            model_missing = whisper_missing or funasr_missing
+            if not model_missing:
+                logger.info(t("main.dep_model_complete", name="Models"))
+                self.settings.set("app.is_check_model_file", "false")
+            else:
+                if whisper_missing:
+                    logger.info(t("main.dep_model_missing", name=whisper_name))
+                if funasr_missing:
+                    logger.info(t("main.dep_model_missing", name="paraformer-large-vad-punc"))
 
         # ── 检查 DLL ──
         if do_check_dll:
@@ -362,7 +376,13 @@ class MainWindow(QMainWindow):
             return
 
         # ── Phase 1: 弹窗确认 ──
-        dialog = StartupConfirmDialog(model_missing, dll_missing, self)
+        dialog = StartupConfirmDialog(
+            model_missing=model_missing,
+            dll_missing=dll_missing,
+            parent=self,
+            whisper_missing=whisper_missing,
+            funasr_missing=funasr_missing,
+        )
         if dialog.exec() != dialog.DialogCode.Accepted:
             # 用户取消 → 关闭所有标记，下次不再弹出
             self.settings.set("app.is_check_model_file", "false")
@@ -378,10 +398,15 @@ class MainWindow(QMainWindow):
             download_model=result["download_model"],
             download_dll=result["download_dll"],
             keep_archive=result["keep_archive"],
+            target_models=result.get("target_models"),
         )
 
     def _start_dependency_download_thread(
-        self, download_model: bool, download_dll: bool, keep_archive: bool
+        self,
+        download_model: bool,
+        download_dll: bool,
+        keep_archive: bool,
+        target_models: Optional[list] = None,
     ) -> None:
         """启动统一的依赖下载后台线程（串行执行模型 → DLL）。"""
         logger = get_logger("video2text")
@@ -391,7 +416,12 @@ class MainWindow(QMainWindow):
         )
         self._wait_async_thread("_startup_dependency_thread")
         thread = QThread()
-        worker = StartupDependencyWorker(download_model, download_dll, keep_archive)
+        worker = StartupDependencyWorker(
+            download_model=download_model,
+            download_dll=download_dll,
+            keep_archive=keep_archive,
+            target_models=target_models,
+        )
         worker.moveToThread(thread)
 
         worker.phase_changed.connect(self._on_dependency_phase_changed)
@@ -561,14 +591,6 @@ class MainWindow(QMainWindow):
 
         root.addWidget(self.main_panel, 1)
 
-        self.voice_panel = QWidget()
-        self._voice_layout = QVBoxLayout(self.voice_panel)
-        self._voice_layout.setContentsMargins(0, 0, 0, 0)
-        self._voice_layout.setSpacing(0)
-        self._voice_widget = None  # 延迟创建，首次切换到 VoiceToText 时才实例化
-        self.voice_panel.hide()
-        root.addWidget(self.voice_panel, 1)
-
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage(t("main.config_path_status", path=self.settings.config_path))
@@ -705,30 +727,37 @@ class MainWindow(QMainWindow):
         tx_prompt_layout = QVBoxLayout(tx_prompt_group)
 
         self.tx_prompt_template_combo = QComboBox()
-        self.tx_prompt_template_combo.setEditable(True)
         self.tx_prompt_template_combo.setObjectName("TxPromptCombo")
         self.tx_prompt_template_combo.setMinimumWidth(150)
         self.tx_prompt_template_combo.setPlaceholderText(t("main.tx_prompt_template_placeholder"))
-        self.tx_prompt_template_combo.lineEdit().setPlaceholderText(self.tx_prompt_template_combo.placeholderText())
-        self.tx_prompt_template_combo.currentTextChanged.connect(
+        self.tx_prompt_template_combo.currentIndexChanged.connect(
             self._on_tx_prompt_template_selected
         )
 
         self.initial_prompt_edit = QTextEdit()
         self.initial_prompt_edit.setMaximumHeight(60)
         self.initial_prompt_edit.setPlaceholderText(t("main.tx_prompt_placeholder"))
+        self.initial_prompt_edit.setToolTip(t("main.tx_prompt_tooltip"))
         tx_prompt_layout.addWidget(self.initial_prompt_edit)
 
         self.hotwords_edit = QTextEdit()
         self.hotwords_edit.setMaximumHeight(40)
         self.hotwords_edit.setPlaceholderText(t("main.hotwords_placeholder"))
+        self.hotwords_edit.setToolTip(t("main.tx_hotwords_tooltip"))
         tx_prompt_layout.addWidget(self.hotwords_edit)
 
         tx_prompt_btn_row = QHBoxLayout()
         tx_prompt_btn_row.addWidget(self.tx_prompt_template_combo, 1)
+
+        self.tx_prompt_reset_btn = QPushButton(t("main.tx_prompt_reset_btn"))
+        self.tx_prompt_reset_btn.setToolTip(t("main.tx_prompt_reset_tooltip"))
+        self.tx_prompt_reset_btn.clicked.connect(self._reset_tx_prompt_template)
+        tx_prompt_btn_row.addWidget(self.tx_prompt_reset_btn)
+
         self.tx_prompt_save_btn = QPushButton(t("common.save"))
         self.tx_prompt_save_btn.clicked.connect(self._save_tx_prompt_template)
         tx_prompt_btn_row.addWidget(self.tx_prompt_save_btn)
+
         self.tx_prompt_delete_btn = QPushButton(t("common.delete"))
         self.tx_prompt_delete_btn.clicked.connect(self._delete_tx_prompt_template)
         tx_prompt_btn_row.addWidget(self.tx_prompt_delete_btn)
@@ -739,37 +768,59 @@ class MainWindow(QMainWindow):
         summary_prompt_group = QGroupBox(t("main.summary_prompt_group"))
         prompt_layout = QVBoxLayout(summary_prompt_group)
 
-        self.ollama_prompt_edit = QTextEdit()
-        self.ollama_prompt_edit.setMaximumHeight(100)
-        self.ollama_prompt_edit.setPlaceholderText(t("main.summary_prompt_placeholder"))
-        prompt_layout.addWidget(self.ollama_prompt_edit)
+        self.summary_prompt_edit = QTextEdit()
+        self.summary_prompt_edit.setMaximumHeight(100)
+        self.summary_prompt_edit.setPlaceholderText(t("main.summary_prompt_placeholder"))
+        prompt_layout.addWidget(self.summary_prompt_edit)
+        self.ollama_prompt_edit = self.summary_prompt_edit  # 兼容性别名
 
         prompt_btn_row = QHBoxLayout()
         self.prompt_template_combo = QComboBox()
-        self.prompt_template_combo.setEditable(True)
         self.prompt_template_combo.setObjectName("SummaryPromptCombo")
-        self.prompt_template_combo.setMinimumWidth(150)
+        self.prompt_template_combo.setMinimumWidth(160)
         self.prompt_template_combo.setPlaceholderText(t("main.summary_prompt_template_placeholder"))
-        self.prompt_template_combo.lineEdit().setPlaceholderText(self.prompt_template_combo.placeholderText())
-        self.prompt_template_combo.currentTextChanged.connect(
+        self.prompt_template_combo.currentIndexChanged.connect(
             self._on_prompt_template_selected
         )
         prompt_btn_row.addWidget(self.prompt_template_combo, 1)
+
+        self.prompt_reset_btn = QPushButton(t("main.prompt_reset_btn"))
+        self.prompt_reset_btn.setToolTip(t("main.prompt_reset_tooltip"))
+        self.prompt_reset_btn.clicked.connect(self._reset_prompt_template)
+        prompt_btn_row.addWidget(self.prompt_reset_btn)
+
         self.prompt_save_btn = QPushButton(t("common.save"))
         self.prompt_save_btn.clicked.connect(self._save_prompt_template)
         prompt_btn_row.addWidget(self.prompt_save_btn)
+
         self.prompt_delete_btn = QPushButton(t("common.delete"))
         self.prompt_delete_btn.clicked.connect(self._delete_prompt_template)
         prompt_btn_row.addWidget(self.prompt_delete_btn)
-        self.markdown_enabled_cb = QCheckBox(t("main.markdown_cb"))
-        self.markdown_enabled_cb.setToolTip(t("main.markdown_tooltip"))
-        self.markdown_enabled_cb.setChecked(self.prompt_manager.get_markdown_enabled())
-        self.markdown_enabled_cb.toggled.connect(self._on_markdown_toggled)
-        prompt_btn_row.addWidget(self.markdown_enabled_cb)
         prompt_layout.addLayout(prompt_btn_row)
 
         layout.addWidget(summary_prompt_group, 1)
+        self._update_tx_prompt_mode()
         return container
+
+    def _update_tx_prompt_mode(self) -> None:
+        """根据当前转写引擎（FunASR / Faster-Whisper）智能调整提示词与热词编辑框状态。"""
+        engine = self.settings.get("transcription.engine", "faster-whisper").lower().strip()
+        is_funasr = engine == "funasr"
+
+        if is_funasr:
+            self.initial_prompt_edit.setEnabled(False)
+            self.initial_prompt_edit.setPlaceholderText(t("main.tx_prompt_funasr_disabled_hint"))
+            self.initial_prompt_edit.setToolTip(t("main.tx_prompt_funasr_disabled_hint"))
+            self.hotwords_edit.setEnabled(True)
+            self.hotwords_edit.setPlaceholderText(t("main.tx_hotwords_funasr_hint"))
+            self.hotwords_edit.setToolTip(t("main.tx_hotwords_funasr_tooltip"))
+        else:
+            self.initial_prompt_edit.setEnabled(True)
+            self.initial_prompt_edit.setPlaceholderText(t("main.tx_prompt_placeholder"))
+            self.initial_prompt_edit.setToolTip(t("main.tx_prompt_tooltip"))
+            self.hotwords_edit.setEnabled(True)
+            self.hotwords_edit.setPlaceholderText(t("main.hotwords_placeholder"))
+            self.hotwords_edit.setToolTip(t("main.tx_hotwords_tooltip"))
 
     def _apply_menu_style(self) -> None:
         """应用浅色主题菜单样式（独立于背景图，始终生效）。"""
@@ -853,17 +904,14 @@ class MainWindow(QMainWindow):
 
         tools_menu = QMenu(self)
         tools_menu.setTitle(t("menu.tools"))
-        voice_action = tools_menu.addAction(
-            _menu_icon("voice.png"), t("menu.tools_voice_to_text")
-        )
-        voice_action.setShortcut("Ctrl+Shift+V")
-        voice_action.setShortcutVisibleInContextMenu(True)
-        voice_action.setStatusTip(t("menu.tools_voice_to_text"))
-        voice_action.triggered.connect(self._on_show_voice_to_text)
         nvidia_test_action = tools_menu.addAction(
             _menu_icon("api_test.png"), t("menu.tools_nvidia_api_test")
         )
         nvidia_test_action.triggered.connect(self._on_show_nvidia_api_test)
+        amd_test_action = tools_menu.addAction(
+            _menu_icon("api_test.png"), t("menu.tools_amd_api_test")
+        )
+        amd_test_action.triggered.connect(self._on_show_amd_api_test)
 
         help_menu = QMenu(self)
         help_menu.setTitle(t("menu.help"))
@@ -915,9 +963,9 @@ class MainWindow(QMainWindow):
     def _show_config_editor(self) -> None:
         dialog = ConfigEditorDialog(self)
         if dialog.exec() == dialog.DialogCode.Accepted:
-            self._load_prompt_config()
             self._load_prompt_templates()
             self._refresh_output_dir()
+            self._update_tx_prompt_mode()
             self.status_bar.showMessage(t("status.config_saved"), 5000)
 
 
@@ -931,45 +979,110 @@ class MainWindow(QMainWindow):
         if not current or current == self._default_output_dir:
             self.output_combo.setCurrentText(new_default)
 
-    def _load_prompt_config(self) -> None:
-        prompt = self.settings.get("summarization.custom_prompt", "")
-        self.ollama_prompt_edit.setPlainText(prompt)
-
     # ── 转写提示词模板管理 ──
 
     def _load_tx_prompt_templates(self) -> None:
         self.tx_prompt_template_combo.blockSignals(True)
         self.tx_prompt_template_combo.clear()
-        self.tx_prompt_template_combo.addItem(self._TX_PLACEHOLDER_PROMPT)
-        for name in self._tx_prompt_manager.get_names():
-            self.tx_prompt_template_combo.addItem(name)
+
+        # 0. 留空项
+        self.tx_prompt_template_combo.addItem(t("main.tx_prompt_none"), "__empty__")
+
+        # 1. 内置预设
+        builtin_presets = self._tx_prompt_manager.get_builtin_presets()
+        for preset_id, preset in builtin_presets.items():
+            self.tx_prompt_template_combo.addItem(preset.name, preset_id)
+
+        # 2. 自定义模板
+        custom_names = self._tx_prompt_manager.get_names()
+        for name in custom_names:
+            self.tx_prompt_template_combo.addItem(f"★ {name}", name)
+
         last_used = self._tx_prompt_manager.get_last_used()
-        if last_used and last_used in self._tx_prompt_manager.get_names():
-            idx = self.tx_prompt_template_combo.findText(last_used)
-            if idx >= 0:
-                self.tx_prompt_template_combo.setCurrentIndex(idx)
-                tmpl = self._tx_prompt_manager.get_template(last_used)
-                self.initial_prompt_edit.setPlainText(
-                    tmpl.get("initial_prompt", "")
-                )
-                self.hotwords_edit.setPlainText(tmpl.get("hotwords", ""))
+        selected_idx = -1
+        for i in range(self.tx_prompt_template_combo.count()):
+            data = self.tx_prompt_template_combo.itemData(i)
+            text = self.tx_prompt_template_combo.itemText(i)
+            if data == last_used or text == last_used or (text.startswith("★ ") and text[2:] == last_used):
+                selected_idx = i
+                break
+
+        if selected_idx >= 0:
+            self.tx_prompt_template_combo.setCurrentIndex(selected_idx)
         else:
+            default_idx = 1 if self.tx_prompt_template_combo.count() > 1 else 0
+            self.tx_prompt_template_combo.setCurrentIndex(default_idx)
+            last_used = self.tx_prompt_template_combo.itemData(default_idx) or "general"
+
+        if last_used == "__empty__":
             self.initial_prompt_edit.clear()
             self.hotwords_edit.clear()
-            self.tx_prompt_template_combo.clearEditText()
-            self.tx_prompt_template_combo.setCurrentIndex(-1)
+            self.tx_prompt_delete_btn.setEnabled(False)
+            self.tx_prompt_reset_btn.setEnabled(False)
+        else:
+            tmpl = self._tx_prompt_manager.get_template(last_used)
+            if tmpl:
+                self.initial_prompt_edit.setPlainText(tmpl.initial_prompt)
+                self.hotwords_edit.setPlainText(tmpl.hotwords)
+                self.tx_prompt_delete_btn.setEnabled(not self._tx_prompt_manager.is_builtin(last_used))
+                self.tx_prompt_reset_btn.setEnabled(True)
+            else:
+                self.initial_prompt_edit.clear()
+                self.hotwords_edit.clear()
+                self.tx_prompt_delete_btn.setEnabled(False)
+                self.tx_prompt_reset_btn.setEnabled(False)
+
         self.tx_prompt_template_combo.blockSignals(False)
 
-    def _on_tx_prompt_template_selected(self, name: str) -> None:
-        if not name or name == self._TX_PLACEHOLDER_PROMPT:
+    def _on_tx_prompt_template_selected(self, index: int) -> None:
+        if index < 0:
+            return
+        target_id = self.tx_prompt_template_combo.itemData(index) or self.tx_prompt_template_combo.currentText()
+        if not target_id:
+            return
+
+        if target_id == "__empty__":
+            self.initial_prompt_edit.clear()
+            self.hotwords_edit.clear()
+            self._tx_prompt_manager.set_last_used("__empty__")
+            self.tx_prompt_delete_btn.setEnabled(False)
+            self.tx_prompt_reset_btn.setEnabled(False)
+            return
+
+        tmpl = self._tx_prompt_manager.get_template(target_id)
+        if tmpl:
+            self.initial_prompt_edit.setPlainText(tmpl.initial_prompt)
+            self.hotwords_edit.setPlainText(tmpl.hotwords)
+            self._tx_prompt_manager.set_last_used(target_id)
+            self.tx_prompt_delete_btn.setEnabled(not self._tx_prompt_manager.is_builtin(target_id))
+            self.tx_prompt_reset_btn.setEnabled(True)
+
+    def _reset_tx_prompt_template(self) -> None:
+        idx = self.tx_prompt_template_combo.currentIndex()
+        if idx < 0:
+            return
+        target_id = self.tx_prompt_template_combo.itemData(idx) or self.tx_prompt_template_combo.currentText()
+        if target_id == "__empty__":
             self.initial_prompt_edit.clear()
             self.hotwords_edit.clear()
             return
-        tmpl = self._tx_prompt_manager.get_template(name)
+
+        tmpl = self._tx_prompt_manager.reset_template(target_id)
+        name = tmpl.name if tmpl else target_id
+
+        reply = QMessageBox.question(
+            self,
+            t("main.tx_prompt_reset_confirm_title"),
+            t("main.tx_prompt_reset_confirm_msg", name=name),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
         if tmpl:
-            self.initial_prompt_edit.setPlainText(tmpl.get("initial_prompt", ""))
-            self.hotwords_edit.setPlainText(tmpl.get("hotwords", ""))
-            self._tx_prompt_manager.set_last_used(name)
+            self.initial_prompt_edit.setPlainText(tmpl.initial_prompt)
+            self.hotwords_edit.setPlainText(tmpl.hotwords)
+        self.status_bar.showMessage(t("main.tx_prompt_saved", name=name), 3000)
 
     def _save_tx_prompt_template(self) -> None:
         initial_prompt = self.initial_prompt_edit.toPlainText().strip()
@@ -978,155 +1091,194 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, t("common.hint"), t("main.tx_prompt_empty_warning"))
             return
 
-        current_name = self.tx_prompt_template_combo.currentText()
-        if current_name == self._TX_PLACEHOLDER_PROMPT:
-            current_name = ""
-        name, ok = QInputDialog.getText(
-            self, t("main.tx_prompt_save_dialog"), t("main.tx_prompt_name_label"), text=current_name
-        )
-        if not ok or not name.strip():
-            return
+        idx = self.tx_prompt_template_combo.currentIndex()
+        current_id = self.tx_prompt_template_combo.itemData(idx) if idx >= 0 else ""
+        is_builtin = self._tx_prompt_manager.is_builtin(current_id)
 
-        name = name.strip()
-        if name == self._TX_PLACEHOLDER_PROMPT:
-            QMessageBox.warning(
-                self,
-                t("common.hint"),
-                t("main.tx_prompt_reserved_warning", name=self._TX_PLACEHOLDER_PROMPT)
+        if is_builtin or not current_id or current_id == "__empty__":
+            tmpl = self._tx_prompt_manager.get_template(current_id)
+            default_name = f"{tmpl.name} (副本)" if tmpl else ""
+            name, ok = QInputDialog.getText(
+                self, t("main.tx_prompt_save_dialog"), t("main.tx_prompt_name_label"), text=default_name
             )
-            return
-        self._tx_prompt_manager.set_template(name, initial_prompt, hotwords)
-        self._tx_prompt_manager.set_last_used(name)
+            if not ok or not name.strip():
+                return
+            name = name.strip()
+            if self._tx_prompt_manager.is_builtin(name) or name == "__empty__":
+                QMessageBox.warning(
+                    self,
+                    t("common.hint"),
+                    t("main.tx_prompt_reserved_warning", name=name)
+                )
+                return
 
-        self.tx_prompt_template_combo.blockSignals(True)
-        if self.tx_prompt_template_combo.findText(name) < 0:
-            self.tx_prompt_template_combo.addItem(name)
-        self.tx_prompt_template_combo.setCurrentText(name)
-        self.tx_prompt_template_combo.blockSignals(False)
-
-        self.status_bar.showMessage(t("main.tx_prompt_saved", name=name), 5000)
+            self._tx_prompt_manager.set_template(name, initial_prompt, hotwords)
+            self._tx_prompt_manager.set_last_used(name)
+            self._load_tx_prompt_templates()
+            self.status_bar.showMessage(t("main.tx_prompt_saved", name=name), 5000)
+        else:
+            self._tx_prompt_manager.set_template(current_id, initial_prompt, hotwords)
+            self._tx_prompt_manager.set_last_used(current_id)
+            self.status_bar.showMessage(t("main.tx_prompt_saved", name=current_id), 5000)
 
     def _delete_tx_prompt_template(self) -> None:
-        name = self.tx_prompt_template_combo.currentText()
-        if not name or name == self._TX_PLACEHOLDER_PROMPT:
+        idx = self.tx_prompt_template_combo.currentIndex()
+        if idx < 0:
+            return
+        current_id = self.tx_prompt_template_combo.itemData(idx) or self.tx_prompt_template_combo.currentText()
+        if not current_id or current_id == "__empty__":
             QMessageBox.warning(self, t("common.hint"), t("main.tx_prompt_select_to_delete"))
+            return
+        if self._tx_prompt_manager.is_builtin(current_id):
+            QMessageBox.warning(self, t("common.hint"), t("main.tx_prompt_cannot_delete_builtin"))
             return
 
         reply = QMessageBox.question(
             self,
             t("main.tx_prompt_delete_confirm_title"),
-            t("main.tx_prompt_delete_confirm_msg", name=name),
+            t("main.tx_prompt_delete_confirm_msg", name=current_id),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
 
-        self._tx_prompt_manager.delete_template(name)
-
-        self.tx_prompt_template_combo.blockSignals(True)
-        idx = self.tx_prompt_template_combo.currentIndex()
-        self.tx_prompt_template_combo.removeItem(idx)
-        self.tx_prompt_template_combo.setCurrentIndex(0)
-        self.tx_prompt_template_combo.blockSignals(False)
-
-        self.initial_prompt_edit.clear()
-        self.hotwords_edit.clear()
-        self.status_bar.showMessage(t("main.tx_prompt_deleted", name=name), 5000)
+        self._tx_prompt_manager.delete_template(current_id)
+        self._load_tx_prompt_templates()
+        self.status_bar.showMessage(t("main.tx_prompt_deleted", name=current_id), 5000)
 
     # ── 提示词模板管理 ──
 
     def _load_prompt_templates(self) -> None:
         self.prompt_template_combo.blockSignals(True)
         self.prompt_template_combo.clear()
-        self.prompt_template_combo.addItem(self._PLACEHOLDER_PROMPT)
-        for name in self.prompt_manager.get_names():
-            self.prompt_template_combo.addItem(name)
+
+        # 1. 内置预设
+        builtin_presets = self.prompt_manager.get_builtin_presets()
+        for preset_id, preset in builtin_presets.items():
+            self.prompt_template_combo.addItem(preset.name, preset_id)
+
+        # 2. 自定义模板
+        custom_names = self.prompt_manager.get_names()
+        for name in custom_names:
+            self.prompt_template_combo.addItem(f"★ {name}", name)
+
         last_used = self.prompt_manager.get_last_used()
-        if last_used and last_used in self.prompt_manager.get_names():
-            idx = self.prompt_template_combo.findText(last_used)
-            if idx >= 0:
-                self.prompt_template_combo.setCurrentIndex(idx)
-                content = self.prompt_manager.get_content(last_used)
-                self.ollama_prompt_edit.setPlainText(content)
+        selected_idx = -1
+        for i in range(self.prompt_template_combo.count()):
+            data = self.prompt_template_combo.itemData(i)
+            text = self.prompt_template_combo.itemText(i)
+            if data == last_used or text == last_used or (text.startswith("★ ") and text[2:] == last_used):
+                selected_idx = i
+                break
+
+        if selected_idx >= 0:
+            self.prompt_template_combo.setCurrentIndex(selected_idx)
         else:
-            self.ollama_prompt_edit.clear()
-            self.prompt_template_combo.clearEditText()
-            self.prompt_template_combo.setCurrentIndex(-1)
+            self.prompt_template_combo.setCurrentIndex(0)
+            last_used = self.prompt_template_combo.itemData(0) or "default"
+
+        content = self.prompt_manager.get_content(last_used)
+        self.summary_prompt_edit.setPlainText(content)
+        self.prompt_delete_btn.setEnabled(not self.prompt_manager.is_builtin(last_used))
         self.prompt_template_combo.blockSignals(False)
 
-    def _on_prompt_template_selected(self, name: str) -> None:
-        if not name or name == self._PLACEHOLDER_PROMPT:
-            self.ollama_prompt_edit.clear()
+    def _on_prompt_template_selected(self, index: int) -> None:
+        if index < 0:
             return
-        content = self.prompt_manager.get_content(name)
-        if content is not None:
-            self.ollama_prompt_edit.setPlainText(content)
-            self.prompt_manager.set_last_used(name)
-
-    def _save_prompt_template(self) -> None:
-        from PySide6.QtWidgets import QInputDialog
-
-        content = self.ollama_prompt_edit.toPlainText().strip()
-        if not content:
-            QMessageBox.warning(self, t("common.hint"), t("main.prompt_empty_warning"))
+        target_id = self.prompt_template_combo.itemData(index) or self.prompt_template_combo.currentText()
+        if not target_id:
             return
 
-        current_name = self.prompt_template_combo.currentText()
-        if current_name == self._PLACEHOLDER_PROMPT:
-            current_name = ""
-        name, ok = QInputDialog.getText(
-            self, t("main.prompt_save_dialog"), t("main.prompt_name_label"), text=current_name
-        )
-        if not ok or not name.strip():
+        content = self.prompt_manager.get_content(target_id)
+        self.summary_prompt_edit.setPlainText(content)
+        self.prompt_manager.set_last_used(target_id)
+        self.prompt_delete_btn.setEnabled(not self.prompt_manager.is_builtin(target_id))
+
+    def _reset_prompt_template(self) -> None:
+        idx = self.prompt_template_combo.currentIndex()
+        if idx < 0:
             return
-
-        name = name.strip()
-        if name == self._PLACEHOLDER_PROMPT:
-            QMessageBox.warning(
-                self,
-                t("common.hint"),
-                t("main.prompt_reserved_warning", name=self._PLACEHOLDER_PROMPT)
-            )
-            return
-        self.prompt_manager.set_template(name, content)
-        self.prompt_manager.set_last_used(name)
-
-        self.prompt_template_combo.blockSignals(True)
-        if self.prompt_template_combo.findText(name) < 0:
-            self.prompt_template_combo.addItem(name)
-        self.prompt_template_combo.setCurrentText(name)
-        self.prompt_template_combo.blockSignals(False)
-
-        self.status_bar.showMessage(t("main.prompt_saved", name=name), 5000)
-
-    def _delete_prompt_template(self) -> None:
-        name = self.prompt_template_combo.currentText()
-        if not name or name == self._PLACEHOLDER_PROMPT:
-            QMessageBox.warning(self, t("common.hint"), t("main.prompt_select_to_delete"))
-            return
+        target_id = self.prompt_template_combo.itemData(idx) or self.prompt_template_combo.currentText()
+        tmpl = self.prompt_manager.get_template(target_id)
+        name = tmpl.name if tmpl else target_id
 
         reply = QMessageBox.question(
             self,
-            t("main.prompt_delete_confirm_title"),
-            t("main.prompt_delete_confirm_msg", name=name),
+            t("main.prompt_reset_confirm_title"),
+            t("main.prompt_reset_confirm_msg", name=name),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
 
-        self.prompt_manager.delete_template(name)
+        content = self.prompt_manager.get_content(target_id)
+        self.summary_prompt_edit.setPlainText(content)
+        self.status_bar.showMessage(t("main.prompt_saved", name=name), 3000)
 
-        self.prompt_template_combo.blockSignals(True)
+    def _save_prompt_template(self) -> None:
+        from PySide6.QtWidgets import QInputDialog
+
+        content = self.summary_prompt_edit.toPlainText().strip()
+        if not content:
+            QMessageBox.warning(self, t("common.hint"), t("main.prompt_empty_warning"))
+            return
+
         idx = self.prompt_template_combo.currentIndex()
-        self.prompt_template_combo.removeItem(idx)
-        self.prompt_template_combo.setCurrentIndex(0)
-        self.prompt_template_combo.blockSignals(False)
+        current_id = self.prompt_template_combo.itemData(idx) if idx >= 0 else ""
+        is_builtin = self.prompt_manager.is_builtin(current_id)
 
-        self.ollama_prompt_edit.clear()
-        self.status_bar.showMessage(t("main.prompt_deleted", name=name), 5000)
+        if is_builtin or not current_id:
+            # 内置预设时，引导「另存为新模板」
+            tmpl = self.prompt_manager.get_template(current_id)
+            default_name = f"{tmpl.name} (副本)" if tmpl else ""
+            name, ok = QInputDialog.getText(
+                self, t("main.prompt_save_dialog"), t("main.prompt_name_label"), text=default_name
+            )
+            if not ok or not name.strip():
+                return
+            name = name.strip()
+            if self.prompt_manager.is_builtin(name):
+                QMessageBox.warning(
+                    self,
+                    t("common.hint"),
+                    t("main.prompt_reserved_warning", name=name)
+                )
+                return
 
-    def _on_markdown_toggled(self, checked: bool) -> None:
-        self.prompt_manager.set_markdown_enabled(checked)
+            self.prompt_manager.set_template(name, content)
+            self.prompt_manager.set_last_used(name)
+            self._load_prompt_templates()
+            self.status_bar.showMessage(t("main.prompt_saved", name=name), 5000)
+        else:
+            # 自定义模板直接覆盖保存
+            self.prompt_manager.set_template(current_id, content)
+            self.prompt_manager.set_last_used(current_id)
+            self.status_bar.showMessage(t("main.prompt_saved", name=current_id), 5000)
+
+    def _delete_prompt_template(self) -> None:
+        idx = self.prompt_template_combo.currentIndex()
+        if idx < 0:
+            return
+        current_id = self.prompt_template_combo.itemData(idx) or self.prompt_template_combo.currentText()
+        if self.prompt_manager.is_builtin(current_id):
+            QMessageBox.warning(self, t("common.hint"), t("main.prompt_cannot_delete_builtin"))
+            return
+
+        tmpl = self.prompt_manager.get_template(current_id)
+        display_name = tmpl.name if tmpl else current_id
+
+        reply = QMessageBox.question(
+            self,
+            t("main.prompt_delete_confirm_title"),
+            t("main.prompt_delete_confirm_msg", name=display_name),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        self.prompt_manager.delete_template(current_id)
+        self._load_prompt_templates()
+        self.status_bar.showMessage(t("main.prompt_deleted", name=display_name), 5000)
 
     def _on_tab_changed(self, index: int) -> None:
         if index == 0:
@@ -1819,7 +1971,19 @@ class MainWindow(QMainWindow):
             self._segment_text_queue.clear()
 
         # 保留时间戳与换行，逐字打出带 [起 - 止] 前缀的整行文本
-        line = OutputFormatter.format_transcript([segment], include_timestamps=True) + "\n"
+        formatted = OutputFormatter.format_transcript([segment], include_timestamps=True)
+        if not formatted.strip():
+            return
+
+        line = formatted + "\n"
+        # 确保新片段与之前的内容之间有换行分隔
+        if not self._segment_text_queue:
+            current_text = self.transcript_view.toPlainText()
+            if current_text and not current_text.endswith("\n"):
+                line = "\n" + line
+        elif self._segment_text_queue and not self._segment_text_queue[-1].endswith("\n"):
+            line = "\n" + line
+
         self._segment_text_queue.extend(line)
         if not self._segment_timer.isActive():
             self._segment_timer.start()
@@ -1828,9 +1992,6 @@ class MainWindow(QMainWindow):
         """定时器回调：按积压量动态提速，逐字把队列文本填入转写区。"""
         if not self._segment_text_queue:
             self._segment_timer.stop()
-            # 全部显示完毕，清理段间拼接可能产生的尾部空白
-            plain = self.transcript_view.toPlainText().rstrip()
-            self.transcript_view.setPlainText(plain)
             return
 
         backlog = len(self._segment_text_queue)
@@ -2054,20 +2215,6 @@ class MainWindow(QMainWindow):
         )
         worker.set_download_confirmed(reply == QMessageBox.StandardButton.Yes)
 
-    # ── VoiceToText 界面翻转 ──
-
-    def _on_show_voice_to_text(self) -> None:
-        if self._voice_widget is None:
-            from src.ui.voice_to_text_widget import VoiceToTextWidget
-            self._voice_widget = VoiceToTextWidget(self.settings, self)
-            self._voice_layout.addWidget(self._voice_widget)
-        self.main_panel.hide()
-        self.voice_panel.show()
-        self._voice_widget.load_model_async()
-
-    def _on_back_to_main(self) -> None:
-        self.voice_panel.hide()
-        self.main_panel.show()
 
     # ── Nvidia API 响应测试（逻辑全部在 nvidia_api_test_dialog 中，此处仅入口） ──
 
@@ -2075,6 +2222,14 @@ class MainWindow(QMainWindow):
         from src.ui.nvidia_api_test_dialog import NvidiaApiTestDialog
 
         dialog = NvidiaApiTestDialog(self, self.settings)
+        dialog.exec()
+
+    # ── AMD API 响应测试（逻辑全部在 amd_api_test_dialog 中，此处仅入口） ──
+
+    def _on_show_amd_api_test(self) -> None:
+        from src.ui.amd_api_test_dialog import AmdApiTestDialog
+
+        dialog = AmdApiTestDialog(self, self.settings)
         dialog.exec()
 
     def _on_show_api_key_manage(self) -> None:
@@ -2398,9 +2553,6 @@ class MainWindow(QMainWindow):
 
         self.log_panel.cleanup()
 
-        # ⚠ 先清理 VoiceToText 再卸载模型，避免转写线程与模型卸载竞争
-        if hasattr(self, "_voice_widget") and self._voice_widget is not None:
-            self._voice_widget.cleanup()
 
         OllamaClient.stop_service()
 
@@ -2545,7 +2697,7 @@ class MainWindow(QMainWindow):
             self._bg_pixmap is not None
             and not self._bg_pixmap.isNull()
         )
-        for w in (self.main_panel, self.voice_panel):
+        for w in (self.main_panel,):
             if has_bg:
                 w.setStyleSheet("""
                     QWidget { background: transparent; }
@@ -2601,6 +2753,9 @@ def main() -> None:
     """GUI 主入口：启用 faulthandler、设置线程异常钩子、启动 Qt 事件循环。"""
     import faulthandler
     import threading
+    from src.utils.paths import ensure_cuda_libs
+
+    ensure_cuda_libs()
 
     _settings = Settings()
     setup_logger(

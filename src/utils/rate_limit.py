@@ -25,7 +25,11 @@ class RateLimiter:
 
 def get_retry_after(response_headers: dict) -> Optional[float]:
     """解析 Retry-After 头，返回秒数（float）。"""
-    raw = response_headers.get("Retry-After", "")
+    raw = ""
+    for k, v in response_headers.items():
+        if str(k).lower() == "retry-after":
+            raw = v
+            break
     if not raw:
         return None
     try:

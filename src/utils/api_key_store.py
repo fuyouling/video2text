@@ -32,6 +32,99 @@ class EnvLine:
     raw: str = ""
     key: str = ""
     value: str = ""
+    vendor: str = ""
+
+
+_KNOWN_VENDORS = {
+    "OLLAMA_API_KEY": "Ollama",
+    "NVIDIA_API_KEY": "NVIDIA",
+    "MISTRAL_API_KEY": "Mistral AI",
+    "AMD_API_KEY": "AMD Radeon Cloud",
+    "OPENAI_API_KEY": "OpenAI",
+    "DEEPSEEK_API_KEY": "DeepSeek",
+    "ANTHROPIC_API_KEY": "Anthropic",
+    "CLAUDE_API_KEY": "Claude",
+    "SILICONFLOW_API_KEY": "SiliconFlow",
+    "GROQ_API_KEY": "Groq",
+    "GEMINI_API_KEY": "Google Gemini",
+    "MOONSHOT_API_KEY": "Moonshot",
+    "ZHIPU_API_KEY": "智谱 AI",
+    "QWEN_API_KEY": "通义千问",
+}
+
+
+def infer_vendor_name(key: str) -> str:
+    """根据环境变量 Key 名推导默认的模型厂商名称。"""
+    key_upper = key.strip().upper()
+    if key_upper in _KNOWN_VENDORS:
+        return _KNOWN_VENDORS[key_upper]
+    clean_key = key.strip()
+    if clean_key.upper().endswith("_API_KEY"):
+        base = clean_key[:-8]
+    elif clean_key.upper().endswith("_KEY"):
+        base = clean_key[:-4]
+    else:
+        base = clean_key
+    if base.isupper():
+        return " ".join(part.capitalize() for part in base.split("_"))
+    return base
+
+
+def _extract_kv_and_vendor(line: str) -> Tuple[str, str, str]:
+    """从 key=value 行中解析 (key, value, vendor)。"""
+    body = line.strip()
+    if body.startswith("export"):
+        body = body[len("export"):].lstrip()
+
+    key, _, rest = body.partition("=")
+    key = key.strip()
+    rest = rest.strip()
+
+    vendor = ""
+    value = ""
+
+    if rest:
+        if rest[0] in ('"', "'"):
+            quote = rest[0]
+            end_idx = -1
+            escaped = False
+            for idx in range(1, len(rest)):
+                ch = rest[idx]
+                if escaped:
+                    escaped = False
+                    continue
+                if ch == "\\":
+                    escaped = True
+                    continue
+                if ch == quote:
+                    end_idx = idx
+                    break
+
+            if end_idx != -1:
+                value = rest[1:end_idx].replace('\\' + quote, quote)
+                after_quote = rest[end_idx + 1:].strip()
+                if "#" in after_quote:
+                    _, _, comment = after_quote.partition("#")
+                    vendor = comment.strip()
+            else:
+                if "#" in rest:
+                    val_part, _, comment = rest.partition("#")
+                    value = val_part.strip().strip(quote)
+                    vendor = comment.strip()
+                else:
+                    value = rest.strip(quote)
+        else:
+            if "#" in rest:
+                val_part, _, comment = rest.partition("#")
+                value = val_part.strip()
+                vendor = comment.strip()
+            else:
+                value = rest
+
+    if not vendor and key:
+        vendor = infer_vendor_name(key)
+
+    return key, value, vendor
 
 
 def parse_env(text: str) -> List[EnvLine]:
@@ -44,17 +137,8 @@ def parse_env(text: str) -> List[EnvLine]:
         elif stripped.startswith("#"):
             entries.append(EnvLine(kind="comment", raw=line))
         elif "=" in line:
-            body = line
-            # 兼容 `export FOO=bar` 写法：去掉前缀 `export `（保留可能的空格）
-            if stripped.startswith("export"):
-                body = stripped[len("export"):].lstrip()
-            key, _, value = body.partition("=")
-            key = key.strip()
-            value = value.strip()
-            # 去掉值两侧包裹的引号，序列化时按需再加回
-            if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
-                value = value[1:-1]
-            entries.append(EnvLine(kind="kv", key=key, value=value))
+            key, value, vendor = _extract_kv_and_vendor(line)
+            entries.append(EnvLine(kind="kv", key=key, value=value, vendor=vendor))
         else:
             # 形如环境变量赋值之外的行：原样保留，避免丢信息
             entries.append(EnvLine(kind="comment", raw=line))
@@ -72,7 +156,10 @@ def serialize_env(entries: List[EnvLine]) -> str:
             # 值含空格 / 特殊字符或为空时加双引号，避免歧义
             if val == "" or any(c in val for c in " #\"'="):
                 val = '"' + val.replace('"', '\\"') + '"'
-            lines.append(f"{entry.key}={val}")
+            line = f"{entry.key}={val}"
+            if entry.vendor.strip():
+                line += f" # {entry.vendor.strip()}"
+            lines.append(line)
         else:
             lines.append(entry.raw)
     text = "\n".join(lines)

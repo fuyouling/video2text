@@ -2,7 +2,7 @@ import os
 import sys
 
 import pytest
-from PIL import Image
+Image = pytest.importorskip("PIL.Image", reason="requires PIL")
 
 
 @pytest.mark.skip(reason="requires local PNG assets and PIL")

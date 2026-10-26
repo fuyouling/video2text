@@ -41,11 +41,13 @@ class StartupDependencyWorker(QObject):
         download_model: bool,
         download_dll: bool,
         keep_archive: bool = False,
+        target_models: Optional[list] = None,
     ) -> None:
         super().__init__()
         self._download_model = download_model
         self._download_dll = download_dll
         self._keep_archive = keep_archive
+        self._target_models = target_models
         self._cancelled = False
 
     def cancel(self) -> None:
@@ -66,6 +68,7 @@ class StartupDependencyWorker(QObject):
                 model_ok = check_models_integrity(
                     Settings(),
                     progress_callback=self._make_model_cb(),
+                    target_models=self._target_models,
                 )
                 if not model_ok:
                     self.finished.emit(False)

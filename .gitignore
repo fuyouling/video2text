@@ -233,6 +233,7 @@ models/*
 
 # 用户提示词
 prompts.json
+summary_prompts.json
 # 转写提示词配置
 transcription_prompts.json
 

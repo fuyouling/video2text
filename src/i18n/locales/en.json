@@ -33,8 +33,8 @@
     "settings_fav_clear_input": "Clear All Input Dirs",
     "settings_fav_clear_output": "Clear All Output Dirs",
     "tools": "Tools",
-    "tools_voice_to_text": "Voice to Text",
     "tools_nvidia_api_test": "Nvidia API Response Test",
+    "tools_amd_api_test": "AMD API Response Test",
     "settings_api_key_manage": "Manage API Key",
     "help": "Help",
     "help_donate": "Donate",
@@ -42,7 +42,7 @@
   },
   "api_key": {
     "title": "API Key Manager",
-    "subtitle": "Manage secrets in the project root .env. Values are masked by default; you can add, edit, or delete entries.",
+    "subtitle": "Manage secrets in the project root .env. Vendor names are freely editable, existing keys are locked, values are masked.",
     "path_label": "Config file: {path}",
     "file_missing": "File does not exist; will be created on save",
     "list_section": "Secret list",
@@ -53,7 +53,12 @@
     "show": "Show",
     "hide": "Hide",
     "delete": "Delete",
-    "key_placeholder": "Key name (read-only for existing)",
+    "col_vendor": "Vendor",
+    "col_key": "Environment Key",
+    "col_value": "Secret Value",
+    "col_action": "Action",
+    "vendor_placeholder": "Vendor name (e.g. OpenAI)",
+    "key_placeholder": "Environment Key (e.g. OPENAI_API_KEY)",
     "value_placeholder": "Secret value",
     "empty_hint": "No secrets yet. Click \"Add\" to create one.",
     "error_empty_key": "Key name cannot be empty",
@@ -96,12 +101,31 @@
     "tx_prompt_group": "Transcription Prompt",
     "tx_prompt_placeholder": "Scene instructions, domain terms to improve accuracy, keep concise",
     "hotwords_placeholder": "Hotwords/phrases as one bias prefix, key domain terms, keep concise",
-    "tx_prompt_template_placeholder": "Select saved prompt…",
+    "tx_prompt_template_placeholder": "Select prompt template…",
+    "tx_prompt_none": "No Prompt (Clear)",
+    "tx_prompt_reset_btn": "Reset",
+    "tx_prompt_reset_tooltip": "Reset editor to current template's initial content",
+    "tx_prompt_reset_confirm_title": "Confirm Reset",
+    "tx_prompt_reset_confirm_msg": "Are you sure you want to reset current content to default of '{name}'? Unsaved changes will be lost.",
+    "tx_prompt_cannot_delete_builtin": "Built-in preset templates cannot be deleted.",
+    "tx_prompt_len_warning": "Initial prompt is long ({count} chars, recommend <= 300 to preserve decoding context)",
+    "tx_hotwords_count_warning": "Too many hotwords ({count} words, recommend <= 50 to fit token budget)",
+    "tx_prompt_tooltip": "Whisper initial prompt: guides punctuation, language style, and terminology spelling (recommend <= 300 chars)",
+    "tx_hotwords_tooltip": "Whisper biased hotwords: space or comma separated, enhances recognition of proper nouns (recommend <= 50 words)",
+    "tx_prompt_funasr_disabled_hint": "FunASR (non-autoregressive) does not use sentence prompts; please use hotwords below for enhancement",
+    "tx_hotwords_funasr_hint": "Enter proper nouns or keywords separated by spaces (e.g. AI DeepLearning)",
+    "tx_hotwords_funasr_tooltip": "FunASR relies primarily on hotwords to enhance specific vocabulary recognition",
     "summary_prompt_group": "Summary Prompt",
-    "summary_prompt_placeholder": "Custom summary prompt (optional); leave empty for default",
-    "summary_prompt_template_placeholder": "Select saved prompt…",
-    "markdown_cb": "Markdown Format",
-    "markdown_tooltip": "Enable to auto-apply Markdown formatting to summaries.\nFor custom Markdown, edit the markdown_prompt field in prompts.json directly.",
+    "summary_prompt_placeholder": "Custom summary prompt with persona and format specifications, WYSIWYG",
+    "summary_prompt_template_placeholder": "Select prompt template…",
+    "prompt_builtin_group": "── Built-in Presets ──",
+    "prompt_custom_group": "── Custom Templates ──",
+    "prompt_reset_btn": "Reset",
+    "prompt_reset_tooltip": "Reset editor to current template's initial content",
+    "prompt_reset_confirm_title": "Confirm Reset",
+    "prompt_reset_confirm_msg": "Are you sure you want to reset current content to default prompt of '{name}'? Unsaved changes will be lost.",
+    "prompt_cannot_delete_builtin": "Built-in preset templates cannot be deleted.",
+    "prompt_save_as": "Save As New Template",
     "log_panel_title": "Log Output",
     "placeholder_new": "New",
     "placeholder_new_tx": "New",
@@ -204,8 +228,8 @@
     "stop_force_terminate": "  ├─ ⚠ Worker thread did not respond to exit request, force terminating...",
     "dep_check_skip_warn": "Startup dependency check failed, skipped (main UI still works)",
     "dep_check_start": "Startup dependency check: starting",
-    "dep_model_complete": "Model complete (%s)",
-    "dep_model_missing": "Model missing (%s)",
+    "dep_model_complete": "Model complete ({name})",
+    "dep_model_missing": "Model missing ({name})",
     "dep_dll_complete": "DLL dependencies complete",
     "dep_dll_missing": "DLL dependencies missing",
     "dep_all_ready": "All dependencies ready, no download needed",
@@ -269,6 +293,10 @@
       "model_yes": "Yes, download model (required for first use)",
       "model_no": "No, skip (transcription will not run)",
       "model_ready": "✓ Model complete, nothing to do",
+      "whisper_opt": "Download Faster-Whisper (Multilingual, Large-v3-Turbo, ~1.4GB)",
+      "whisper_ready": "✓ Faster-Whisper model ready",
+      "funasr_opt": "Download FunASR Paraformer (Chinese High-Accuracy, ~540MB, ModelScope)",
+      "funasr_ready": "✓ FunASR Paraformer model ready",
       "dll_group": "DLL Dependencies (cuBLAS / cuDNN, for GPU acceleration)",
       "dll_yes": "Yes, download DLL (recommended for dedicated GPU)",
       "dll_no": "No, skip (run on CPU, slower)",
@@ -579,6 +607,43 @@
     "models_empty": "No online models available. Please retry later or click \"Refresh list\".",
     "models_loading": "Fetching online model list…"
   },
+  "amd_test": {
+    "title": "AMD API Response Test",
+    "one_click": "Test All",
+    "stop": "Stop",
+    "api_key_ok": "API Key: loaded",
+    "api_key_missing": "API Key: missing",
+    "api_key_missing_msg": "AMD_API_KEY not found. Please configure it in .env before testing.",
+    "timeout_label": "Timeout {seconds}s",
+    "concurrency_label": "Concurrency {workers}",
+    "current_model": "Current model: {model}",
+    "latency_label": "Latency",
+    "latency_value": "{seconds} s",
+    "latency_over": "> {seconds}s",
+    "latency_none": "—",
+    "status_pending": "Pending",
+    "status_queued": "Queued",
+    "status_testing": "Testing",
+    "status_ok": "OK",
+    "status_fail": "Failed",
+    "status_rate_limited": "Rate limited",
+    "progress": "Progress {done}/{total}  ·  OK {ok}  ·  Failed {fail}  ·  Rate limited {limited}",
+    "retest_tooltip": "Retest this model",
+    "card_tooltip": "Double-click a successful card to save that model to the config",
+    "error_no_key": "API Key missing",
+    "error_timeout": "Response timed out ({latency}s > {limit}s)",
+    "error_empty": "Empty response",
+    "apply_title": "Set as summarization model",
+    "apply_confirm": "Write {model} to summarization.amd_model?",
+    "apply_done": "{model} is now the AMD summarization model",
+    "apply_failed": "Failed to save config: {error}",
+    "refresh_list": "Refresh list",
+    "refresh_list_loading": "Refreshing model list…",
+    "refresh_list_done": "Model list refreshed ({count} models)",
+    "refresh_list_failed": "Failed to refresh model list: {error}",
+    "models_empty": "No online models available. Please retry later or click \"Refresh list\".",
+    "models_loading": "Fetching online model list…"
+  },
   "donate": {
     "title": "Donate",
     "image_not_found": "Image not found: {path}"
@@ -696,7 +761,10 @@
     "tips_label": "[bold]Tips:[/bold]",
     "tip1": "1. Use --help to view detailed options for a single command",
     "tip2": "2. All transcription and summarization parameters (model, language, device, temperature, etc.) are configured via config.ini",
-    "tip3": "3. In PowerShell, call the executable by its full path, e.g.: .\\video2text.exe transcribe video.mp4 -o output"
+    "tip3": "3. In PowerShell, call the executable by its full path, e.g.: .\\video2text.exe transcribe video.mp4 -o output",
+    "opt_initial_prompt": "Temporarily override initial transcription prompt",
+    "opt_hotwords": "Temporarily override transcription hotwords (space or comma separated)",
+    "opt_prompt_template": "Transcription prompt preset or template name (e.g. general, meeting, ecommerce, tech, bilingual)"
   },
   "errors": {
     "file_not_found": "File not found: {path}",
@@ -756,117 +824,6 @@
       "frame_rate_parse_failed": "VideoProcessor: ⚠ Frame rate parse failed (%s), defaulting to 0"
     }
   },
-  "voice": {
-    "user_prefix": "[User] ",
-    "summary_prefix": "[Summary] ",
-    "sidebar": {
-      "title": "Conversations"
-    },
-    "chat": {
-      "placeholder": "Click the record button above to start voice transcription"
-    },
-    "back_main": "Back to Main",
-    "new_conv": "New",
-    "record_start": "Start Recording",
-    "record_stop": "Stop Recording",
-    "conv": {
-      "meta": "{time}  ·  {count} messages"
-    },
-    "summary_saved": "Summary saved to: {path}",
-    "status": {
-      "initializing": "● Initializing...",
-      "ready": "● Ready",
-      "model_not_ready": "● Model not loaded yet, please wait...",
-      "recording_vad": "● Recording (VAD)...",
-      "recording_timer": "● Recording (timed chunks)...",
-      "stopped": "● Stopped",
-      "recording_done": "● Recording done, transcribing...",
-      "transcribing": "● Transcribing...",
-      "no_speech": "● No speech detected",
-      "transcribe_done": "● Transcription complete",
-      "transcribe_fail": "● Transcription failed: {error}",
-      "record_fail": "● Recording failed: {error}",
-      "selected_count": "{count} conversation(s) selected",
-      "conv_deleted": "Conversation deleted",
-      "deleted_count": "{count} conversation(s) deleted",
-      "multi_select": "Multi-select: click items to select, right-click for batch operations",
-      "edit_mode": "Edit mode: modify content then right-click and choose [Save] to finish",
-      "msg_saved": "Message saved",
-      "edit_cancelled": "Edit cancelled",
-      "copied": "Copied to clipboard",
-      "correcting": "Correcting grammar...",
-      "correct_done": "Grammar correction complete",
-      "msg_deleted": "Message deleted",
-      "summarizing": "Summarizing...",
-      "summary_done": "Summary complete",
-      "op_fail": "Operation failed: {error}",
-      "loading_model": "● Loading model...",
-      "model_load_fail": "● Model load failed: {error}"
-    },
-    "menu": {
-      "exit_multi_select": "Exit Multi-select",
-      "delete_selected": "Delete Selected",
-      "select_toggle_all": "Select / Deselect All",
-      "delete_all": "Delete All",
-      "multi_select": "Multi-select",
-      "delete_conv": "Delete This Conversation",
-      "save": "Save",
-      "cancel_edit": "Cancel Edit",
-      "copy": "Copy",
-      "edit": "Edit",
-      "delete": "Delete",
-      "grammar": "Correct",
-      "summarize": "Summarize"
-    },
-    "dialog": {
-      "record_error": {
-        "title": "Recording Error"
-      },
-      "record_fail": {
-        "title": "Recording Failed",
-        "msg": "Could not start recording: {error}"
-      },
-      "delete_conv": {
-        "title": "Delete Conversation",
-        "msg": "Are you sure you want to delete this conversation?\nThis will also delete the JSON file on disk and cannot be undone."
-      },
-      "delete_fail": {
-        "title": "Delete Failed",
-        "msg": "Error deleting conversation: {error}"
-      },
-      "no_selection": "Please select conversations to delete first",
-      "batch_delete": {
-        "title": "Batch Delete",
-        "msg": "Are you sure you want to delete the selected {count} conversation(s)?\nThis operation cannot be undone."
-      },
-      "no_convs": "No conversations available",
-      "delete_all": {
-        "title": "Delete All",
-        "msg": "Are you sure you want to delete all {count} conversation(s)?\nThis operation cannot be undone."
-      },
-      "delete_msg": {
-        "title": "Delete Message",
-        "msg": "Are you sure you want to delete this message?"
-      },
-      "select_conv_first": "Please select a conversation first"
-    },
-    "log_delete_conv_fail": "Failed to delete conversation {conv_id}: {error}",
-    "widget": {
-      "start_record_failed": "Failed to start recording: {error}",
-      "record_error_exception": "on_record_error exception:\n{error}",
-      "transcribe_done_exception": "_on_transcribe_done exception:\n{error}",
-      "transcribe_error_exception": "_on_transcribe_error exception:\n{error}",
-      "api_call_done_exception": "_start_api_call on_done exception:\n{error}"
-    },
-    "role": {
-      "user": "User",
-      "assistant": "Assistant"
-    },
-    "prompt": {
-      "correct_text": "The user recorded audio using faster-whisper for speech recognition, and some text may be incorrect. Please correct typos and unnatural phrasing in the user's transcribed text, and output in JSON format: {\"source_text\":\"original text\",\"update_text\":\"corrected text\"}. Output only the JSON, without any other content.",
-      "summarize_conversation": "Please summarize the following multi-turn conversation into a well-structured Markdown document. Requirements: output only the Markdown content itself, without any explanatory text, prefix, or suffix.\n\nConversation:\n{text}"
-    }
-  },
   "config": {
     "section": {
       "app": "Application",
@@ -876,8 +833,7 @@
       "output": "Output",
       "paths": "Paths",
       "tools": "Tools",
-      "text_processing": "Text Processing",
-      "voice_to_text": "Voice to Text"
+      "text_processing": "Text Processing"
     },
     "group": {
       "app": {
@@ -889,7 +845,8 @@
         "decode": "Decoding",
         "vad": "VAD Detection",
         "quality": "Quality Control",
-        "repeat": "Repeat Suppression"
+        "repeat": "Repeat Suppression",
+        "prompt": "Prompt && Hotwords"
       },
       "preprocessing": {
         "audio": "Audio Processing",
@@ -901,19 +858,14 @@
       },
       "text_processing": {
         "merge": "Merge && Clean"
-      },
-      "voice_to_text": {
-        "basic": "Basic",
-        "audio_vad": "Audio && VAD",
-        "endpoint": "Real-time Endpoint",
-        "prompt": "Prompt",
-        "background": "Background Image"
       }
     },
     "combo": {
       "auto_language": "Follow System",
       "mode_single": "Single Thread",
-      "mode_multi": "Multi Thread"
+      "mode_multi": "Multi Thread",
+      "engine_whisper": "Faster-Whisper (Multilingual)",
+      "engine_funasr": "FunASR Paraformer (Chinese High-Accuracy)"
     },
     "label": {
       "app": {
@@ -931,6 +883,7 @@
         "main_transparency": "Main Window Opacity"
       },
       "transcription": {
+        "engine": "Engine",
         "model_path": "Model Path",
         "device": "Device",
         "language": "Language",
@@ -950,7 +903,9 @@
         "vad_threshold": "VAD Threshold",
         "vad_min_silence_ms": "VAD Min Silence (ms)",
         "vad_speech_pad_ms": "VAD Speech Pad (ms)",
-        "vad_max_speech_s": "VAD Max Speech (s)"
+        "vad_max_speech_s": "VAD Max Speech (s)",
+        "initial_prompt": "Transcription Prompt",
+        "hotwords": "Transcription Hotwords"
       },
       "preprocessing": {
         "audio_sample_rate": "Audio Sample Rate",
@@ -975,32 +930,6 @@
         "max_gap": "Max Gap",
         "min_length": "Min Length",
         "filler_words": "Filler Words"
-      },
-      "voice_to_text": {
-        "voice_dir": "Voice Storage Directory",
-        "summary_dir": "Summary Storage Directory",
-        "realtime_auto_send_interval": "Auto Send Interval",
-        "model_path": "Model Path",
-        "device": "Device",
-        "compute_type": "Compute Type",
-        "language": "Language",
-        "num_workers": "Inference Threads",
-        "audio_sample_rate": "Audio Sample Rate",
-        "audio_channels": "Audio Channels",
-        "vad_filter": "VAD Filter",
-        "vad_threshold": "VAD Threshold",
-        "vad_min_silence_ms": "VAD Min Silence (ms)",
-        "vad_speech_pad_ms": "VAD Speech Pad (ms)",
-        "vad_max_speech_s": "VAD Max Speech (s)",
-        "initial_prompt": "Initial Prompt",
-        "bg_image_path": "Background Image Path",
-        "bg_transparency": "Background Opacity",
-        "vad_endpoint_detection": "VAD Endpoint Detection",
-        "vad_energy_threshold": "VAD Energy Threshold",
-        "vad_silence_frames": "VAD Silence Frames",
-        "vad_min_speech_frames": "VAD Min Speech Frames",
-        "vad_calibration_frames": "VAD Calibration Frames",
-        "context_max_chars": "Context Max Chars"
       }
     },
     "tooltip": {
@@ -1017,6 +946,7 @@
         "main_transparency": "Main window background opacity (0~255), 0=transparent, 255=opaque"
       },
       "transcription": {
+        "engine": "Transcription engine: Faster-Whisper (multilingual) or FunASR Paraformer (Chinese industrial-grade high-accuracy)",
         "model_path": "faster-whisper model directory name, or full path",
         "device": "Inference device: cuda (NVIDIA GPU), cpu, auto",
         "language": "Transcription language code: zh, en, ja, etc. Leave empty or 'auto' for auto-detection",
@@ -1036,7 +966,9 @@
         "vad_threshold": "VAD speech threshold (0~1), raise for noisy environments (0.6~0.7), default 0.5",
         "vad_min_silence_ms": "Minimum silence duration (ms) for segment split, default 2000",
         "vad_speech_pad_ms": "Speech padding (ms) at segment boundaries, default 400",
-        "vad_max_speech_s": "Maximum VAD segment duration (s), 0 = unlimited"
+        "vad_max_speech_s": "Maximum VAD segment duration (s), 0 = unlimited",
+        "initial_prompt": "Whisper decoder initial prompt: guides punctuation, language style, and domain terms",
+        "hotwords": "Whisper biased hotwords: space or comma separated, enhances recognition of specific terms"
       },
       "preprocessing": {
         "audio_sample_rate": "Audio sample rate (Hz), Whisper recommends 16000",
@@ -1061,32 +993,6 @@
         "max_gap": "Max gap (s) for segment merging, segments farther apart won't merge",
         "min_length": "Min text length for merging, shorter segments try to merge with neighbors",
         "filler_words": "Filler words to remove, comma-separated"
-      },
-      "voice_to_text": {
-        "voice_dir": "Voice recording and conversation storage directory",
-        "summary_dir": "Voice transcription summary storage directory",
-        "realtime_auto_send_interval": "Real-time auto-send interval (s) for voice transcription",
-        "model_path": "Whisper model directory name or path",
-        "device": "Inference device: cuda (NVIDIA GPU), cpu, auto",
-        "compute_type": "Compute type: float16, int8, float32. CPU does not support float16",
-        "language": "Transcription language code: zh, en, ja, etc. Leave empty or 'auto'",
-        "num_workers": "CTranslate2 inference threads (1~CPU cores)",
-        "audio_sample_rate": "Audio sample rate (Hz), Whisper recommends 16000",
-        "audio_channels": "Audio channels: 1=mono (recommended), 2=stereo",
-        "vad_filter": "Enable VAD to filter silence and reduce hallucinations: True / False",
-        "vad_threshold": "VAD speech threshold (0~1), raise for noisy environments, default 0.5",
-        "vad_min_silence_ms": "Minimum silence (ms) for segment split, default 2000",
-        "vad_speech_pad_ms": "Speech padding (ms) at segment boundaries, default 400",
-        "vad_max_speech_s": "Max VAD segment duration (s), 0 = unlimited",
-        "initial_prompt": "Initial prompt for transcription, useful for context enhancement",
-        "bg_image_path": "Background image path for Voice-to-Text interface, leave empty to disable",
-        "bg_transparency": "Background image opacity (0~255), 0=transparent, 255=opaque",
-        "vad_endpoint_detection": "Enable real-time VAD endpoint detection: True / False",
-        "vad_energy_threshold": "VAD energy threshold (0~N), 0 for auto-calibration",
-        "vad_silence_frames": "Consecutive silence frames to end speech (each ~32ms)",
-        "vad_min_speech_frames": "Minimum speech frames for valid speech (each ~32ms)",
-        "vad_calibration_frames": "VAD calibration silence frames (each ~10ms)",
-        "context_max_chars": "Maximum context characters for continuous transcription"
       }
     }
   },
@@ -1145,9 +1051,36 @@
       "prompt_load_failed": "PromptManager: load failed ({name})",
       "prompt_loaded": "PromptManager: loaded ({name})",
       "prompt_save_error": "PromptManager: save failed ({error})",
-      "default_prompt": "You are a professional text summarization assistant, skilled at extracting key information and producing concise, accurate summaries. Output only the summary body. **Do not add any opening remarks, closing notes, explanatory statements, or annotations.** **Do not add extra embellishments or filler — output only the summary content.** Do not add a concluding summary at the end.",
+      "default_prompt": "You are a professional text summarization assistant. Your task is to provide a comprehensive and complete summary without omitting any core points or essential facts. Output only the summary body. **Do not add any opening remarks, closing notes, explanatory statements, or annotations.** **Do not add extra embellishments or filler — output only the summary content.** Do not add a concluding summary at the end.",
       "text_content_label": "Text content:",
       "markdown_prompt": "\nOutput the summary in Markdown format as follows:\n- **Key Point**\n\t- Detail\n\t- Detail\n- **Key Point**\n\t- Detail\n\t- Detail\n\nKeep the Markdown formatting valid so the output renders directly.\n",
+      "presets": {
+        "default": {
+          "name": "Standard Summary",
+          "desc": "Comprehensive and complete summary covering all key points and essential details without omissions",
+          "prompt": "You are a professional text summarization assistant. Your task is to provide a comprehensive, complete, and in-depth structured summary of the input text, ensuring no core points, crucial facts, arguments, or key details are omitted.\n\nRequirements:\n1. Complete Coverage: Thoroughly cover the entire text. Expand appropriately according to the length and depth of the content with no upper limit on the number of points, ensuring all critical information and arguments are captured without omission.\n2. Clear Structure: Output in clean Markdown format using a well-defined hierarchical bullet list:\n   - **Core Point Title**: Extract clear key theme\n     - Elaborate supporting facts, logical context, data, or specific details\n3. Pure Output: Output only the summary body. **Do not add any opening remarks, closing notes, explanatory statements, or annotations.** **Do not add extra embellishments or filler — output only the summary content.** Do not add a concluding summary at the end."
+        },
+        "meeting": {
+          "name": "Meeting Minutes",
+          "desc": "Extract discussion topics, consensus decisions, and clear action items",
+          "prompt": "You are a professional executive meeting minutes assistant. Please extract key points from the text in clean Markdown format:\n\n### 1. Discussion Topics & Context\n- Main topics and context\n\n### 2. Consensus & Decisions\n- Clear agreements and decisions reached\n\n### 3. Action Items\n- [ ] **Action Item**: Detail task and assignee (if mentioned)\n\nBe structured, objective, and accurate. Output only the body without polite pleasantries or filler."
+        },
+        "lecture": {
+          "name": "In-depth Study Notes",
+          "desc": "Systematic notes for lectures/courses with concepts, core principles and evidence",
+          "prompt": "You are a professional academic and research assistant. Please transform the content into structured Markdown in-depth study notes:\n\n## 1. Core Themes & Concepts\n## 2. Key Knowledge Points & Theories\n## 3. Case Studies & Supporting Evidence\n## 4. Key Takeaways & Reflections\n\nWell-structured, profound yet accessible, output only the notes content."
+        },
+        "tldr": {
+          "name": "Quick TL;DR",
+          "desc": "Within 150 words, ultra-concise overview of main conclusions",
+          "prompt": "You are an ultra-concise summary assistant. Please summarize the text in under 150 words (TL;DR), directly stating core conclusions, primary events or arguments. No preamble or fluff, get straight to the point."
+        },
+        "takeaways": {
+          "name": "Key Takeaways & Quotes",
+          "desc": "Extract standout quotes, core viewpoints, and inspiring insights",
+          "prompt": "You are a key takeaways and quotes curation assistant. Please extract standout quotes and insights in clean Markdown format:\n\n### 💡 Core Takeaways\n- Key viewpoints\n\n### 💬 Notable Quotes\n> Verbatim quote (brief context)\n\n### 🔍 Insights & Reflections\n- Key reflection\n\nOutput only the curated content."
+        }
+      },
       "ollama": {
         "already_running": "Ollama service is already running",
         "process_exists": "Ollama service process already exists",
@@ -1265,23 +1198,6 @@
       },
       "write_index_failed": "Failed to write output index: {error}",
       "markdown_tooltip": "When enabled, summaries are automatically formatted with the localized Markdown instruction."
-    },
-    "voice_transcription": {
-      "audio_file_not_found": "Audio file not found: {path}",
-      "context_prefix": "Previous context: {context}",
-      "no_speech_detected": "(No speech detected)",
-      "transcribe_failed": "VoiceTranscriptionService transcription failed: {error}",
-      "transcribe_failed_short": "Transcription failed: {error}"
-    },
-    "voice_recorder": {
-      "vad_calibrated": "VoiceRecorder VAD calibration complete, noise_floor={value}",
-      "vad_chunk_save_failed": "VAD chunk save failed: {error}",
-      "missing_sounddevice": "Missing sounddevice library: {error}",
-      "recording_exception": "Recording exception: {error}",
-      "save_recording_failed": "Save recording failed: {error}",
-      "callback_status": "VoiceRecorder callback status: {status}",
-      "no_audio_data": "No audio data recorded",
-      "save_wav_failed": "Save WAV failed: {error}"
     }
   },
   "storage": {
@@ -1312,13 +1228,6 @@
     "bookmark": {
       "load_fail": "Read failed: %s",
       "save_fail": "Write failed: %s"
-    },
-    "voice_store": {
-      "create_conv": "New conversation %s",
-      "read_conv_fail": "Failed to read conversation %s: %s",
-      "read_list_fail": "Failed to read conversation list %s: %s",
-      "delete_conv": "Deleted conversation %s",
-      "conv_not_found": "Conversation not found: {conv_id}"
     },
     "json": {
       "read_fail": "Failed to read JSON file {name}: {error}"
@@ -1394,7 +1303,39 @@
   "transcription_prompt_manager": {
     "load_failed": "TranscriptionPromptManager: ✗ Load failed ({name})",
     "loaded": "TranscriptionPromptManager: ✓ Loaded ({name})",
-    "save_failed": "TranscriptionPromptManager: ✗ Save failed ({error})"
+    "save_failed": "TranscriptionPromptManager: ✗ Save failed ({error})",
+    "presets": {
+      "general": {
+        "name": "Standard & Punctuation",
+        "desc": "Guides standard formatting and complete punctuation, ideal for general speech and audio",
+        "prompt": "Please transcribe with accurate formatting and complete punctuation.",
+        "hotwords": ""
+      },
+      "meeting": {
+        "name": "Meeting & Interview",
+        "desc": "Enhances workplace discussion, team collaboration, and action item terminology",
+        "prompt": "Workplace meeting and interview covering business discussions, decisions, and action items. Maintain professional context.",
+        "hotwords": "Meeting Agenda Decision Action Sync Report Review Follow-up Roadmap Sprint Task Milestone"
+      },
+      "ecommerce": {
+        "name": "E-Commerce & Live Stream",
+        "desc": "Biases toward platform operations, live commerce, traffic, and sales jargon",
+        "prompt": "E-commerce tutorial and live commerce video covering online operations, product promotion, and advertising. Transcribe specialized commerce terminology accurately.",
+        "hotwords": "SKU GMV Live Stream Cart Checkout Conversion Campaign Orders Traffic Dropshipping Promotion Discount"
+      },
+      "tech": {
+        "name": "Tech & Software Dev",
+        "desc": "Preserves programming terminology, AI algorithms, and software casing conventions",
+        "prompt": "Software engineering, AI algorithms, and technical tutorial. Preserve programming concepts, code identifiers, and exact casing.",
+        "hotwords": "Python API Docker Linux PyTorch Git GPU CUDA Front-end Back-end Framework Bug Debug Web CI/CD LLM PySide PySide6"
+      },
+      "bilingual": {
+        "name": "Bilingual & Conversational",
+        "desc": "Smooth transition for casual workplace conversations and mixed common terms",
+        "prompt": "Workplace dialogue and conversational exchange with mixed terms. Maintain natural transitions and proper nouns.",
+        "hotwords": "OK PPT follow up update meeting schedule review project team catch up sync call deck demo"
+      }
+    }
   },
   "dll_downloader": {
     "proxy_source": {
@@ -1573,7 +1514,6 @@
     "gen_bg_image": "Generated background-image icon: {path}",
     "gen_favorite": "Generated favorites icon: {path}",
     "gen_api_key": "Generated API Key icon: {path}",
-    "gen_voice": "Generated voice-to-text icon: {path}",
     "gen_api_test": "Generated API-test icon: {path}",
     "gen_about": "Generated about icon: {path}",
     "gen_arrow_right": "Generated right-arrow icon: {path}",
@@ -1581,5 +1521,74 @@
     "gen_main": "Generating video2text icon...",
     "gen_main_png": "Generated main icon PNG: {path}",
     "gen_main_ico": "Generated main icon ICO: {path}"
+  },
+  "transcription_tab": {
+    "engine_group": "Transcription Engine / Model Selection",
+    "radio_whisper": "Faster-Whisper (Multilingual)",
+    "radio_funasr": "FunASR (Chinese High-Accuracy)",
+    "whisper_group": "Faster-Whisper Parameters",
+    "funasr_group": "FunASR Paraformer Parameters"
+  },
+  "tx_labels": {
+    "whisper_model": "Model Selection / Path",
+    "whisper_device": "Inference Device",
+    "whisper_compute_type": "Compute Type",
+    "whisper_language": "Language",
+    "whisper_num_workers": "Inference Threads",
+    "whisper_beam_size": "Beam Size",
+    "whisper_best_of": "Best Of",
+    "whisper_temperature": "Temperature",
+    "whisper_vad_filter": "VAD Silence Filter",
+    "whisper_vad_threshold": "VAD Threshold",
+    "whisper_vad_min_silence_ms": "VAD Min Silence (ms)",
+    "whisper_vad_speech_pad_ms": "VAD Speech Pad (ms)",
+    "whisper_vad_max_speech_s": "VAD Max Speech (s)",
+    "whisper_condition_on_previous_text": "Condition on Previous",
+    "whisper_word_timestamps": "Word Timestamps",
+    "whisper_compression_ratio_threshold": "Compression Ratio",
+    "whisper_log_prob_threshold": "Log Prob Threshold",
+    "whisper_no_speech_threshold": "No Speech Threshold",
+    "whisper_repetition_penalty": "Repetition Penalty",
+    "whisper_no_repeat_ngram_size": "N-gram Repeat Size",
+    "funasr_model": "Model Selection / Path",
+    "funasr_device": "Inference Device",
+    "funasr_language": "Language",
+    "funasr_num_workers": "Inference Threads",
+    "funasr_compute_type": "Compute Type",
+    "funasr_quantize": "INT8 Quantization",
+    "funasr_punc_filter": "Punctuation Restoration",
+    "funasr_vad_filter": "FSMN-VAD Filter",
+    "funasr_vad_max_end_sil": "VAD End Silence (ms)"
+  },
+  "tx_tooltips": {
+    "whisper_model": "Select a Faster-Whisper model version or browse for a custom folder",
+    "whisper_device": "Inference device: cuda (NVIDIA GPU), cpu, auto (auto-detect)",
+    "whisper_compute_type": "Compute type: float16, int8, float32. Note: CPU does not support float16",
+    "whisper_language": "Language code: zh, en, ja, etc. auto for auto-detection",
+    "whisper_num_workers": "CTranslate2 inference threads (1~CPU cores)",
+    "whisper_beam_size": "Beam search size (1~10), higher is more accurate but slower",
+    "whisper_best_of": "Number of candidates when temperature > 0",
+    "whisper_temperature": "Sampling temperature, comma-separated values for fallback (e.g. 0.0,0.2,0.4)",
+    "whisper_vad_filter": "Enable Silero VAD to filter silence and suppress hallucinations",
+    "whisper_vad_threshold": "VAD speech detection threshold (0~1), 0.6~0.7 recommended for noisy audio",
+    "whisper_vad_min_silence_ms": "Minimum silence duration (ms) for segment split, default 2000",
+    "whisper_vad_speech_pad_ms": "Speech padding (ms) at segment boundaries, default 400",
+    "whisper_vad_max_speech_s": "Maximum VAD segment duration (s), 0 = unlimited",
+    "whisper_condition_on_previous_text": "Condition on previous text for generation. Recommend False for long audio",
+    "whisper_word_timestamps": "Generate word-level timestamps: True / False",
+    "whisper_compression_ratio_threshold": "Gzip compression ratio threshold for repetition detection, default 2.4",
+    "whisper_log_prob_threshold": "Average log probability threshold, default -1.0",
+    "whisper_no_speech_threshold": "No-speech probability threshold, default 0.6",
+    "whisper_repetition_penalty": "Penalty for repeated tokens (>1 suppresses repetition)",
+    "whisper_no_repeat_ngram_size": "N-gram size to prevent repetition, 0 to disable",
+    "funasr_model": "Select FunASR Paraformer model or browse for a custom model folder",
+    "funasr_device": "Inference device: auto (auto-detect), cuda (GPU), cpu",
+    "funasr_language": "Transcription language: zh (Chinese) or auto",
+    "funasr_num_workers": "ONNX Runtime CPU threads (default 4, increase on multi-core CPUs for speed)",
+    "funasr_compute_type": "Compute type: float16, int8, float32. ONNX supports INT8 quantization and float32 precision",
+    "funasr_quantize": "Enable INT8 quantization (faster, less memory). Disable for original FP32 precision",
+    "funasr_punc_filter": "Enable CT-Transformer punctuation restoration. Disable to save ~30% time",
+    "funasr_vad_filter": "Enable FSMN-VAD speech activity detection to split silence",
+    "funasr_vad_max_end_sil": "Max silence duration (ms) to detect sentence boundary (default 800ms)"
   }
 }

@@ -3,6 +3,7 @@
 import sys
 import time
 from pathlib import Path
+from typing import Dict, List, Optional
 
 from PySide6.QtCore import QObject, Signal
 
@@ -33,6 +34,24 @@ TURBO_CT2_BASE = "https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-c
 
 DEFAULT_MODEL_NAME = "faster-whisper-large-v3-turbo-ct2"
 
+PARAFORMER_FILES = {
+    # asr: speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-onnx
+    "asr/model_quant.onnx": "https://www.modelscope.cn/api/v1/models/damo/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-onnx/repo?Revision=master&FilePath=model_quant.onnx",
+    "asr/config.yaml": "https://www.modelscope.cn/api/v1/models/damo/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-onnx/repo?Revision=master&FilePath=config.yaml",
+    "asr/am.mvn": "https://www.modelscope.cn/api/v1/models/damo/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-onnx/repo?Revision=master&FilePath=am.mvn",
+    "asr/tokens.json": "https://www.modelscope.cn/api/v1/models/damo/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-onnx/repo?Revision=master&FilePath=tokens.json",
+    # vad: speech_fsmn_vad_zh-cn-16k-common-onnx
+    "vad/model_quant.onnx": "https://www.modelscope.cn/api/v1/models/damo/speech_fsmn_vad_zh-cn-16k-common-onnx/repo?Revision=master&FilePath=model_quant.onnx",
+    "vad/config.yaml": "https://www.modelscope.cn/api/v1/models/damo/speech_fsmn_vad_zh-cn-16k-common-onnx/repo?Revision=master&FilePath=config.yaml",
+    "vad/am.mvn": "https://www.modelscope.cn/api/v1/models/damo/speech_fsmn_vad_zh-cn-16k-common-onnx/repo?Revision=master&FilePath=am.mvn",
+    # punc: punc_ct-transformer_zh-cn-common-vocab272727-onnx
+    "punc/model_quant.onnx": "https://www.modelscope.cn/api/v1/models/damo/punc_ct-transformer_zh-cn-common-vocab272727-onnx/repo?Revision=master&FilePath=model_quant.onnx",
+    "punc/config.yaml": "https://www.modelscope.cn/api/v1/models/damo/punc_ct-transformer_zh-cn-common-vocab272727-onnx/repo?Revision=master&FilePath=config.yaml",
+    "punc/tokens.json": "https://www.modelscope.cn/api/v1/models/damo/punc_ct-transformer_zh-cn-common-vocab272727-onnx/repo?Revision=master&FilePath=tokens.json",
+}
+
+PARAFORMER_CORE_FILES = list(PARAFORMER_FILES.keys())
+
 MODEL_CONFIG = {
     "large-v3": {
         "base_url": LARGE_V3_BASE,
@@ -40,6 +59,7 @@ MODEL_CONFIG = {
         "core_files": LARGE_V3_CORE_FILES,
         "optional_files": LARGE_V3_OPTIONAL_FILES,
         "all_files": LARGE_V3_ALL_FILES,
+        "source": "huggingface",
     },
     "faster-whisper-large-v3-turbo-ct2": {
         "base_url": TURBO_CT2_BASE,
@@ -47,6 +67,16 @@ MODEL_CONFIG = {
         "core_files": LARGE_V3_CORE_FILES,
         "optional_files": LARGE_V3_OPTIONAL_FILES,
         "all_files": LARGE_V3_ALL_FILES,
+        "source": "huggingface",
+    },
+    "paraformer-large-vad-punc": {
+        "base_url": "",
+        "models_dir": "models/paraformer-large-vad-punc",
+        "core_files": PARAFORMER_CORE_FILES,
+        "optional_files": [],
+        "all_files": PARAFORMER_CORE_FILES,
+        "file_urls": PARAFORMER_FILES,
+        "source": "modelscope",
     },
 }
 
@@ -150,6 +180,23 @@ class ModelDownloader:
             r = session.get(
                 url,
                 timeout=(2, 1),
+                stream=True,
+                headers={"Cache-Control": "no-store"},
+            )
+            try:
+                return r.status_code < 400
+            finally:
+                r.close()
+        except Exception:
+            return False
+
+    def _check_modelscope_accessible(self, proxy: str = "") -> bool:
+        try:
+            session = self._get_session(proxy)
+            url = "https://www.modelscope.cn"
+            r = session.get(
+                url,
+                timeout=(3, 2),
                 stream=True,
                 headers={"Cache-Control": "no-store"},
             )
@@ -282,23 +329,34 @@ class ModelDownloader:
         logger.info(t("model_downloader.download.start", model=self.model_name))
         logger.info(t("model_downloader.download.check_network"))
 
-        if self._check_hf_accessible():
-            logger.info(t("model_downloader.download.direct_ok"))
-            proxy = ""
-        elif proxy:
-            logger.info(t("model_downloader.download.direct_fail_proxy", proxy=proxy))
-            if self._check_hf_accessible(proxy=proxy):
+        is_modelscope = self.model_config.get("source") == "modelscope"
+        if is_modelscope:
+            if self._check_modelscope_accessible():
+                logger.info(t("model_downloader.download.direct_ok"))
+                proxy = ""
+            elif proxy and self._check_modelscope_accessible(proxy=proxy):
                 logger.info(t("model_downloader.download.proxy_ok"))
             else:
-                logger.error(t("model_downloader.download.proxy_fail", source=self._proxy_source_hint()))
+                logger.info("ModelScope 探测完成，尝试直连下载...")
+                proxy = ""
+        else:
+            if self._check_hf_accessible():
+                logger.info(t("model_downloader.download.direct_ok"))
+                proxy = ""
+            elif proxy:
+                logger.info(t("model_downloader.download.direct_fail_proxy", proxy=proxy))
+                if self._check_hf_accessible(proxy=proxy):
+                    logger.info(t("model_downloader.download.proxy_ok"))
+                else:
+                    logger.error(t("model_downloader.download.proxy_fail", source=self._proxy_source_hint()))
+                    self._clean_incomplete_core_files()
+                    return False
+            else:
+                logger.error(t("model_downloader.download.no_access"))
+                logger.error(t("model_downloader.download.config_hint"))
+                # 清理可能残留的不完整核心文件，避免转写时 'model.bin is incomplete'
                 self._clean_incomplete_core_files()
                 return False
-        else:
-            logger.error(t("model_downloader.download.no_access"))
-            logger.error(t("model_downloader.download.config_hint"))
-            # 清理可能残留的不完整核心文件，避免转写时 'model.bin is incomplete'
-            self._clean_incomplete_core_files()
-            return False
 
         # logger.info("  └─ 下载文件 (%d 个 -> %s)", len(files), self.models_dir)
 
@@ -320,9 +378,14 @@ class ModelDownloader:
             return _file_cb
 
         failed: list[str] = []
+        file_urls = self.model_config.get("file_urls", {})
         for file_index, filename in enumerate(files, start=1):
-            url = f"{base_url}/{filename}?download=true"
+            if filename in file_urls:
+                url = file_urls[filename]
+            else:
+                url = f"{base_url}/{filename}?download=true"
             dest = self.models_dir / filename
+            dest.parent.mkdir(parents=True, exist_ok=True)
 
             if dest.exists() and dest.stat().st_size > 0:
                 logger.info(t("model_downloader.download.file_exists", filename=filename, size=self._fmt_size(dest.stat().st_size)))
@@ -401,23 +464,14 @@ def check_models_integrity(
     settings,
     progress_callback=None,
     confirm_callback=None,
+    target_models: Optional[list] = None,
 ) -> bool:
     """启动时一次性检查模型文件完整性。
 
     仅当 config.ini 的 [app]is_check_model_file 为 true（或缺失）时执行。
-    检查 [transcription] 中配置的模型：
+    检查配置的模型或传入的 target_models：
     - 文件已完整：标记通过，将 is_check_model_file 置为 false 并保存。
     - 文件不完整：尝试下载，下载成功同样置为 false 并保存。
-    - 文件不完整且下载失败（如 HuggingFace 不可直连）：同样置为 false 并保存，
-      避免每次启动都卡在「检查网络连接」反复失败；用户可通过网盘获取模型后
-      将 is_check_model_file 重新设为 true 再检测。
-
-    检查通过（含文件完整或被成功补齐）返回 True，否则返回 False。
-
-    注意：配置保存（settings.save()）由调用方负责。本函数只设置内存中的
-    配置值（settings.set），不写磁盘 —— 避免后台线程写配置与主线程读取
-    config.ini 产生线程安全问题（configparser 的 write 不是线程安全的）。
-    GUI 调用方应在主线程的 finished 信号槽中执行 save()。
     """
     do_check = settings.get_bool("app.is_check_model_file", True)
     if not do_check:
@@ -426,13 +480,20 @@ def check_models_integrity(
 
     logger.info(t("model_downloader.integrity.start"))
 
-    model_keys = ["transcription.model_path"]
+    if target_models:
+        model_names = target_models
+    else:
+        engine = settings.get("transcription.engine", "faster-whisper").lower().strip()
+        if engine == "funasr":
+            model_names = ["paraformer-large-vad-punc"]
+        else:
+            model_names = [settings.get("transcription.model_path", DEFAULT_MODEL_NAME)]
+
     all_ok = True
 
-    for key in model_keys:
-        model_name = settings.get(key, DEFAULT_MODEL_NAME)
+    for model_name in model_names:
         if model_name not in MODEL_CONFIG:
-            logger.warning(t("model_downloader.integrity.skip_unknown", key=key, model=model_name))
+            logger.warning(t("model_downloader.integrity.skip_unknown", key="model", model=model_name))
             continue
 
         try:

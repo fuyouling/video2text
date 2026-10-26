@@ -43,7 +43,7 @@ class OllamaProvider:
 
     def __init__(self, settings: Settings) -> None:
         ollama_url = settings.get("summarization.ollama_url", "http://127.0.0.1:11434")
-        ollama_timeout = settings.get_int("summarization.timeout", 600)
+        ollama_timeout = settings.get_int("summarization.timeout", 30)
         self._model_name = settings.get(
             "summarization.model_name", "qwen2.5:7b-instruct-q4_K_M"
         )
@@ -67,10 +67,13 @@ class OllamaProvider:
         pause_event: Optional[threading.Event] = None,
         is_use_gui_markdown_flag: bool = True
     ) -> str:
-        prompt = PromptManager().build_prompt(text, custom_prompt, is_use_gui_markdown_flag=is_use_gui_markdown_flag)
+        messages = PromptManager().build_messages(
+            text, custom_prompt=custom_prompt
+        )
         return self._client.generate(
             model=self._model_name,
-            prompt=prompt,
+            prompt=messages[1]["content"],
+            system_prompt=messages[0]["content"],
             temperature=self._temperature,
             max_tokens=self._max_length,
             stream=stream,
@@ -87,7 +90,7 @@ class NvidiaProvider:
     """NVIDIA provider — online API summarization"""
 
     def __init__(self, settings: Settings) -> None:
-        nvidia_timeout = settings.get_int("summarization.nvidia_timeout", 600)
+        nvidia_timeout = settings.get_int("summarization.nvidia_timeout", 30)
         self._model = settings.get("summarization.nvidia_model", "openai/gpt-oss-120b")
         self._max_tokens = settings.get_int("summarization.nvidia_max_tokens", 100000)
         self._temperature = settings.get_float("summarization.nvidia_temperature", 1.0)
@@ -122,10 +125,14 @@ class NvidiaProvider:
         pause_event: Optional[threading.Event] = None,
         is_use_gui_markdown_flag: bool = True
     ) -> str:
-        prompt = PromptManager().build_prompt(text, custom_prompt, is_use_gui_markdown_flag=is_use_gui_markdown_flag)
+        messages = PromptManager().build_messages(
+            text, custom_prompt=custom_prompt
+        )
         return self._client.generate(
             model=self._model,
-            prompt=prompt,
+            prompt=messages[1]["content"],
+            system_prompt=messages[0]["content"],
+            messages=messages,
             temperature=self._temperature,
             max_tokens=self._max_tokens,
             top_p=self._top_p,
@@ -145,7 +152,7 @@ class MistralProvider:
     """Mistral provider — online API summarization via official mistralai SDK"""
 
     def __init__(self, settings: Settings) -> None:
-        mistral_timeout = settings.get_int("summarization.mistral_timeout", 600)
+        mistral_timeout = settings.get_int("summarization.mistral_timeout", 30)
         self._model = settings.get("summarization.mistral_model", "mistral-large-latest")
         self._max_tokens = settings.get_int("summarization.mistral_max_tokens", 10000)
         self._temperature = settings.get_float("summarization.mistral_temperature", 0.7)
@@ -171,10 +178,14 @@ class MistralProvider:
         pause_event: Optional[threading.Event] = None,
         is_use_gui_markdown_flag: bool = True
     ) -> str:
-        prompt = PromptManager().build_prompt(text, custom_prompt, is_use_gui_markdown_flag=is_use_gui_markdown_flag)
+        messages = PromptManager().build_messages(
+            text, custom_prompt=custom_prompt
+        )
         return self._client.generate(
             model=self._model,
-            prompt=prompt,
+            prompt=messages[1]["content"],
+            system_prompt=messages[0]["content"],
+            messages=messages,
             temperature=self._temperature,
             max_tokens=self._max_tokens,
             stream=stream,
@@ -191,7 +202,7 @@ class AmdProvider:
     """AMD provider — online API summarization via AMD Radeon Cloud"""
 
     def __init__(self, settings: Settings) -> None:
-        amd_timeout = settings.get_int("summarization.amd_timeout", 60)
+        amd_timeout = settings.get_int("summarization.amd_timeout", 30)
         self._model = settings.get("summarization.amd_model", "Qwen3.8-Flash-Next")
         self._max_tokens = settings.get_int("summarization.amd_max_tokens", 8192)
         self._temperature = settings.get_float("summarization.amd_temperature", 0.7)
@@ -219,10 +230,14 @@ class AmdProvider:
         pause_event: Optional[threading.Event] = None,
         is_use_gui_markdown_flag: bool = True
     ) -> str:
-        prompt = PromptManager().build_prompt(text, custom_prompt, is_use_gui_markdown_flag=is_use_gui_markdown_flag)
+        messages = PromptManager().build_messages(
+            text, custom_prompt=custom_prompt
+        )
         return self._client.generate(
             model=self._model,
-            prompt=prompt,
+            prompt=messages[1]["content"],
+            system_prompt=messages[0]["content"],
+            messages=messages,
             temperature=self._temperature,
             max_tokens=self._max_tokens,
             stream=stream,

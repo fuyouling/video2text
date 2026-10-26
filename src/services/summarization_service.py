@@ -189,7 +189,7 @@ class SummarizationService:
                 if self.on_item_done:
                     self.on_item_done(video_name, summary)
             except Exception as e:
-                logger.info(t("services.summarization.summary_failed", current=idx + 1, total=total, video_name=video_name, error=e))
+                logger.info(t("services.summarization.summary_failed", current=idx + 1, total=total, name=video_name, video_name=video_name, error=e))
                 if self.on_item_error:
                     self.on_item_error(video_name, str(e))
                 results.append("")
@@ -247,7 +247,7 @@ class SummarizationService:
 
                 return idx, summary if summary else ""
             except Exception as e:
-                logger.info(t("services.summarization.summary_failed", current=idx + 1, total=total, video_name=video_name, error=e))
+                logger.info(t("services.summarization.summary_failed", current=idx + 1, total=total, name=video_name, video_name=video_name, error=e))
                 if self.on_item_error:
                     self.on_item_error(video_name, str(e))
                 return idx, ""

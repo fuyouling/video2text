@@ -33,8 +33,8 @@
     "settings_fav_clear_input": "모든 입력 디렉토리 지우기",
     "settings_fav_clear_output": "모든 출력 디렉토리 지우기",
     "tools": "도구",
-    "tools_voice_to_text": "음성-텍스트 변환",
     "tools_nvidia_api_test": "Nvidia API 응답 테스트",
+    "tools_amd_api_test": "AMD API 응답 테스트",
     "help": "도움말",
     "help_donate": "기부",
     "help_about": "정보",
@@ -74,12 +74,18 @@
     "tx_prompt_group": "변환 프롬프트",
     "tx_prompt_placeholder": "정확도 향상을 위한 장면 지시, 도메인 용어, 간결하게 유지",
     "hotwords_placeholder": "핫워드/구문, 하나의 편향 프리픽스로, 주요 도메인 용어, 간결하게",
-    "tx_prompt_template_placeholder": "저장된 프롬프트 선택…",
+    "tx_prompt_template_placeholder": "프롬프트 템플릿 선택…",
     "summary_prompt_group": "요약 프롬프트",
-    "summary_prompt_placeholder": "사용자 정의 요약 프롬프트 (선택사항); 비워두면 기본값 사용",
-    "summary_prompt_template_placeholder": "저장된 프롬프트 선택…",
-    "markdown_cb": "마크다운 형식",
-    "markdown_tooltip": "요약에 마크다운 서식을 자동 적용합니다.\n사용자 정의 마크다운은 prompts.json의 markdown_prompt 필드를 직접 수정하세요.",
+    "summary_prompt_placeholder": "역할 및 형식 요구 사항을 포함한 사용자 정의 요약 프롬프트, 위지윅(WYSIWYG)",
+    "summary_prompt_template_placeholder": "프롬프트 템플릿 선택…",
+    "prompt_builtin_group": "── 기본 제공 프리셋 ──",
+    "prompt_custom_group": "── 사용자 정의 템플릿 ──",
+    "prompt_reset_btn": "초기화",
+    "prompt_reset_tooltip": "편집기를 현재 템플릿의 초기 내용으로 복원",
+    "prompt_reset_confirm_title": "초기화 확인",
+    "prompt_reset_confirm_msg": "현재 내용을 '{name}'의 초기 프롬프트로 복원하시겠습니까? 저장되지 않은 변경 사항은 손실됩니다.",
+    "prompt_cannot_delete_builtin": "기본 제공 프리셋은 삭제할 수 없습니다.",
+    "prompt_save_as": "새 템플릿으로 저장",
     "log_panel_title": "로그 출력",
     "placeholder_new": "새로 만들기",
     "placeholder_new_tx": "새로 만들기",
@@ -182,8 +188,8 @@
     "stop_force_terminate": "  ├─ ⚠ 작업자 스레드가 종료 요청에 응답하지 않아 강제 종료 중...",
     "dep_check_skip_warn": "시작 종속성 검사 실패, 건너뜀 (메인 UI는 정상 작동)",
     "dep_check_start": "시작 종속성 검사: 시작",
-    "dep_model_complete": "모델 완비 (%s)",
-    "dep_model_missing": "모델 누락 (%s)",
+    "dep_model_complete": "모델 완비 ({name})",
+    "dep_model_missing": "모델 누락 ({name})",
     "dep_dll_complete": "DLL 종속성 완비",
     "dep_dll_missing": "DLL 종속성 누락",
     "dep_all_ready": "모든 종속성 준비됨, 다운로드 불필요",
@@ -206,7 +212,20 @@
     "dep_download_start": "종속성 다운로드 시작: 모델=%s, DLL=%s, 보관=%s",
     "failed_log_write": "실패 로그 기록 실패: %s",
     "tx_prompt_load_fail": "전사 프롬프트 템플릿 로드 실패",
-    "summary_prompt_load_fail": "요약 프롬프트 템플릿 로드 실패"
+    "summary_prompt_load_fail": "요약 프롬프트 템플릿 로드 실패",
+    "tx_prompt_none": "프롬프트 사용 안 함 (비우기)",
+    "tx_prompt_reset_btn": "초기화",
+    "tx_prompt_reset_tooltip": "현재 템플릿의 초기 내용으로 복원",
+    "tx_prompt_reset_confirm_title": "초기화 확인",
+    "tx_prompt_reset_confirm_msg": "현재 내용을 '{name}'의 초기 설정으로 복원하시겠습니까? 저장되지 않은 변경 사항은 손실됩니다.",
+    "tx_prompt_cannot_delete_builtin": "기본 제공 프리셋은 삭제할 수 없습니다.",
+    "tx_prompt_len_warning": "초기 프롬프트가 너무 깁니다 (현재 {count}자, 300자 이내 권장)",
+    "tx_hotwords_count_warning": "핫워드가 너무 많습니다 (현재 {count}단어, 50단어 이내 권장)",
+    "tx_prompt_tooltip": "Whisper 초기 프롬프트: 구두점, 언어 스타일, 전문 용어 표기 유도 (300자 이내 권장)",
+    "tx_hotwords_tooltip": "Whisper 편향 핫워드: 공백 또는 쉼표로 구분하여 전문 용어 인식률 향상 (50단어 이내 권장)",
+    "tx_hotwords_funasr_hint": "고유 명사 또는 핫워드를 공백이나 쉼표로 구분하여 입력 (예: 인공지능 딥러닝)",
+    "tx_hotwords_funasr_tooltip": "FunASR는 고유 명사 인식 향상을 위해 핫워드 편향에 크게 의존합니다",
+    "tx_prompt_funasr_disabled_hint": "FunASR (비자기회귀 모델)는 전체 문장 프롬프트를 사용하지 않으므로 아래 핫워드를 사용하여 인식을 강화하세요"
   },
   "about": {
     "title": "Video2Text 정보",
@@ -253,7 +272,11 @@
       "keep_label": "다운로드 후:",
       "keep_yes": "아카이브 보관",
       "keep_no": "삭제 (공간 절약)",
-      "dll_ready": "✓ DLL 완비, 처리할 작업 없음"
+      "dll_ready": "✓ DLL 완비, 처리할 작업 없음",
+      "funasr_opt": "FunASR Paraformer 다운로드 (중국어 고정밀, ~540MB, ModelScope)",
+      "funasr_ready": "✓ FunASR Paraformer 모델 준비 완료",
+      "whisper_opt": "Faster-Whisper 다운로드 (다국어 범용, Large-v3-Turbo, ~1.4GB)",
+      "whisper_ready": "✓ Faster-Whisper 모델 준비 완료"
     },
     "file_select": {
       "title": "미디어 파일 선택",
@@ -557,6 +580,43 @@
     "models_empty": "사용 가능한 온라인 모델이 없습니다. 잠시 후 다시 시도하거나 \"목록 새로고침\"을 클릭하세요",
     "models_loading": "온라인 모델 목록을 가져오는 중…"
   },
+  "amd_test": {
+    "title": "AMD API 응답 테스트",
+    "one_click": "일괄 테스트",
+    "stop": "중지",
+    "api_key_ok": "API Key: 로드됨",
+    "api_key_missing": "API Key: 없음",
+    "api_key_missing_msg": "AMD_API_KEY를 찾을 수 없습니다. 테스트 전에 .env에 설정하세요.",
+    "timeout_label": "제한 시간 {seconds}s",
+    "concurrency_label": "동시 실행 {workers}",
+    "current_model": "현재 모델: {model}",
+    "latency_label": "응답 시간",
+    "latency_value": "{seconds} s",
+    "latency_over": "> {seconds}s",
+    "latency_none": "—",
+    "status_pending": "대기",
+    "status_queued": "대기열",
+    "status_testing": "테스트 중",
+    "status_ok": "성공",
+    "status_fail": "실패",
+    "status_rate_limited": "속도 제한",
+    "progress": "진행 {done}/{total}  ·  성공 {ok}  ·  실패 {fail}  ·  속도 제한 {limited}",
+    "retest_tooltip": "이 모델 다시 테스트",
+    "card_tooltip": "「성공」 카드를 두 번 클릭하면 해당 모델이 설정에 저장됩니다",
+    "error_no_key": "API Key 없음",
+    "error_timeout": "응답 시간 초과({latency}s > {limit}s)",
+    "error_empty": "빈 응답",
+    "apply_title": "요약 모델로 설정",
+    "apply_confirm": "{model}을(를) summarization.amd_model에 저장할까요?",
+    "apply_done": "{model}을(를) AMD 요약 모델로 설정했습니다",
+    "apply_failed": "설정 저장 실패: {error}",
+    "refresh_list": "목록 새로고침",
+    "refresh_list_loading": "모델 목록을 새로 고치는 중…",
+    "refresh_list_done": "모델 목록 새로고침 완료（{count}개）",
+    "refresh_list_failed": "모델 목록 새로고침 실패: {error}",
+    "models_empty": "사용 가능한 온라인 모델이 없습니다. 잠시 후 다시 시도하거나 \"목록 새로고침\"을 클릭하세요",
+    "models_loading": "온라인 모델 목록을 가져오는 중…"
+  },
   "donate": {
     "title": "기부",
     "image_not_found": "이미지를 찾을 수 없음: {path}"
@@ -674,7 +734,10 @@
     "tips_label": "[bold]Tips:[/bold]",
     "tip1": "1. Use --help to view detailed options for a single command",
     "tip2": "2. All transcription and summarization parameters (model, language, device, temperature, etc.) are configured via config.ini",
-    "tip3": "3. In PowerShell, call the executable by its full path, e.g.: .\\video2text.exe transcribe video.mp4 -o output"
+    "tip3": "3. In PowerShell, call the executable by its full path, e.g.: .\\video2text.exe transcribe video.mp4 -o output",
+    "opt_initial_prompt": "초기 전사 프롬프트 임시 재정의",
+    "opt_hotwords": "전사 핫워드 임시 재정의 (공백 또는 쉼표 구분)",
+    "opt_prompt_template": "전사 프롬프트 프리셋 또는 템플릿 이름 (예: general, meeting, ecommerce, tech, bilingual)"
   },
   "errors": {
     "file_not_found": "파일을 찾을 수 없음: {path}",
@@ -734,117 +797,6 @@
       "frame_rate_parse_failed": "VideoProcessor: ⚠ 프레임 속도 구문 분석 실패 (%s), 0으로 기본값"
     }
   },
-  "voice": {
-    "user_prefix": "[사용자] ",
-    "summary_prefix": "[요약] ",
-    "sidebar": {
-      "title": "대화"
-    },
-    "chat": {
-      "placeholder": "위의 녹음 버튼을 클릭하여 음성 변환을 시작하세요"
-    },
-    "back_main": "메인으로 돌아가기",
-    "new_conv": "새로 만들기",
-    "record_start": "녹음 시작",
-    "record_stop": "녹음 중지",
-    "conv": {
-      "meta": "{time}  ·  {count}개 메시지"
-    },
-    "summary_saved": "요약 저장됨: {path}",
-    "status": {
-      "initializing": "● 초기화 중...",
-      "ready": "● 준비됨",
-      "model_not_ready": "● 모델이 아직 로드되지 않았습니다. 기다려 주세요...",
-      "recording_vad": "● 녹음 중 (VAD)...",
-      "recording_timer": "● 녹음 중 (시간 기반 청크)...",
-      "stopped": "● 중지됨",
-      "recording_done": "● 녹음 완료, 변환 중...",
-      "transcribing": "● 변환 중...",
-      "no_speech": "● 음성이 감지되지 않음",
-      "transcribe_done": "● 변환 완료",
-      "transcribe_fail": "● 변환 실패: {error}",
-      "record_fail": "● 녹음 실패: {error}",
-      "selected_count": "{count}개 대화 선택됨",
-      "conv_deleted": "대화 삭제됨",
-      "deleted_count": "{count}개 대화 삭제됨",
-      "multi_select": "다중 선택: 항목을 클릭하여 선택, 우클릭으로 일괄 작업",
-      "edit_mode": "편집 모드: 내용 수정 후 우클릭하여 [저장] 선택으로 완료",
-      "msg_saved": "메시지 저장됨",
-      "edit_cancelled": "편집 취소됨",
-      "copied": "클립보드에 복사됨",
-      "correcting": "문법 교정 중...",
-      "correct_done": "문법 교정 완료",
-      "msg_deleted": "메시지 삭제됨",
-      "summarizing": "요약 중...",
-      "summary_done": "요약 완료",
-      "op_fail": "작업 실패: {error}",
-      "loading_model": "● 모델 로딩 중...",
-      "model_load_fail": "● 모델 로드 실패: {error}"
-    },
-    "menu": {
-      "exit_multi_select": "다중 선택 종료",
-      "delete_selected": "선택 삭제",
-      "select_toggle_all": "전체 선택 / 선택 해제",
-      "delete_all": "전체 삭제",
-      "multi_select": "다중 선택",
-      "delete_conv": "이 대화 삭제",
-      "save": "저장",
-      "cancel_edit": "편집 취소",
-      "copy": "복사",
-      "edit": "편집",
-      "delete": "삭제",
-      "grammar": "교정",
-      "summarize": "요약"
-    },
-    "dialog": {
-      "record_error": {
-        "title": "녹음 오류"
-      },
-      "record_fail": {
-        "title": "녹음 실패",
-        "msg": "녹음을 시작할 수 없음: {error}"
-      },
-      "delete_conv": {
-        "title": "대화 삭제",
-        "msg": "이 대화를 삭제하시겠습니까?\n디스크의 JSON 파일도 삭제되며 되돌릴 수 없습니다."
-      },
-      "delete_fail": {
-        "title": "삭제 실패",
-        "msg": "대화 삭제 오류: {error}"
-      },
-      "no_selection": "먼저 삭제할 대화를 선택하세요",
-      "batch_delete": {
-        "title": "일괄 삭제",
-        "msg": "선택한 {count}개 대화를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다."
-      },
-      "no_convs": "사용 가능한 대화 없음",
-      "delete_all": {
-        "title": "전체 삭제",
-        "msg": "모든 {count}개 대화를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다."
-      },
-      "delete_msg": {
-        "title": "메시지 삭제",
-        "msg": "이 메시지를 삭제하시겠습니까?"
-      },
-      "select_conv_first": "먼저 대화를 선택하세요"
-    },
-    "log_delete_conv_fail": "대화 {conv_id} 삭제 실패: {error}",
-    "widget": {
-      "start_record_failed": "Failed to start recording: {error}",
-      "record_error_exception": "on_record_error exception:\n{error}",
-      "transcribe_done_exception": "_on_transcribe_done exception:\n{error}",
-      "transcribe_error_exception": "_on_transcribe_error exception:\n{error}",
-      "api_call_done_exception": "_start_api_call on_done exception:\n{error}"
-    },
-    "role": {
-      "user": "User",
-      "assistant": "Assistant"
-    },
-    "prompt": {
-      "correct_text": "The user recorded audio using faster-whisper for speech recognition, and some text may be incorrect. Please correct typos and unnatural phrasing in the user's transcribed text, and output in JSON format: {\"source_text\":\"original text\",\"update_text\":\"corrected text\"}. Output only the JSON, without any other content.",
-      "summarize_conversation": "Please summarize the following multi-turn conversation into a well-structured Markdown document. Requirements: output only the Markdown content itself, without any explanatory text, prefix, or suffix.\n\nConversation:\n{text}"
-    }
-  },
   "config": {
     "section": {
       "app": "애플리케이션",
@@ -854,8 +806,7 @@
       "output": "출력",
       "paths": "경로",
       "tools": "도구",
-      "text_processing": "텍스트 처리",
-      "voice_to_text": "음성-텍스트"
+      "text_processing": "텍스트 처리"
     },
     "group": {
       "app": {
@@ -867,7 +818,8 @@
         "decode": "디코딩",
         "vad": "VAD 감지",
         "quality": "품질 제어",
-        "repeat": "반복 억제"
+        "repeat": "반복 억제",
+        "prompt": "프롬프트 및 핫워드"
       },
       "preprocessing": {
         "audio": "오디오 처리",
@@ -879,19 +831,14 @@
       },
       "text_processing": {
         "merge": "병합 및 정리"
-      },
-      "voice_to_text": {
-        "basic": "기본",
-        "audio_vad": "오디오 및 VAD",
-        "endpoint": "실시간 엔드포인트",
-        "prompt": "프롬프트",
-        "background": "배경 이미지"
       }
     },
     "combo": {
       "auto_language": "시스템 언어 따르기",
       "mode_single": "단일 스레드",
-      "mode_multi": "멀티 스레드"
+      "mode_multi": "멀티 스레드",
+      "engine_funasr": "FunASR Paraformer (중국어 고정밀)",
+      "engine_whisper": "Faster-Whisper (다국어 범용)"
     },
     "label": {
       "app": {
@@ -928,7 +875,10 @@
         "vad_threshold": "VAD 임계값",
         "vad_min_silence_ms": "VAD 최소 묵음 (ms)",
         "vad_speech_pad_ms": "VAD 음성 패딩 (ms)",
-        "vad_max_speech_s": "VAD 최대 음성 (s)"
+        "vad_max_speech_s": "VAD 최대 음성 (s)",
+        "initial_prompt": "전사 초기 프롬프트",
+        "hotwords": "전사 편향 핫워드",
+        "engine": "전사 엔진"
       },
       "preprocessing": {
         "audio_sample_rate": "오디오 샘플 레이트",
@@ -953,32 +903,6 @@
         "max_gap": "최대 간격",
         "min_length": "최소 길이",
         "filler_words": "필러 단어"
-      },
-      "voice_to_text": {
-        "voice_dir": "음성 저장 디렉토리",
-        "summary_dir": "요약 저장 디렉토리",
-        "realtime_auto_send_interval": "자동 전송 간격",
-        "model_path": "모델 경로",
-        "device": "장치",
-        "compute_type": "연산 유형",
-        "language": "언어",
-        "num_workers": "추론 스레드",
-        "audio_sample_rate": "오디오 샘플 레이트",
-        "audio_channels": "오디오 채널",
-        "vad_filter": "VAD 필터",
-        "vad_threshold": "VAD 임계값",
-        "vad_min_silence_ms": "VAD 최소 묵음 (ms)",
-        "vad_speech_pad_ms": "VAD 음성 패딩 (ms)",
-        "vad_max_speech_s": "VAD 최대 음성 (s)",
-        "initial_prompt": "초기 프롬프트",
-        "bg_image_path": "배경 이미지 경로",
-        "bg_transparency": "배경 투명도",
-        "vad_endpoint_detection": "VAD 엔드포인트 감지",
-        "vad_energy_threshold": "VAD 에너지 임계값",
-        "vad_silence_frames": "VAD 묵음 프레임",
-        "vad_min_speech_frames": "VAD 최소 음성 프레임",
-        "vad_calibration_frames": "VAD 보정 프레임",
-        "context_max_chars": "컨텍스트 최대 문자"
       }
     },
     "tooltip": {
@@ -1014,7 +938,10 @@
         "vad_threshold": "VAD 음성 임계값 (0~1), 시끄러운 환경에서는 높임 (0.6~0.7), 기본값 0.5",
         "vad_min_silence_ms": "세그먼트 분할을 위한 최소 묵음 길이 (ms), 기본값 2000",
         "vad_speech_pad_ms": "세그먼트 경계의 음성 패딩 (ms), 기본값 400",
-        "vad_max_speech_s": "VAD 최대 세그먼트 길이 (s), 0 = 무제한"
+        "vad_max_speech_s": "VAD 최대 세그먼트 길이 (s), 0 = 무제한",
+        "initial_prompt": "Whisper 디코딩 초기 프롬프트: 구두점 및 전문 어휘 유도용",
+        "hotwords": "Whisper 편향 핫워드: 공백/쉼표 구분, 전문 용어 인식 확률 강제 강화",
+        "engine": "음성 전사 엔진 선택: Faster-Whisper(다국어 범용) 또는 FunASR(알리바바 다모 아카데미 중국어 산업용 고정밀 전사)"
       },
       "preprocessing": {
         "audio_sample_rate": "오디오 샘플 레이트 (Hz), Whisper는 16000 권장",
@@ -1039,32 +966,6 @@
         "max_gap": "세그먼트 병합 최대 간격 (s), 이보다 멀리 떨어진 세그먼트는 병합 안 함",
         "min_length": "병합 최소 텍스트 길이, 짧은 세그먼트는 이웃과 병합 시도",
         "filler_words": "제거할 필러 단어, 쉼표로 구분"
-      },
-      "voice_to_text": {
-        "voice_dir": "음성 녹음 및 대화 저장 디렉토리",
-        "summary_dir": "음성 변환 요약 저장 디렉토리",
-        "realtime_auto_send_interval": "음성 변환 실시간 자동 전송 간격 (s)",
-        "model_path": "Whisper 모델 디렉토리 이름 또는 경로",
-        "device": "추론 장치: cuda (NVIDIA GPU), cpu, auto",
-        "compute_type": "연산 유형: float16, int8, float32. CPU는 float16 미지원",
-        "language": "변환 언어 코드: zh, en, ja 등. 비워두거나 'auto'",
-        "num_workers": "CTranslate2 추론 스레드 (1~CPU 코어)",
-        "audio_sample_rate": "오디오 샘플 레이트 (Hz), Whisper는 16000 권장",
-        "audio_channels": "오디오 채널: 1=모노 (권장), 2=스테레오",
-        "vad_filter": "VAD 활성화로 묵음 필터링 및 환각 감소: True / False",
-        "vad_threshold": "VAD 음성 임계값 (0~1), 시끄러운 환경에서는 높임, 기본값 0.5",
-        "vad_min_silence_ms": "세그먼트 분할 최소 묵음 (ms), 기본값 2000",
-        "vad_speech_pad_ms": "세그먼트 경계 음성 패딩 (ms), 기본값 400",
-        "vad_max_speech_s": "VAD 최대 세그먼트 길이 (s), 0 = 무제한",
-        "initial_prompt": "변환 초기 프롬프트, 컨텍스트 향상에 유용",
-        "bg_image_path": "음성-텍스트 인터페이스 배경 이미지 경로, 비워두면 비활성화",
-        "bg_transparency": "배경 이미지 투명도 (0~255), 0=투명, 255=불투명",
-        "vad_endpoint_detection": "실시간 VAD 엔드포인트 감지 활성화: True / False",
-        "vad_energy_threshold": "VAD 에너지 임계값 (0~N), 0은 자동 보정",
-        "vad_silence_frames": "음성 종료를 위한 연속 묵음 프레임 (각 약 32ms)",
-        "vad_min_speech_frames": "유효 음성을 위한 최소 음성 프레임 (각 약 32ms)",
-        "vad_calibration_frames": "VAD 보정 묵음 프레임 (각 약 10ms)",
-        "context_max_chars": "연속 변환을 위한 최대 컨텍스트 문자 수"
       }
     }
   },
@@ -1123,9 +1024,36 @@
       "prompt_load_failed": "PromptManager: 로드 실패 ({name})",
       "prompt_loaded": "PromptManager: 로드됨 ({name})",
       "prompt_save_error": "PromptManager: 저장 실패 ({error})",
-      "default_prompt": "당신은 전문적인 텍스트 요약 비서입니다. 핵심 정보를 추출하고 간결하고 정확한 요약을 생성하는 데 능숙합니다. 요약 본문만 출력하세요. **시작 인사말, 마무리 설명, 해설, 주석을 절대 추가하지 마세요.** **불필요한 꾸밈이나 덧붙임 없이 순수하게 요약 내용만 출력하세요.** 끝에 다시 요약할 필요는 없습니다.",
+      "default_prompt": "당신은 전문적인 텍스트 요약 비서입니다. 핵심 요점과 중요한 사실을 하나도 빠뜨리지 않고 텍스트를 포괄적이고 완전하게 요약하는 것이 당신의 임무입니다. 요약 본문만 출력하세요. **시작 인사말, 마무리 설명, 해설, 주석을 절대 추가하지 마세요.** **불필요한 꾸밈이나 덧붙임 없이 순수하게 요약 내용만 출력하세요.** 끝에 다시 요약할 필요는 없습니다.",
       "text_content_label": "텍스트 내용:",
       "markdown_prompt": "\n요약을 다음과 같은 Markdown 형식으로 출력하세요:\n- **핵심 요점**\n\t- 내용\n\t- 내용\n- **핵심 요점**\n\t- 내용\n\t- 내용\n\nMarkdown 형식이 올바르게 유지되어 출력이 그대로 렌더링되도록 하세요.\n",
+      "presets": {
+        "default": {
+          "name": "표준 핵심 요약",
+          "desc": "모든 핵심 요점과 세부 사항을 빠짐없이 완벽하게 정리하여 체계적으로 출력",
+          "prompt": "당신은 전문적인 텍스트 요약 비서입니다. 입력된 텍스트의 모든 핵심 요점, 중요한 사실, 논거 및 세부 사항을 빠짐없이 완벽하고 깊이 있게 구조화하여 요약하세요.\n\n요약 요구사항:\n1. 완전한 포괄성: 본문의 전체 맥락을 꼼꼼히 정리하고, 내용의 길이와 깊이에 맞추어 충분히 확장하세요. 항목 수 제한 없이 중요한 정보를 누락 없이 모두 담아내세요.\n2. 명확한 구조: 규격화된 Markdown 목록 형식을 사용하여 계층적으로 출력하세요:\n   - **핵심 요점 제목**: 명확한 주제 요약\n     - 뒷받침하는 사실, 논리적 맥락, 수치 또는 구체적인 세부 사항 상술\n3. 순수 본문 출력: 요약 본문만 출력하세요. **시작 인사말, 마무리 설명, 해설, 주석을 절대 추가하지 마세요.** **불필요한 꾸밈이나 덧붙임 없이 순수하게 요약 내용만 출력하세요.** 끝에 다시 요약할 필요는 없습니다."
+        },
+        "meeting": {
+          "name": "회의 및 인터뷰 회의록",
+          "desc": "안건 배경, 합의 및 결정 사항, 명확한 액션 아이템(Action Items) 추출",
+          "prompt": "당신은 전문 회의록 정리 비서입니다. 텍스트에서 회의의 핵심 내용을 추출하여 규격화된 Markdown 형식으로 출력하세요:\n\n### 1. 논의 안건 및 배경\n- 주요 논의 배경과 안건\n\n### 2. 합의 및 결정 사항\n- 중요 합의점 및 명확한 결론\n\n### 3. 후속 조치 (Action Items)\n- [ ] **조치 사항**: 구체적인 내용 및 담당자(언급된 경우)\n\n체계적이고 객관적으로 작성하며, 인사말이나 불필요한 서두 없이 회의록 본문만 출력하세요."
+        },
+        "lecture": {
+          "name": "심층 학습 노트",
+          "desc": "강의 및 학술 내용을 개념 설명, 핵심 원리, 사례와 함께 체계적으로 정리",
+          "prompt": "당신은 전문 학술 및 지식 정리 비서입니다. 학습 내용을 구조화된 Markdown 형식으로 심층 학습 노트로 정리하세요:\n\n## 1. 핵심 주제 및 배경 개념\n## 2. 주요 지식 및 이론 설명\n## 3. 대표 사례 및 근거\n## 4. 요약 및 시사점\n\n체계적이고 명확하게 노트 본문 내용만 출력하세요."
+        },
+        "tldr": {
+          "name": "한 줄 요약 (TL;DR)",
+          "desc": "150자 이내로 가장 핵심적인 결론과 주요 사실을 초간결 요약",
+          "prompt": "당신은 초간결 요약 비서입니다. 150자 이내로 가장 핵심적인 결론이나 주요 사건, 논점을 간결하게 요약(TL;DR)하세요. 어떠한 서두나 군더더기 없이 본론만 바로 출력하세요."
+        },
+        "takeaways": {
+          "name": "핵심 명언 및 인사이트",
+          "desc": "대화 하이라이트, 인상 깊은 명언 원문 및 통찰력 있는 관점 추출",
+          "prompt": "당신은 명언 및 인사이트 추출 비서입니다. 텍스트에서 가장 영감을 주는 관점과 명언 원문을 추출하여 깔끔한 Markdown 형식으로 출력하세요:\n\n### 💡 핵심 관점\n- 주요 인사이트 정리\n\n### 💬 인상 깊은 명언 발췌\n> 명언 원문 (간략한 문맥 기재)\n\n### 🔍 시사점 및 통찰\n- 생각할 점\n\n불필요한 인사 없이 추출 본문만 출력하세요."
+        }
+      },
       "ollama": {
         "already_running": "Ollama 서비스가 이미 실행 중입니다",
         "process_exists": "Ollama 서비스 프로세스가 이미 존재함",
@@ -1243,23 +1171,6 @@
         "stream_connection_failed": "MistralClient: 스트림 연결 실패: {error}",
         "check_retry": "MistralClient: 연결 확인 시도 {attempt}/{max} 실패, {wait}초 후 재시도..."
       }
-    },
-    "voice_transcription": {
-      "audio_file_not_found": "오디오 파일을 찾을 수 없음: {path}",
-      "context_prefix": "이전 컨텍스트: {context}",
-      "no_speech_detected": "(음성이 감지되지 않음)",
-      "transcribe_failed": "VoiceTranscriptionService 변환 실패: {error}",
-      "transcribe_failed_short": "변환 실패: {error}"
-    },
-    "voice_recorder": {
-      "vad_calibrated": "VoiceRecorder VAD 보정 완료, noise_floor={value}",
-      "vad_chunk_save_failed": "VAD 청크 저장 실패: {error}",
-      "missing_sounddevice": "sounddevice 라이브러리 누락: {error}",
-      "recording_exception": "녹음 예외: {error}",
-      "save_recording_failed": "녹음 저장 실패: {error}",
-      "callback_status": "VoiceRecorder 콜백 상태: {status}",
-      "no_audio_data": "녹음된 오디오 데이터 없음",
-      "save_wav_failed": "WAV 저장 실패: {error}"
     }
   },
   "storage": {
@@ -1290,13 +1201,6 @@
     "bookmark": {
       "load_fail": "읽기 실패: %s",
       "save_fail": "쓰기 실패: %s"
-    },
-    "voice_store": {
-      "create_conv": "새 대화 %s",
-      "read_conv_fail": "대화 읽기 실패 %s: %s",
-      "read_list_fail": "대화 목록 읽기 실패 %s: %s",
-      "delete_conv": "대화 삭제됨 %s",
-      "conv_not_found": "대화를 찾을 수 없음: {conv_id}"
     },
     "json": {
       "read_fail": "JSON 파일 읽기 실패 {name}: {error}"
@@ -1372,7 +1276,39 @@
   "transcription_prompt_manager": {
     "load_failed": "TranscriptionPromptManager: ✗ 로드 실패 ({name})",
     "loaded": "TranscriptionPromptManager: ✓ 로드됨 ({name})",
-    "save_failed": "TranscriptionPromptManager: ✗ 저장 실패 ({error})"
+    "save_failed": "TranscriptionPromptManager: ✗ 저장 실패 ({error})",
+    "presets": {
+      "general": {
+        "name": "표준 규범 및 구두점",
+        "desc": "완전한 구두점과 표준 표기를 유도하여 일반적인 오디오/비디오에 적합",
+        "prompt": "정확한 표기와 올바른 구두점을 빠짐없이 입력하여 전사해 주세요.",
+        "hotwords": ""
+      },
+      "meeting": {
+        "name": "직장 회의 및 인터뷰",
+        "desc": "회의 논의, 협업, 업무 보고 등 직장 빈출 용어 강화",
+        "prompt": "직장 회의 및 심층 인터뷰 대화입니다. 발언을 정확히 인식하고 전문적인 맥락을 유지해 주세요.",
+        "hotwords": "회의 아젠다 의결 협업 싱크 보고 공유 팔로업 로드맵 스프린트 과제"
+      },
+      "ecommerce": {
+        "name": "이커머스 및 라이브 커머스",
+        "desc": "온라인 쇼핑몰, 라이브 커머스, 마케팅 용어 등의 핫워드 편향",
+        "prompt": "온라인 쇼핑몰 및 라이브 커머스 영상입니다. 전문적인 이커머스 용어를 정확하게 전사해 주세요.",
+        "hotwords": "SKU GMV 라이브커머스 스마트스토어 배송 정산 결제 유입 광고 프로모션 단가"
+      },
+      "tech": {
+        "name": "IT 기술 및 프로그래밍",
+        "desc": "소프트웨어 개발, AI 알고리즘, 코드 대소문자 표기를 정확히 유지",
+        "prompt": "소프트웨어 개발 및 IT 기술 관련 튜토리얼입니다. 기술 전문 용어와 대소문자를 정확히 유지해 주세요.",
+        "hotwords": "Python API Docker Linux PyTorch Git GPU CUDA Front-end Back-end Framework Bug Debug Web CI/CD LLM"
+      },
+      "bilingual": {
+        "name": "이중 언어 및 일상 대화",
+        "desc": "외래어나 일상 용어가 섞이는 대화를 매끄럽게 전사",
+        "prompt": "다양한 표현이 혼용된 일상 업무 대화입니다. 고유명사와 자연스러운 대화 흐름을 유지해 주세요.",
+        "hotwords": "OK PPT follow up update meeting schedule review project team catch up sync call demo"
+      }
+    }
   },
   "dll_downloader": {
     "proxy_source": {
@@ -1516,7 +1452,7 @@
   },
   "api_key": {
     "title": "API Key 관리",
-    "subtitle": "프로젝트 루트의 .env에 있는 비밀을 관리합니다. 값은 기본적으로 마스킹되며, 추가 후 수정하거나 삭제할 수 있습니다.",
+    "subtitle": "프로젝트 루트의 .env에 있는 비밀을 관리합니다. 공급업체 이름은 자유롭게 수정할 수 있으며, 기존 키는 보호되고 비밀 값은 마스킹됩니다.",
     "path_label": "설정 파일: {path}",
     "file_missing": "파일이 없습니다. 저장 시 새로 만들어집니다",
     "list_section": "비밀 목록",
@@ -1527,7 +1463,12 @@
     "show": "표시",
     "hide": "숨기기",
     "delete": "삭제",
-    "key_placeholder": "키 이름 (기존 항목은 수정 불가)",
+    "col_vendor": "모델 공급업체",
+    "col_key": "환경 변수 Key",
+    "col_value": "비밀 값",
+    "col_action": "동작",
+    "vendor_placeholder": "공급업체 이름 (예: OpenAI)",
+    "key_placeholder": "환경 변수 Key (예: OPENAI_API_KEY)",
     "value_placeholder": "비밀 값",
     "empty_hint": "비밀이 없습니다. «추가»를 클릭하세요.",
     "error_empty_key": "키 이름은 비워둘 수 없습니다",
@@ -1573,7 +1514,6 @@
     "gen_bg_image": "Generated background-image icon: {path}",
     "gen_favorite": "Generated favorites icon: {path}",
     "gen_api_key": "Generated API Key icon: {path}",
-    "gen_voice": "Generated voice-to-text icon: {path}",
     "gen_api_test": "Generated API-test icon: {path}",
     "gen_about": "Generated about icon: {path}",
     "gen_arrow_right": "Generated right-arrow icon: {path}",
@@ -1581,5 +1521,72 @@
     "gen_main": "Generating video2text icon...",
     "gen_main_png": "Generated main icon PNG: {path}",
     "gen_main_ico": "Generated main icon ICO: {path}"
+  },
+  "transcription_tab": {
+    "engine_group": "전사 엔진 / 모델 선택",
+    "funasr_group": "FunASR Paraformer 모델 매개변수",
+    "radio_funasr": "FunASR (중국어 고정밀)",
+    "radio_whisper": "Faster-Whisper (다국어 범용)",
+    "whisper_group": "Faster-Whisper 모델 매개변수"
+  },
+  "tx_labels": {
+    "funasr_device": "추론 장치",
+    "funasr_language": "전사 언어",
+    "funasr_model": "모델 선택 / 경로",
+    "funasr_num_workers": "추론 스레드 수",
+    "funasr_punc_filter": "문장 부호 복원",
+    "funasr_quantize": "INT8 양자화 가속",
+    "funasr_vad_filter": "FSMN-VAD 필터",
+    "funasr_vad_max_end_sil": "VAD 문장 분리 묵음(ms)",
+    "whisper_beam_size": "빔 크기 (Beam Size)",
+    "whisper_best_of": "Best Of 샘플 수",
+    "whisper_compression_ratio_threshold": "압축률 임계값",
+    "whisper_compute_type": "연산 유형",
+    "whisper_condition_on_previous_text": "이전 텍스트 조건 반영",
+    "whisper_device": "추론 장치",
+    "whisper_language": "전사 언어",
+    "whisper_log_prob_threshold": "로그 확률 임계값",
+    "whisper_model": "모델 선택 / 경로",
+    "whisper_no_repeat_ngram_size": "N-gram 반복 방지 크기",
+    "whisper_no_speech_threshold": "무음 임계값",
+    "whisper_num_workers": "추론 스레드 수",
+    "whisper_repetition_penalty": "반복 페널티 계수",
+    "whisper_temperature": "샘플링 온도",
+    "whisper_vad_filter": "VAD 묵음 필터",
+    "whisper_vad_max_speech_s": "VAD 최대 세그먼트(s)",
+    "whisper_vad_min_silence_ms": "VAD 최소 묵음(ms)",
+    "whisper_vad_speech_pad_ms": "VAD 음성 패딩(ms)",
+    "whisper_vad_threshold": "VAD 음성 임계값",
+    "whisper_word_timestamps": "단어 수준 타임스탬프"
+  },
+  "tx_tooltips": {
+    "funasr_device": "추론 연산 장치: auto (자동 감지), cuda (GPU), cpu",
+    "funasr_language": "전사 언어: zh (중국어) 또는 auto",
+    "funasr_model": "FunASR Paraformer 모델을 선택하거나 오른쪽을 클릭하여 사용자 정의 경로 탐색",
+    "funasr_num_workers": "ONNX Runtime CPU 추론 스레드 수 (기본값 4, 멀티코어 CPU에서 늘리면 가속)",
+    "funasr_punc_filter": "CT-Transformer 문장 부호 복원 활성화. 끄면 약 30% 빨라지며 구두점 없는 텍스트 출력",
+    "funasr_quantize": "INT8 모델 양자화 가속 활성화 (더 빠르고 메모리 절약). 비활성화 시 FP32 원본 정밀도 사용",
+    "funasr_vad_filter": "FSMN-VAD 음성 활동 감지를 활성화하여 묵음 구간 분할",
+    "funasr_vad_max_end_sil": "문장 분리로 판정할 최대 묵음 시간(ms) (기본값 800ms, 클수록 더 긴 문장으로 유지)",
+    "whisper_beam_size": "빔 탐색 크기 (1~10). 클수록 정확하지만 속도가 느려집니다",
+    "whisper_best_of": "후보 샘플 수 (temperature > 0 일 때 유효)",
+    "whisper_compression_ratio_threshold": "Gzip 압축률 반복 감지 임계값, 기본값 2.4",
+    "whisper_compute_type": "연산 정밀도: float16, int8, float32. 참고: CPU는 float16을 지원하지 않음",
+    "whisper_condition_on_previous_text": "이전 텍스트를 기반으로 생성할지 여부, 긴 오디오는 False 권장",
+    "whisper_device": "추론 장치: cuda (NVIDIA GPU), cpu, auto (자동 감지)",
+    "whisper_language": "언어 코드: zh (중국어), en (영어), ja (일본어) 등, auto는 자동 감지",
+    "whisper_log_prob_threshold": "평균 로그 확률 임계값, 기본값 -1.0",
+    "whisper_model": "Faster-Whisper 모델을 선택하거나 오른쪽을 클릭하여 사용자 정의 경로 탐색",
+    "whisper_no_repeat_ngram_size": "반복을 방지할 n-gram 크기, 0은 비활성화",
+    "whisper_no_speech_threshold": "무음 확률 임계값, 기본값 0.6",
+    "whisper_num_workers": "CTranslate2 추론 스레드 수 (1 ~ CPU 코어 수)",
+    "whisper_repetition_penalty": "반복 페널티 계수 (>1 반복 억제)",
+    "whisper_temperature": "샘플링 온도, 쉼표로 구분하여 여러 값 폴백 지원 (예: 0.0,0.2,0.4)",
+    "whisper_vad_filter": "Silero VAD를 활성화하여 묵음을 필터링하고 환각 억제",
+    "whisper_vad_max_speech_s": "VAD 단일 구간 최대 초 수, 0은 무제한",
+    "whisper_vad_min_silence_ms": "단락 분할에 필요한 최소 묵음 시간(ms), 기본값 2000",
+    "whisper_vad_speech_pad_ms": "세그먼트 경계 패딩 시간(ms), 기본값 400",
+    "whisper_vad_threshold": "VAD 음성 감지 임계값 (0~1), 시끄러운 환경에서는 0.6~0.7 권장",
+    "whisper_word_timestamps": "단어 수준 타임스탬프 생성 여부"
   }
 }

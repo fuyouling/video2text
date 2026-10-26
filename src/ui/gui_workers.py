@@ -213,7 +213,11 @@ def _build_transcription_service(
         model_path=cfg.model_path,
         device=cfg.device,
         compute_type=cfg.compute_type,
-        num_workers=settings.get_int("transcription.num_workers", 1),
+        num_workers=cfg.num_workers,
+        engine=cfg.engine,
+        quantize=getattr(cfg, "quantize", True),
+        punc_filter=getattr(cfg, "punc_filter", True),
+        vad_max_end_sil=getattr(cfg, "vad_max_end_sil", 800),
     )
     transcriber.confirm_download_callback = confirm_download_callback
     transcriber.load_model()

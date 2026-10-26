@@ -181,6 +181,8 @@ class NvidiaClient:
         self,
         model: str = "openai/gpt-oss-120b",
         prompt: str = "",
+        system_prompt: Optional[str] = None,
+        messages: Optional[list[dict[str, str]]] = None,
         temperature: float = 1.0,
         max_tokens: int = 100000,
         top_p: float = 1.0,
@@ -191,9 +193,19 @@ class NvidiaClient:
         cancel_check: Optional[Callable[[], bool]] = None,
         pause_event: Optional[threading.Event] = None,
     ) -> str:
+        if messages is not None:
+            chat_messages = messages
+        elif system_prompt:
+            chat_messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt},
+            ]
+        else:
+            chat_messages = [{"role": "user", "content": prompt}]
+
         payload = {
             "model": model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": chat_messages,
             "max_tokens": max_tokens,
             "temperature": temperature,
             "top_p": top_p,

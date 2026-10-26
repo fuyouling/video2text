@@ -56,8 +56,6 @@ Video2Text 是一个视频/音频转文本工具，核心功能包括：
 │ 业务服务层 (Services) │
 │ src/services/transcription_service.py │
 │ src/services/summarization_service.py │
-│ src/services/voice_recorder.py │
-│ src/services/voice_transcription.py │
 ├─────────────────────────────────────────────────────┤
 │ 核心引擎层 (Engines) │
 │ src/transcription/ │ src/text_processing/ │
@@ -787,24 +785,6 @@ class BookmarkItem:
 
 数据持久化到 `bookmarks.json`，线程安全，原子写入。
 
-### 10.3 VoiceConversationStore (`src/storage/voice_conversation_store.py`)
-
-**职责**：管理语音对话的持久化存储，支持上下文记忆和对话历史。
-
-**数据结构**：
-
-```python
-class ConversationItem:
-    video_name: str # 视频名称
-    conversation_id: str # 对话唯一标识
-    timestamp: str # 对话时间
-    transcript: str # 转写文本
-    summary: str # 总结文本
-    metadata: dict # 额外元数据（如模型、参数等）
-```
-
-数据持久化到 `voice_conversations.json`，线程安全，原子写入。支持按视频、按时间、按关键词检索。
-
 ---
 
 ## 11. 用户界面层
@@ -817,9 +797,9 @@ class ConversationItem:
 
 | 命令 | 功能 | 关键参数 |
 |------|------|----------|
-| `transcribe` | 仅转写 | input_path, --output-dir, -o, --verbose, -v |
+| `transcribe` | 仅转写 | input_path, --output-dir, -o, --prompt, -p, --hotwords, -w, --prompt-template, --verbose, -v |
 | `summarize` | 仅总结 | input_path, --output-dir, -o, --verbose, -v |
-| `run-pipeline` | 转写总结 | input_path, --output-dir, -o, --verbose, -v |
+| `run-pipeline` | 转写总结 | input_path, --output-dir, -o, --prompt, -p, --hotwords, -w, --prompt-template, --verbose, -v |
 | `version` | 版本信息 | 无 |
 | `help` | 命令帮助 | 无 |
 
@@ -921,7 +901,8 @@ class PipelineWorker(QObject):
 | SearchController | `src/ui/search_controller.py` | 关键词搜索控制器，支持高亮和防抖 |
 | UILogBridge | `src/ui/ui_log_bridge.py` | 连接日志系统与 GUI 日志面板 |
 | BackgroundContent | `src/ui/background_content.py` | 后台内容处理，支持异步加载 |
-| VoiceToTextWidget | `src/ui/voice_to_text_widget.py` | 语音转文本显示控件，支持流式输出 |
+| NvidiaApiTestDialog | `src/ui/nvidia_api_test_dialog.py` | Nvidia API 响应与延迟批量探测对话框 |
+| AmdApiTestDialog | `src/ui/amd_api_test_dialog.py` | AMD Token Factory 模型响应与延迟批量探测对话框 |
 | MarkdownRenderer | `src/ui/markdown_renderer.py` | Markdown 渲染引擎，支持 LaTeX 数学公式 |
 | ResultViewer | `src/ui/result_viewer.py` | 独立结果查看窗口（全屏模式） |
 
@@ -1053,35 +1034,46 @@ CREATE_NO_WINDOW # Windows 下隐藏控制台窗口，非 Windows 为 0
 
 ### 12.13 转写提示词管理器 (`src/transcription/transcription_prompt_manager.py`)
 
-**职责**：管理转写阶段的提示词模板，支持自定义。
+**职责**：管理转写阶段的 `initial_prompt`（初始解码提示词）与 `hotwords`（偏置热词），支持内置场景预设与用户自定义模板，并进行 Token 安全预算校验。
 
-**数据存储**（`transcription_prompts.json`）：
+**领域模型** (`src/transcription/transcription_prompt_types.py`)：
+```python
+@dataclass
+class TranscriptionPromptTemplate:
+    id: str
+    name: str
+    initial_prompt: str = ""
+    hotwords: str = ""
+    is_builtin: bool = False
+    description: str = ""
+```
+
+**内置场景预设**（多语言动态本地化）：
+- `general`：通用标准规范（引导标点完整、规范简体中文输出）
+- `meeting`：职场会议与访谈（强化议题、决议、同步、汇报等职场沟通词汇）
+- `ecommerce`：电商带货与运营（偏置抖店、淘宝、小红书、GMV、千川、DOU+ 等平台黑话）
+- `tech`：IT科技与编程（精准保留 Python、Docker、PyTorch、CUDA 等技术专有名词）
+- `bilingual`：中英混合日常交流（针对日常交流中英夹杂，平滑中英文过渡）
+
+**数据存储**（`transcription_prompts.json`，与 `config.ini` 同目录）：
 
 ```json
 {
+  "version": 2,
   "templates": {
-    "通用": "请准确转写以下音频内容，保持原始语义，不要添加任何解释或补充。",
-    "会议": "请准确转写会议内容，保留发言者身份，标记停顿和语气词。",
-    "访谈": "请准确转写访谈内容，保留问答结构，标记沉默和背景音。"
+    "我的电商": {
+      "name": "我的电商",
+      "initial_prompt": "国内电商教学与直播带货视频...",
+      "hotwords": "抖店 淘宝 拼多多 小红书 淘系 SKU GMV 千川 随心推 DOU+",
+      "description": "自定义电商词汇"
+    }
   },
-  "last_used": "通用",
-  "include_timestamps": true
+  "last_used": "ecommerce"
 }
 ```
 
-**提示词构建流程**：
-
-```python
-def build_prompt(self, language: str, custom_prompt: str = "") -> str:
-    if custom_prompt and custom_prompt.strip():
-        base = custom_prompt.strip()
-    else:
-        base = "请准确转写以下音频内容，保持原始语义，不要添加任何解释或补充。"
-
-    if self._include_timestamps:
-        return f"{base}\n\n请在每句文本前添加时间戳，格式为 [HH:MM:SS]。"
-    return base
-```
+**安全预算校验**：
+- `validate_limits(initial_prompt, hotwords)`：针对 Whisper 解码器 448 Token 上限及 ~220 Hotwords 偏置预算，在 initial_prompt > 300 字符或 hotwords > 50 词时给出防呆警示，避免触发 `maximum decoding length must be > 0` 异常。
 
 ---
 
@@ -2118,183 +2110,3 @@ class RateLimiter:
 ```
 
 在 `_execute_summarization_multi()` 中，每个线程在发起 API 请求前先调用 `rate_limiter.acquire()`，确保全局请求间隔不低于 1.5 秒。
-
-### 14.3 实时语音转写数据流（VoiceToText）
-
-新增的实时语音转写功能（`src/services/voice_recorder.py`、`src/services/voice_transcription.py`、`src/ui/voice_to_text_widget.py`）实现了麦克风实时采集 + VAD 端点检测 + 异步转写 + 上下文记忆的完整流程。
-
-#### 14.3.1 组件架构
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        VoiceToTextWidget (UI)                        │
-│  ┌──────────────┐  ┌──────────────┐  ┌────────────────────────────┐ │
-│  │  录音按钮     │  │  转写结果区   │  │  对话历史列表 + 书签        │ │
-│  └──────────────┘  └──────────────┘  └────────────────────────────┘ │
-│  信号: start/stop/pause  ←→  VoiceRecorder / VoiceTranscriptionService │
-└─────────────────────────────────────────────────────────────────────┘
-                              │
-          ┌───────────────────┼───────────────────┐
-          ▼                   ▼                   ▼
-┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────┐
-│ VoiceRecorder   │  │ VoiceTranscription │  │ VoiceConversationStore │
-│ (麦克风 + VAD)   │  │ Service (转写引擎)  │  │ (持久化对话)           │
-│                 │  │                 │  │                     │
-│ • sounddevice   │  │ • get_cached_   │  │ • voice_conversations.json │
-│ • 实时能量检测   │  │   transcriber   │  │ • 按 video_name/时间检索 │
-│ • 自动校准噪底   │  │ • VAD 参数      │  │ • 上下文记忆           │
-│ • 端点检测       │  │ • 上下文提示词   │  └─────────────────────┘
-│ • chunk 提取     │  │ • OpenCC 简体化  │
-└─────────────────┘  └─────────────────┘
-```
-
-#### 14.3.2 录音 + VAD 数据流
-
-```
-用户点击“开始录音”
-    │
-    ▼
-VoiceToTextWidget._on_record_start()
-    │
-    ├─ 创建 VoiceRecorder(settings)
-    │       └─ 从 [voice_to_text] 读取:
-    │           audio_sample_rate, audio_channels,
-    │           vad_endpoint_detection, vad_energy_threshold,
-    │           vad_silence_frames, vad_min_speech_frames
-    │
-    ├─ recorder.started.connect(...)
-    ├─ recorder.speech_ended.connect(self._on_speech_chunk)
-    ├─ recorder.volume_changed.connect(self._update_volume_ui)
-    ├─ recorder.error_occurred.connect(...)
-    │
-    └─ recorder.start()  → 启动 threading.Thread(_record_loop)
-            │
-            ▼
-    sounddevice.InputStream(callback=_audio_callback)
-            │
-            ├─ 每 blocksize(512) 帧触发一次回调
-            │
-            ├─ _audio_callback(indata, ...):
-            │       │
-            │       ├─ VAD 启用？
-            │       │   ├─ 未校准 → _calibrate_noise_floor()  (收集 30 帧求均值 * 1.2)
-            │       │   └─ 已校准 → _detect_speech_end()
-            │       │           ├─ rms > noise_floor*2 → 语音开始
-            │       │           └─ 连续静音帧 ≥ vad_silence_frames → 语音结束
-            │       │                   └─ _extract_speech_chunk() → 保存 voice_vad_*.wav
-            │       │                           └─ speech_ended.emit(wav_path)
-            │       │
-            │       └─ 无论是否 VAD，都把 indata 存入 _frames[] + 计算音量
-            │
-            ▼
-    用户点击“停止”或 VAD 自动结束
-            │
-            ▼
-    recorder.stop() → _running=False → 回调中抛出 CallbackAbort
-            │
-            └─ (若非 VAD 模式) save_to_wav() → finished.emit(wav_path)
-```
-
-#### 14.3.3 转写 + 上下文数据流
-
-```
-speech_ended.emit(chunk_path) 或 finished.emit(wav_path)
-    │
-    ▼
-VoiceToTextWidget._on_speech_chunk(wav_path) 或 _on_record_finished()
-    │
-    ├─ 创建/复用 VoiceTranscriptionService
-    │       └─ _get_transcriber():
-    │               model_path, device, compute_type, num_workers
-    │               → get_cached_transcriber(...)  (复用 Transcriber LRU 缓存)
-    │
-    ├─ service.text_ready.connect(self._append_transcript)
-    ├─ service.error_occurred.connect(...)
-    │
-    └─ service.transcribe_file(wav_path, previous_text=_last_text)
-            │
-            ├─ 读取 [voice_to_text] 配置:
-            │   language, vad_filter, vad_threshold,
-            │   vad_min_speech_duration_ms, vad_speech_pad_ms,
-            │   context_max_chars, initial_prompt
-            │
-            ├─ 构建上下文提示:
-            │   _build_context_prompt(_last_text)
-            │       └─ 取最后 N 字符 → "上文: {context}"
-            │           └─ 拼接到 initial_prompt
-            │
-            ├─ transcriber.transcribe(
-            │       wav_path,
-            │       language=...,
-            │       vad_filter=...,
-            │       vad_parameters={threshold, min_speech_..., speech_pad_ms, ...},
-            │       temperature=[0.0,0.2,0.4],
-            │       condition_on_previous_text=True,
-            │       initial_prompt=带上下文的提示
-            │   )
-            │
-            ├─ 合并 segments → text = " ".join(...)
-            │
-            ├─ _to_simplified(text)  (OpenCC t2s，如有)
-            │
-            └─ text_ready.emit(text)
-                    │
-                    ▼
-            VoiceToTextWidget._append_transcript(text)
-                    │
-                    ├─ 在结果区追加显示（带时间戳）
-                    ├─ _last_text = text  (更新上下文）
-                    ├─ 保存到 voice/{timestamp}.json
-                    │       └─ ConversationItem(
-                    │               video_name=当前会话,
-                    │               transcript=text,
-                    │               timestamp=...
-                    │           )
-                    │
-                    └─ 自动滚动到底部
-```
-
-#### 14.3.4 关键方法索引（Voice 模块）
-
-| 组件 | 方法 | 文件:行号 | 说明 |
-|------|------|-----------|------|
-| VoiceRecorder | `start()` | `voice_recorder.py:172` | 启动录音线程 |
-| VoiceRecorder | `_record_loop()` | `voice_recorder.py:187` | sounddevice InputStream 主循环 |
-| VoiceRecorder | `_audio_callback()` | `voice_recorder.py:223` | PortAudio 回调，VAD + 音量 |
-| VoiceRecorder | `_detect_speech_end()` | `voice_recorder.py:117` | 能量阈值判断语音结束 |
-| VoiceRecorder | `_extract_speech_chunk()` | `voice_recorder.py:139` | 提取 VAD 片段并保存 WAV |
-| VoiceRecorder | `extract_chunk()` | `voice_recorder.py:278` | 线程安全提取当前缓冲 |
-| VoiceTranscriptionService | `transcribe_file()` | `voice_transcription.py:118` | 带上下文的单文件转写 |
-| VoiceTranscriptionService | `_build_context_prompt()` | `voice_transcription.py:101` | 截取上文用于 initial_prompt |
-| VoiceTranscriptionService | `_build_vad_parameters()` | `voice_transcription.py:79` | 从配置构造 VAD 参数字典 |
-| VoiceTranscriptionService | `_to_simplified()` | `voice_transcription.py:19` | OpenCC 繁→简转换 |
-| VoiceToTextWidget | `_on_speech_chunk()` | `voice_to_text_widget.py:420` | VAD chunk 到达处理 |
-| VoiceToTextWidget | `_append_transcript()` | `voice_to_text_widget.py:480` | 追加转写结果 + 保存对话 |
-
-#### 14.3.5 配置段 `[voice_to_text]`
-
-```ini
-[voice_to_text]
-audio_sample_rate = 16000
-audio_channels = 1
-model_path = large-v3
-device = auto
-compute_type = float16
-num_workers = 1
-language = zh
-vad_filter = True
-vad_threshold = 0.5
-vad_min_speech_duration_ms = 2000
-vad_min_silence_ms = 2000
-vad_speech_pad_ms = 400
-vad_max_speech_s = 0
-vad_endpoint_detection = True          # 是否启用端点检测
-vad_energy_threshold = 0.0             # 0 表示自动校准
-vad_silence_frames = 30
-vad_min_speech_frames = 10
-vad_calibration_frames = 30
-context_max_chars = 200                # 上下文提示最大字符数
-initial_prompt =                       # 自定义初始提示词
-```
-
-实时语音转写完全复用现有的 `Transcriber` 缓存和 `TranscriptionConfig` 加载逻辑，与离线转写保持一致的模型管理与 OOM 降级策略。

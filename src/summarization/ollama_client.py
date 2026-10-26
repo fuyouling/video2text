@@ -23,7 +23,7 @@ class OllamaClient:
     # Class-level process reference, shared across all instances
     _service_process: Optional[subprocess.Popen] = None
 
-    def __init__(self, base_url: str = "http://127.0.0.1:11434", timeout: int = 60, check_retries: int = 3):
+    def __init__(self, base_url: str = "http://127.0.0.1:11434", timeout: int = 30, check_retries: int = 3):
         """Initialize Ollama client
 
         Args:

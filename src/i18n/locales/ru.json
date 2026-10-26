@@ -33,8 +33,8 @@
     "settings_fav_clear_input": "Очистить все входные папки",
     "settings_fav_clear_output": "Очистить все выходные папки",
     "tools": "Инструменты",
-    "tools_voice_to_text": "Голос в текст",
     "tools_nvidia_api_test": "Тест отклика NVIDIA API",
+    "tools_amd_api_test": "Тест отклика AMD API",
     "help": "Помощь",
     "help_donate": "Пожертвовать",
     "help_about": "О программе",
@@ -74,12 +74,18 @@
     "tx_prompt_group": "Подсказка для расшифровки",
     "tx_prompt_placeholder": "Инструкции по сцене, термины предметной области для повышения точности, будьте кратки",
     "hotwords_placeholder": "Горячие слова/фразы как единый префикс-подсказка, ключевые термины, будьте кратки",
-    "tx_prompt_template_placeholder": "Выберите сохранённую подсказку…",
+    "tx_prompt_template_placeholder": "Выберите шаблон подсказки…",
     "summary_prompt_group": "Подсказка для резюме",
-    "summary_prompt_placeholder": "Пользовательская подсказка для резюме (необязательно); оставьте пустым для значения по умолчанию",
-    "summary_prompt_template_placeholder": "Выберите сохранённую подсказку…",
-    "markdown_cb": "Формат Markdown",
-    "markdown_tooltip": "Включить автоматическое форматирование резюме в Markdown.\nДля пользовательского Markdown отредактируйте поле markdown_prompt в файле prompts.json напрямую.",
+    "summary_prompt_placeholder": "Пользовательский промпт резюме с ролью и требованиями к форматированию, WYSIWYG",
+    "summary_prompt_template_placeholder": "Выберите шаблон промпта…",
+    "prompt_builtin_group": "── Встроенные шаблоны ──",
+    "prompt_custom_group": "── Пользовательские шаблоны ──",
+    "prompt_reset_btn": "Сбросить",
+    "prompt_reset_tooltip": "Восстановить в редакторе исходное содержимое шаблона",
+    "prompt_reset_confirm_title": "Подтверждение сброса",
+    "prompt_reset_confirm_msg": "Вы действительно хотите сбросить текущее содержимое к исходному промпту «{name}»? Несохранённые изменения будут потеряны.",
+    "prompt_cannot_delete_builtin": "Встроенные шаблоны нельзя удалить.",
+    "prompt_save_as": "Сохранить как новый шаблон",
     "log_panel_title": "Вывод журнала",
     "placeholder_new": "Новый",
     "placeholder_new_tx": "Новый",
@@ -182,8 +188,8 @@
     "stop_force_terminate": "  ├─ ⚠ Рабочий поток не ответил на запрос выхода, принудительное завершение…",
     "dep_check_skip_warn": "Проверка зависимостей при запуске не удалась, пропущена (основной интерфейс работает)",
     "dep_check_start": "Проверка зависимостей при запуске: начало",
-    "dep_model_complete": "Модель готова (%s)",
-    "dep_model_missing": "Модель отсутствует (%s)",
+    "dep_model_complete": "Модель готова ({name})",
+    "dep_model_missing": "Модель отсутствует ({name})",
     "dep_dll_complete": "DLL-зависимости готовы",
     "dep_dll_missing": "DLL-зависимости отсутствуют",
     "dep_all_ready": "Все зависимости готовы, загрузка не требуется",
@@ -206,7 +212,20 @@
     "dep_download_start": "Начало загрузки зависимостей: модель=%s, dll=%s, keep_archive=%s",
     "failed_log_write": "Не удалось записать журнал ошибок: %s",
     "tx_prompt_load_fail": "Не удалось загрузить шаблон промпта транскрипции",
-    "summary_prompt_load_fail": "Не удалось загрузить шаблон промпта резюме"
+    "summary_prompt_load_fail": "Не удалось загрузить шаблон промпта резюме",
+    "tx_prompt_none": "Без подсказки (Очистить)",
+    "tx_prompt_reset_btn": "Сбросить",
+    "tx_prompt_reset_tooltip": "Восстановить исходное содержимое этого шаблона",
+    "tx_prompt_reset_confirm_title": "Подтверждение сброса",
+    "tx_prompt_reset_confirm_msg": "Вы действительно хотите восстановить исходное содержимое шаблона «{name}»? Несохранённые изменения будут потеряны.",
+    "tx_prompt_cannot_delete_builtin": "Встроенные шаблоны нельзя удалить.",
+    "tx_prompt_len_warning": "Подсказка слишком длинная ({count} симв., рекомендуется не более 300)",
+    "tx_hotwords_count_warning": "Слишком много ключевых слов ({count} слов, рекомендуется не более 50)",
+    "tx_prompt_tooltip": "Начальная подсказка Whisper: задаёт пунктуацию и термины (рекомендуется не более 300 симв.)",
+    "tx_hotwords_tooltip": "Ключевые слова Whisper: через пробел или запятую (рекомендуется не более 50 слов)",
+    "tx_hotwords_funasr_hint": "Введите имена собственные или ключевые слова через пробел или запятую (напр.: ИИ Глубокое обучение)",
+    "tx_hotwords_funasr_tooltip": "FunASR в основном полагается на ключевые слова для улучшения распознавания специальных терминов",
+    "tx_prompt_funasr_disabled_hint": "FunASR (неавторегрессионная модель) не использует подсказки в виде предложений; используйте ключевые слова ниже для улучшения распознавания"
   },
   "about": {
     "title": "О программе Video2Text",
@@ -253,7 +272,11 @@
       "keep_label": "После загрузки:",
       "keep_yes": "Сохранить архив",
       "keep_no": "Удалить (экономия места)",
-      "dll_ready": "✓ DLL готовы, ничего делать не нужно"
+      "dll_ready": "✓ DLL готовы, ничего делать не нужно",
+      "funasr_opt": "Скачать FunASR Paraformer (высокая точность для китайского, ~540МБ, ModelScope)",
+      "funasr_ready": "✓ Модель FunASR Paraformer готова",
+      "whisper_opt": "Скачать Faster-Whisper (многоязычный, Large-v3-Turbo, ~1.4ГБ)",
+      "whisper_ready": "✓ Модель Faster-Whisper готова"
     },
     "file_select": {
       "title": "Выбор медиафайлов",
@@ -557,6 +580,43 @@
     "models_empty": "Нет доступных онлайн-моделей. Повторите попытку позже или нажмите «Обновить список»",
     "models_loading": "Получение списка онлайн-моделей…"
   },
+  "amd_test": {
+    "title": "Тест отклика AMD API",
+    "one_click": "Проверить все",
+    "stop": "Стоп",
+    "api_key_ok": "API-ключ: загружен",
+    "api_key_missing": "API-ключ: отсутствует",
+    "api_key_missing_msg": "AMD_API_KEY не найден. Настройте его в .env перед проверкой.",
+    "timeout_label": "Таймаут {seconds} с",
+    "concurrency_label": "Параллельно {workers}",
+    "current_model": "Текущая модель: {model}",
+    "latency_label": "Время отклика",
+    "latency_value": "{seconds} с",
+    "latency_over": "> {seconds} с",
+    "latency_none": "—",
+    "status_pending": "Ожидает",
+    "status_queued": "В очереди",
+    "status_testing": "Проверка",
+    "status_ok": "Успех",
+    "status_fail": "Ошибка",
+    "status_rate_limited": "Ограничение скорости",
+    "progress": "Прогресс {done}/{total}  ·  Успешно {ok}  ·  Ошибок {fail}  ·  Ограничено {limited}",
+    "retest_tooltip": "Проверить эту модель заново",
+    "card_tooltip": "Дважды щёлкните успешную карточку, чтобы сохранить модель в конфигурации",
+    "error_no_key": "Отсутствует API-ключ",
+    "error_timeout": "Превышено время отклика ({latency} с > {limit} с)",
+    "error_empty": "Пустой ответ",
+    "apply_title": "Сделать моделью суммаризации",
+    "apply_confirm": "Записать {model} в summarization.amd_model?",
+    "apply_done": "{model} назначена моделью суммаризации AMD",
+    "apply_failed": "Не удалось сохранить конфигурацию: {error}",
+    "refresh_list": "Обновить список",
+    "refresh_list_loading": "Обновление списка моделей…",
+    "refresh_list_done": "Список моделей обновлён ({count} моделей)",
+    "refresh_list_failed": "Не удалось обновить список моделей: {error}",
+    "models_empty": "Нет доступных онлайн-моделей. Повторите попытку позже или нажмите «Обновить список»",
+    "models_loading": "Получение списка онлайн-моделей…"
+  },
   "donate": {
     "title": "Пожертвовать",
     "image_not_found": "Изображение не найдено: {path}"
@@ -674,7 +734,10 @@
     "tips_label": "[bold]Tips:[/bold]",
     "tip1": "1. Use --help to view detailed options for a single command",
     "tip2": "2. All transcription and summarization parameters (model, language, device, temperature, etc.) are configured via config.ini",
-    "tip3": "3. In PowerShell, call the executable by its full path, e.g.: .\\video2text.exe transcribe video.mp4 -o output"
+    "tip3": "3. In PowerShell, call the executable by its full path, e.g.: .\\video2text.exe transcribe video.mp4 -o output",
+    "opt_initial_prompt": "Временно переопределить начальную подсказку транскрипции",
+    "opt_hotwords": "Временно переопределить ключевые слова (через пробел или запятую)",
+    "opt_prompt_template": "Имя пресета или шаблона (например: general, meeting, ecommerce, tech, bilingual)"
   },
   "errors": {
     "file_not_found": "Файл не найден: {path}",
@@ -734,117 +797,6 @@
       "frame_rate_parse_failed": "VideoProcessor: ⚠ Ошибка разбора частоты кадров (%s), по умолчанию 0"
     }
   },
-  "voice": {
-    "user_prefix": "[Пользователь] ",
-    "summary_prefix": "[Резюме] ",
-    "sidebar": {
-      "title": "Беседы"
-    },
-    "chat": {
-      "placeholder": "Нажмите кнопку записи выше, чтобы начать голосовую расшифровку"
-    },
-    "back_main": "Назад на главную",
-    "new_conv": "Новая",
-    "record_start": "Начать запись",
-    "record_stop": "Остановить запись",
-    "conv": {
-      "meta": "{time} · {count} сообщ."
-    },
-    "summary_saved": "Резюме сохранено в: {path}",
-    "status": {
-      "initializing": "● Инициализация…",
-      "ready": "● Готов",
-      "model_not_ready": "● Модель ещё не загружена, подождите…",
-      "recording_vad": "● Запись (VAD)…",
-      "recording_timer": "● Запись (таймерные фрагменты)…",
-      "stopped": "● Остановлено",
-      "recording_done": "● Запись завершена, расшифровка…",
-      "transcribing": "● Расшифровка…",
-      "no_speech": "● Речь не обнаружена",
-      "transcribe_done": "● Расшифровка завершена",
-      "transcribe_fail": "● Ошибка расшифровки: {error}",
-      "record_fail": "● Ошибка записи: {error}",
-      "selected_count": "Выбрано бесед: {count}",
-      "conv_deleted": "Беседа удалена",
-      "deleted_count": "Удалено бесед: {count}",
-      "multi_select": "Множественный выбор: щёлкните элементы для выбора, правый клик для групповых операций",
-      "edit_mode": "Режим редактирования: измените содержимое, затем правый клик и выберите [Сохранить] для завершения",
-      "msg_saved": "Сообщение сохранено",
-      "edit_cancelled": "Редактирование отменено",
-      "copied": "Скопировано в буфер обмена",
-      "correcting": "Исправление грамматики…",
-      "correct_done": "Исправление грамматики завершено",
-      "msg_deleted": "Сообщение удалено",
-      "summarizing": "Суммаризация…",
-      "summary_done": "Суммаризация завершена",
-      "op_fail": "Ошибка операции: {error}",
-      "loading_model": "● Загрузка модели…",
-      "model_load_fail": "● Ошибка загрузки модели: {error}"
-    },
-    "menu": {
-      "exit_multi_select": "Выйти из множественного выбора",
-      "delete_selected": "Удалить выбранное",
-      "select_toggle_all": "Выбрать / Снять всё",
-      "delete_all": "Удалить всё",
-      "multi_select": "Множественный выбор",
-      "delete_conv": "Удалить эту беседу",
-      "save": "Сохранить",
-      "cancel_edit": "Отменить редактирование",
-      "copy": "Копировать",
-      "edit": "Редактировать",
-      "delete": "Удалить",
-      "grammar": "Исправить",
-      "summarize": "Суммаризировать"
-    },
-    "dialog": {
-      "record_error": {
-        "title": "Ошибка записи"
-      },
-      "record_fail": {
-        "title": "Ошибка записи",
-        "msg": "Не удалось начать запись: {error}"
-      },
-      "delete_conv": {
-        "title": "Удалить беседу",
-        "msg": "Вы уверены, что хотите удалить эту беседу?\nЭто также удалит JSON-файл на диске без возможности восстановления."
-      },
-      "delete_fail": {
-        "title": "Ошибка удаления",
-        "msg": "Ошибка при удалении беседы: {error}"
-      },
-      "no_selection": "Сначала выберите беседы для удаления",
-      "batch_delete": {
-        "title": "Пакетное удаление",
-        "msg": "Вы уверены, что хотите удалить выбранные беседы ({count} шт.)?\nЭта операция необратима."
-      },
-      "no_convs": "Нет доступных бесед",
-      "delete_all": {
-        "title": "Удалить всё",
-        "msg": "Вы уверены, что хотите удалить все беседы ({count} шт.)?\nЭта операция необратима."
-      },
-      "delete_msg": {
-        "title": "Удалить сообщение",
-        "msg": "Вы уверены, что хотите удалить это сообщение?"
-      },
-      "select_conv_first": "Сначала выберите беседу"
-    },
-    "log_delete_conv_fail": "Не удалось удалить беседу {conv_id}: {error}",
-    "widget": {
-      "start_record_failed": "Failed to start recording: {error}",
-      "record_error_exception": "on_record_error exception:\n{error}",
-      "transcribe_done_exception": "_on_transcribe_done exception:\n{error}",
-      "transcribe_error_exception": "_on_transcribe_error exception:\n{error}",
-      "api_call_done_exception": "_start_api_call on_done exception:\n{error}"
-    },
-    "role": {
-      "user": "User",
-      "assistant": "Assistant"
-    },
-    "prompt": {
-      "correct_text": "The user recorded audio using faster-whisper for speech recognition, and some text may be incorrect. Please correct typos and unnatural phrasing in the user's transcribed text, and output in JSON format: {\"source_text\":\"original text\",\"update_text\":\"corrected text\"}. Output only the JSON, without any other content.",
-      "summarize_conversation": "Please summarize the following multi-turn conversation into a well-structured Markdown document. Requirements: output only the Markdown content itself, without any explanatory text, prefix, or suffix.\n\nConversation:\n{text}"
-    }
-  },
   "config": {
     "section": {
       "app": "Приложение",
@@ -854,8 +806,7 @@
       "output": "Вывод",
       "paths": "Пути",
       "tools": "Инструменты",
-      "text_processing": "Обработка текста",
-      "voice_to_text": "Голос в текст"
+      "text_processing": "Обработка текста"
     },
     "group": {
       "app": {
@@ -867,7 +818,8 @@
         "decode": "Декодирование",
         "vad": "VAD обнаружение",
         "quality": "Контроль качества",
-        "repeat": "Подавление повторов"
+        "repeat": "Подавление повторов",
+        "prompt": "Подсказка и ключевые слова"
       },
       "preprocessing": {
         "audio": "Обработка аудио",
@@ -879,19 +831,14 @@
       },
       "text_processing": {
         "merge": "Слияние и очистка"
-      },
-      "voice_to_text": {
-        "basic": "Основные",
-        "audio_vad": "Аудио и VAD",
-        "endpoint": "Конечная точка реального времени",
-        "prompt": "Подсказка",
-        "background": "Фоновое изображение"
       }
     },
     "combo": {
       "auto_language": "Язык системы",
       "mode_single": "Один поток",
-      "mode_multi": "Несколько потоков"
+      "mode_multi": "Несколько потоков",
+      "engine_funasr": "FunASR Paraformer (Высокая точность для китайского)",
+      "engine_whisper": "Faster-Whisper (Многоязычный)"
     },
     "label": {
       "app": {
@@ -928,7 +875,10 @@
         "vad_threshold": "Порог VAD",
         "vad_min_silence_ms": "Мин. тишина VAD (мс)",
         "vad_speech_pad_ms": "Пауза речи VAD (мс)",
-        "vad_max_speech_s": "Макс. речь VAD (с)"
+        "vad_max_speech_s": "Макс. речь VAD (с)",
+        "initial_prompt": "Подсказка транскрипции",
+        "hotwords": "Ключевые слова транскрипции",
+        "engine": "Движок транскрипции"
       },
       "preprocessing": {
         "audio_sample_rate": "Частота дискретизации аудио",
@@ -953,32 +903,6 @@
         "max_gap": "Макс. интервал",
         "min_length": "Мин. длина",
         "filler_words": "Слова-паразиты"
-      },
-      "voice_to_text": {
-        "voice_dir": "Папка хранения голоса",
-        "summary_dir": "Папка хранения резюме",
-        "realtime_auto_send_interval": "Интервал автоотправки",
-        "model_path": "Путь к модели",
-        "device": "Устройство",
-        "compute_type": "Тип вычислений",
-        "language": "Язык",
-        "num_workers": "Потоки вывода",
-        "audio_sample_rate": "Частота дискретизации аудио",
-        "audio_channels": "Аудиоканалы",
-        "vad_filter": "VAD фильтр",
-        "vad_threshold": "Порог VAD",
-        "vad_min_silence_ms": "Мин. тишина VAD (мс)",
-        "vad_speech_pad_ms": "Пауза речи VAD (мс)",
-        "vad_max_speech_s": "Макс. речь VAD (с)",
-        "initial_prompt": "Начальная подсказка",
-        "bg_image_path": "Путь к фоновому изображению",
-        "bg_transparency": "Прозрачность фона",
-        "vad_endpoint_detection": "Обнаружение конечной точки VAD",
-        "vad_energy_threshold": "Энергетический порог VAD",
-        "vad_silence_frames": "Кадры тишины VAD",
-        "vad_min_speech_frames": "Мин. кадры речи VAD",
-        "vad_calibration_frames": "Калибровочные кадры VAD",
-        "context_max_chars": "Макс. символов контекста"
       }
     },
     "tooltip": {
@@ -1014,7 +938,10 @@
         "vad_threshold": "Порог речи VAD (0~1), повышайте для шумной обстановки (0.6~0.7), по умолчанию 0.5",
         "vad_min_silence_ms": "Минимальная длительность тишины (мс) для разделения сегментов, по умолчанию 2000",
         "vad_speech_pad_ms": "Добавление тишины к границам речи (мс), по умолчанию 400",
-        "vad_max_speech_s": "Максимальная длительность сегмента VAD (с), 0 = без ограничений"
+        "vad_max_speech_s": "Максимальная длительность сегмента VAD (с), 0 = без ограничений",
+        "initial_prompt": "Начальная подсказка декодера Whisper для управления пунктуацией и терминами",
+        "hotwords": "Ключевые слова со смещением для Whisper (через пробел или запятую)",
+        "engine": "Выберите движок транскрипции речи: Faster-Whisper (многоязычный) или FunASR (промышленная высокая точность для китайского языка)"
       },
       "preprocessing": {
         "audio_sample_rate": "Частота дискретизации аудио (Гц), Whisper рекомендует 16000",
@@ -1039,32 +966,6 @@
         "max_gap": "Максимальный интервал (с) для слияния сегментов, сегменты дальше не будут объединены",
         "min_length": "Минимальная длина текста для слияния, более короткие сегменты пытаются объединиться с соседними",
         "filler_words": "Слова-паразиты для удаления, через запятую"
-      },
-      "voice_to_text": {
-        "voice_dir": "Папка для хранения голосовых записей и бесед",
-        "summary_dir": "Папка для хранения резюме голосовых расшифровок",
-        "realtime_auto_send_interval": "Интервал автоматической отправки в реальном времени (с) для голосовой расшифровки",
-        "model_path": "Имя папки модели Whisper или путь",
-        "device": "Устройство вывода: cuda (NVIDIA GPU), cpu, auto",
-        "compute_type": "Тип вычислений: float16, int8, float32. CPU не поддерживает float16",
-        "language": "Код языка расшифровки: zh, en, ja и т.д. Оставьте пустым или 'auto'",
-        "num_workers": "Потоки вывода CTranslate2 (1~количество ядер CPU)",
-        "audio_sample_rate": "Частота дискретизации аудио (Гц), Whisper рекомендует 16000",
-        "audio_channels": "Аудиоканалы: 1 = моно (рекомендуется), 2 = стерео",
-        "vad_filter": "Включить VAD для фильтрации тишины и уменьшения галлюцинаций: True / False",
-        "vad_threshold": "Порог речи VAD (0~1), повышайте для шумной обстановки, по умолчанию 0.5",
-        "vad_min_silence_ms": "Минимальная тишина (мс) для разделения сегментов, по умолчанию 2000",
-        "vad_speech_pad_ms": "Добавление тишины к границам речи (мс), по умолчанию 400",
-        "vad_max_speech_s": "Максимальная длительность сегмента VAD (с), 0 = без ограничений",
-        "initial_prompt": "Начальная подсказка для расшифровки, полезна для усиления контекста",
-        "bg_image_path": "Путь к фоновому изображению для интерфейса «Голос в текст», оставьте пустым для отключения",
-        "bg_transparency": "Прозрачность фонового изображения (0~255), 0 = прозрачный, 255 = непрозрачный",
-        "vad_endpoint_detection": "Включить обнаружение конечной точки VAD в реальном времени: True / False",
-        "vad_energy_threshold": "Энергетический порог VAD (0~N), 0 для автокалибровки",
-        "vad_silence_frames": "Последовательные кадры тишины для окончания речи (каждый ~32 мс)",
-        "vad_min_speech_frames": "Минимальные кадры речи для допустимой речи (каждый ~32 мс)",
-        "vad_calibration_frames": "Калибровочные кадры тишины VAD (каждый ~10 мс)",
-        "context_max_chars": "Максимальное количество символов контекста для непрерывной расшифровки"
       }
     }
   },
@@ -1123,9 +1024,36 @@
       "prompt_load_failed": "PromptManager: ошибка загрузки ({name})",
       "prompt_loaded": "PromptManager: загружен ({name})",
       "prompt_save_error": "PromptManager: ошибка сохранения ({error})",
-      "default_prompt": "Вы — профессиональный помощник по суммированию текста, который умеет извлекать ключевую информацию и составлять краткие и точные резюме. Выводите только основной текст резюме. **Не добавляйте никаких вступлений, заключительных пояснений, комментариев или примечаний.** **Не добавляйте лишних украшений — выводите только содержание резюме.** В конце не нужно повторять резюме.",
+      "default_prompt": "Вы — профессиональный помощник по суммированию текста. Ваша задача — предоставить исчерпывающее и полное резюме текста без пропуска ключевых моментов и важных фактов. Выводите только основной текст резюме. **Не добавляйте никаких вступлений, заключительных пояснений, комментариев или примечаний.** **Не добавляйте лишних украшений — выводите только содержание резюме.** В конце не нужно повторять резюме.",
       "text_content_label": "Текстовое содержимое:",
       "markdown_prompt": "\nОформи summary в формате Markdown следующим образом:\n- **Ключевой момент**\n\t- Содержание\n\t- Содержание\n- **Ключевой момент**\n\t- Содержание\n\t- Содержание\n\nСохраняй корректное форматирование Markdown, чтобы вывод можно было сразу отобразить.\n",
+      "presets": {
+        "default": {
+          "name": "Стандартное резюме",
+          "desc": "Исчерпывающее и полное резюме, охватывающее все ключевые моменты и детали без упущений",
+          "prompt": "Вы — профессиональный помощник по суммированию текста. Ваша задача — составить структурированное, исчерпывающее, полное и глубокое резюме входного текста, гарантируя сохранение всех ключевых моментов, важных фактов, аргументов и существенных деталей.\n\nТребования:\n1. Полный охват: Тщательно структурируйте весь текст. Раскрывайте содержание в соответствии с реальной длиной и плотностью информации без ограничения количества пунктов, не упуская ни одной важной детали.\n2. Чёткая структура: Выводите результат в формате Markdown с понятной иерархией:\n   - **Заголовок ключевого момента**: Кратко сформулированная тема\n     - Подробное раскрытие фактов, логики, данных и конкретных деталей\n3. Чистый вывод: Выводите только основной текст резюме. **Не добавляйте никаких вступлений, заключительных пояснений, комментариев или примечаний.** **Не добавляйте лишних украшений — выводите только содержание резюме.** В конце не нужно повторять резюме."
+        },
+        "meeting": {
+          "name": "Протокол встречи",
+          "desc": "Выделение тем обсуждения, принятых решений и конкретных задач (Action Items)",
+          "prompt": "Вы — профессиональный помощник по ведению протоколов. Выделите ключевые моменты в формате Markdown:\n\n### 1. Темы обсуждения и контекст\n- Основные темы и предыстория\n\n### 2. Решения и договорённости\n- Достигнутый консенсус и решения\n\n### 3. План действий (Action Items)\n- [ ] **Задача**: Конкретное действие и ответственный\n\nЧётко, объективно и без лишних вежливых вступлений."
+        },
+        "lecture": {
+          "name": "Глубокие учебные заметки",
+          "desc": "Систематизация лекций и докладов: понятия, ключевые теории и примеры",
+          "prompt": "Вы — профессиональный академический помощник. Структурируйте материал в виде учебных заметок в формате Markdown:\n\n## 1. Ключевые темы и понятия\n## 2. Основные положения и теории\n## 3. Примеры и аргументы\n## 4. Выводы и размышления\n\nЛогично и структурированно, выводите только текст заметок."
+        },
+        "tldr": {
+          "name": "Краткий обзор (TL;DR)",
+          "desc": "До 150 слов, сверхкраткое изложение главных выводов и событий",
+          "prompt": "Вы — помощник по сверхкратким резюме. Опишите суть текста объёмом до 150 слов (TL;DR), сразу переходя к главным выводам и событиям без вступлений и лишних слов."
+        },
+        "takeaways": {
+          "name": "Цитаты и ключевые мысли",
+          "desc": "Выделение ярких цитат, ценных инсайтов и вдохновляющих идей",
+          "prompt": "Вы — помощник по поиску инсайтов и цитат. Выделите главное в формате Markdown:\n\n### 💡 Ключевые идеи\n- Главные тезисы\n\n### 💬 Запоминающиеся цитаты\n> Точная цитата (краткий контекст)\n\n### 🔍 Размышления и инсайты\n- Вдохновляющие выводы\n\nВыводите только извлечённый контент."
+        }
+      },
       "ollama": {
         "already_running": "Сервис Ollama уже запущен",
         "process_exists": "Процесс сервиса Ollama уже существует",
@@ -1243,23 +1171,6 @@
         "stream_connection_failed": "MistralClient: сбой потокового подключения: {error}",
         "check_retry": "MistralClient: попытка проверки подключения {attempt}/{max} не удалась, повтор через {wait} с..."
       }
-    },
-    "voice_transcription": {
-      "audio_file_not_found": "Аудиофайл не найден: {path}",
-      "context_prefix": "Предыдущий контекст: {context}",
-      "no_speech_detected": "(Речь не обнаружена)",
-      "transcribe_failed": "Ошибка расшифровки VoiceTranscriptionService: {error}",
-      "transcribe_failed_short": "Ошибка расшифровки: {error}"
-    },
-    "voice_recorder": {
-      "vad_calibrated": "Калибровка VAD VoiceRecorder завершена, уровень шума={value}",
-      "vad_chunk_save_failed": "Ошибка сохранения VAD фрагмента: {error}",
-      "missing_sounddevice": "Отсутствует библиотека sounddevice: {error}",
-      "recording_exception": "Исключение при записи: {error}",
-      "save_recording_failed": "Ошибка сохранения записи: {error}",
-      "callback_status": "Статус обратного вызова VoiceRecorder: {status}",
-      "no_audio_data": "Нет записанных аудиоданных",
-      "save_wav_failed": "Ошибка сохранения WAV: {error}"
     }
   },
   "storage": {
@@ -1290,13 +1201,6 @@
     "bookmark": {
       "load_fail": "Ошибка чтения: %s",
       "save_fail": "Ошибка записи: %s"
-    },
-    "voice_store": {
-      "create_conv": "Новая беседа %s",
-      "read_conv_fail": "Не удалось прочитать беседу %s: %s",
-      "read_list_fail": "Не удалось прочитать список бесед %s: %s",
-      "delete_conv": "Беседа удалена %s",
-      "conv_not_found": "Беседа не найдена: {conv_id}"
     },
     "json": {
       "read_fail": "Не удалось прочитать JSON файл {name}: {error}"
@@ -1372,7 +1276,39 @@
   "transcription_prompt_manager": {
     "load_failed": "TranscriptionPromptManager: ✗ Ошибка загрузки ({name})",
     "loaded": "TranscriptionPromptManager: ✓ Загружен ({name})",
-    "save_failed": "TranscriptionPromptManager: ✗ Ошибка сохранения ({error})"
+    "save_failed": "TranscriptionPromptManager: ✗ Ошибка сохранения ({error})",
+    "presets": {
+      "general": {
+        "name": "Стандарт и пунктуация",
+        "desc": "Обеспечивает стандартный текст с правильной пунктуацией для обычной речи",
+        "prompt": "Пожалуйста, транскрибируйте речь точно, расставляя правильные знаки препинания.",
+        "hotwords": ""
+      },
+      "meeting": {
+        "name": "Совещания и интервью",
+        "desc": "Усиливает распознавание терминов деловых встреч, задач и решений",
+        "prompt": "Это запись деловой встречи или интервью. Точно передавайте термины и деловой контекст.",
+        "hotwords": "Совещание Повестка Решение Синхронизация Отчёт Итоги Дедлайн Задача"
+      },
+      "ecommerce": {
+        "name": "Электронная коммерция",
+        "desc": "Улучшает распознавание терминов интернет-магазинов, продаж и рекламы",
+        "prompt": "Запись об электронной коммерции и онлайн-продажах. Точно транскрибируйте торговые термины.",
+        "hotwords": "SKU GMV Маркетплейс Корзина Конверсия Кампания Заказ Трафик"
+      },
+      "tech": {
+        "name": "IT и разработка ПО",
+        "desc": "Сохраняет технические термины, алгоритмы ИИ и регистр названий",
+        "prompt": "Запись о разработке программного обеспечения и IT. Сохраняйте технические термины и регистр букв.",
+        "hotwords": "Python API Docker Linux PyTorch Git GPU CUDA Front-end Back-end Framework Bug Debug Web CI/CD LLM"
+      },
+      "bilingual": {
+        "name": "Двуязычная речь",
+        "desc": "Плавный переход для диалогов со смесью профессиональных и разговорных терминов",
+        "prompt": "Двуязычный диалог и разговорная речь. Сохраняйте имена собственные и естественный контекст беседы.",
+        "hotwords": "OK PPT follow up update meeting schedule review project team catch up sync call demo"
+      }
+    }
   },
   "dll_downloader": {
     "proxy_source": {
@@ -1573,7 +1509,6 @@
     "gen_bg_image": "Generated background-image icon: {path}",
     "gen_favorite": "Generated favorites icon: {path}",
     "gen_api_key": "Generated API Key icon: {path}",
-    "gen_voice": "Generated voice-to-text icon: {path}",
     "gen_api_test": "Generated API-test icon: {path}",
     "gen_about": "Generated about icon: {path}",
     "gen_arrow_right": "Generated right-arrow icon: {path}",
@@ -1581,5 +1516,72 @@
     "gen_main": "Generating video2text icon...",
     "gen_main_png": "Generated main icon PNG: {path}",
     "gen_main_ico": "Generated main icon ICO: {path}"
+  },
+  "transcription_tab": {
+    "engine_group": "Движок транскрипции / Выбор модели",
+    "funasr_group": "Параметры модели FunASR Paraformer",
+    "radio_funasr": "FunASR (Высокая точность для китайского)",
+    "radio_whisper": "Faster-Whisper (Многоязычный)",
+    "whisper_group": "Параметры модели Faster-Whisper"
+  },
+  "tx_labels": {
+    "funasr_device": "Устройство вывода",
+    "funasr_language": "Язык",
+    "funasr_model": "Выбор модели / Путь",
+    "funasr_num_workers": "Потоки вывода",
+    "funasr_punc_filter": "Восстановление пунктуации",
+    "funasr_quantize": "INT8 квантование и ускорение",
+    "funasr_vad_filter": "FSMN-VAD фильтр",
+    "funasr_vad_max_end_sil": "VAD пауза разделения предложений (мс)",
+    "whisper_beam_size": "Размер луча (Beam Size)",
+    "whisper_best_of": "Количество выборок Best Of",
+    "whisper_compression_ratio_threshold": "Порог степени сжатия",
+    "whisper_compute_type": "Тип вычислений",
+    "whisper_condition_on_previous_text": "С учетом предыдущего текста",
+    "whisper_device": "Устройство вывода",
+    "whisper_language": "Язык",
+    "whisper_log_prob_threshold": "Порог логарифмической вероятности",
+    "whisper_model": "Выбор модели / Путь",
+    "whisper_no_repeat_ngram_size": "Размер N-грамм анти-повтора",
+    "whisper_no_speech_threshold": "Порог отсутствия речи",
+    "whisper_num_workers": "Потоки вывода",
+    "whisper_repetition_penalty": "Штраф за повторы",
+    "whisper_temperature": "Температура",
+    "whisper_vad_filter": "VAD фильтр тишины",
+    "whisper_vad_max_speech_s": "VAD макс. сегмент (с)",
+    "whisper_vad_min_silence_ms": "VAD мин. тишина (мс)",
+    "whisper_vad_speech_pad_ms": "VAD отступ речи (мс)",
+    "whisper_vad_threshold": "VAD порог речи",
+    "whisper_word_timestamps": "Пословные временные метки"
+  },
+  "tx_tooltips": {
+    "funasr_device": "Устройство вычислений: auto (автоопределение), cuda (GPU), cpu",
+    "funasr_language": "Язык транскрипции: zh (китайский) или auto",
+    "funasr_model": "Выберите модель FunASR Paraformer или укажите путь к папке справа",
+    "funasr_num_workers": "Количество потоков CPU ONNX Runtime (по умолчанию 4, увеличьте для многоядерных CPU)",
+    "funasr_punc_filter": "Включить восстановление пунктуации CT-Transformer. Отключение ускоряет работу на ~30%",
+    "funasr_quantize": "Включить квантование INT8 (быстрее, меньше памяти). Отключите для исходной точности FP32",
+    "funasr_vad_filter": "Включить детектор голосовой активности FSMN-VAD для разделения пауз",
+    "funasr_vad_max_end_sil": "Максимальная пауза тишины (мс) для деления на предложения (по умолчанию 800мс)",
+    "whisper_beam_size": "Размер лучевого поиска (1~10), выше — точнее, но медленнее",
+    "whisper_best_of": "Число кандидатов выборки (эффективно при temperature > 0)",
+    "whisper_compression_ratio_threshold": "Порог сжатия Gzip для обнаружения повторений, по умолчанию 2.4",
+    "whisper_compute_type": "Точность вычислений: float16, int8, float32. Примечание: CPU не поддерживает float16",
+    "whisper_condition_on_previous_text": "Учитывать предыдущий текст при генерации. Для длинных аудио рекомендуется False",
+    "whisper_device": "Устройство вывода: cuda (NVIDIA GPU), cpu, auto (автоопределение)",
+    "whisper_language": "Код языка: zh, en, ja и т.д., auto — автоопределение",
+    "whisper_log_prob_threshold": "Порог средней логарифмической вероятности, по умолчанию -1.0",
+    "whisper_model": "Выберите версию модели Faster-Whisper или укажите пользовательскую папку",
+    "whisper_no_repeat_ngram_size": "Размер n-грамм для предотвращения повторов, 0 — отключено",
+    "whisper_no_speech_threshold": "Порог вероятности отсутствия речи, по умолчанию 0.6",
+    "whisper_num_workers": "Количество потоков вывода CTranslate2 (1~ядра CPU)",
+    "whisper_repetition_penalty": "Штраф за повторение (>1 подавляет повторы)",
+    "whisper_temperature": "Температура сэмплирования, поддерживает откат через запятую (напр. 0.0,0.2,0.4)",
+    "whisper_vad_filter": "Включить Silero VAD для фильтрации тишины и подавления галлюцинаций",
+    "whisper_vad_max_speech_s": "Максимальная длина сегмента VAD (с), 0 = без ограничений",
+    "whisper_vad_min_silence_ms": "Минимальная длительность тишины (мс) для разбиения на сегменты, по умолчанию 2000",
+    "whisper_vad_speech_pad_ms": "Отступ речи (мс) на границах сегментов, по умолчанию 400",
+    "whisper_vad_threshold": "Порог обнаружения речи VAD (0~1), в шумных условиях рекомендуется 0.6~0.7",
+    "whisper_word_timestamps": "Генерировать временные метки на уровне слов: True / False"
   }
 }

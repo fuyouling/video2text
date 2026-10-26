@@ -8,14 +8,20 @@ from PyInstaller.building.datastruct import TOC
 
 # CUDA 依赖库目录
 # 注意：CUDA/cuDNN 的 DLL 不打包进 _internal，而是作为发布目录下的 libs/ 子目录
-# 随附分发，由程序运行时通过 os.add_dll_directory() 显式加载（见 src/main.py）。
-specpath = SPECPATH
-_LIBS_DIR = Path(specpath) / 'libs'
+# 随附分发（由 build_portable.py 按需复制或运行时由 dll_downloader 自动下载），
+# 程序运行时通过 os.add_dll_directory() 与 PATH 显式加载（见 src/utils/paths.py）。
 _cuda_libs = []
 
 block_cipher = None
 
 SPEC_CACHE_FILE = '_spec_cache.json'
+
+REQUIRED_KEYS = {
+    'faster_whisper_data', 'ctranslate2_data', 'tokenizers_data', 'huggingface_hub_data',
+    'ctranslate2_bins', 'ctranslate2_subs', 'tokenizers_subs',
+    'funasr_onnx_data', 'funasr_onnx_subs', 'onnxruntime_data', 'onnxruntime_bins',
+    'onnxruntime_subs', 'jieba_data', 'kaldi_bins', 'kaldi_subs'
+}
 
 def load_or_collect():
     """Cache collect_* results to _spec_cache.json to speed up incremental builds."""
@@ -23,8 +29,9 @@ def load_or_collect():
         try:
             with open(SPEC_CACHE_FILE, 'r', encoding='utf-8') as f:
                 cached = json.load(f)
-            print(f'[spec] Loaded collect cache from {SPEC_CACHE_FILE}')
-            return cached
+            if set(cached.keys()).issuperset(REQUIRED_KEYS):
+                print(f'[spec] Loaded collect cache from {SPEC_CACHE_FILE}')
+                return cached
         except (json.JSONDecodeError, KeyError):
             pass
 
@@ -37,6 +44,14 @@ def load_or_collect():
         'ctranslate2_bins': [list(b) for b in collect_dynamic_libs('ctranslate2')],
         'ctranslate2_subs': collect_submodules('ctranslate2'),
         'tokenizers_subs': collect_submodules('tokenizers'),
+        'funasr_onnx_data': collect_data_files('funasr_onnx'),
+        'funasr_onnx_subs': collect_submodules('funasr_onnx'),
+        'onnxruntime_data': collect_data_files('onnxruntime'),
+        'onnxruntime_bins': [list(b) for b in collect_dynamic_libs('onnxruntime')],
+        'onnxruntime_subs': collect_submodules('onnxruntime'),
+        'jieba_data': collect_data_files('jieba'),
+        'kaldi_bins': [list(b) for b in collect_dynamic_libs('kaldi_native_fbank')],
+        'kaldi_subs': collect_submodules('kaldi_native_fbank'),
     }
     with open(SPEC_CACHE_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f)
@@ -53,6 +68,26 @@ huggingface_hub_data = _cache['huggingface_hub_data']
 ctranslate2_bins = [tuple(b) for b in _cache['ctranslate2_bins']]
 ctranslate2_subs = [m for m in _cache['ctranslate2_subs'] if not m.startswith('ctranslate2.converters.')]
 tokenizers_subs = _cache['tokenizers_subs']
+funasr_onnx_data = _cache['funasr_onnx_data']
+funasr_onnx_subs = _cache['funasr_onnx_subs']
+# onnxruntime 数据与二进制过滤：
+# 1. 剔除 onnxruntime_data 中的测试 onnx 模型、文档以及已被 binaries 收集的 DLL
+# 2. 剔除未使用且体积较大的 TensorRT Provider
+# 3. 支持通过环境变量 V2T_EXCLUDE_CUDA=1 剔除 CUDA Provider（用于超轻量纯 CPU 构建）
+_exclude_cuda_provider = os.environ.get('V2T_EXCLUDE_CUDA', '0') == '1'
+onnxruntime_data = [
+    tuple(d) for d in _cache['onnxruntime_data']
+    if not d[0].lower().endswith(('.dll', '.onnx', '.md', '.txt', '.pyd'))
+]
+onnxruntime_bins = [
+    tuple(b) for b in _cache['onnxruntime_bins']
+    if 'tensorrt' not in b[0].lower()
+    and (not _exclude_cuda_provider or 'cuda' not in b[0].lower())
+]
+onnxruntime_subs = _cache['onnxruntime_subs']
+jieba_data = _cache['jieba_data']
+kaldi_bins = [tuple(b) for b in _cache['kaldi_bins']]
+kaldi_subs = _cache['kaldi_subs']
 
 # --- PySide6：仅收集实际使用的模块，避免全量拷贝 WebEngine/Quick/3D 等 ---
 # 本应用只使用 QtCore / QtGui / QtWidgets。依赖交由 PyInstaller 的 PySide6 hook
@@ -65,10 +100,9 @@ pyside6_subs = ['PySide6.QtCore', 'PySide6.QtGui', 'PySide6.QtWidgets']
 a = Analysis(
     ['src/main.py'],
     pathex=[],
-    binaries=pyside6_bins + ctranslate2_bins,
+    binaries=pyside6_bins + ctranslate2_bins + onnxruntime_bins + kaldi_bins,
     datas=[
         ('config.ini', '.'),
-        ('src/ui/styles/voice_to_text.qss', 'src/ui/styles'),
         ('src/i18n/languages.json', 'i18n'),
         ('src/i18n/locales/de.json', 'i18n/locales'),
         ('src/i18n/locales/en.json', 'i18n/locales'),
@@ -81,7 +115,7 @@ a = Analysis(
         ('src/i18n/locales/zh-TW.json', 'i18n/locales'),
         # 7za.exe 用于解压 BCJ2 压缩的 7z 包（py7zr 不支持 BCJ2）
         ('7z/7za.exe', '.'),
-    ] + pyside6_data + faster_whisper_data + ctranslate2_data + tokenizers_data + huggingface_hub_data,
+    ] + pyside6_data + faster_whisper_data + ctranslate2_data + tokenizers_data + huggingface_hub_data + funasr_onnx_data + onnxruntime_data + jieba_data,
     hiddenimports=[
         'typing_extensions',
         'pydantic',
@@ -94,7 +128,15 @@ a = Analysis(
         'tokenizers.models',
         'huggingface_hub',
         'requests',
-    ] + pyside6_subs + ctranslate2_subs + tokenizers_subs,
+        'funasr_onnx',
+        'onnxruntime',
+        'kaldi_native_fbank',
+        'jieba',
+        'sentencepiece',
+        'scipy',
+        'soundfile',
+        'yaml',
+    ] + pyside6_subs + ctranslate2_subs + tokenizers_subs + funasr_onnx_subs + onnxruntime_subs + kaldi_subs,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -204,6 +246,7 @@ coll = COLLECT(
     a.binaries,
     a.zipfiles,
     a.datas,
+    _cuda_libs,
     strip=False,
     upx=False,
     upx_exclude=[],

@@ -62,7 +62,7 @@ class AmdClient:
         self,
         api_url: str = "https://developer.amd.com.cn/radeon/api/v1/chat/completions",
         api_key: Optional[str] = None,
-        timeout: int = 60,
+        timeout: int = 30,
         model: str = "Qwen3.8-Flash-Next",
         check_retries: int = 2,
     ):
@@ -173,7 +173,7 @@ class AmdClient:
             return False, status >= 500
         except Exception as e:
             logger.error(
-                t("services.summarization.amd.check_exception", error=e),
+                t("services.summarization.amd.check_error", error=e),
             )
             return False, True
 
@@ -181,6 +181,8 @@ class AmdClient:
         self,
         model: str = "Qwen3.8-Flash-Next",
         prompt: str = "",
+        system_prompt: Optional[str] = None,
+        messages: Optional[list[dict[str, str]]] = None,
         temperature: float = 0.7,
         max_tokens: int = 8192,
         stream: bool = False,
@@ -188,9 +190,19 @@ class AmdClient:
         cancel_check: Optional[Callable[[], bool]] = None,
         pause_event: Optional[threading.Event] = None,
     ) -> str:
+        if messages is not None:
+            chat_messages = messages
+        elif system_prompt:
+            chat_messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt},
+            ]
+        else:
+            chat_messages = [{"role": "user", "content": prompt}]
+
         payload = {
             "model": model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": chat_messages,
             "max_tokens": max_tokens,
             "temperature": temperature,
             "stream": stream,
