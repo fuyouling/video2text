@@ -87,4 +87,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: release_dist/*.zip
-          generate_release_notes: true
+          generate_release_notes: false
