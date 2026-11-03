@@ -19,6 +19,17 @@ from src.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _get_sdk_error_msg(e: Exception) -> str:
+    """安全提取 SDKError 或 Exception 的错误信息，防止不同版本缺少属性导致报错。"""
+    msg = getattr(e, "message", None)
+    if isinstance(msg, str) and msg:
+        return msg
+    try:
+        return str(e)
+    except Exception:
+        return repr(e)
+
+
 class MistralClient:
     """Mistral API client — calling Mistral models via the official mistralai SDK"""
 
@@ -127,7 +138,7 @@ class MistralClient:
                 )
                 ok = bool(resp and getattr(resp, "choices", None))
             except SDKError as e:
-                msg = str(e)
+                msg = _get_sdk_error_msg(e)
                 if "Unexpected response received" in msg and "text/event-stream" in msg:
                     logger.debug(
                         "MistralClient: model %s forces stream in check, using chat.stream", self._model
@@ -217,7 +228,7 @@ class MistralClient:
                         message = getattr(getattr(response, "choices", [])[0], "message", None)
                         result = getattr(message, "content", None) or ""
                     except SDKError as e:
-                        msg = str(e)
+                        msg = _get_sdk_error_msg(e)
                         if "Unexpected response received" in msg and "text/event-stream" in msg:
                             logger.debug(
                                 "MistralClient: model %s forces stream, falling back to chat.stream", model

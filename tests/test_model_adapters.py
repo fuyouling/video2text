@@ -26,9 +26,12 @@ def _make_sdk_error(message: str, status_code: int = 500, raw_response=None) -> 
         Exception.__init__(err, message)
     except Exception:
         err = Exception(message)
+    err.message = message
+    err.body = message
     err.status_code = status_code
-    if raw_response is not None:
-        err.raw_response = raw_response
+    err.raw_response = raw_response
+    if raw_response and hasattr(raw_response, "headers"):
+        err.headers = raw_response.headers
     return err
 
 
