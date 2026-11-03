@@ -1,3 +1,7 @@
+import pytest
+
+pytestmark = pytest.mark.skip(reason="manual ollama connection test")
+
 """测试Ollama连接和模型"""
 
 import requests

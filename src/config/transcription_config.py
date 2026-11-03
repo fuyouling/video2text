@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 from src.config.settings import Settings
 
@@ -25,7 +26,7 @@ class TranscriptionConfig:
     output_formats: list[str]
     # 新增参数
     vad_filter: bool
-    vad_parameters: dict
+    vad_parameters: Optional[dict]
     initial_prompt: str
     hotwords: str
     compression_ratio_threshold: float
@@ -39,6 +40,11 @@ class TranscriptionConfig:
     quantize: bool = True
     vad_max_end_sil: int = 800
 
+    def __post_init__(self) -> None:
+        self.beam_size = max(1, self.beam_size)
+        self.best_of = max(1, self.best_of)
+        self.num_workers = max(1, self.num_workers)
+        self.max_chunk_duration = max(1, self.max_chunk_duration)
 
 
 def _parse_temperature(settings: Settings, prefix: str = "transcription.whisper_temperature") -> list[float]:
@@ -103,7 +109,7 @@ def _load_tx_config(settings: Settings) -> TranscriptionConfig:
 
     models_dir = settings.get("paths.models_dir", "models")
     output_formats = _get_output_formats(settings)
-    max_chunk_duration = settings.get_int("preprocessing.max_chunk_duration", 300)
+    max_chunk_duration = max(1, settings.get_int("preprocessing.max_chunk_duration", 300))
 
     if is_funasr:
         model_name = (
@@ -166,6 +172,7 @@ def _load_tx_config(settings: Settings) -> TranscriptionConfig:
                 num_workers = 4
         else:
             num_workers = settings.get_int("transcription.num_workers", 4)
+        num_workers = max(1, num_workers)
 
         vad_sil_val = settings.get("transcription.funasr_vad_max_end_sil")
         if vad_sil_val is not None and vad_sil_val != "":
@@ -217,9 +224,9 @@ def _load_tx_config(settings: Settings) -> TranscriptionConfig:
                 return str(val).lower() in ("true", "1", "yes")
             return settings.get_bool(f"transcription.{k}", default)
 
-        num_workers = _get_int_setting("num_workers", 1)
-        beam_size = _get_int_setting("beam_size", 5)
-        best_of = _get_int_setting("best_of", 5)
+        num_workers = max(1, _get_int_setting("num_workers", 1))
+        beam_size = max(1, _get_int_setting("beam_size", 5))
+        best_of = max(1, _get_int_setting("best_of", 5))
         temperature = _parse_temperature(settings, "transcription.whisper_temperature")
         condition_on_previous_text = _get_bool_setting("condition_on_previous_text", False)
         word_timestamps = _get_bool_setting("word_timestamps", False)
@@ -266,4 +273,3 @@ def _load_tx_config(settings: Settings) -> TranscriptionConfig:
         quantize=quantize,
         vad_max_end_sil=vad_max_end_sil,
     )
-

@@ -68,7 +68,9 @@ class OllamaProvider:
         is_use_gui_markdown_flag: bool = True
     ) -> str:
         messages = PromptManager().build_messages(
-            text, custom_prompt=custom_prompt
+            text,
+            custom_prompt=custom_prompt,
+            is_use_gui_markdown_flag=is_use_gui_markdown_flag,
         )
         return self._client.generate(
             model=self._model_name,
@@ -92,7 +94,7 @@ class NvidiaProvider:
     def __init__(self, settings: Settings) -> None:
         nvidia_timeout = settings.get_int("summarization.nvidia_timeout", 30)
         self._model = settings.get("summarization.nvidia_model", "openai/gpt-oss-120b")
-        self._max_tokens = settings.get_int("summarization.nvidia_max_tokens", 100000)
+        self._max_tokens = settings.get_int("summarization.nvidia_max_tokens", 4096)
         self._temperature = settings.get_float("summarization.nvidia_temperature", 1.0)
         self._top_p = settings.get_float("summarization.nvidia_top_p", 1.0)
         self._frequency_penalty = settings.get_float(
@@ -126,7 +128,9 @@ class NvidiaProvider:
         is_use_gui_markdown_flag: bool = True
     ) -> str:
         messages = PromptManager().build_messages(
-            text, custom_prompt=custom_prompt
+            text,
+            custom_prompt=custom_prompt,
+            is_use_gui_markdown_flag=is_use_gui_markdown_flag,
         )
         return self._client.generate(
             model=self._model,
@@ -179,7 +183,9 @@ class MistralProvider:
         is_use_gui_markdown_flag: bool = True
     ) -> str:
         messages = PromptManager().build_messages(
-            text, custom_prompt=custom_prompt
+            text,
+            custom_prompt=custom_prompt,
+            is_use_gui_markdown_flag=is_use_gui_markdown_flag,
         )
         return self._client.generate(
             model=self._model,
@@ -231,7 +237,9 @@ class AmdProvider:
         is_use_gui_markdown_flag: bool = True
     ) -> str:
         messages = PromptManager().build_messages(
-            text, custom_prompt=custom_prompt
+            text,
+            custom_prompt=custom_prompt,
+            is_use_gui_markdown_flag=is_use_gui_markdown_flag,
         )
         return self._client.generate(
             model=self._model,

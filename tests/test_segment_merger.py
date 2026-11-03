@@ -98,3 +98,51 @@ class TestSegmentMerger:
         result = self.merger.format_segments_as_text(segments, include_timestamps=True)
         assert "[00:00:00" in result
         assert "你好" in result
+
+    def test_cjk_no_space_merge(self):
+        """中文/日文合并时不强制插入空格，英文正常加空格"""
+        zh_segments = [
+            _make_segment(0.0, 1.0, "你好", language="zh"),
+            _make_segment(1.2, 2.0, "世界", language="zh"),
+        ]
+        zh_result = self.merger.merge_segments(zh_segments)
+        assert len(zh_result) == 1
+        assert zh_result[0].text == "你好世界"
+
+        ja_segments = [
+            _make_segment(0.0, 1.0, "こんにちは", language="ja"),
+            _make_segment(1.2, 2.0, "世界", language="ja"),
+        ]
+        ja_result = self.merger.merge_segments(ja_segments)
+        assert len(ja_result) == 1
+        assert ja_result[0].text == "こんにちは世界"
+
+        en_segments = [
+            _make_segment(0.0, 1.0, "Hello", language="en"),
+            _make_segment(1.2, 2.0, "World", language="en"),
+        ]
+        en_result = self.merger.merge_segments(en_segments)
+        assert len(en_result) == 1
+        assert en_result[0].text == "Hello World"
+
+    def test_prevent_time_going_backwards(self):
+        """current.end = max(current.end, segment.end) 防止时间倒流"""
+        segments = [
+            _make_segment(0.0, 5.0, "前一段", language="zh"),
+            _make_segment(1.0, 3.0, "重叠段", language="zh"),
+        ]
+        result = self.merger.merge_segments(segments)
+        assert len(result) == 1
+        assert result[0].end == 5.0  # max(5.0, 3.0)
+
+    def test_merge_by_length_respects_max_gap(self):
+        """merge_by_length 在 gap > max_gap 时禁止合并"""
+        segments = [
+            _make_segment(0.0, 1.0, "短句一", language="zh"),
+            # 间隔 10 秒，超过 self.merger.max_gap (2.0)
+            _make_segment(11.0, 12.0, "短句二", language="zh"),
+        ]
+        result = self.merger.merge_by_length(segments, target_length=200)
+        assert len(result) == 2
+        assert result[0].text == "短句一"
+        assert result[1].text == "短句二"

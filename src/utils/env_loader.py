@@ -9,12 +9,23 @@ def ensure_env_loaded() -> None:
     if getattr(ensure_env_loaded, "_loaded", False):
         return
     from src.utils.api_key_store import parse_env
+    from src.utils.paths import get_base_dir
 
     candidates = [
+        get_base_dir() / ".env",
         Path.cwd() / ".env",
         Path.home() / ".env",
     ]
+    seen = set()
     for env_path in candidates:
+        try:
+            resolved = env_path.resolve()
+        except Exception:
+            resolved = env_path
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+
         if env_path.exists():
             try:
                 text = env_path.read_text(encoding="utf-8")

@@ -150,7 +150,7 @@
     "phase_switch_summarize": "요약 단계로 전환 중...",
     "phase_switch_transcribe": "변환 단계...",
     "confirm_download_title": "모델 다운로드 확인",
-    "confirm_download_msg": "클라우드 드라이브에 이미 다운로드된 모델을 사용하는 것이 좋습니다. HuggingFace는 보통 직접 접근할 수 없습니다.\n\n다른 모델을 사용하려면 핵심 파일을 models 디렉토리에 복사하고 설정에서 모델 경로를 업데이트하세요.\n\n모델 다운로드를 시작하시겠습니까?",
+    "confirm_download_msg": "로컬에서 전사 모델을 찾을 수 없습니다: {model}.\n\n자동 다운로드를 시작하시겠습니까?\n다운로드가 불가능한 경우 클라우드 디스크에서 모델을 다운로드하여 models 디렉터리에 수동으로 배치할 수 있습니다.",
     "pipeline_done_tx": "변환 완료 — 성공: {ok}, 실패: {fail}",
     "pipeline_done_sum": "요약 완료 — 성공: {ok}, 실패: {fail}",
     "pipeline_done_both": "변환: 성공 {tx_ok} / 실패 {tx_fail} | 요약: 성공 {sum_ok} / 실패 {sum_fail}",
@@ -236,13 +236,18 @@
     "license_label": "라이선스",
     "license_value": "GNU GPL v3",
     "tech_label": "기술 스택",
-    "tech_value": "faster-whisper · PySide6",
+    "tech_value": "faster-whisper · FunASR · PySide6 · LLM",
     "email_label": "이메일",
     "repo_link": "GitHub 저장소",
     "docs_link": "사용자 가이드",
     "website_link": "공식 웹사이트",
     "netdisk_link": "클라우드 저장소",
-    "copyright": "Copyright © 2026 MiaoWangLong"
+    "copyright": "Copyright © 2026 MiaoWangLong",
+    "qq_group_label": "QQ Group",
+    "qq_group_value": "296875960",
+    "copy_btn": "Copy",
+    "copied": "Copied",
+    "copy_tooltip": "Click to copy group number to clipboard"
   },
   "status": {
     "config_saved": "구성 저장됨",
@@ -263,7 +268,7 @@
     "dep": {
       "title": "종속성 다운로드",
       "intro": "다음 런타임 종속성이 완비되지 않았습니다. 변환이 작동하지 않을 수 있습니다.\n다운로드할 항목을 선택하세요 (또는 \"취소\"를 클릭하여 건너뛰고 나중에 설정에서 처리):",
-      "model_group": "음성 인식 모델",
+      "model_group": "음성 인식 모델 (하나만 선택)",
       "model_yes": "예, 모델 다운로드 (최초 사용 시 필요)",
       "model_no": "아니요, 건너뛰기 (변환이 실행되지 않음)",
       "model_ready": "✓ 모델 완비, 처리할 작업 없음",
@@ -274,10 +279,11 @@
       "keep_yes": "아카이브 보관",
       "keep_no": "삭제 (공간 절약)",
       "dll_ready": "✓ DLL 완비, 처리할 작업 없음",
-      "funasr_opt": "FunASR Paraformer 다운로드 (중국어 고정밀, ~540MB, ModelScope)",
+      "funasr_opt": "FunASR Paraformer 다운로드",
       "funasr_ready": "✓ FunASR Paraformer 모델 준비 완료",
       "whisper_opt": "Faster-Whisper 다운로드 (다국어 범용, Large-v3-Turbo, ~1.4GB)",
-      "whisper_ready": "✓ Faster-Whisper 모델 준비 완료"
+      "whisper_ready": "✓ Faster-Whisper 모델 준비 완료",
+      "cancel_launch": "취소하고 바로 시작"
     },
     "file_select": {
       "title": "미디어 파일 선택",
@@ -1272,7 +1278,9 @@
     "detected_language": "Transcriber: 감지된 언어: {lang} (신뢰도: {prob})",
     "transcribe_done": "Transcriber: 변환 완료, {count} 세그먼트",
     "fallback_retry_failed": "대체 {ct} 실패: {error}",
-    "cpu_fallback_retry_failed": "CPU 대체 {ct} 실패: {error}"
+    "cpu_fallback_retry_failed": "CPU 대체 {ct} 실패: {error}",
+    "model_download_failed": "모델 다운로드 실패 또는 파일 불완전",
+    "transcribe_cancelled": "사용자에 의해 전사가 취소되었습니다"
   },
   "transcription_prompt_manager": {
     "load_failed": "TranscriptionPromptManager: ✗ 로드 실패 ({name})",
@@ -1367,7 +1375,7 @@
       "start": "모델 다운로드 ({model})",
       "check_network": "네트워크 연결 확인 중",
       "using_proxy": "프록시 {proxy} 사용 ({source})",
-      "direct_ok": "HuggingFace 직접 연결 성공",
+      "direct_ok": "{source} 직접 연결 성공",
       "direct_fail_proxy": "직접 연결 실패, 프록시 {proxy} 시도",
       "proxy_ok": "프록시 연결 성공",
       "proxy_fail": "프록시 연결 실패, {source} 프록시 확인",
@@ -1389,7 +1397,9 @@
       "conn_failed": "연결 실패 ({attempt}/{max_retries})",
       "fail_generic": "실패 ({attempt}/{max_retries}): {error}",
       "retry_wait": "{seconds}초 후 재시도…",
-      "file_failed": "다운로드 실패 ({max_retries}회 재시도): {name}"
+      "file_failed": "다운로드 실패 ({max_retries}회 재시도): {name}",
+      "mirror_ok": "미러 사이트({mirror})(으)로 전환 성공",
+      "switch_mirror": "HuggingFace 직접 연결 실패, 미러 사이트({mirror})(으)로 전환 시도 중..."
     },
     "integrity": {
       "skipped": "모델 무결성 검사 건너뜀 (is_check_model_file=false)",
@@ -1558,7 +1568,8 @@
     "whisper_vad_min_silence_ms": "VAD 최소 묵음(ms)",
     "whisper_vad_speech_pad_ms": "VAD 음성 패딩(ms)",
     "whisper_vad_threshold": "VAD 음성 임계값",
-    "whisper_word_timestamps": "단어 수준 타임스탬프"
+    "whisper_word_timestamps": "단어 수준 타임스탬프",
+    "funasr_compute_type": "계산 정밀도"
   },
   "tx_tooltips": {
     "funasr_device": "추론 연산 장치: auto (자동 감지), cuda (GPU), cpu",

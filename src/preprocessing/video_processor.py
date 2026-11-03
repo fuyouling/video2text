@@ -1,12 +1,16 @@
 """音视频处理器"""
 
 import json
+import os
 import subprocess
 import sys
+import tempfile
 import time
-from pathlib import Path
-from typing import Callable, Optional
+import uuid
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Callable, Optional
+
 from src.config.settings import Settings
 from src.i18n import t
 from src.preprocessing.ffmpeg import ensure_ffmpeg, ensure_ffprobe
@@ -15,6 +19,45 @@ from src.utils.logger import get_logger
 from src.utils.subprocess_compat import CREATE_NO_WINDOW
 
 logger = get_logger(__name__)
+
+
+def _safe_float(val: Any, default: float = 0.0) -> float:
+    """容错解析 float，安全处理 'N/A'、'null'、None 及溢出"""
+    if val is None:
+        return default
+    if isinstance(val, (int, float)):
+        return float(val)
+    if isinstance(val, str):
+        val_clean = val.strip()
+        if not val_clean or val_clean.upper() in ("N/A", "NONE", "NULL"):
+            return default
+        try:
+            return float(val_clean)
+        except (ValueError, OverflowError):
+            return default
+    return default
+
+
+def _safe_int(val: Any, default: int = 0) -> int:
+    """容错解析 int，安全处理 'N/A'、'null'、None 及溢出"""
+    if val is None:
+        return default
+    if isinstance(val, int):
+        return val
+    if isinstance(val, float):
+        try:
+            return int(val)
+        except (ValueError, OverflowError):
+            return default
+    if isinstance(val, str):
+        val_clean = val.strip()
+        if not val_clean or val_clean.upper() in ("N/A", "NONE", "NULL"):
+            return default
+        try:
+            return int(float(val_clean))
+        except (ValueError, OverflowError):
+            return default
+    return default
 
 
 @dataclass
@@ -126,7 +169,7 @@ class VideoProcessor:
                 )
 
             logger.debug(
-                t("preprocessing.log.validation_passed"), path.name
+                t("preprocessing.log.validation_passed", name=path.name)
             )
             return True
 
@@ -154,7 +197,7 @@ class VideoProcessor:
         cmd = [
             self.ffprobe_path,
             "-v",
-            "quiet",
+            "error",
             "-print_format",
             "json",
             "-show_format",
@@ -192,23 +235,25 @@ class VideoProcessor:
                 elif codec_type == "audio" and audio_stream is None:
                     audio_stream = stream
 
-            duration = float(data.get("format", {}).get("duration") or 0)
+            duration = _safe_float(data.get("format", {}).get("duration"), 0.0)
 
-            width = int(video_stream.get("width", 0)) if video_stream else 0
-            height = int(video_stream.get("height", 0)) if video_stream else 0
-            codec = video_stream.get("codec_name", "") if video_stream else ""
+            width = _safe_int(video_stream.get("width"), 0) if video_stream else 0
+            height = _safe_int(video_stream.get("height"), 0) if video_stream else 0
+            codec = str(video_stream.get("codec_name") or "") if video_stream else ""
 
             fps = 0.0
             if video_stream:
-                r_frame_rate = video_stream.get("r_frame_rate", "0/1")
+                r_frame_rate = str(video_stream.get("r_frame_rate") or "0/1")
                 try:
                     if "/" in r_frame_rate:
-                        num, den = r_frame_rate.split("/")
-                        if int(den) != 0:
-                            fps = int(num) / int(den)
+                        num_str, den_str = r_frame_rate.split("/", 1)
+                        num = _safe_float(num_str, 0.0)
+                        den = _safe_float(den_str, 1.0)
+                        if den != 0.0:
+                            fps = num / den
                     else:
-                        fps = float(r_frame_rate)
-                except (ValueError, ZeroDivisionError):
+                        fps = _safe_float(r_frame_rate, 0.0)
+                except Exception:
                     logger.warning(
                         t("preprocessing.log.frame_rate_parse_failed"),
                         r_frame_rate,
@@ -216,9 +261,9 @@ class VideoProcessor:
                     fps = 0.0
 
             has_audio = audio_stream is not None
-            audio_codec = audio_stream.get("codec_name", "") if audio_stream else ""
+            audio_codec = str(audio_stream.get("codec_name") or "") if audio_stream else ""
             audio_sample_rate = (
-                int(audio_stream.get("sample_rate", 0)) if audio_stream else 0
+                _safe_int(audio_stream.get("sample_rate"), 0) if audio_stream else 0
             )
 
             return VideoInfo(
@@ -298,10 +343,12 @@ class VideoProcessor:
         """提取音频
 
         流程：
-        1. 如果输入是音频文件，直接转换为 WAV（跳过视频信息探测）
-        2. 检测视频是否包含音轨，无音轨则直接报错
-        3. 优先使用 pcm_s16le 编码提取（无损 WAV）
-        4. 若失败，自动回退为 mp3lib 编码再转 WAV
+        1. 检查输入路径与输出路径防自覆盖
+        2. 如果输入是音频文件，直接转换为 WAV（跳过视频信息探测）
+        3. 检测视频是否包含音轨，无音轨则直接报错
+        4. 优先使用 pcm_s16le 编码提取（无损 WAV）
+        5. 若失败，自动回退为 mp3 编码再转 WAV
+        6. 中断或失败时强制清理磁盘损坏/残留/0字节产物
 
         Args:
             video_path: 音视频文件路径
@@ -309,6 +356,7 @@ class VideoProcessor:
             sample_rate: 采样率
             channels: 声道数
             video_info: 可选的已缓存 VideoInfo，避免重复调用 ffprobe
+            cancel_check: 取消检查回调
 
         Returns:
             输出音频文件路径
@@ -316,7 +364,14 @@ class VideoProcessor:
         Raises:
             VideoFileError: 音频提取失败或视频无音轨
         """
-        output_file = Path(output_path)
+        input_file = Path(video_path).resolve()
+        output_file = Path(output_path).resolve()
+
+        if input_file == output_file:
+            raise VideoFileError(
+                f"输入音视频文件路径与输出音频文件路径不能相同: {video_path}"
+            )
+
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
         if not self.is_audio_file(video_path):
@@ -333,15 +388,28 @@ class VideoProcessor:
             else t("preprocessing.log.extract_audio")
         )
         logger.debug(
-            t("preprocessing.log.extract_start"),
-            label,
-            Path(video_path).name,
+            t("preprocessing.log.extract_start", label=label, name=Path(video_path).name)
         )
 
-        return self._run_ffmpeg_pcm_extract(
-            video_path, str(output_file), sample_rate, channels, label,
-            cancel_check=cancel_check,
-        )
+        try:
+            res_path = self._run_ffmpeg_pcm_extract(
+                video_path, str(output_file), sample_rate, channels, label,
+                cancel_check=cancel_check,
+            )
+            if not output_file.exists() or output_file.stat().st_size == 0:
+                if output_file.exists():
+                    output_file.unlink(missing_ok=True)
+                raise VideoFileError(
+                    t("preprocessing.errors.extract_failed", label=label, error="提取产物为空或0字节损坏")
+                )
+            return res_path
+        except (TranscriptionCancelledError, Exception):
+            if output_file.exists():
+                try:
+                    output_file.unlink(missing_ok=True)
+                except Exception as clean_err:
+                    logger.debug("Failed to clean up output file %s: %s", output_file, clean_err)
+            raise
 
     def _run_ffmpeg_pcm_extract(
         self,
@@ -359,6 +427,10 @@ class VideoProcessor:
             "-i",
             input_path,
             "-vn",
+            "-map",
+            "0:a:0?",
+            "-sn",
+            "-dn",
             "-acodec",
             "pcm_s16le",
             "-ar",
@@ -378,35 +450,45 @@ class VideoProcessor:
             if result.returncode != 0:
                 error_msg = result.stderr or result.stdout
                 logger.warning(t("preprocessing.log.fallback_pcm_failed"))
+                if output_file.exists():
+                    output_file.unlink(missing_ok=True)
                 return self._extract_audio_fallback(
                     input_path, str(output_file), sample_rate, channels,
                     cancel_check=cancel_check,
                 )
 
-            if not output_file.exists():
+            if not output_file.exists() or output_file.stat().st_size == 0:
                 logger.warning(t("preprocessing.log.fallback_audio_not_generated"))
+                if output_file.exists():
+                    output_file.unlink(missing_ok=True)
                 return self._extract_audio_fallback(
                     input_path, str(output_file), sample_rate, channels,
                     cancel_check=cancel_check,
                 )
 
             logger.debug(
-                t("preprocessing.log.extract_success"), label, output_file.name
+                t("preprocessing.log.extract_success", label=label, name=output_file.name)
             )
             return str(output_file)
 
         except subprocess.TimeoutExpired:
+            if output_file.exists():
+                output_file.unlink(missing_ok=True)
             raise VideoFileError(
                 t("preprocessing.errors.extract_timeout", label=label)
             )
         except TranscriptionCancelledError:
+            if output_file.exists():
+                output_file.unlink(missing_ok=True)
             raise
         except VideoFileError:
             raise
         except Exception as e:
             logger.warning(
-                t("preprocessing.log.fallback_exception"), label, e
+                t("preprocessing.log.fallback_exception", label=label, error=e)
             )
+            if output_file.exists():
+                output_file.unlink(missing_ok=True)
             try:
                 return self._extract_audio_fallback(
                     input_path, str(output_file), sample_rate, channels,
@@ -428,15 +510,23 @@ class VideoProcessor:
         """音频提取回退方案：先用 mp3 编码提取，再转为 WAV。
 
         用于 pcm_s16le 直接提取失败的情况（如某些编码不支持的容器格式）。
+        临时 MP3 文件使用独立临时目录加唯一随机文件名，杜绝同名冲突与自读自写自删。
         """
         output_file = Path(output_path)
-        temp_mp3 = output_file.with_suffix(".mp3")
+        stem = Path(video_path).stem
+        pid = os.getpid()
+        uid = uuid.uuid4().hex[:8]
+        temp_mp3 = Path(tempfile.gettempdir()) / f"v2t_fallback_{stem}_{pid}_{uid}.mp3"
 
         cmd = [
             self.ffmpeg_path,
             "-i",
             video_path,
             "-vn",
+            "-map",
+            "0:a:0?",
+            "-sn",
+            "-dn",
             "-acodec",
             "libmp3lame",
             "-ar",
@@ -463,7 +553,7 @@ class VideoProcessor:
                     t("preprocessing.errors.fallback_also_failed", error=error_msg)
                 )
 
-            if not temp_mp3.exists():
+            if not temp_mp3.exists() or temp_mp3.stat().st_size == 0:
                 raise VideoFileError(
                     t("preprocessing.errors.mp3_not_generated")
                 )
@@ -491,16 +581,27 @@ class VideoProcessor:
                     )
                 )
 
+            if not output_file.exists() or output_file.stat().st_size == 0:
+                raise VideoFileError(
+                    t("preprocessing.errors.fallback_also_failed", error="Converted WAV file is empty or missing")
+                )
+
             logger.info(
-                t("preprocessing.log.fallback_success"), output_file.name
+                t("preprocessing.log.fallback_success", name=output_file.name)
             )
             return str(output_file)
 
         except VideoFileError:
+            if output_file.exists():
+                output_file.unlink(missing_ok=True)
             raise
         except TranscriptionCancelledError:
+            if output_file.exists():
+                output_file.unlink(missing_ok=True)
             raise
         except Exception as e:
+            if output_file.exists():
+                output_file.unlink(missing_ok=True)
             raise VideoFileError(
                 t("preprocessing.errors.fallback_failed", error=e)
             )
@@ -580,7 +681,7 @@ class VideoProcessor:
                 )
 
             logger.info(
-                t("preprocessing.log.thumbnail_success"), output_file.name
+                t("preprocessing.log.thumbnail_success", name=output_file.name)
             )
             return str(output_file)
 

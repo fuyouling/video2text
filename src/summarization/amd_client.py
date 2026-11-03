@@ -151,6 +151,7 @@ class AmdClient:
                 return True, False
             status = resp.status_code
             if status == 401:
+                self._remember_connection(False)
                 try:
                     error_detail = resp.json()
                     logger.error(
@@ -170,7 +171,7 @@ class AmdClient:
                 logger.error(
                     t("services.summarization.amd.check_fail", code=status),
                 )
-            return False, status >= 500
+            return False, (status == 429 or status >= 500)
         except Exception as e:
             logger.error(
                 t("services.summarization.amd.check_error", error=e),
@@ -184,12 +185,15 @@ class AmdClient:
         system_prompt: Optional[str] = None,
         messages: Optional[list[dict[str, str]]] = None,
         temperature: float = 0.7,
-        max_tokens: int = 8192,
+        max_tokens: int = 4096,
         stream: bool = False,
         on_token: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
         pause_event: Optional[threading.Event] = None,
     ) -> str:
+        if not self._api_key:
+            raise SummarizationError(t("services.summarization.amd.api_key_missing"))
+
         if messages is not None:
             chat_messages = messages
         elif system_prompt:
@@ -240,13 +244,43 @@ class AmdClient:
                             continue
                         raise last_exc
 
-                    if response.status_code != 200:
-                        error_msg = t("services.summarization.amd.api_error", code=response.status_code)
+                    status = response.status_code
+                    if status != 200:
+                        error_msg = t("services.summarization.amd.api_error", code=status)
                         try:
                             error_detail = response.json()
                             error_msg += f", {error_detail}"
                         except Exception:
                             error_msg += f", {response.text[:500]}"
+
+                        # 401 致命鉴权错误：主动失效 300s 类级连接缓存并抛出
+                        if status == 401:
+                            self._remember_connection(False)
+                            logger.error("%s", error_msg)
+                            raise SummarizationError(error_msg)
+
+                        # 4xx 客户端错误不可重试，直接抛出
+                        if isinstance(status, int) and 400 <= status < 500:
+                            logger.error("%s", error_msg)
+                            raise SummarizationError(error_msg)
+
+                        # 5xx 服务端错误（500/502/503/504 等）：记录日志后参与退避重试
+                        if isinstance(status, int) and 500 <= status < 600:
+                            logger.warning(
+                                "AmdClient: server error (%d), attempt %d/%d: %s",
+                                status,
+                                attempt,
+                                self.max_retries,
+                                error_msg,
+                            )
+                            last_exc = SummarizationError(error_msg)
+                            if attempt < self.max_retries:
+                                wait = 2 ** attempt
+                                logger.info(t("services.summarization.amd.retry_log", wait=wait))
+                                time.sleep(wait)
+                                continue
+                            raise last_exc
+
                         logger.error("%s", error_msg)
                         raise SummarizationError(error_msg)
 
@@ -307,39 +341,57 @@ class AmdClient:
             for line in response.iter_lines():
                 if cancel_check and cancel_check():
                     raise SummarizationError(t("services.summarization.amd.user_cancelled"))
+
+                if pause_event is not None and not pause_event.is_set():
+                    while not pause_event.is_set():
+                        if cancel_check and cancel_check():
+                            raise SummarizationError(t("services.summarization.amd.user_cancelled"))
+                        pause_event.wait(timeout=0.1)
+
                 if not line:
                     continue
-                decoded = line.decode("utf-8")
-                if not decoded.startswith("data: "):
+
+                decoded = line.decode("utf-8", errors="replace").strip()
+                if not decoded.startswith("data:"):
                     continue
-                data_str = decoded[6:]
-                if data_str.strip() == "[DONE]":
+
+                data_str = decoded[5:].lstrip()
+                if data_str == "[DONE]":
                     break
+
                 try:
                     data = _json.loads(data_str)
                     if "error" in data:
                         raise SummarizationError(t("services.summarization.amd.stream_error", error=data["error"]))
                     choices = data.get("choices", [])
                     if choices:
-                        delta = choices[0].get("delta", {})
-                        content = delta.get("content", "")
-                        if not content and "reasoning_content" in delta:
-                            content = delta.get("reasoning_content") or ""
+                        delta = choices[0].get("delta", {}) or {}
+                        content = (
+                            delta.get("content")
+                            or delta.get("reasoning_content")
+                            or delta.get("reasoning")
+                            or ""
+                        )
                         if content:
                             full_text += content
                             if on_token:
                                 on_token(content)
+                except SummarizationError:
+                    raise
                 except _json.JSONDecodeError:
                     logger.warning(t("services.summarization.amd.stream_json_error"))
                     continue
+        except SummarizationError:
+            raise
         except (
+            requests.exceptions.RequestException,
             requests.exceptions.ConnectionError,
             requests.exceptions.ChunkedEncodingError,
         ) as e:
-            if full_text:
-                logger.warning(
-                    t("services.summarization.amd.stream_interrupted", count=len(full_text)),
-                )
-            else:
-                raise SummarizationError(t("services.summarization.amd.stream_connection_failed", error=e)) from e
+            logger.error("AmdClient: stream interrupted: %s", e)
+            raise SummarizationError(t("services.summarization.amd.stream_connection_failed", error=e)) from e
+        except Exception as e:
+            logger.error("AmdClient: stream failed: %s", e)
+            raise SummarizationError(t("services.summarization.amd.stream_connection_failed", error=e)) from e
+
         return full_text

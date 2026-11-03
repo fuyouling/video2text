@@ -150,7 +150,7 @@
     "phase_switch_summarize": "Wechsle zur Zusammenfassungsphase...",
     "phase_switch_transcribe": "Transkriptionsphase...",
     "confirm_download_title": "Bestätigung Modelldownload",
-    "confirm_download_msg": "Es wird empfohlen, bereits heruntergeladene Modelle in Ihrem Cloud-Speicher zu verwenden; HuggingFace ist normalerweise nicht direkt zugänglich.\n\nUm ein anderes Modell zu verwenden, kopieren Sie die Kerndateien in das Modelle-Verzeichnis und aktualisieren Sie den Modellpfad in den Einstellungen.\n\nMit dem Download des Modells beginnen?",
+    "confirm_download_msg": "Transkriptionsmodell lokal nicht gefunden: {model}.\n\nAutomatischen Download starten?\nFalls der Download fehlschlägt, können Sie das Modell aus dem Cloud-Speicher herunterladen und manuell in das models-Verzeichnis einfügen.",
     "pipeline_done_tx": "Transkription abgeschlossen — erfolgreich: {ok}, fehlgeschlagen: {fail}",
     "pipeline_done_sum": "Zusammenfassung abgeschlossen — erfolgreich: {ok}, fehlgeschlagen: {fail}",
     "pipeline_done_both": "Transkribieren: erfolgreich {tx_ok} / fehlgeschlagen {tx_fail} | Zusammenfassen: erfolgreich {sum_ok} / fehlgeschlagen {sum_fail}",
@@ -236,13 +236,18 @@
     "license_label": "Lizenz",
     "license_value": "GNU GPL v3",
     "tech_label": "Technologie-Stack",
-    "tech_value": "faster-whisper · PySide6",
+    "tech_value": "faster-whisper · FunASR · PySide6 · LLM",
     "email_label": "E-Mail",
     "repo_link": "GitHub-Repository",
     "docs_link": "Benutzerhandbuch",
     "website_link": "Offizielle Website",
     "netdisk_link": "Cloud-Speicher",
-    "copyright": "Copyright © 2026 MiaoWangLong"
+    "copyright": "Copyright © 2026 MiaoWangLong",
+    "qq_group_label": "QQ Group",
+    "qq_group_value": "296875960",
+    "copy_btn": "Copy",
+    "copied": "Copied",
+    "copy_tooltip": "Click to copy group number to clipboard"
   },
   "status": {
     "config_saved": "Konfiguration gespeichert",
@@ -263,7 +268,7 @@
     "dep": {
       "title": "Abhängigkeitsdownload",
       "intro": "Die folgenden Laufzeitabhängigkeiten sind unvollständig; die Transkription funktioniert möglicherweise nicht.\nBitte wählen Sie, was heruntergeladen werden soll (oder klicken Sie auf „Abbrechen“, um zu überspringen und später in den Einstellungen zu behandeln):",
-      "model_group": "Spracherkennungsmodell",
+      "model_group": "Spracherkennungsmodell (eines auswählen genügt)",
       "model_yes": "Ja, Modell herunterladen (erforderlich für die erste Verwendung)",
       "model_no": "Nein, überspringen (Transkription wird nicht ausgeführt)",
       "model_ready": "✓ Modell vollständig, nichts zu tun",
@@ -274,10 +279,11 @@
       "keep_yes": "Archiv behalten",
       "keep_no": "Löschen (Speicherplatz sparen)",
       "dll_ready": "✓ DLL vollständig, nichts zu tun",
-      "funasr_opt": "FunASR Paraformer herunterladen (Chinesisch Hochpräzise, ~540MB, ModelScope)",
+      "funasr_opt": "FunASR Paraformer herunterladen",
       "funasr_ready": "✓ FunASR Paraformer-Modell bereit",
       "whisper_opt": "Faster-Whisper herunterladen (Mehrsprachig, Large-v3-Turbo, ~1,4GB)",
-      "whisper_ready": "✓ Faster-Whisper-Modell bereit"
+      "whisper_ready": "✓ Faster-Whisper-Modell bereit",
+      "cancel_launch": "Abbrechen, direkt starten"
     },
     "file_select": {
       "title": "Mediendateien auswählen",
@@ -1272,7 +1278,9 @@
     "detected_language": "Transcriber: Erkannte Sprache: {lang} (Konfidenz: {prob})",
     "transcribe_done": "Transcriber: Transkription abgeschlossen, {count} Segmente",
     "fallback_retry_failed": "Fallback {ct} fehlgeschlagen: {error}",
-    "cpu_fallback_retry_failed": "CPU-Fallback {ct} fehlgeschlagen: {error}"
+    "cpu_fallback_retry_failed": "CPU-Fallback {ct} fehlgeschlagen: {error}",
+    "model_download_failed": "Modell-Download fehlgeschlagen oder unvollständig",
+    "transcribe_cancelled": "Transkription vom Benutzer abgebrochen"
   },
   "transcription_prompt_manager": {
     "load_failed": "TranscriptionPromptManager: ✗ Laden fehlgeschlagen ({name})",
@@ -1367,7 +1375,7 @@
       "start": "Modelldownload ({model})",
       "check_network": "Netzwerkverbindung wird geprüft",
       "using_proxy": "Verwende Proxy {proxy} ({source})",
-      "direct_ok": "Direkte HuggingFace-Verbindung erfolgreich",
+      "direct_ok": "Direkte {source}-Verbindung erfolgreich",
       "direct_fail_proxy": "Direkte Verbindung fehlgeschlagen, versuche Proxy {proxy}",
       "proxy_ok": "Proxy-Verbindung erfolgreich",
       "proxy_fail": "Proxy-Verbindung fehlgeschlagen, bitte {source} Proxy prüfen",
@@ -1389,7 +1397,9 @@
       "conn_failed": "Verbindung fehlgeschlagen ({attempt}/{max_retries})",
       "fail_generic": "Fehlgeschlagen ({attempt}/{max_retries}): {error}",
       "retry_wait": "Wiederholung in {seconds}s…",
-      "file_failed": "Download fehlgeschlagen ({max_retries} Wiederholungen): {name}"
+      "file_failed": "Download fehlgeschlagen ({max_retries} Wiederholungen): {name}",
+      "mirror_ok": "Erfolgreich zum Spiegelserver ({mirror}) gewechselt",
+      "switch_mirror": "Direkte HuggingFace-Verbindung nicht erreichbar, versuche Spiegelserver ({mirror})..."
     },
     "integrity": {
       "skipped": "Modellintegritätsprüfung übersprungen (is_check_model_file=false)",
@@ -1471,7 +1481,11 @@
     "error_invalid_key": "Schlüsselname darf nur Buchstaben, Ziffern und Unterstriche enthalten und muss mit einem Buchstaben oder Unterstrich beginnen",
     "error_dup_key": "Schlüsselname existiert bereits (groß-/kleinschreibungsunempfindlich)",
     "save_failed": "Speichern fehlgeschlagen: {error}",
-    "saved_msg": "Erfolgreich gespeichert in:\n{path}"
+    "saved_msg": "Erfolgreich gespeichert in:\n{path}",
+    "col_vendor": "Modellhersteller",
+    "col_key": "Umgebungsvariable",
+    "col_value": "Schlüsselwert",
+    "col_action": "Aktion"
   },
   "app": {
     "result_viewer": {

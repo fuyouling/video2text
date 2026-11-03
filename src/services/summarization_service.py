@@ -60,6 +60,12 @@ class SummarizationService:
         self.summary_format = (
             settings.get("output.summary_format", "txt").lower().strip()
         )
+        try:
+            self.max_input_chars = int(
+                settings.get("summarization.max_input_chars", 100000)
+            )
+        except (ValueError, TypeError, AttributeError):
+            self.max_input_chars = 100000
 
         self._summarize_log_lock = threading.Lock()
 
@@ -97,6 +103,22 @@ class SummarizationService:
     def is_paused(self) -> bool:
         return not self._pause_event.is_set()
 
+    def _validate_and_check_text(self, text: str, video_name: str = "") -> str:
+        """针对超长文本进行字数/Token 安全检查，避免超出单次请求限制。"""
+        if not text or not text.strip():
+            raise SummarizationError(t("services.summarization.input_empty"))
+
+        max_chars = getattr(self, "max_input_chars", 100000)
+        if len(text) > max_chars:
+            logger.warning(
+                "  ├─ ⚠ 输入文本过长 (当前: %d 字符, 安全限制: %d 字符)，自动进行安全截断以防超出模型上下文限制",
+                len(text),
+                max_chars,
+            )
+            text = text[:max_chars]
+
+        return text
+
     def summarize(
         self,
         text: str,
@@ -107,8 +129,7 @@ class SummarizationService:
         total: int = 0,
         file_writer: Optional[FileWriter] = None,
     ) -> str:
-        if not text or not text.strip():
-            raise SummarizationError(t("services.summarization.input_empty"))
+        text = self._validate_and_check_text(text, video_name=video_name)
 
         label = video_name or t("services.summarization.unnamed")
 
@@ -173,6 +194,9 @@ class SummarizationService:
             text = item.get("text", "")
             fw = item.get("file_writer") or self.file_writer
 
+            if self.rate_limiter:
+                self.rate_limiter.acquire()
+
             if self.on_item_started:
                 self.on_item_started(video_name)
 
@@ -208,12 +232,20 @@ class SummarizationService:
             if self.cancel_check and self.cancel_check():
                 return idx, ""
 
+            self._wait_if_paused()
+            if self.cancel_check and self.cancel_check():
+                return idx, ""
+
             video_name = item.get("video_name", f"item_{idx}")
             text = item.get("text", "")
             fw = item.get("file_writer") or self.file_writer
 
             if self.rate_limiter:
                 self.rate_limiter.acquire()
+
+            self._wait_if_paused()
+            if self.cancel_check and self.cancel_check():
+                return idx, ""
 
             if self.on_item_started:
                 self.on_item_started(video_name)
@@ -226,17 +258,24 @@ class SummarizationService:
                         self.on_item_error(video_name, t("services.summarization.text_empty_short"))
                     return idx, ""
 
-                prompt_text = text
+                prompt_text = self._validate_and_check_text(text, video_name=video_name)
                 summary = provider.summarize(
                     prompt_text,
                     custom_prompt=self.custom_prompt or "",
                     stream=False,
                     on_token=None,
                     cancel_check=self.cancel_check,
+                    pause_event=self._pause_event,
                 )
 
                 if summary and summary.strip():
-                    fw.write_summary(summary, video_name, fmt=self.summary_format)
+                    summary_path = fw.write_summary(summary, video_name, fmt=self.summary_format)
+                    try:
+                        OutputIndex(str(fw.output_dir)).record(
+                            video_name, summary_path=summary_path
+                        )
+                    except Exception as exc:
+                        logger.warning(t("services.summarization.write_index_failed", error=exc))
 
                 with self._summarize_log_lock:
                     logger.info("[%d/%d] %s", idx + 1, total, video_name)

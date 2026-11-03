@@ -150,7 +150,7 @@
     "phase_switch_summarize": "Cambiando a la fase de resumen...",
     "phase_switch_transcribe": "Fase de transcripción...",
     "confirm_download_title": "Confirmación de descarga del modelo",
-    "confirm_download_msg": "Se recomienda usar modelos ya descargados en su unidad en la nube; normalmente no se puede acceder directamente a HuggingFace.\n\nPara usar otro modelo, copie sus archivos principales al directorio de modelos y actualice la ruta del modelo en la configuración.\n\n¿Comenzar a descargar el modelo?",
+    "confirm_download_msg": "No se encontró el modelo de transcripción localmente: {model}.\n\n¿Desea iniciar la descarga automática?\nSi falla la descarga, puede descargarlo desde el almacenamiento en la nube y colocarlo manualmente en el directorio models.",
     "pipeline_done_tx": "Transcripción completa — éxito: {ok}, fallos: {fail}",
     "pipeline_done_sum": "Resumen completo — éxito: {ok}, fallos: {fail}",
     "pipeline_done_both": "Transcribir: éxito {tx_ok} / fallos {tx_fail} | Resumir: éxito {sum_ok} / fallos {sum_fail}",
@@ -236,13 +236,18 @@
     "license_label": "Licencia",
     "license_value": "GNU GPL v3",
     "tech_label": "Tecnologías",
-    "tech_value": "faster-whisper · PySide6",
+    "tech_value": "faster-whisper · FunASR · PySide6 · LLM",
     "email_label": "Correo electrónico",
     "repo_link": "Repositorio GitHub",
     "docs_link": "Guía de usuario",
     "website_link": "Sitio web oficial",
     "netdisk_link": "Almacenamiento en la nube",
-    "copyright": "Derechos de autor © 2026 MiaoWangLong"
+    "copyright": "Derechos de autor © 2026 MiaoWangLong",
+    "qq_group_label": "QQ Group",
+    "qq_group_value": "296875960",
+    "copy_btn": "Copy",
+    "copied": "Copied",
+    "copy_tooltip": "Click to copy group number to clipboard"
   },
   "status": {
     "config_saved": "Configuración guardada",
@@ -263,7 +268,7 @@
     "dep": {
       "title": "Descarga de dependencias",
       "intro": "Las siguientes dependencias en tiempo de ejecución están incompletas; la transcripción podría no funcionar.\nElija qué descargar (o haga clic en \"Cancelar\" para omitir y manejarlo más tarde en Configuración):",
-      "model_group": "Modelo de reconocimiento de voz",
+      "model_group": "Modelo de reconocimiento de voz (seleccione uno)",
       "model_yes": "Sí, descargar modelo (necesario para el primer uso)",
       "model_no": "No, omitir (la transcripción no se ejecutará)",
       "model_ready": "✓ Modelo completo, nada que hacer",
@@ -274,10 +279,11 @@
       "keep_yes": "Conservar archivo",
       "keep_no": "Eliminar (ahorrar espacio)",
       "dll_ready": "✓ DLL completo, nada que hacer",
-      "funasr_opt": "Descargar FunASR Paraformer (Chino alta precisión, ~540MB, ModelScope)",
+      "funasr_opt": "Descargar FunASR Paraformer",
       "funasr_ready": "✓ Modelo FunASR Paraformer listo",
       "whisper_opt": "Descargar Faster-Whisper (Multilingüe, Large-v3-Turbo, ~1.4GB)",
-      "whisper_ready": "✓ Modelo Faster-Whisper listo"
+      "whisper_ready": "✓ Modelo Faster-Whisper listo",
+      "cancel_launch": "Cancelar, iniciar directamente"
     },
     "file_select": {
       "title": "Seleccionar archivos multimedia",
@@ -1272,7 +1278,9 @@
     "detected_language": "Transcriber: Idioma detectado: {lang} (confianza: {prob})",
     "transcribe_done": "Transcriber: Transcripción completada, {count} segmentos",
     "fallback_retry_failed": "Respaldo {ct} fallido: {error}",
-    "cpu_fallback_retry_failed": "Respaldo CPU {ct} fallido: {error}"
+    "cpu_fallback_retry_failed": "Respaldo CPU {ct} fallido: {error}",
+    "model_download_failed": "Error al descargar el modelo o archivos incompletos",
+    "transcribe_cancelled": "Transcripción cancelada por el usuario"
   },
   "transcription_prompt_manager": {
     "load_failed": "TranscriptionPromptManager: ✗ Error al cargar ({name})",
@@ -1367,7 +1375,7 @@
       "start": "Descarga del modelo ({model})",
       "check_network": "Verificando conexión de red",
       "using_proxy": "Usando proxy {proxy} ({source})",
-      "direct_ok": "Conexión directa a HuggingFace exitosa",
+      "direct_ok": "Conexión directa a {source} exitosa",
       "direct_fail_proxy": "Conexión directa fallida, probando proxy {proxy}",
       "proxy_ok": "Conexión proxy exitosa",
       "proxy_fail": "Conexión proxy fallida, verifique el proxy {source}",
@@ -1389,7 +1397,9 @@
       "conn_failed": "Conexión fallida ({attempt}/{max_retries})",
       "fail_generic": "Fallido ({attempt}/{max_retries}): {error}",
       "retry_wait": "Reintentando en {seconds}s…",
-      "file_failed": "Descarga fallida (reintentado {max_retries} veces): {name}"
+      "file_failed": "Descarga fallida (reintentado {max_retries} veces): {name}",
+      "mirror_ok": "Cambiado al servidor espejo ({mirror}) con éxito",
+      "switch_mirror": "Conexión directa a HuggingFace fallida, intentando servidor espejo ({mirror})..."
     },
     "integrity": {
       "skipped": "Verificación de integridad del modelo omitida (is_check_model_file=false)",
@@ -1471,7 +1481,11 @@
     "error_invalid_key": "El nombre de la clave solo puede contener letras, dígitos y guiones bajos, y debe empezar por una letra o guion bajo",
     "error_dup_key": "El nombre de la clave ya existe (no distingue mayúsculas)",
     "save_failed": "Error al guardar: {error}",
-    "saved_msg": "Guardado correctamente en:\n{path}"
+    "saved_msg": "Guardado correctamente en:\n{path}",
+    "col_vendor": "Proveedor",
+    "col_key": "Clave de entorno",
+    "col_value": "Valor secreto",
+    "col_action": "Acción"
   },
   "app": {
     "result_viewer": {
@@ -1553,7 +1567,8 @@
     "whisper_vad_min_silence_ms": "Silencio mín. VAD (ms)",
     "whisper_vad_speech_pad_ms": "Relleno de voz VAD (ms)",
     "whisper_vad_threshold": "Umbral de voz VAD",
-    "whisper_word_timestamps": "Marcas de tiempo por palabra"
+    "whisper_word_timestamps": "Marcas de tiempo por palabra",
+    "funasr_compute_type": "Tipo de cómputo"
   },
   "tx_tooltips": {
     "funasr_device": "Dispositivo de cómputo de inferencia: auto (detección automática), cuda (GPU), cpu",

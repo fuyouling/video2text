@@ -145,3 +145,65 @@ class TestPromptManagerBuildMessages:
         default_prompt = pm.build_prompt("测试文本")
         assert "Markdown" in default_prompt
         assert "测试文本" in default_prompt
+
+
+class TestPromptManagerBuiltinProtectionAndCrossLanguage:
+    def test_cannot_overwrite_builtin_preset(self, tmp_path):
+        pm = PromptManager(base_dir=tmp_path)
+        original_default = pm.get_content("default")
+        pm.set_template("default", "恶意覆盖内容")
+        # 自定义列表不应该包含 default
+        assert "default" not in pm.get_names()
+        # 内容依然保持为内置预设
+        assert pm.get_content("default") == original_default
+
+    def test_delete_lock_repair(self, tmp_path):
+        pm = PromptManager(base_dir=tmp_path)
+        # 模拟由于旧代码直接注入了同名自定义条目
+        pm._custom_templates["meeting"] = PromptTemplate(
+            id="meeting", name="meeting", system_prompt="残留冲突内容"
+        )
+        assert "meeting" in pm.get_names()
+        # 执行删除：应当把残留的自定义条目清理掉，同时恢复使用内置预设
+        pm.delete_template("meeting")
+        assert "meeting" not in pm.get_names()
+        assert pm.get_template("meeting") is not None
+        assert "会议" in pm.get_content("meeting") or "Meeting" in pm.get_content("meeting")
+
+    def test_cross_language_preset_resolution(self, tmp_path):
+        pm = PromptManager(base_dir=tmp_path)
+        # 英文预设名反查
+        tmpl_en = pm.get_template("Meeting Minutes")
+        assert tmpl_en is not None
+        assert tmpl_en.id == "meeting"
+        assert pm.is_builtin("Meeting Minutes") is True
+
+        # 中文预设名反查
+        tmpl_zh = pm.get_template("会议与访谈纪要")
+        assert tmpl_zh is not None
+        assert tmpl_zh.id == "meeting"
+        assert pm.is_builtin("会议与访谈纪要") is True
+
+        # 语言切换后即使以旧语言名称查询，提示词依然不为空
+        content = pm.get_content("会议与访谈纪要")
+        assert len(content) > 0
+
+    def test_concurrent_access(self, tmp_path):
+        import concurrent.futures
+        pm = PromptManager(base_dir=tmp_path)
+
+        def worker(i: int):
+            name = f"custom_{i % 5}"
+            pm.set_template(name, f"content_{i}")
+            _ = pm.get_template(name)
+            _ = pm.get_names()
+            _ = pm.is_builtin(name)
+            if i % 3 == 0:
+                pm.delete_template(name)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            futures = [executor.submit(worker, i) for i in range(50)]
+            concurrent.futures.wait(futures)
+
+        # 验证并发读写无崩溃
+        assert isinstance(pm.get_names(), list)

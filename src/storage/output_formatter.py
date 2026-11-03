@@ -82,15 +82,30 @@ class OutputFormatter:
         Returns:
             SRT格式文本
         """
+        if not segments:
+            return ""
+
         lines = []
 
         for i, segment in enumerate(segments, 1):
-            start_time = format_time_srt(segment.start)
-            end_time = format_time_srt(segment.end)
+            start = max(0.0, float(segment.start))
+            # 防倒挂与最小持续时长补偿（保证 end >= start + 0.05s）
+            end = max(float(segment.end), start + 0.05)
+            start_time = format_time_srt(start)
+            end_time = format_time_srt(end)
+
+            # 过滤 cue 内部空行，清理首尾空白
+            raw_text = segment.text or ""
+            text_lines = [
+                line.strip()
+                for line in raw_text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+                if line.strip()
+            ]
+            text = "\n".join(text_lines) if text_lines else "..."
 
             lines.append(str(i))
             lines.append(f"{start_time} --> {end_time}")
-            lines.append(segment.text)
+            lines.append(text)
             lines.append("")
 
         return "\n".join(lines)
@@ -108,11 +123,23 @@ class OutputFormatter:
         lines = ["WEBVTT", ""]
 
         for segment in segments:
-            start_time = format_time_vtt(segment.start)
-            end_time = format_time_vtt(segment.end)
+            start = max(0.0, float(segment.start))
+            # 防倒挂与最小持续时长补偿（保证 end >= start + 0.05s）
+            end = max(float(segment.end), start + 0.05)
+            start_time = format_time_vtt(start)
+            end_time = format_time_vtt(end)
+
+            # 过滤 cue 内部空行，清理首尾空白
+            raw_text = segment.text or ""
+            text_lines = [
+                line.strip()
+                for line in raw_text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+                if line.strip()
+            ]
+            text = "\n".join(text_lines) if text_lines else "..."
 
             lines.append(f"{start_time} --> {end_time}")
-            lines.append(segment.text)
+            lines.append(text)
             lines.append("")
 
         return "\n".join(lines)

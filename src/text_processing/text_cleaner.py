@@ -75,11 +75,13 @@ class TextCleaner:
         cleaned = text
 
         cleaned = remove_replacement_chars(cleaned)
-        cleaned = self.remove_extra_whitespace(cleaned)
         cleaned = self.remove_fillers(cleaned)
+        cleaned = re.sub(r"^[，,、；;：:\s]+", "", cleaned)
         cleaned = self.fix_punctuation(cleaned)
         cleaned = self.normalize_quotes(cleaned)
         cleaned = self.remove_repeated_chars(cleaned)
+        cleaned = self.remove_extra_whitespace(cleaned)
+        cleaned = re.sub(r"^[，,、；;：:\s]+", "", cleaned)
 
         logger.debug(t("text_processing.text_cleaner.clean_done", before=len(text), after=len(cleaned)))
         return cleaned.strip()
@@ -126,8 +128,8 @@ class TextCleaner:
                     "）": ")",
                     "【": "[",
                     "】": "]",
-                    "《": "<",
-                    "》": ">",
+                    "《": '"',
+                    "》": '"',
                 }.get(m.group(), m.group()),
                 text,
             )
@@ -175,8 +177,8 @@ class TextCleaner:
         Returns:
             规范化引号后的文本
         """
-        text = re.sub(r'["""]', '"', text)
-        text = re.sub(r"[''']", "'", text)
+        text = re.sub(r"[\u201c\u201d\u201e\u00ab\u00bb]", '"', text)
+        text = re.sub(r"[\u2018\u2019\u201a\u2039\u203a]", "'", text)
         return text
 
     def remove_repeated_chars(self, text: str) -> str:

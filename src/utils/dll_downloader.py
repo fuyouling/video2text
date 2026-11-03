@@ -5,6 +5,7 @@ faster-whisper 需要 cuBLAS / cuDNN 9 的 DLL 文件才能启用 GPU 加速。
 cuBLAS.and.cuDNN_CUDA12_win_v3.7z 压缩包并解压到 libs/ 目录。
 """
 
+import hashlib
 import sys
 import time
 from pathlib import Path
@@ -13,6 +14,7 @@ from typing import Optional
 from src.i18n import t
 from src.utils.logger import get_logger
 from src.utils.paths import ensure_cuda_libs, get_base_dir
+from src.utils.subprocess_compat import get_no_window_kwargs
 
 logger = get_logger("video2text")
 
@@ -26,6 +28,7 @@ def _fmt_size(size: int) -> str:
             return f"{size:.1f}{unit}"
         size /= 1024.0
     return f"{size:.1f}TB"
+
 
 DLL_REQUIRED_FILES = [
     "cublas64_12.dll",
@@ -52,6 +55,8 @@ DLL_MIRROR_URL = (
 
 DLL_ARCHIVE_NAME = "cuBLAS.and.cuDNN_CUDA12_win_v3.7z"
 
+DLL_ARCHIVE_SHA256 = "ec00119dbeec2adff661302883becd004028784031a4547ea1749e7683ffb67f"
+
 
 class DllDownloader:
     """DLL 依赖检测与下载器。
@@ -76,12 +81,7 @@ class DllDownloader:
         return True
 
     def is_dlls_complete(self) -> bool:
-        """检查所有必需的 DLL 文件是否完整（存在且大小 > 0）。
-
-        与模型下载器一致：将 size == 0 视为不完整，触发重新下载与解压。
-        仅以「存在且非空」作为完整判据，不硬编码每个 DLL 的期望字节数，
-        避免版本更新导致期望大小变化而产生误判。
-        """
+        """检查所有必需的 DLL 文件是否完整（存在且大小 > 0）。"""
         for name in DLL_REQUIRED_FILES:
             fp = self.libs_dir / name
             try:
@@ -90,6 +90,42 @@ class DllDownloader:
             except OSError:
                 return False
         return True
+
+    def check_dlls_in_use(self) -> list[str]:
+        """检查目标 libs/ 目录下的 DLL 是否被正在运行的进程占用。"""
+        locked = []
+        for name in DLL_REQUIRED_FILES:
+            fp = self.libs_dir / name
+            if fp.exists():
+                try:
+                    # Windows 下若文件被运行态进程加载占用，以写模式打开会抛 PermissionError
+                    with open(fp, "r+b"):
+                        pass
+                except (PermissionError, OSError):
+                    locked.append(name)
+        return locked
+
+    @staticmethod
+    def compute_sha256(file_path: Path) -> str:
+        """计算给定文件的 SHA-256 哈希值。"""
+        h = hashlib.sha256()
+        with open(file_path, "rb") as f:
+            while chunk := f.read(65536):
+                h.update(chunk)
+        return h.hexdigest()
+
+    def verify_archive(self, expected_hash: Optional[str] = DLL_ARCHIVE_SHA256) -> bool:
+        """校验下载的压缩包完整性（SHA-256）。"""
+        if not self.archive_path.exists():
+            return False
+        if not expected_hash:
+            return True
+        try:
+            actual_hash = self.compute_sha256(self.archive_path)
+            return actual_hash.lower() == expected_hash.lower()
+        except OSError as e:
+            logger.warning(f"Failed to read archive for SHA-256 check: {e}")
+            return False
 
     # ── 代理 / Session 管理 ───────────────────────────────
 
@@ -117,11 +153,7 @@ class DllDownloader:
         return t("dll_downloader.proxy_source.system")
 
     def _get_session(self):
-        """获取（或创建）requests Session，仅在首次调用时初始化。
-
-        代理由调用方在获取 session 后自行设置，_get_session 不修改 proxies，
-        避免后续调用（如 _download_archive）意外清空已配置的代理。
-        """
+        """获取（或创建）requests Session，仅在首次调用时初始化。"""
         import requests
         from requests.adapters import HTTPAdapter
 
@@ -143,19 +175,7 @@ class DllDownloader:
     # ── 网络探测 ──────────────────────────────────────────
 
     def _check_github_accessible(self, proxy: str = "", url: str = DLL_DOWNLOAD_URL) -> bool:
-        """探测 GitHub release 下载链接是否可达。
-
-        直接使用 DLL_DOWNLOAD_URL 而非 github.com 首页，因为 release 下载
-        走不同的 CDN，主站可达不代表下载链接可达。
-
-        proxy 为空字符串时直连；传入代理地址则经代理探测。
-
-        注意：release 资产会被 302 重定向到 CDN（objects.githubusercontent.com）。
-        必须跟随重定向探测真正可达性——HEAD 默认不跟随，会只看到 github.com 的
-        302 而误判「直连成功」，但真正的下载 GET 会跟随重定向到被直连屏蔽的 CDN，
-        造成「探测通、下载挂」的矛盾。故这里用 GET + stream（与 model_downloader
-        一致，GET 默认跟随重定向），真正探测到 CDN 的可达性。
-        """
+        """探测 GitHub release 下载链接是否可达。"""
         try:
             session = self._get_session()
             self._apply_proxy(proxy)
@@ -166,8 +186,6 @@ class DllDownloader:
                 headers={"Cache-Control": "no-store"},
             )
             try:
-                # 允许 2xx/3xx（含跟随重定向后 CDN 返回的 200/302），
-                # 不允许 4xx（404 URL 不存在 / 403 拒绝访问等）
                 return r.status_code < 400
             finally:
                 r.close()
@@ -177,16 +195,15 @@ class DllDownloader:
     # ── 下载 ──────────────────────────────────────────────
 
     def _download_archive(
-        self, progress_callback=None, proxy: str = "", download_url: str = DLL_DOWNLOAD_URL
+        self,
+        progress_callback=None,
+        proxy: str = "",
+        download_url: str = DLL_DOWNLOAD_URL,
+        expected_sha256: Optional[str] = DLL_ARCHIVE_SHA256,
     ) -> bool:
-        """下载 7z 压缩包到基目录，支持断点续传和重试。
-
-        重试策略：只对网络层异常（超时、连接错误、5xx）重试；
-        客户端错误（4xx 如 404）直接返回 False，不重试。
-        """
+        """下载 7z 压缩包到基目录，支持断点续传、严格对齐与 SHA-256 完整性校验。"""
         import requests
 
-        # 确保使用与探测阶段一致的代理设置（直连/代理由调用方决定）
         self._get_session()
         self._apply_proxy(proxy)
 
@@ -194,23 +211,23 @@ class DllDownloader:
         read_timeout = 300
         max_retries = 5
 
-        existing_size = (
-            self.archive_path.stat().st_size
-            if self.archive_path.exists()
-            else 0
-        )
-        if existing_size > 0:
-            logger.info(t("dll_downloader.download.existing", archive=DLL_ARCHIVE_NAME, size=_fmt_size(existing_size)))
-        else:
-            logger.info(t("dll_downloader.download.start", archive=DLL_ARCHIVE_NAME))
+        logger.info(t("dll_downloader.download.start", archive=DLL_ARCHIVE_NAME))
 
         for attempt in range(1, max_retries + 1):
             response = None
             try:
+                # 循环内动态重新计算 existing_size
+                existing_size = (
+                    self.archive_path.stat().st_size
+                    if self.archive_path.exists()
+                    else 0
+                )
+
                 headers = {}
                 resume_requested = existing_size > 0
                 if resume_requested:
                     headers["Range"] = f"bytes={existing_size}-"
+                    logger.info(t("dll_downloader.download.existing", archive=DLL_ARCHIVE_NAME, size=_fmt_size(existing_size)))
 
                 response = self._get_session().get(
                     download_url,
@@ -219,24 +236,41 @@ class DllDownloader:
                     headers=headers,
                 )
 
-                # 416 Range Not Satisfiable：文件已完整
+                # 416 Range Not Satisfiable：文件已完整或超出范围
                 if response.status_code == 416:
                     logger.info(t("dll_downloader.download.complete_416"))
-                    return True
+                    if self.verify_archive(expected_sha256):
+                        return True
+                    logger.warning("Existing archive failed SHA-256 check on 416; removing and retrying.")
+                    self.archive_path.unlink(missing_ok=True)
+                    continue
 
                 is_resume = response.status_code == 206
 
-                if resume_requested and not is_resume:
-                    # 服务器不支持断点续传 → 放弃已有部分，从头下载
-                    logger.warning(t("dll_downloader.download.no_resume"))
+                if is_resume:
+                    # 断点续传（206）时 offset 严格对齐
+                    content_range = response.headers.get("content-range", "")
+                    if content_range.lower().startswith("bytes "):
+                        try:
+                            range_spec = content_range.split()[1].split("/")[0]
+                            start_byte = int(range_spec.split("-")[0])
+                            if start_byte != existing_size:
+                                logger.warning(
+                                    f"Range offset mismatch: expected {existing_size}, server returned {start_byte}. Aligning offset."
+                                )
+                                existing_size = start_byte
+                        except Exception:
+                            pass
+                else:
+                    # 非 206 时重置 offset 为 0，杜绝数据重复拼接
+                    if resume_requested:
+                        logger.warning(t("dll_downloader.download.no_resume"))
                     existing_size = 0
 
                 if response.status_code >= 400:
                     if 400 <= response.status_code < 500:
-                        # 4xx 不可重试（如 404 资源不存在）
                         logger.error(t("dll_downloader.download.http_error_no_retry", code=response.status_code))
                         return False
-                    # 5xx：服务器临时错误，进入下一次重试
                     logger.warning(t("dll_downloader.download.http_error", code=response.status_code, attempt=attempt, max_retries=max_retries))
                     continue
 
@@ -251,8 +285,6 @@ class DllDownloader:
                     if attempt == 1:
                         logger.info(t("dll_downloader.download.total_size", size=_fmt_size(total_size)))
                 elif is_resume:
-                    # 断点续传但没有 content-length → 无法校验完整性，
-                    # 放弃已下载部分用 wb 模式从头下载
                     logger.warning(t("dll_downloader.download.no_content_length"))
                     existing_size = 0
                     total_size = 0
@@ -262,24 +294,49 @@ class DllDownloader:
 
                 downloaded = existing_size
 
-                mode = "ab" if is_resume else "wb"
-                with open(self.archive_path, mode) as f:
-                    for chunk in response.iter_content(chunk_size=65536):
-                        if chunk:
-                            f.write(chunk)
-                            downloaded += len(chunk)
-                            if progress_callback:
-                                progress_callback(
-                                    downloaded,
-                                    total_size if total_size > 0 else 0,
-                                    1,
-                                    1,
-                                )
+                if is_resume and self.archive_path.exists():
+                    with open(self.archive_path, "r+b") as f:
+                        f.seek(existing_size)
+                        f.truncate(existing_size)
+                        for chunk in response.iter_content(chunk_size=65536):
+                            if chunk:
+                                f.write(chunk)
+                                downloaded += len(chunk)
+                                if progress_callback:
+                                    progress_callback(
+                                        downloaded,
+                                        total_size if total_size > 0 else 0,
+                                        1,
+                                        1,
+                                    )
+                else:
+                    existing_size = 0
+                    downloaded = 0
+                    with open(self.archive_path, "wb") as f:
+                        for chunk in response.iter_content(chunk_size=65536):
+                            if chunk:
+                                f.write(chunk)
+                                downloaded += len(chunk)
+                                if progress_callback:
+                                    progress_callback(
+                                        downloaded,
+                                        total_size if total_size > 0 else 0,
+                                        1,
+                                        1,
+                                    )
 
-                # 校验下载完整性（仅当已知总量时）
+                # 校验下载大小完整性
                 if total_size > 0 and downloaded != total_size:
                     logger.warning(t("dll_downloader.download.size_mismatch", expected=_fmt_size(total_size), actual=_fmt_size(downloaded)))
                     continue
+
+                # 增加 SHA-256 完整性哈希校验
+                if expected_sha256:
+                    if not self.verify_archive(expected_sha256):
+                        logger.warning(f"Archive SHA-256 verification failed on attempt {attempt}. Removing corrupted file.")
+                        self.archive_path.unlink(missing_ok=True)
+                        continue
+
                 logger.info(t("dll_downloader.download.completed", size=_fmt_size(downloaded)))
                 return True
 
@@ -287,8 +344,8 @@ class DllDownloader:
                 logger.warning(t("dll_downloader.download.timeout", attempt=attempt, max_retries=max_retries))
             except requests.exceptions.ConnectionError:
                 logger.warning(t("dll_downloader.download.connection_error", attempt=attempt, max_retries=max_retries))
-            except Exception:
-                logger.warning(t("dll_downloader.download.unknown_error", attempt=attempt, max_retries=max_retries))
+            except Exception as e:
+                logger.warning(f"Download attempt {attempt} error: {e}")
             finally:
                 if response is not None:
                     response.close()
@@ -304,14 +361,7 @@ class DllDownloader:
     # ── 解压 ──────────────────────────────────────────────
 
     def _find_7z_binary(self) -> Optional[str]:
-        """查找可用的 7z 解压二进制。
-
-        优先使用随应用打包的 7za.exe（体积小、支持 BCJ2 等全部 7z 压缩算法，
-        py7zr 不支持 BCJ2 会导致解压失败）。其次从系统 PATH 查找 7z/7za。
-        返回可执行路径，未找到返回 None。
-        """
-        # 打包后 7za.exe 由 spec 的 datas 放入 _internal（PyInstaller 的
-        # sys._MEIPASS 目录），优先从 _internal 查找，避免重复打包到根目录。
+        """查找可用的 7z 解压二进制。"""
         candidates = []
         if getattr(sys, "_MEIPASS", ""):
             candidates.append(Path(sys._MEIPASS) / "7za.exe")
@@ -335,37 +385,48 @@ class DllDownloader:
         return None
 
     def _extract_with_7z(self, binary: str) -> bool:
-        """使用外部 7z 二进制解压（支持 BCJ2 等 py7zr 不支持的算法）。
-
-        压缩包内为扁平结构（无子目录），DLL 直接解压到 libs/ 根目录。
-        """
+        """使用外部 7z 二进制解压，规避 Windows 含空格路径的外层引号解析错误。"""
         import subprocess
 
         self.libs_dir.mkdir(parents=True, exist_ok=True)
-        cmd = [
-            binary,
-            "x",
-            "-y",
-            f"-o{self.libs_dir}",
-            str(self.archive_path),
-        ]
+        libs_dir_str = str(self.libs_dir.resolve()).rstrip(r"\/")
+        archive_str = str(self.archive_path.resolve())
+        binary_str = str(Path(binary).resolve())
+
         logger.info(t("dll_downloader.extract.extracting", archive=DLL_ARCHIVE_NAME, binary=binary))
-        # CREATE_NO_WINDOW 隐藏打包 exe 运行时弹出的黑窗口（仅 Windows 有效）
-        startup_flags = 0
-        if hasattr(subprocess, "CREATE_NO_WINDOW"):
-            startup_flags = subprocess.CREATE_NO_WINDOW
+
         try:
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                creationflags=startup_flags,
-            )
+            if sys.platform == "win32":
+                # Windows 下通过字符串命令行传递 -o"{libs_dir}" 形式，规避 list2cmdline 将 "-o..." 整段包裹导致 7z 误解析
+                cmd_str = f'"{binary_str}" x -y -o"{libs_dir_str}" "{archive_str}"'
+                proc = subprocess.run(
+                    cmd_str,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    **get_no_window_kwargs(),
+                )
+            else:
+                cmd = [
+                    binary_str,
+                    "x",
+                    "-y",
+                    f"-o{libs_dir_str}",
+                    archive_str,
+                ]
+                proc = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    **get_no_window_kwargs(),
+                )
         except Exception:
             logger.error(t("dll_downloader.extract.call_failed"))
             return False
+
         if proc.returncode != 0:
             logger.error(t("dll_downloader.extract.failed", error=(proc.stderr or "").strip()[-500:]))
             return False
@@ -373,12 +434,16 @@ class DllDownloader:
         return True
 
     def _extract_archive(self) -> bool:
-        """解压 7z 压缩包到 libs/ 目录。
+        """解压 7z 压缩包到 libs/ 目录。解压前检查目标 DLL 是否被运行态占用。"""
+        # 解压前检查目标 DLL 是否被运行态占用
+        locked_dlls = self.check_dlls_in_use()
+        if locked_dlls:
+            logger.error(
+                f"Cannot extract DLLs: files are locked by running process: {', '.join(locked_dlls)}. "
+                "Please close running instances and retry."
+            )
+            return False
 
-        统一使用外部 7z 二进制（7za.exe / 7z.exe，支持 BCJ2 等全部算法）。
-        py7zr 不支持 BCJ2 压缩的 7z 包，故不再使用。若找不到 7z 二进制，
-        日志会给出明确提示（将 7za.exe 放到程序根目录 / 7z/ 或安装 7-Zip）。
-        """
         seven_zip = self._find_7z_binary()
         if not seven_zip:
             logger.error(t("dll_downloader.extract.no_7z"))
@@ -390,10 +455,7 @@ class DllDownloader:
     def download_and_extract(
         self, progress_callback=None, confirm_callback=None
     ) -> bool:
-        """统一入口：检测 → 下载 → 解压。
-
-        返回 True 表示 DLL 已就绪（完整或已补齐），False 表示失败。
-        """
+        """统一入口：检测 → 下载 → 解压。"""
         if self.is_dlls_complete():
             logger.info(t("dll_downloader.status.already_complete"))
             return True
@@ -403,9 +465,6 @@ class DllDownloader:
             return False
 
         proxy = self._get_proxy()
-
-        # 先尝试直连，直连不通再使用代理（与 model_downloader 逻辑一致）。
-        # 复用同一 session：_check_github_accessible 会按传入的 proxy 设置会话代理。
         download_url = DLL_DOWNLOAD_URL
         self._get_session()
         if self._check_github_accessible():
@@ -447,10 +506,7 @@ class DllDownloader:
             logger.error(t("dll_downloader.status.extract_fail"))
             return False
 
-        # DLL 已补齐，立即把 libs/ 加入 DLL 搜索路径，
-        # 这样后续 ctranslate2 加载 CUDA/cuDNN 时无需重启即可生效。
         ensure_cuda_libs()
-
         logger.info(t("dll_downloader.status.all_ready", count=len(DLL_REQUIRED_FILES)))
         return True
 

@@ -1,5 +1,6 @@
 """段落合并器"""
 
+import re
 from typing import Callable, List, Optional
 from dataclasses import dataclass
 from src.transcription.transcriber import TranscriptSegment
@@ -37,6 +38,28 @@ class SegmentMerger:
         self.min_length = min_length
 
     @staticmethod
+    def _join_text(prev_text: str, next_text: str, language: str = "") -> str:
+        """根据语言及前后字符拼接段落文本。中文/日文不强制插入空格。"""
+        if not prev_text:
+            return next_text
+        if not next_text:
+            return prev_text
+
+        if prev_text.endswith((" ", "\n", "\t")) or next_text.startswith((" ", "\n", "\t")):
+            return prev_text + next_text
+
+        lang = (language or "").lower()
+        if lang in ("zh", "ja", "chinese", "japanese") or lang.startswith(("zh-", "ja-", "zh_", "ja_")):
+            return prev_text + next_text
+
+        # 检查前后边界字符：如果连接处两端都是中日文字符（汉字、假名），不插入空格
+        cjk_regex = re.compile(r"[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u309f\u30a0-\u30ff]")
+        if cjk_regex.search(prev_text[-1]) and cjk_regex.search(next_text[0]):
+            return prev_text + next_text
+
+        return prev_text + " " + next_text
+
+    @staticmethod
     def _merge(
         segments: List[TranscriptSegment],
         should_merge: ShouldMergeFn,
@@ -69,8 +92,10 @@ class SegmentMerger:
                     language=segment.language,
                 )
             elif should_merge(current, segment):
-                current.end = segment.end
-                current.text += " " + segment.text
+                current.end = max(current.end, segment.end)
+                current.text = SegmentMerger._join_text(
+                    current.text, segment.text, segment.language or current.language
+                )
             else:
                 merged.append(current)
                 current = MergedSegment(
@@ -118,7 +143,12 @@ class SegmentMerger:
         """
 
         def _should_merge(cur: MergedSegment, seg: TranscriptSegment) -> bool:
-            return len(cur.text) < target_length and seg.language == cur.language
+            gap = seg.start - cur.end
+            return (
+                gap <= self.max_gap
+                and len(cur.text) < target_length
+                and seg.language == cur.language
+            )
 
         return self._merge(
             segments, _should_merge, t("text_processing.segment_merger.label_merge_length", target=target_length)

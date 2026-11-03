@@ -12,6 +12,17 @@ from src.utils.model_downloader import PARAFORMER_FILES
 from src.ui.startup_confirm_dialog import StartupConfirmDialog
 
 
+@pytest.fixture(autouse=True)
+def _clear_transcriber_cache():
+    """自动清理 transcriber 模块级缓存，消除跨测试污染。"""
+    from src.transcription.transcriber import _model_cache, _model_cache_lock
+    with _model_cache_lock:
+        _model_cache.clear()
+    yield
+    with _model_cache_lock:
+        _model_cache.clear()
+
+
 def test_paraformer_files_definition():
     """验证 Paraformer 下载配置完整性"""
     assert len(PARAFORMER_FILES) == 10
@@ -120,6 +131,111 @@ def test_funasr_punc_filter_disabled(tmp_path):
         assert len(segments) == 1
         assert segments[0].text == "无标点文本"
         transcriber.punc_model.assert_not_called()
+
+
+def test_funasr_vad_silence_returns_empty(tmp_path):
+    """测试启用了 VAD 且无语音时直接返回空，不调用 ASR 模型"""
+    with patch("src.transcription.funasr_transcriber.FunASRTranscriber.__init__", return_value=None):
+        transcriber = FunASRTranscriber("models/paraformer", device="cpu")
+        transcriber.model_path = "models/paraformer"
+        transcriber.device = "cpu"
+        transcriber.compute_type = "int8"
+        transcriber.num_workers = 1
+        transcriber.quantize = True
+        transcriber.punc_filter = True
+        transcriber.vad_max_end_sil = 800
+        transcriber._loaded = True
+        transcriber._model_lock = threading.Lock()
+        transcriber.asr_model = MagicMock()
+        transcriber.vad_model = MagicMock()
+        transcriber.punc_model = MagicMock()
+
+        import soundfile as sf
+        fake_wav = tmp_path / "test_silence.wav"
+        fake_audio = np.zeros(32000, dtype=np.float32)  # 2秒静音
+        sf.write(str(fake_wav), fake_audio, 16000)
+
+        # 模拟 VAD 检测到无语音片段
+        transcriber.vad_model.return_value = [[]]
+
+        segments = transcriber.transcribe(str(fake_wav), vad_filter=True)
+
+        assert segments == []
+        transcriber.asr_model.assert_not_called()
+
+
+def test_funasr_vad_disabled_slices_30s(tmp_path):
+    """测试未启用 VAD 时强制切分为 30s 安全小块，防止显存 OOM 爆炸"""
+    with patch("src.transcription.funasr_transcriber.FunASRTranscriber.__init__", return_value=None):
+        transcriber = FunASRTranscriber("models/paraformer", device="cpu")
+        transcriber.model_path = "models/paraformer"
+        transcriber.device = "cpu"
+        transcriber.compute_type = "int8"
+        transcriber.num_workers = 1
+        transcriber.quantize = True
+        transcriber.punc_filter = False
+        transcriber.vad_max_end_sil = 800
+        transcriber._loaded = True
+        transcriber._model_lock = threading.Lock()
+        transcriber.asr_model = MagicMock()
+        transcriber.vad_model = MagicMock()
+        transcriber.punc_model = None
+
+        import soundfile as sf
+        fake_wav = tmp_path / "test_long.wav"
+        # 70 秒音频 (70 * 16000 采样)
+        fake_audio = np.zeros(70 * 16000, dtype=np.float32)
+        sf.write(str(fake_wav), fake_audio, 16000)
+
+        transcriber.asr_model.return_value = [{"preds": "分块片段"}]
+
+        segments = transcriber.transcribe(str(fake_wav), vad_filter=False)
+
+        # 70s 应该被切分成 3 块：[0, 30s], [30s, 60s], [60s, 70s]
+        assert len(segments) == 3
+        assert segments[0].start == 0.0
+        assert segments[0].end == 30.0
+        assert segments[1].start == 30.0
+        assert segments[1].end == 60.0
+        assert segments[2].start == 60.0
+        assert segments[2].end == 70.0
+        assert transcriber.asr_model.call_count == 3
+
+
+def test_funasr_polymorphic_interfaces(tmp_path):
+    """测试 FunASR 多态兼容接口：detect_language, get_supported_languages, get_model_info"""
+    with patch("src.transcription.funasr_transcriber.FunASRTranscriber.__init__", return_value=None):
+        transcriber = FunASRTranscriber("models/paraformer", device="cpu")
+        transcriber.model_path = "models/paraformer"
+        transcriber.device = "cpu"
+        transcriber.compute_type = "int8"
+        transcriber.num_workers = 2
+        transcriber.download_root = "/tmp/models"
+        transcriber.quantize = True
+        transcriber.punc_filter = True
+        transcriber.vad_max_end_sil = 800
+        transcriber._loaded = True
+        transcriber._model_lock = threading.Lock()
+
+        # 1. get_supported_languages
+        langs = transcriber.get_supported_languages()
+        assert "zh" in langs
+
+        # 2. get_model_info
+        info = transcriber.get_model_info()
+        assert info["engine"] == "funasr"
+        assert info["loaded"] is True
+        assert info["quantize"] is True
+
+        # 3. detect_language
+        import soundfile as sf
+        fake_wav = tmp_path / "test_detect.wav"
+        fake_audio = np.zeros(16000, dtype=np.float32)
+        sf.write(str(fake_wav), fake_audio, 16000)
+
+        lang, prob = transcriber.detect_language(str(fake_wav))
+        assert lang == "zh"
+        assert prob > 0.9
 
 
 def test_startup_confirm_dialog():

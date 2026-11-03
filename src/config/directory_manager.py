@@ -27,6 +27,8 @@ class DirectoryManager:
     原子写入，防止崩溃损坏 JSON 文件。
     """
 
+    MAX_ENTRIES = 20
+
     def __init__(self, file_path: Path):
         self._file_path = file_path
         self._lock = threading.Lock()
@@ -47,11 +49,17 @@ class DirectoryManager:
         if not isinstance(input_dirs, list):
             logger.warning(t("config_manager.dm_input_dirs_format_error"))
             input_dirs = []
+        else:
+            input_dirs = [d for d in input_dirs if isinstance(d, str) and d.strip()]
+
         if not isinstance(output_dirs, list):
             logger.warning(t("config_manager.dm_output_dirs_format_error"))
             output_dirs = []
-        self._input_dirs = list(input_dirs)
-        self._output_dirs = list(output_dirs)
+        else:
+            output_dirs = [d for d in output_dirs if isinstance(d, str) and d.strip()]
+
+        self._input_dirs = list(input_dirs[: self.MAX_ENTRIES])
+        self._output_dirs = list(output_dirs[: self.MAX_ENTRIES])
         logger.info(t("config_manager.dm_load_success", name=self._file_path.name))
 
     def _save(self) -> None:
@@ -83,50 +91,90 @@ class DirectoryManager:
 
     def add_input_dir(self, path: str) -> None:
         """添加常用输入目录（去重，添加到列表头部）"""
+        if not isinstance(path, str) or not path.strip():
+            return
         with self._lock:
+            old_dirs = list(self._input_dirs)
             norm = self._normalize(path)
-            self._input_dirs = [
+            new_dirs = [
                 d for d in self._input_dirs if self._normalize(d) != norm
             ]
-            self._input_dirs.insert(0, path)
-            self._save()
+            new_dirs.insert(0, path)
+            self._input_dirs = new_dirs[: self.MAX_ENTRIES]
+            try:
+                self._save()
+            except Exception:
+                self._input_dirs = old_dirs
+                raise
 
     def add_output_dir(self, path: str) -> None:
         """添加常用输出目录（去重，添加到列表头部）"""
+        if not isinstance(path, str) or not path.strip():
+            return
         with self._lock:
+            old_dirs = list(self._output_dirs)
             norm = self._normalize(path)
-            self._output_dirs = [
+            new_dirs = [
                 d for d in self._output_dirs if self._normalize(d) != norm
             ]
-            self._output_dirs.insert(0, path)
-            self._save()
+            new_dirs.insert(0, path)
+            self._output_dirs = new_dirs[: self.MAX_ENTRIES]
+            try:
+                self._save()
+            except Exception:
+                self._output_dirs = old_dirs
+                raise
 
     def remove_input_dir(self, path: str) -> None:
         """从常用输入目录中移除指定路径"""
+        if not isinstance(path, str) or not path.strip():
+            return
         with self._lock:
+            old_dirs = list(self._input_dirs)
             norm = self._normalize(path)
             self._input_dirs = [
                 d for d in self._input_dirs if self._normalize(d) != norm
             ]
-            self._save()
+            try:
+                self._save()
+            except Exception:
+                self._input_dirs = old_dirs
+                raise
 
     def remove_output_dir(self, path: str) -> None:
         """从常用输出目录中移除指定路径"""
+        if not isinstance(path, str) or not path.strip():
+            return
         with self._lock:
+            old_dirs = list(self._output_dirs)
             norm = self._normalize(path)
             self._output_dirs = [
                 d for d in self._output_dirs if self._normalize(d) != norm
             ]
-            self._save()
+            try:
+                self._save()
+            except Exception:
+                self._output_dirs = old_dirs
+                raise
 
     def clear_input_dirs(self) -> None:
         """清空常用输入目录"""
         with self._lock:
-            self._input_dirs.clear()
-            self._save()
+            old_dirs = list(self._input_dirs)
+            self._input_dirs = []
+            try:
+                self._save()
+            except Exception:
+                self._input_dirs = old_dirs
+                raise
 
     def clear_output_dirs(self) -> None:
         """清空常用输出目录"""
         with self._lock:
-            self._output_dirs.clear()
-            self._save()
+            old_dirs = list(self._output_dirs)
+            self._output_dirs = []
+            try:
+                self._save()
+            except Exception:
+                self._output_dirs = old_dirs
+                raise

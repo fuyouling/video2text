@@ -9,6 +9,7 @@
 - 按文件真实父目录记录 name -> dir，避免镜像子目录里的文件读不到
 """
 
+import os
 import threading
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -29,9 +30,10 @@ logger = get_logger(__name__)
 class OutputIndex:
     """单个输出目录的结果索引。"""
 
+    _global_lock = threading.Lock()
+
     def __init__(self, output_dir: str):
         self.output_dir = str(Path(output_dir).resolve())
-        self._lock = threading.Lock()
         self._cache: Optional[Dict[str, dict]] = None
 
     # ── manifest 读写 ──
@@ -71,17 +73,22 @@ class OutputIndex:
         source_path: Optional[str] = None,
     ) -> None:
         """记录（或更新）一个视频的结果路径。线程安全，带内存缓存。"""
-        with self._lock:
-            entries = self._ensure_cache()
+        with OutputIndex._global_lock:
+            entries = self.load_manifest()
             info = dict(entries.get(video_name, {}))
             if transcript_paths:
                 info["transcripts"] = [str(p) for p in transcript_paths]
+                info["dir"] = str(Path(transcript_paths[0]).parent)
             elif "transcripts" not in info:
                 info["transcripts"] = []
             if summary_path:
                 info["summary"] = str(summary_path)
+                if "dir" not in info:
+                    info["dir"] = str(Path(summary_path).parent)
             if source_path:
                 info["source"] = str(source_path)
+            if "dir" not in info:
+                info["dir"] = self.output_dir
             if info.get("transcripts") or info.get("summary"):
                 entries[video_name] = info
                 self.save_manifest(entries)
@@ -93,9 +100,13 @@ class OutputIndex:
         """目录扫描兜底：返回 name -> {dir, transcripts[], summary}。
 
         跳过以 '.' 开头的目录（中间产物），按真实父目录记录 dir。
+        单次 os.walk(topdown=True) 扫描并在顶层对 '.' 开头的隐藏目录进行剪枝。
         """
         root = Path(self.output_dir)
         result: Dict[str, dict] = {}
+
+        if not root.exists():
+            return result
 
         def _add(name: str, parent: Path, kind: str, path: Path) -> None:
             e = result.setdefault(
@@ -108,22 +119,40 @@ class OutputIndex:
             else:
                 e["summary"] = str(path)
 
-        if root.exists():
-            for ext in TRANSCRIPT_FORMATS:
-                for p in root.rglob(f"*.{ext}"):
-                    if any(part.startswith(".") for part in p.relative_to(root).parts):
-                        continue
-                    if p.name.endswith(SKIP_SUFFIXES):
-                        continue
-                    _add(p.stem, p.parent, "transcript", p)
-            for fmt in SUMMARY_FORMATS:
-                for p in root.rglob(f"{SUMMARY_SUFFIX}.{fmt}"):
-                    if any(part.startswith(".") for part in p.relative_to(root).parts):
-                        continue
-                    name = p.stem[: -len(SUMMARY_SUFFIX)]
-                    if not name:
-                        continue
-                    _add(name, p.parent, "summary", p)
+        for dirpath, dirnames, filenames in os.walk(str(root), topdown=True):
+            # 顶层对 '.' 开头的隐藏目录剪枝（例如 .checkpoint / .v2t），彻底杜绝全盘深度扫描与中间产物干扰
+            dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+            parent_path = Path(dirpath)
+
+            for fname in filenames:
+                if fname.startswith("."):
+                    continue
+
+                # 1. 优先匹配摘要文件 (例如 video_summary.txt, video_summary.md)
+                is_summary = False
+                for fmt in SUMMARY_FORMATS:
+                    suffix = f"{SUMMARY_SUFFIX}.{fmt}"
+                    if fname.endswith(suffix):
+                        name = fname[:-len(suffix)]
+                        if name:
+                            _add(name, parent_path, "summary", parent_path / fname)
+                            is_summary = True
+                            break
+                if is_summary:
+                    continue
+
+                # 2. 检查并过滤派生文件 (如 _keywords.txt)
+                if fname.endswith(SKIP_SUFFIXES):
+                    continue
+
+                # 3. 匹配转写文件 (txt, srt, vtt, json)
+                for ext in TRANSCRIPT_FORMATS:
+                    suffix = f".{ext}"
+                    if fname.endswith(suffix):
+                        stem = fname[:-len(suffix)]
+                        if stem:
+                            _add(stem, parent_path, "transcript", parent_path / fname)
+                        break
 
         return result
 

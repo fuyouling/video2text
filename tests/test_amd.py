@@ -1,3 +1,7 @@
+import pytest
+
+pytestmark = pytest.mark.skip(reason="manual AMD API test script")
+
 """AMD GPU Cloud (Radeon Cloud) 连通性与对话测试脚本。
 
 用法:

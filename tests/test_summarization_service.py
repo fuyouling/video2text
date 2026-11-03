@@ -91,3 +91,38 @@ class TestSummarizationService:
     def test_close(self, service, mock_provider):
         service.close()
         mock_provider.close.assert_called_once()
+
+    def test_summarize_batch_serial_rate_limiter(self, service, mock_provider):
+        rate_limiter = MagicMock()
+        service.rate_limiter = rate_limiter
+
+        items = [
+            {"video_name": "v1", "text": "hello"},
+            {"video_name": "v2", "text": "world"},
+        ]
+        results = service.summarize_batch(items, max_workers=1)
+        assert len(results) == 2
+        assert rate_limiter.acquire.call_count == 2
+
+    def test_summarize_batch_concurrent_pause_and_pause_event(self, service):
+        service.settings.get.return_value = "txt"
+
+        mock_prov = MagicMock()
+        mock_prov.summarize.return_value = "concurrent summary"
+
+        with patch("src.services.summarization_service.create_provider", return_value=mock_prov):
+            items = [{"video_name": "v1", "text": "test concurrent"}]
+            results = service.summarize_batch(items, max_workers=2)
+            assert results == ["concurrent summary"]
+            mock_prov.summarize.assert_called_once()
+            call_kwargs = mock_prov.summarize.call_args[1]
+            assert "pause_event" in call_kwargs
+            assert call_kwargs["pause_event"] == service._pause_event
+
+    def test_summarize_text_length_safe_check_truncation(self, service, mock_provider):
+        service.max_input_chars = 50
+        long_text = "x" * 120
+        service.summarize(long_text)
+        called_text = mock_provider.summarize.call_args[0][0]
+        assert len(called_text) == 50
+        assert called_text == "x" * 50

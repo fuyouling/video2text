@@ -3,6 +3,7 @@
 import json
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -106,3 +107,31 @@ class TestDirectoryManager:
         dirs = mgr.get_input_dirs()
         dirs.append("/modified")
         assert mgr.get_input_dirs() == ["/a"]
+
+    def test_type_safety_filtering(self, tmp_json: Path):
+        data = {
+            "input_dirs": ["/valid1", 123, None, "   ", "", "/valid2", {"k": "v"}],
+            "output_dirs": ["/out1", [], None, "  /out2  ", False],
+        }
+        tmp_json.write_text(json.dumps(data), encoding="utf-8")
+        mgr = DirectoryManager(tmp_json)
+        assert mgr.get_input_dirs() == ["/valid1", "/valid2"]
+        assert mgr.get_output_dirs() == ["/out1", "  /out2  "]
+
+    def test_max_entries_limit(self, mgr: DirectoryManager):
+        for i in range(25):
+            mgr.add_input_dir(f"/dir_{i}")
+        dirs = mgr.get_input_dirs()
+        assert len(dirs) == DirectoryManager.MAX_ENTRIES == 20
+        assert dirs[0] == "/dir_24"
+
+    def test_save_failure_rollback(self, tmp_json: Path):
+        mgr = DirectoryManager(tmp_json)
+        mgr.add_input_dir("/first")
+        assert mgr.get_input_dirs() == ["/first"]
+
+        with patch("src.config.directory_manager.atomic_write_json", side_effect=OSError("Disk full")):
+            with pytest.raises(OSError):
+                mgr.add_input_dir("/second")
+        # In-memory list must be rolled back
+        assert mgr.get_input_dirs() == ["/first"]

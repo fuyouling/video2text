@@ -33,12 +33,39 @@
     "settings_fav_clear_input": "移除所有輸入目錄",
     "settings_fav_clear_output": "移除所有輸出目錄",
     "tools": "工具",
-    "tools_voice_to_text": "聲音轉文本",
     "tools_nvidia_api_test": "Nvidia API 回應測試",
+    "tools_amd_api_test": "AMD API 回應測試",
+    "settings_api_key_manage": "設定 API KEY",
     "help": "幫助",
     "help_donate": "捐贈支持",
-    "help_about": "關於",
-    "settings_api_key_manage": "設定 API KEY"
+    "help_about": "關於"
+  },
+  "api_key": {
+    "title": "API Key 管理",
+    "subtitle": "管理專案根目錄 .env 中的密鑰。密鑰值預設以遮罩顯示，新增後可修改或刪除。",
+    "path_label": "設定檔：{path}",
+    "file_missing": "檔案不存在，儲存後將新建",
+    "list_section": "密鑰清單",
+    "show_all": "全部顯示",
+    "add": "新增",
+    "save": "儲存",
+    "cancel": "取消",
+    "show": "顯示",
+    "hide": "隱藏",
+    "delete": "刪除",
+    "col_vendor": "模型廠商",
+    "col_key": "環境變數 Key",
+    "col_value": "金鑰值",
+    "col_action": "操作",
+    "vendor_placeholder": "廠商名稱（如 OpenAI）",
+    "key_placeholder": "鍵名（已有項不可修改）",
+    "value_placeholder": "密鑰值",
+    "empty_hint": "尚無密鑰，點擊「新增」新增一條",
+    "error_empty_key": "鍵名不能為空",
+    "error_invalid_key": "鍵名僅允許字母、數字、底線，且以字母或底線開頭",
+    "error_dup_key": "鍵名已存在（不區分大小寫）",
+    "save_failed": "儲存失敗：{error}",
+    "saved_msg": "已成功儲存至：\n{path}"
   },
   "main": {
     "input_label": "輸入:",
@@ -75,11 +102,30 @@
     "tx_prompt_placeholder": "場景指令，不要換行，輸入鄰域術語提升識別準確率，不宜過長，會影響識別速度",
     "hotwords_placeholder": "熱詞/短語,作為整體偏置,輸入核心專有名詞,不宜過長",
     "tx_prompt_template_placeholder": "選擇已保存的提示詞…",
+    "tx_prompt_none": "不使用提示詞 (留空)",
+    "tx_prompt_reset_btn": "重設",
+    "tx_prompt_reset_tooltip": "重設為目前範本的初始內容",
+    "tx_prompt_reset_confirm_title": "確認重設轉寫提示詞",
+    "tx_prompt_reset_confirm_msg": "確定要將目前內容重設為「{name}」的初始內容嗎？目前未儲存的修改將被覆蓋。",
+    "tx_prompt_cannot_delete_builtin": "內建預設範本無法刪除。",
+    "tx_prompt_len_warning": "初始提示詞過長（目前 {count} 字，建議 300 字以內以防擠占 448 解碼視窗）",
+    "tx_hotwords_count_warning": "熱詞數量過多（目前 {count} 詞，建議 50 詞以內以防超出預算）",
+    "tx_prompt_tooltip": "Whisper 解碼初始提示詞：引導標點符號格式、繁簡中文規範及特定專有名詞拼寫（建議 300 字以內）",
+    "tx_hotwords_tooltip": "Whisper 偏置熱詞：空格或逗號分隔，提高專有名詞辨識準確率（建議 50 詞以內）",
+    "tx_prompt_funasr_disabled_hint": "FunASR（非自回歸模型）不使用整句前置詞，請使用下方熱詞進行辨識增強",
+    "tx_hotwords_funasr_hint": "輸入專有名詞或熱詞，空格或逗號分隔（如：人工智慧 深度學習 達摩院）",
+    "tx_hotwords_funasr_tooltip": "FunASR 重點依賴熱詞偏置進行專有名詞辨識增強",
     "summary_prompt_group": "總結提示詞配置",
     "summary_prompt_placeholder": "自定義總結提示詞（可選），留空則使用默認提示詞",
     "summary_prompt_template_placeholder": "選擇已保存的提示詞…",
-    "markdown_cb": "Markdown格式",
-    "markdown_tooltip": "勾選後總結輸出將自動應用Markdown格式指令。\n如需自定義Markdown格式，請直接編輯 prompts.json 中的 markdown_prompt 字段。",
+    "prompt_builtin_group": "── 內建預設 ──",
+    "prompt_custom_group": "── 自訂範本 ──",
+    "prompt_reset_btn": "重設",
+    "prompt_reset_tooltip": "重設編輯框為目前範本的初始內容",
+    "prompt_reset_confirm_title": "確認重設",
+    "prompt_reset_confirm_msg": "確定要將目前內容重設為「{name}」的初始提示詞嗎？目前未儲存的修改將被覆蓋。",
+    "prompt_cannot_delete_builtin": "內建預設範本無法刪除。",
+    "prompt_save_as": "另存為新範本",
     "log_panel_title": "日誌輸出",
     "placeholder_new": "新建",
     "placeholder_new_tx": "新建",
@@ -103,6 +149,8 @@
     "tx_prompt_delete_confirm_msg": "確定要刪除轉寫提示詞模板「{name}」嗎？",
     "tx_prompt_saved": "轉寫提示詞「{name}」已保存",
     "tx_prompt_deleted": "轉寫提示詞「{name}」已刪除",
+    "tx_prompt_load_fail": "轉寫提示詞模板加載失敗",
+    "summary_prompt_load_fail": "總結提示詞模板加載失敗",
     "prompt_save_dialog": "保存提示詞模板",
     "prompt_name_label": "模板名稱:",
     "prompt_empty_warning": "提示詞內容為空，無法保存。",
@@ -144,7 +192,7 @@
     "phase_switch_summarize": "正在切換到總結階段...",
     "phase_switch_transcribe": "正在轉寫階段...",
     "confirm_download_title": "模型下載確認",
-    "confirm_download_msg": "建議使用網盤中已下載好的模型，HuggingFace 一般不可直連。\n\n如需使用其它模型，請把核心文件複製到 models 目錄再到配置中更改模型路徑。\n\n是否開始下載模型？",
+    "confirm_download_msg": "檢測到本地缺少轉寫模型：{model}。\n\n是否開始自動下載？\n如無法下載，可從網盤下載對應模型並手動放入 models 目錄。",
     "pipeline_done_tx": "轉寫完成 — 成功: {ok}，失敗: {fail}",
     "pipeline_done_sum": "總結完成 — 成功: {ok}，失敗: {fail}",
     "pipeline_done_both": "轉寫: 成功 {tx_ok} / 失敗 {tx_fail} | 總結: 成功 {sum_ok} / 失敗 {sum_fail}",
@@ -204,26 +252,29 @@
     "dep_check_label_done": "完成",
     "dep_check_label_failed": "失敗",
     "dep_download_start": "啟動依賴下載：model=%s，dll=%s，keep_archive=%s",
-    "failed_log_write": "寫入失敗日誌失敗: %s",
-    "tx_prompt_load_fail": "轉寫提示詞模板加載失敗",
-    "summary_prompt_load_fail": "總結提示詞模板加載失敗"
+    "failed_log_write": "寫入失敗日誌失敗: %s"
   },
   "about": {
     "title": "關於 Video2Text",
     "version": "版本 {version} · 音視頻轉文本工具",
-    "desc": "基於 <b>faster-whisper</b> 的高精度語音轉寫和智能總結工具。",
+    "desc": "基於 <b>faster-whisper</b> 與 <b>FunASR</b> 的高精度音視頻轉文字與 AI 智能總結工具，支持本地硬件加速與大模型會議紀要提煉。",
     "author_label": "作者",
     "author_value": "喵王龍",
     "license_label": "許可證",
     "license_value": "GNU GPL v3",
     "tech_label": "技術棧",
-    "tech_value": "faster-whisper · PySide6",
+    "tech_value": "faster-whisper · FunASR · PySide6 · LLM",
     "email_label": "郵箱",
     "repo_link": "GitHub 倉庫",
     "docs_link": "使用文檔",
     "website_link": "官方網站",
     "netdisk_link": "網盤地址",
-    "copyright": "版權所有 © 2026 喵王龍"
+    "copyright": "版權所有 © 2026 喵王龍",
+    "qq_group_label": "QQ交流群",
+    "qq_group_value": "296875960",
+    "copy_btn": "複製",
+    "copied": "已複製",
+    "copy_tooltip": "點擊複製群號到剪貼板"
   },
   "status": {
     "config_saved": "配置已保存",
@@ -244,17 +295,22 @@
     "dep": {
       "title": "依賴下載確認",
       "intro": "檢測到以下運行依賴不完整，轉寫功能可能無法正常工作。\n請選擇需要下載的項目（也可點擊「取消」跳過，之後在「設置」中手動處理）：",
-      "model_group": "語音識別模型",
+      "model_group": "語音識別模型（任選一種即可）",
       "model_yes": "是，下載模型（首次使用必需）",
       "model_no": "否，跳過（轉寫將無法運行）",
       "model_ready": "✓ 模型已完整，無需處理",
+      "whisper_opt": "下載 Faster-Whisper (多語種通用, Large-v3-Turbo, ~1.4GB)",
+      "whisper_ready": "✓ Faster-Whisper 模型已完整",
+      "funasr_opt": "下載 FunASR Paraformer",
+      "funasr_ready": "✓ FunASR Paraformer 模型已完整",
       "dll_group": "DLL 依賴（cuBLAS / cuDNN，用於 GPU 加速）",
       "dll_yes": "是，下載 DLL（推薦有獨顯的用戶）",
       "dll_no": "否，跳過（使用 CPU 運行，速度較慢）",
       "keep_label": "下載後：",
       "keep_yes": "保留壓縮包",
       "keep_no": "刪除（節省空間）",
-      "dll_ready": "✓ DLL 已完整，無需處理"
+      "dll_ready": "✓ DLL 已完整，無需處理",
+      "cancel_launch": "取消，直接啟動"
     },
     "file_select": {
       "title": "選擇音視頻文件",
@@ -398,8 +454,7 @@
       "output": "輸出",
       "paths": "路徑",
       "tools": "工具",
-      "text_processing": "文本處理",
-      "voice_to_text": "聲音轉文本"
+      "text_processing": "文本處理"
     },
     "group": {
       "app": {
@@ -411,7 +466,8 @@
         "decode": "解碼參數",
         "vad": "VAD 語音檢測",
         "quality": "質量控制",
-        "repeat": "重複抑制"
+        "repeat": "重複抑制",
+        "prompt": "提示詞與熱詞"
       },
       "preprocessing": {
         "audio": "音頻處理",
@@ -423,13 +479,6 @@
       },
       "text_processing": {
         "merge": "合併與清理"
-      },
-      "voice_to_text": {
-        "basic": "基礎參數",
-        "audio_vad": "音頻與 VAD",
-        "endpoint": "實時端點檢測",
-        "prompt": "提示詞",
-        "background": "背景圖片配置"
       }
     },
     "label": {
@@ -448,6 +497,7 @@
         "main_transparency": "主界面透明度"
       },
       "transcription": {
+        "engine": "轉寫引擎",
         "model_path": "模型路徑",
         "device": "設備",
         "language": "語言",
@@ -467,7 +517,9 @@
         "vad_threshold": "VAD 語音閾值",
         "vad_min_silence_ms": "VAD 最小靜音時長",
         "vad_speech_pad_ms": "VAD 語音補齊",
-        "vad_max_speech_s": "VAD 單段最長時長"
+        "vad_max_speech_s": "VAD 單段最長時長",
+        "initial_prompt": "轉寫初始提示詞",
+        "hotwords": "轉寫偏置熱詞"
       },
       "preprocessing": {
         "audio_sample_rate": "音頻採樣率",
@@ -492,32 +544,6 @@
         "max_gap": "合併最大間隔",
         "min_length": "最小合併長度",
         "filler_words": "填充詞列表"
-      },
-      "voice_to_text": {
-        "voice_dir": "語音存儲目錄",
-        "summary_dir": "摘要存儲目錄",
-        "realtime_auto_send_interval": "實時錄入自動發送間隔",
-        "model_path": "轉寫模型路徑",
-        "device": "推理設備",
-        "compute_type": "計算精度",
-        "language": "轉寫語言",
-        "num_workers": "推理線程數",
-        "audio_sample_rate": "音頻採樣率",
-        "audio_channels": "音頻聲道數",
-        "vad_filter": "VAD 過濾",
-        "vad_threshold": "VAD 閾值",
-        "vad_min_silence_ms": "VAD 靜音斷句(毫秒)",
-        "vad_speech_pad_ms": "VAD 首尾補靜音(毫秒)",
-        "vad_max_speech_s": "VAD 單段最長時長",
-        "initial_prompt": "初始提示詞",
-        "bg_image_path": "背景圖片路徑",
-        "bg_transparency": "背景透明度",
-        "vad_endpoint_detection": "VAD 端點檢測",
-        "vad_energy_threshold": "VAD 能量閾值",
-        "vad_silence_frames": "VAD 靜音幀數",
-        "vad_min_speech_frames": "VAD 最小語音幀數",
-        "vad_calibration_frames": "VAD 校準幀數",
-        "context_max_chars": "上下文最大字符數"
       }
     },
     "tooltip": {
@@ -534,6 +560,7 @@
         "main_transparency": "主界面背景圖片透明度 (0~255)，0=完全透明，255=完全不透明"
       },
       "transcription": {
+        "engine": "選擇語音轉寫引擎：Faster-Whisper（多語種通用）或 FunASR（阿里達摩院中文工業級高精度轉寫）",
         "model_path": "faster-whisper 模型目錄名稱,也可填寫全路徑",
         "device": "推理設備: cuda (NVIDIA GPU)，cpu，auto (自動選擇)",
         "language": "轉寫語言代碼: zh (中文)，en (英文)，ja (日文) 等，留空或 auto 自動檢測",
@@ -553,7 +580,9 @@
         "vad_threshold": "VAD 語音判定閾值(0~1)，嘈雜/有背景音樂時調高(0.6~0.7)，默認 0.5",
         "vad_min_silence_ms": "靜音持續多久才斷句(毫秒)，調小斷句更細，默認 2000",
         "vad_speech_pad_ms": "每段語音首尾補靜音(毫秒)，防止吞字，建議 300~500，默認 400",
-        "vad_max_speech_s": "VAD 單段最長秒數，0 表示不限制"
+        "vad_max_speech_s": "VAD 單段最長秒數，0 表示不限制",
+        "initial_prompt": "Whisper 解碼初始提示詞，用於引導標點符號、繁簡字體與專業語境",
+        "hotwords": "Whisper 偏置熱詞，空格或逗號分隔，強制增強專有名詞辨識機率"
       },
       "preprocessing": {
         "audio_sample_rate": "音頻採樣率 (Hz)，Whisper 推薦 16000",
@@ -578,38 +607,14 @@
         "max_gap": "段落合併最大時間間隔 (秒)，間隔超過此值的段落不會合併",
         "min_length": "最小文本長度，短於此長度的段落會嘗試與相鄰段落合併",
         "filler_words": "需要清除的填充詞，逗號分隔"
-      },
-      "voice_to_text": {
-        "voice_dir": "語音錄入與對話記錄存儲目錄，支持相對路徑 (相對程序目錄) 和絕對路徑",
-        "summary_dir": "語音轉寫摘要的存儲目錄，支持相對路徑和絕對路徑",
-        "realtime_auto_send_interval": "實時錄入模式下自動分段轉寫並發送的間隔 (秒)",
-        "model_path": "Whisper 模型目錄名稱或路徑",
-        "device": "推理設備: cuda (NVIDIA GPU)，cpu，auto (自動選擇)",
-        "compute_type": "計算精度: float16，int8，float32。注意: CPU 不支持 float16，僅可選 int8 / float32",
-        "language": "轉寫語言代碼: zh (中文)，en (英文)，ja (日文) 等，留空或 auto 自動檢測",
-        "num_workers": "CTranslate2 推理引擎線程數 (1~CPU核心數)",
-        "audio_sample_rate": "音頻採樣率 (Hz)，Whisper 推薦 16000",
-        "audio_channels": "音頻聲道數: 1=單聲道 (推薦)，2=立體聲",
-        "vad_filter": "是否啟用 VAD 語音活動檢測，過濾靜音段可減少幻覺: True / False",
-        "vad_threshold": "VAD 語音判定閾值(0~1)，嘈雜/有背景音樂時調高(0.6~0.7)，默認 0.5",
-        "vad_min_silence_ms": "靜音持續多久才斷句(毫秒)，調小斷句更細，默認 2000",
-        "vad_speech_pad_ms": "每段語音首尾補靜音(毫秒)，防止吞字，建議 300~500，默認 400",
-        "vad_max_speech_s": "VAD 單段最長秒數，0 表示不限制",
-        "initial_prompt": "轉寫初始提示詞，可用於上下文增強",
-        "bg_image_path": "聲音轉文本界面背景圖片路徑，可填寫相對路徑（相對於程序目錄）或絕對路徑，留空則不使用背景圖片",
-        "bg_transparency": "聲音轉文本界面背景圖片透明度 (0~255)，0=完全透明，255=完全不透明",
-        "vad_endpoint_detection": "是否啟用實時 VAD 端點檢測，語音結束後自動發送轉寫: True / False",
-        "vad_energy_threshold": "手動指定 VAD 噪底能量閾值 (0~N)，設為 0 自動校準",
-        "vad_silence_frames": "VAD 判定語音結束的連續靜音幀數 (每幀約32ms)",
-        "vad_min_speech_frames": "VAD 判定為有效語音的最小幀數 (每幀約32ms)",
-        "vad_calibration_frames": "VAD 自動校準噪底時採集的靜音幀數 (每幀約10ms)",
-        "context_max_chars": "連續轉寫時保留的上文最大字符數"
       }
     },
     "combo": {
       "auto_language": "跟隨系統",
       "mode_single": "單線程",
-      "mode_multi": "多線程"
+      "mode_multi": "多線程",
+      "engine_whisper": "Faster-Whisper (多語種通用)",
+      "engine_funasr": "FunASR Paraformer (中文高精度)"
     }
   },
   "summarization_tab": {
@@ -781,6 +786,43 @@
     "models_empty": "目前沒有可用的線上模型，請稍後重試或點擊「重新整理清單」",
     "models_loading": "正在取得線上模型清單…"
   },
+  "amd_test": {
+    "title": "AMD API 回應測試",
+    "one_click": "一鍵測試",
+    "stop": "停止",
+    "api_key_ok": "API Key: 已載入",
+    "api_key_missing": "API Key: 缺失",
+    "api_key_missing_msg": "未檢測到 AMD_API_KEY，請先在 .env 中配置後再進行測試。",
+    "timeout_label": "超時 {seconds}s",
+    "concurrency_label": "並行 {workers}",
+    "current_model": "目前模型: {model}",
+    "latency_label": "回應時間",
+    "latency_value": "{seconds} s",
+    "latency_over": "> {seconds}s",
+    "latency_none": "—",
+    "status_pending": "待測試",
+    "status_queued": "排隊中",
+    "status_testing": "測試中",
+    "status_ok": "成功",
+    "status_fail": "失敗",
+    "status_rate_limited": "限流",
+    "progress": "進度 {done}/{total}  ·  成功 {ok}  ·  失敗 {fail}  ·  限流 {limited}",
+    "retest_tooltip": "重新測試該模型",
+    "card_tooltip": "按兩下「成功」卡片可將該模型寫入配置",
+    "error_no_key": "API Key 缺失",
+    "error_timeout": "回應超時（{latency}s > {limit}s）",
+    "error_empty": "返回內容為空",
+    "apply_title": "設為總结模型",
+    "apply_confirm": "將 {model} 寫入配置項 summarization.amd_model？",
+    "apply_done": "已將 {model} 設為 AMD 總結模型",
+    "apply_failed": "寫入配置失敗: {error}",
+    "refresh_list": "重新整理列表",
+    "refresh_list_loading": "正在重新整理模型列表…",
+    "refresh_list_done": "已重新整理模型列表（共 {count} 個）",
+    "refresh_list_failed": "重新整理模型列表失敗: {error}",
+    "models_empty": "無可用線上模型，請稍後重試或點擊「重新整理列表」",
+    "models_loading": "正在獲取線上模型列表…"
+  },
   "donate": {
     "title": "捐贈支持",
     "image_not_found": "圖片未找到: {path}"
@@ -898,7 +940,10 @@
     "tips_label": "[bold]Tips:[/bold]",
     "tip1": "1. Use --help to view detailed options for a single command",
     "tip2": "2. All transcription and summarization parameters (model, language, device, temperature, etc.) are configured via config.ini",
-    "tip3": "3. In PowerShell, call the executable by its full path, e.g.: .\\video2text.exe transcribe video.mp4 -o output"
+    "tip3": "3. In PowerShell, call the executable by its full path, e.g.: .\\video2text.exe transcribe video.mp4 -o output",
+    "opt_initial_prompt": "臨時覆蓋初始轉寫提示詞",
+    "opt_hotwords": "臨時覆蓋轉寫熱詞（空格或逗號分隔）",
+    "opt_prompt_template": "轉寫提示詞預設或範本名稱（例如: general, meeting, ecommerce, tech, bilingual）"
   },
   "errors": {
     "file_not_found": "文件不存在: {path}",
@@ -956,117 +1001,6 @@
       "thumbnail_success": "VideoProcessor: ✓ 縮略圖生成成功 ({name})",
       "timestamp_exceeds_duration": "VideoProcessor: ⚠ 時間戳 %.1fs 超過時長 %.1fs，使用第一幀",
       "frame_rate_parse_failed": "VideoProcessor: ⚠ 幀率解析失敗 (%s)，默認 0"
-    }
-  },
-  "voice": {
-    "user_prefix": "[用戶] ",
-    "summary_prefix": "[歸納摘要] ",
-    "sidebar": {
-      "title": "會話列表"
-    },
-    "chat": {
-      "placeholder": "點擊頂部開始錄音，開啟語音轉寫"
-    },
-    "back_main": "返回主界面",
-    "new_conv": "新建",
-    "record_start": "開始錄音",
-    "record_stop": "停止錄音",
-    "conv": {
-      "meta": "{time}  ·  {count}條消息"
-    },
-    "summary_saved": "總結完成，已保存至: {path}",
-    "status": {
-      "initializing": "● 初始化...",
-      "ready": "● 就緒",
-      "model_not_ready": "● 模型尚未加載完成，請稍候...",
-      "recording_vad": "● 錄音中 (VAD)...",
-      "recording_timer": "● 錄音中 (定時切片)...",
-      "stopped": "● 已停止",
-      "recording_done": "● 錄音完成，正在轉寫...",
-      "transcribing": "● 轉寫中...",
-      "no_speech": "● 未檢測到語音內容",
-      "transcribe_done": "● 轉寫完成",
-      "transcribe_fail": "● 轉寫失敗: {error}",
-      "record_fail": "● 錄音失敗: {error}",
-      "selected_count": "已選中 {count} 個會話",
-      "conv_deleted": "會話已刪除",
-      "deleted_count": "已刪除 {count} 個會話",
-      "multi_select": "多選模式：點擊列表項選中，右鍵菜單可批量刪除",
-      "edit_mode": "編輯模式：修改內容後右鍵選擇[保存]完成",
-      "msg_saved": "消息已保存",
-      "edit_cancelled": "已取消編輯",
-      "copied": "已複製到剪貼板",
-      "correcting": "正在糾正語法...",
-      "correct_done": "語法糾正完成",
-      "msg_deleted": "消息已刪除",
-      "summarizing": "正在總結...",
-      "summary_done": "總結完成",
-      "op_fail": "操作失敗: {error}",
-      "loading_model": "● 加載模型中...",
-      "model_load_fail": "● 模型加載失敗: {error}"
-    },
-    "menu": {
-      "exit_multi_select": "退出多選模式",
-      "delete_selected": "刪除選中的會話",
-      "select_toggle_all": "全選/取消全選",
-      "delete_all": "全部刪除",
-      "multi_select": "多選",
-      "delete_conv": "刪除此會話",
-      "save": "保存",
-      "cancel_edit": "取消編輯",
-      "copy": "複製",
-      "edit": "編輯",
-      "delete": "刪除",
-      "grammar": "糾正",
-      "summarize": "總結"
-    },
-    "dialog": {
-      "record_error": {
-        "title": "錄音錯誤"
-      },
-      "record_fail": {
-        "title": "錄音失敗",
-        "msg": "無法啟動錄音: {error}"
-      },
-      "delete_conv": {
-        "title": "刪除會話",
-        "msg": "確定要刪除此會話嗎？\n該操作會同時刪除磁盤上的 JSON 文件，且無法恢復。"
-      },
-      "delete_fail": {
-        "title": "刪除失敗",
-        "msg": "刪除會話時出錯: {error}"
-      },
-      "no_selection": "請先選擇要刪除的會話",
-      "batch_delete": {
-        "title": "批量刪除",
-        "msg": "確定要刪除選中的 {count} 個會話嗎？\n該操作不可恢復。"
-      },
-      "no_convs": "當前沒有會話",
-      "delete_all": {
-        "title": "全部刪除",
-        "msg": "確定要刪除全部 {count} 個會話嗎？\n該操作不可恢復。"
-      },
-      "delete_msg": {
-        "title": "刪除消息",
-        "msg": "確定要刪除此消息嗎？"
-      },
-      "select_conv_first": "請先選擇一個對話會話"
-    },
-    "log_delete_conv_fail": "刪除會話失敗 {conv_id}: {error}",
-    "widget": {
-      "start_record_failed": "Failed to start recording: {error}",
-      "record_error_exception": "on_record_error exception:\n{error}",
-      "transcribe_done_exception": "_on_transcribe_done exception:\n{error}",
-      "transcribe_error_exception": "_on_transcribe_error exception:\n{error}",
-      "api_call_done_exception": "_start_api_call on_done exception:\n{error}"
-    },
-    "role": {
-      "user": "User",
-      "assistant": "Assistant"
-    },
-    "prompt": {
-      "correct_text": "The user recorded audio using faster-whisper for speech recognition, and some text may be incorrect. Please correct typos and unnatural phrasing in the user's transcribed text, and output in JSON format: {\"source_text\":\"original text\",\"update_text\":\"corrected text\"}. Output only the JSON, without any other content.",
-      "summarize_conversation": "Please summarize the following multi-turn conversation into a well-structured Markdown document. Requirements: output only the Markdown content itself, without any explanatory text, prefix, or suffix.\n\nConversation:\n{text}"
     }
   },
   "services": {
@@ -1127,6 +1061,33 @@
       "default_prompt": "你是一個專業的文字總結助手，擅長提取關鍵資訊並產生簡潔準確的總結，只輸出總結正文，**禁止添加任何開頭語、結尾說明、解釋性語句、備註**，**不要額外修飾、補充話術，純輸出總結內容**，結尾無需再次總結。",
       "text_content_label": "文字內容：",
       "markdown_prompt": "\n請將總結內容以 Markdown 格式輸出，形式如下：\n- **要點標題**\n\t- 內容\n\t- 內容\n- **要點標題**\n\t- 內容\n\t- 內容\n\n保持 Markdown 格式的正確性，確保輸出可以直接渲染。\n",
+      "presets": {
+        "default": {
+          "name": "標準要點總結",
+          "desc": "全面完整總結全篇內容，條理清晰，不漏掉任何核心要點與關鍵細節",
+          "prompt": "你是一個專業的文本總結助手。你的任務是對輸入的文本進行全面、完整且深入的結構化總結，確保不遺漏任何核心要點、重要事實、論據與關鍵細節。\n\n總結要求：\n1. 全面詳盡：全面梳理原文脈絡，根據內容的實際長短與資訊量充分展開，不設要點數量上限，完整覆蓋所有關鍵論點與事實，絕不漏點。\n2. 結構規範：以規範的 Markdown 格式輸出，採用層級清晰的要點列表組織：\n   - **核心要點標題**：提煉明確主題\n     - 詳細展開闡述支撐事實、邏輯脈絡、數據或具體細節\n3. 純淨輸出：只輸出總結正文，**禁止添加任何開頭語、結尾說明、解釋性語句或備註**，**不要額外修飾、補充話術，純輸出總結內容**，結尾無需再次總結。"
+        },
+        "meeting": {
+          "name": "會議與訪談紀要",
+          "desc": "提取議題背景、共識決議與明確的後續待辦行動項(Action Items)",
+          "prompt": "你是一個專業的高級會議紀要整理助手。請從文本中提煉會議的核心要點，以規範的 Markdown 格式輸出：\n\n### 1. 討論議題與背景\n- 核心討論背景與議題\n\n### 2. 共識決議與結論\n- 各方達成的重要共識與明確結論\n\n### 3. 後續行動項 (Action Items)\n- [ ] **行動事項**: 明確具體內容與負責人（如有）\n\n條理清晰，客觀準確，只輸出紀要正文，不添加無意義的開場白或客套話。"
+        },
+        "lecture": {
+          "name": "深度學習筆記",
+          "desc": "系統梳理學術/講座內容，涵蓋概念解釋、核心原理與案例支撐",
+          "prompt": "你是一個專業的學術與知識整理助手。請將以下學習內容以結構化 Markdown 提煉為系統性的深度學習筆記：\n\n## 一、核心主題與背景概念\n## 二、關鍵知識點與理論闡述\n## 三、典型案例與論據支撐\n## 四、總結與啟發反思\n\n層次分明，深入淺出，純輸出筆記內容。"
+        },
+        "tldr": {
+          "name": "一句話速覽 (TL;DR)",
+          "desc": "控制在150字內，極簡概括最核心結論與事件",
+          "prompt": "你是一個極簡摘要助手。請用最精煉的語言（控制在150字以內）對輸入文本進行極簡概述（TL;DR），直接給出最核心的結論、主要事件或論點。禁止任何開場白或廢話，直奔主題。"
+        },
+        "takeaways": {
+          "name": "金句與觀點提煉",
+          "desc": "提取對話亮點、精彩金句原話及啟發性觀點",
+          "prompt": "你是一個金句與核心觀點提煉助手。請從文本中提煉出最有啟發性、深刻的觀點與金句原話，以清晰的 Markdown 格式輸出：\n\n### 💡 核心觀點速覽\n- 核心觀點梳理\n\n### 💬 精彩金句摘錄\n> 金句原話（簡要標明上下文語境）\n\n### 🔍 啟發與反思\n- 啟發性思考\n\n純輸出提煉正文，無需多餘寒暄。"
+        }
+      },
       "ollama": {
         "already_running": "Ollama 服務已在運行中",
         "process_exists": "Ollama 服務進程已存在",
@@ -1197,8 +1158,26 @@
         "stream_connection_failed": "NVIDIA 流式連接失敗: {error}",
         "check_retry": "NvidiaClient: 連接檢查第 {attempt}/{max} 次失敗，{wait}s 後重試..."
       },
-      "write_index_failed": "Failed to write output index: {error}",
-      "markdown_tooltip": "勾選後總結輸出將自動套用多語言 Markdown 格式指令。",
+      "mistral": {
+        "check_cached": "MistralClient: 使用快取的連接狀態",
+        "check_start": "MistralClient: 開始連接檢查...",
+        "check_ok": "MistralClient: 連接檢查成功",
+        "check_fail_empty": "MistralClient: 連接檢查返回空響應",
+        "api_key_missing": "MistralClient: API Key 未配置",
+        "api_key_invalid": "MistralClient: API Key 無效（401），請檢查 MISTRAL_API_KEY",
+        "check_error": "MistralClient: 連接檢查異常: {error}",
+        "rate_limited": "MistralClient: 觸發限流，{wait} 秒後重試",
+        "rate_limited_log": "MistralClient: 限流重試 ({attempt}/{max})，等待 {wait}s",
+        "api_error": "MistralClient: API 錯誤: {error}",
+        "request_failed": "MistralClient: 請求失敗: {error}",
+        "retry_log": "MistralClient: 重試，等待 {wait}s",
+        "unknown_error": "MistralClient: 未知錯誤",
+        "user_cancelled": "MistralClient: 用戶取消",
+        "stream_chunk_error": "MistralClient: 流式分片解析失敗: {error}",
+        "stream_interrupted": "MistralClient: 流式中斷，已收到 {count} 字符",
+        "stream_connection_failed": "MistralClient: 流式連接失敗: {error}",
+        "check_retry": "MistralClient: 連接檢查第 {attempt}/{max} 次失敗，{wait}s 後重試..."
+      },
       "amd": {
         "check_cached": "AmdClient: 使用快取的連接狀態",
         "check_start": "AmdClient: 開始連接檢查...",
@@ -1224,43 +1203,8 @@
         "stream_interrupted": "AmdClient: 流式中斷，已收到 {count} 字符",
         "stream_connection_failed": "AmdClient: 流式連接失敗: {error}"
       },
-      "mistral": {
-        "check_cached": "MistralClient: 使用快取的連接狀態",
-        "check_start": "MistralClient: 開始連接檢查...",
-        "check_ok": "MistralClient: 連接檢查成功",
-        "check_fail_empty": "MistralClient: 連接檢查返回空響應",
-        "api_key_missing": "MistralClient: API Key 未配置",
-        "api_key_invalid": "MistralClient: API Key 無效（401），請檢查 MISTRAL_API_KEY",
-        "check_error": "MistralClient: 連接檢查異常: {error}",
-        "rate_limited": "MistralClient: 觸發限流，{wait} 秒後重試",
-        "rate_limited_log": "MistralClient: 限流重試 ({attempt}/{max})，等待 {wait}s",
-        "api_error": "MistralClient: API 錯誤: {error}",
-        "request_failed": "MistralClient: 請求失敗: {error}",
-        "retry_log": "MistralClient: 重試，等待 {wait}s",
-        "unknown_error": "MistralClient: 未知錯誤",
-        "user_cancelled": "MistralClient: 用戶取消",
-        "stream_chunk_error": "MistralClient: 流式分片解析失敗: {error}",
-        "stream_interrupted": "MistralClient: 流式中斷，已收到 {count} 字符",
-        "stream_connection_failed": "MistralClient: 流式連接失敗: {error}",
-        "check_retry": "MistralClient: 連接檢查第 {attempt}/{max} 次失敗，{wait}s 後重試..."
-      }
-    },
-    "voice_transcription": {
-      "audio_file_not_found": "音頻文件不存在: {path}",
-      "context_prefix": "上文: {context}",
-      "no_speech_detected": "(未檢測到語音內容)",
-      "transcribe_failed": "VoiceTranscriptionService 轉寫失敗: {error}",
-      "transcribe_failed_short": "轉寫失敗: {error}"
-    },
-    "voice_recorder": {
-      "vad_calibrated": "VoiceRecorder VAD 校準完成，noise_floor={value}",
-      "vad_chunk_save_failed": "VAD chunk 保存失敗: {error}",
-      "missing_sounddevice": "缺少 sounddevice 庫: {error}",
-      "recording_exception": "錄音異常: {error}",
-      "save_recording_failed": "保存錄音失敗: {error}",
-      "callback_status": "VoiceRecorder 回調狀態: {status}",
-      "no_audio_data": "沒有錄製到音頻數據",
-      "save_wav_failed": "保存 WAV 失敗: {error}"
+      "write_index_failed": "Failed to write output index: {error}",
+      "markdown_tooltip": "勾選後總結輸出將自動套用多語言 Markdown 格式指令。"
     }
   },
   "storage": {
@@ -1291,13 +1235,6 @@
     "bookmark": {
       "load_fail": "讀取失敗: %s",
       "save_fail": "寫入失敗: %s"
-    },
-    "voice_store": {
-      "create_conv": "新建會話 %s",
-      "read_conv_fail": "讀取會話失敗 %s: %s",
-      "read_list_fail": "讀取會話列表失敗 %s: %s",
-      "delete_conv": "刪除會話 %s",
-      "conv_not_found": "會話不存在: {conv_id}"
     },
     "json": {
       "read_fail": "讀取 JSON 文件失敗 {name}: {error}"
@@ -1368,12 +1305,46 @@
     "detected_language": "Transcriber: 檢測到語言: {lang} (置信度: {prob})",
     "transcribe_done": "Transcriber: 轉寫完成，共 {count} 個段落",
     "fallback_retry_failed": "回退 {ct} 失敗: {error}",
-    "cpu_fallback_retry_failed": "CPU 回退 {ct} 失敗: {error}"
+    "cpu_fallback_retry_failed": "CPU 回退 {ct} 失敗: {error}",
+    "model_download_failed": "模型下載失敗或模型檔案不完整",
+    "transcribe_cancelled": "使用者取消了轉寫"
   },
   "transcription_prompt_manager": {
     "load_failed": "TranscriptionPromptManager: ✗ 加載失敗 ({name})",
     "loaded": "TranscriptionPromptManager: ✓ 加載 ({name})",
-    "save_failed": "TranscriptionPromptManager: ✗ 保存失敗 ({error})"
+    "save_failed": "TranscriptionPromptManager: ✗ 保存失敗 ({error})",
+    "presets": {
+      "general": {
+        "name": "通用標準規範",
+        "desc": "引導標準規範與完整標點符號輸出，適合各類常規音視頻",
+        "prompt": "請進行準確規範的轉寫輸出，並添加完整的標點符號。",
+        "hotwords": ""
+      },
+      "meeting": {
+        "name": "職場會議與訪談",
+        "desc": "強化會議討論、團隊協作與業務彙報等高頻職場詞彙",
+        "prompt": "這是一場工作會議與深度訪談對話，包含業務討論、決策和任務分工，請準確辨識發言並保留專業語境。",
+        "hotwords": "會議 議題 決議 協同 同步 彙報 對齊 複盤 進度 方案 痛點 落地 抓手 賦能"
+      },
+      "ecommerce": {
+        "name": "電商帶貨與營運",
+        "desc": "針對電商直播、平台營運、投流投放與短影音帶貨黑話提供精準熱詞偏置",
+        "prompt": "電商教學與直播帶貨影片，包含平台營運、短影音帶貨與流量投放，請準確轉寫專業電商術語與行業詞彙。",
+        "hotwords": "抖店 淘寶 拼多多 小紅書 淘系 SKU 一件代發 無貨源 GMV 千川 隨心推 DOU+ 憋單 拉停留 達人帶貨 精選聯盟 掛車 起店 破零 測款 動銷 投流 私域 促活 復購"
+      },
+      "tech": {
+        "name": "IT科技與程式設計",
+        "desc": "針對軟體開發、AI演算法與電腦前沿技術，保持中英文術語大小寫與準確拼寫",
+        "prompt": "軟體開發、AI演算法與電腦技術的教學與分享，包含專業術語與程式碼概念，請保持準確拼寫與大小寫規範。",
+        "hotwords": "Python API Docker Linux PyTorch Git GPU CUDA Front-end Back-end Framework Bug Debug Web CI/CD LLM PySide PySide6"
+      },
+      "bilingual": {
+        "name": "雙語混合日常交流",
+        "desc": "針對日常工作、雙語夾雜口語交流，準確辨識常見外來詞彙與縮寫",
+        "prompt": "日常工作交流與雙語混合對話，請保持專有名詞與語句的自然過渡。",
+        "hotwords": "OK PPT follow up update meeting schedule review project team catch up sync call deck demo"
+      }
+    }
   },
   "dll_downloader": {
     "proxy_source": {
@@ -1517,28 +1488,6 @@
       "out_of_range": "時間戳值越界: {timestamp}"
     }
   },
-  "api_key": {
-    "title": "API Key 管理",
-    "subtitle": "管理專案根目錄 .env 中的密鑰。密鑰值預設以遮罩顯示，新增後可修改或刪除。",
-    "path_label": "設定檔：{path}",
-    "file_missing": "檔案不存在，儲存後將新建",
-    "list_section": "密鑰清單",
-    "show_all": "全部顯示",
-    "add": "新增",
-    "save": "儲存",
-    "cancel": "取消",
-    "show": "顯示",
-    "hide": "隱藏",
-    "delete": "刪除",
-    "key_placeholder": "鍵名（已有項不可修改）",
-    "value_placeholder": "密鑰值",
-    "empty_hint": "尚無密鑰，點擊「新增」新增一條",
-    "error_empty_key": "鍵名不能為空",
-    "error_invalid_key": "鍵名僅允許字母、數字、底線，且以字母或底線開頭",
-    "error_dup_key": "鍵名已存在（不區分大小寫）",
-    "save_failed": "儲存失敗：{error}",
-    "saved_msg": "已成功儲存至：\n{path}"
-  },
   "app": {
     "result_viewer": {
       "scan_dir_failed": "Failed to scan directory: {error}",
@@ -1576,7 +1525,6 @@
     "gen_bg_image": "Generated background-image icon: {path}",
     "gen_favorite": "Generated favorites icon: {path}",
     "gen_api_key": "Generated API Key icon: {path}",
-    "gen_voice": "Generated voice-to-text icon: {path}",
     "gen_api_test": "Generated API-test icon: {path}",
     "gen_about": "Generated about icon: {path}",
     "gen_arrow_right": "Generated right-arrow icon: {path}",
@@ -1584,5 +1532,74 @@
     "gen_main": "Generating video2text icon...",
     "gen_main_png": "Generated main icon PNG: {path}",
     "gen_main_ico": "Generated main icon ICO: {path}"
+  },
+  "transcription_tab": {
+    "engine_group": "轉寫引擎 / 模型選擇",
+    "radio_whisper": "Faster-Whisper (多語種通用)",
+    "radio_funasr": "FunASR (中文高精度)",
+    "whisper_group": "Faster-Whisper 模型參數",
+    "funasr_group": "FunASR Paraformer 模型參數"
+  },
+  "tx_labels": {
+    "whisper_model": "模型選擇/路徑",
+    "whisper_device": "推理設備",
+    "whisper_compute_type": "計算精度",
+    "whisper_language": "轉寫語言",
+    "whisper_num_workers": "推理執行緒數",
+    "whisper_beam_size": "Beam Size",
+    "whisper_best_of": "Best Of 取樣數",
+    "whisper_temperature": "取樣溫度",
+    "whisper_vad_filter": "VAD 靜音過濾",
+    "whisper_vad_threshold": "VAD 語音閾值",
+    "whisper_vad_min_silence_ms": "VAD 最短靜音(ms)",
+    "whisper_vad_speech_pad_ms": "VAD 邊界擴展(ms)",
+    "whisper_vad_max_speech_s": "VAD 最長分段(s)",
+    "whisper_condition_on_previous_text": "基於前文條件",
+    "whisper_word_timestamps": "詞級時間戳記",
+    "whisper_compression_ratio_threshold": "壓縮比閾值",
+    "whisper_log_prob_threshold": "對數機率閾值",
+    "whisper_no_speech_threshold": "無語音閾值",
+    "whisper_repetition_penalty": "重複懲罰因子",
+    "whisper_no_repeat_ngram_size": "N-gram 防重複尺寸",
+    "funasr_model": "模型選擇/路徑",
+    "funasr_device": "推理設備",
+    "funasr_language": "轉寫語言",
+    "funasr_num_workers": "推理執行緒數",
+    "funasr_compute_type": "計算精度",
+    "funasr_quantize": "INT8 量化加速",
+    "funasr_punc_filter": "標點符號恢復",
+    "funasr_vad_filter": "FSMN-VAD 過濾",
+    "funasr_vad_max_end_sil": "VAD 斷句靜音(ms)"
+  },
+  "tx_tooltips": {
+    "whisper_model": "選擇 Faster-Whisper 模型版本或點擊右側瀏覽自訂路徑",
+    "whisper_device": "推理計算設備: cuda (NVIDIA GPU), cpu, auto (自動檢測)",
+    "whisper_compute_type": "計算精度: float16, int8, float32。註: CPU 不支援 float16",
+    "whisper_language": "轉寫語言代碼: zh (中文), en (英文), ja (日文) 等，auto 為自動辨識",
+    "whisper_num_workers": "CTranslate2 推理執行緒數 (1 ~ CPU核心數)",
+    "whisper_beam_size": "Beam search 大小 (1~10)，數值越大越精確但速度減慢",
+    "whisper_best_of": "取樣候選數 (temperature > 0 時有效)",
+    "whisper_temperature": "取樣溫度，支援逗號分隔多個值回退（如 0.0,0.2,0.4）",
+    "whisper_vad_filter": "啟用 Silero VAD 過濾靜音並防止幻覺",
+    "whisper_vad_threshold": "VAD 語音檢測閾值 (0~1)，吵雜環境建議提高至 0.6~0.7",
+    "whisper_vad_min_silence_ms": "切分段落的最短靜音持續毫秒數，預設 2000",
+    "whisper_vad_speech_pad_ms": "分段邊界填充毫秒數，預設 400",
+    "whisper_vad_max_speech_s": "VAD 單段最長秒數，0 表示不限制",
+    "whisper_condition_on_previous_text": "是否基於前文生成，長音訊建議 False",
+    "whisper_word_timestamps": "是否生成詞級時間戳記",
+    "whisper_compression_ratio_threshold": "Gzip 壓縮比重複檢測閾值，預設 2.4",
+    "whisper_log_prob_threshold": "平均對数機率閾值，預設 -1.0",
+    "whisper_no_speech_threshold": "無語音機率閾值，預設 0.6",
+    "whisper_repetition_penalty": "重複懲罰因子 (>1 抑制重複)",
+    "whisper_no_repeat_ngram_size": "防止重複的 n-gram 大小，0 表示停用",
+    "funasr_model": "選擇 FunASR Paraformer 模型或點擊右側瀏覽自訂路徑",
+    "funasr_device": "推理計算設備: auto (自動檢測), cuda (GPU), cpu",
+    "funasr_language": "轉寫語言，支援 zh (中文) 或 auto",
+    "funasr_num_workers": "ONNX Runtime CPU 推理執行緒數 (預設 4，多核 CPU 調大可加速推理)",
+    "funasr_compute_type": "計算精度: float16, int8, float32。ONNX 模型支援 INT8 量化加速與 float32 原生精度",
+    "funasr_quantize": "啟用 INT8 模型量化加速 (速度更快、顯存佔用更少)，關閉則使用 FP32 原始精度",
+    "funasr_punc_filter": "啟用 CT-Transformer 標點恢復。關閉可提速約 30% 並輸出無標點分詞文字",
+    "funasr_vad_filter": "啟用 FSMN-VAD 語音活動檢測切分靜音",
+    "funasr_vad_max_end_sil": "FSMN-VAD 判定停頓分句的最長靜音毫秒數 (預設 800ms，數值越大斷句越長越完整)"
   }
 }

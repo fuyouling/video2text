@@ -3,7 +3,8 @@
 设计目标：
 - 纯 Python、不依赖 Qt，便于独立单测与复用（CLI / 将来迁移存储格式互不牵连）。
 - 保留 `.env` 中的注释与空行顺序，仅改写 / 追加 ``KEY=VALUE`` 行。
-- 保存采用「先写临时文件再 ``Path.replace``」的原子写入，避免写到一半崩溃损坏文件。
+- 保存采用随机临时文件（tempfile.mkstemp）与原子替换，防并发碰撞。
+- POSIX 环境下限制文件访问权限为 0o600，保护敏感凭据。
 
 解析约定：
 - ``# ...`` 行             -> 注释，原样保留
@@ -15,6 +16,8 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Tuple
@@ -73,7 +76,8 @@ def infer_vendor_name(key: str) -> str:
 def _extract_kv_and_vendor(line: str) -> Tuple[str, str, str]:
     """从 key=value 行中解析 (key, value, vendor)。"""
     body = line.strip()
-    if body.startswith("export"):
+    # 修复 startswith("export") 误剥离变量名前缀缺陷（例如 export_foo=bar），改用精确前缀
+    if body.startswith("export ") or body.startswith("export\t"):
         body = body[len("export"):].lstrip()
 
     key, _, rest = body.partition("=")
@@ -146,19 +150,31 @@ def parse_env(text: str) -> List[EnvLine]:
 
 
 def serialize_env(entries: List[EnvLine]) -> str:
-    """把条目列表还原为 `.env` 文本（跳过被删除的条目）。"""
+    """把条目列表还原为 `.env` 文本（跳过被删除的条目）。
+
+    对 key, value, vendor 中的 \\r, \\n 进行清洗与转义，杜绝 CRLF 注入。
+    """
     lines: List[str] = []
     for entry in entries:
         if entry.kind == "deleted":
             continue
         if entry.kind == "kv":
-            val = entry.value
-            # 值含空格 / 特殊字符或为空时加双引号，避免歧义
-            if val == "" or any(c in val for c in " #\"'="):
+            # 清洗 key 中的换行符
+            clean_key = entry.key.replace("\r", "").replace("\n", "").strip()
+            if not clean_key:
+                continue
+
+            # 清洗与转义 value 中的 \r 与 \n
+            val = entry.value.replace("\r", "\\r").replace("\n", "\\n")
+            # 值含空格 / 特殊字符 / 转义符号或为空时加双引号
+            if val == "" or any(c in val for c in " #\"'=\t\\"):
                 val = '"' + val.replace('"', '\\"') + '"'
-            line = f"{entry.key}={val}"
-            if entry.vendor.strip():
-                line += f" # {entry.vendor.strip()}"
+            line = f"{clean_key}={val}"
+
+            # 清洗 vendor 中的换行符
+            clean_vendor = " ".join(entry.vendor.replace("\r", " ").replace("\n", " ").split())
+            if clean_vendor:
+                line += f" # {clean_vendor}"
             lines.append(line)
         else:
             lines.append(entry.raw)
@@ -183,15 +199,34 @@ def load_env_file(path: Path) -> Tuple[List[EnvLine], bool]:
 
 
 def save_env_file(path: Path, entries: List[EnvLine]) -> None:
-    """原子写入 `.env`：先写 ``<file>.tmp`` 再 ``replace``，避免半截文件。"""
+    """原子写入 `.env`：使用随机临时文件（mkstemp）防并发碰撞，并在 POSIX 下赋予 0o600 权限。"""
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
+    content = serialize_env(entries).encode("utf-8")
+
+    fd, tmp_path_str = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    tmp_path = Path(tmp_path_str)
     try:
-        tmp.write_text(serialize_env(entries), encoding="utf-8")
-        tmp.replace(path)
-    finally:
-        if tmp.exists():
+        with os.fdopen(fd, "wb") as f:
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+
+        if os.name == "posix":
             try:
-                tmp.unlink()
+                os.chmod(tmp_path, 0o600)
+            except OSError:
+                pass
+
+        tmp_path.replace(path)
+
+        if os.name == "posix":
+            try:
+                os.chmod(path, 0o600)
+            except OSError:
+                pass
+    finally:
+        if tmp_path.exists():
+            try:
+                tmp_path.unlink()
             except OSError:
                 pass

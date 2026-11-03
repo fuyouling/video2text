@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from src.i18n import t
 from src.transcription.transcription_prompt_types import (
+    BUILTIN_PRESET_IDS,
     TranscriptionPromptTemplate,
     get_builtin_tx_presets,
 )
@@ -198,10 +199,17 @@ class TranscriptionPromptManager:
         hotwords: str,
         description: str = "",
     ) -> None:
-        """保存或新增用户自定义模板"""
+        """保存或新增用户自定义模板
+
+        禁止创建与系统内置预设 ID 同名的自定义模板。
+        """
         if not name or not name.strip():
             return
         name = name.strip()
+        if name in BUILTIN_PRESET_IDS or name in self.get_builtin_presets():
+            raise ValueError(
+                f"禁止创建与系统内置预设 ID 重名的自定义模板: '{name}'"
+            )
         self._custom_templates[name] = TranscriptionPromptTemplate(
             id=name,
             name=name,
@@ -213,15 +221,21 @@ class TranscriptionPromptManager:
         self.save()
 
     def delete_template(self, name: str) -> None:
-        """删除自定义模板（内置预设禁止物理删除）"""
+        """删除自定义模板（若自定义模板覆盖了内置名称，解除覆盖；纯内置预设禁止物理删除）"""
+        if not name:
+            return
+
+        # 优先从自定义模板中删除（解决自定义模板覆盖内置名时的删除锁死问题）
+        if name in self._custom_templates:
+            self._custom_templates.pop(name, None)
+            if self._last_used == name:
+                self._last_used = "general"
+            self.save()
+            return
+
         if self.is_builtin(name):
             logger.warning("TranscriptionPromptManager: Cannot delete built-in preset %s", name)
             return
-
-        self._custom_templates.pop(name, None)
-        if self._last_used == name:
-            self._last_used = "general"
-        self.save()
 
     def reset_template(self, name_or_id: str) -> Optional[TranscriptionPromptTemplate]:
         """恢复指定模板的内容（对内置预设返回原始预设，对自定义模板返回已保存内容）"""
@@ -252,8 +266,16 @@ class TranscriptionPromptManager:
         - hotwords 偏置预算建议在 220 Token（约 50 个词）以内，避免在 condition_on_previous_text 时报错。
         """
         prompt_len = len(initial_prompt.strip())
-        # 热词粗略按空格/逗号分割
-        words = [w for w in hotwords.replace(",", " ").replace("，", " ").split() if w]
+        # 热词按空格、逗号、顿号、分号（含中英文）及全角空格容错分割
+        normalized_hotwords = (
+            hotwords.replace(",", " ")
+            .replace("，", " ")
+            .replace("、", " ")
+            .replace(";", " ")
+            .replace("；", " ")
+            .replace("\u3000", " ")
+        )
+        words = [w for w in normalized_hotwords.split() if w]
         hotwords_count = len(words)
 
         prompt_warning = None

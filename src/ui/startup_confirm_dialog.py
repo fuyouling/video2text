@@ -115,7 +115,7 @@ class StartupConfirmDialog(QDialog):
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.button(QDialogButtonBox.Ok).setText(t("common.ok"))
-        buttons.button(QDialogButtonBox.Cancel).setText(t("common.cancel"))
+        buttons.button(QDialogButtonBox.Cancel).setText(t("dialogs.dep.cancel_launch"))
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)

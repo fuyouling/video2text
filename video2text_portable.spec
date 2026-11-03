@@ -2,9 +2,13 @@
 
 import json
 import os
+import sys
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 from PyInstaller.building.datastruct import TOC
+
+# 规范文件所在根目录绝对路径
+ROOT_DIR = os.path.abspath(SPECPATH if 'SPECPATH' in globals() else (os.path.dirname(__file__) if '__file__' in globals() else '.'))
 
 # CUDA 依赖库目录
 # 注意：CUDA/cuDNN 的 DLL 不打包进 _internal，而是作为发布目录下的 libs/ 子目录
@@ -14,7 +18,7 @@ _cuda_libs = []
 
 block_cipher = None
 
-SPEC_CACHE_FILE = '_spec_cache.json'
+SPEC_CACHE_FILE = os.path.join(ROOT_DIR, '_spec_cache.json')
 
 REQUIRED_KEYS = {
     'faster_whisper_data', 'ctranslate2_data', 'tokenizers_data', 'huggingface_hub_data',
@@ -29,14 +33,29 @@ def load_or_collect():
         try:
             with open(SPEC_CACHE_FILE, 'r', encoding='utf-8') as f:
                 cached = json.load(f)
-            if set(cached.keys()).issuperset(REQUIRED_KEYS):
-                print(f'[spec] Loaded collect cache from {SPEC_CACHE_FILE}')
-                return cached
-        except (json.JSONDecodeError, KeyError):
-            pass
+            # 校验 Python 环境一致性与键集合完整性
+            if cached.get('_env_prefix') == sys.prefix and set(cached.keys()).issuperset(REQUIRED_KEYS):
+                # 采样关键文件存在性校验，防止异机迁移或环境移动后使用失效的绝对路径
+                sample_files = []
+                for key in ('ctranslate2_bins', 'onnxruntime_bins', 'faster_whisper_data', 'funasr_onnx_data'):
+                    items = cached.get(key, [])
+                    if items and isinstance(items, list):
+                        for item in items[:2]:
+                            if isinstance(item, (list, tuple)) and len(item) > 0 and isinstance(item[0], str):
+                                sample_files.append(item[0])
+                if sample_files and all(os.path.exists(p) for p in sample_files):
+                    print(f'[spec] Loaded collect cache from {SPEC_CACHE_FILE}')
+                    return cached
+                else:
+                    print('[spec] Sampled files from cache do not exist on this system, recollecting...')
+            else:
+                print('[spec] Cache environment mismatch or missing keys, recollecting...')
+        except Exception as e:
+            print(f'[spec] Failed to read cache ({e}), recollecting...')
 
-    print('[spec] Collecting module data (first run, this may take a while)...')
+    print('[spec] Collecting module data (first run or cache invalid, this may take a while)...')
     data = {
+        '_env_prefix': sys.prefix,
         'faster_whisper_data': collect_data_files('faster_whisper'),
         'ctranslate2_data': collect_data_files('ctranslate2'),
         'tokenizers_data': collect_data_files('tokenizers'),
@@ -99,20 +118,13 @@ pyside6_subs = ['PySide6.QtCore', 'PySide6.QtGui', 'PySide6.QtWidgets']
 
 a = Analysis(
     ['src/main.py'],
-    pathex=[],
+    pathex=[ROOT_DIR],
     binaries=pyside6_bins + ctranslate2_bins + onnxruntime_bins + kaldi_bins,
     datas=[
         ('config.ini', '.'),
         ('src/i18n/languages.json', 'i18n'),
-        ('src/i18n/locales/de.json', 'i18n/locales'),
-        ('src/i18n/locales/en.json', 'i18n/locales'),
-        ('src/i18n/locales/es.json', 'i18n/locales'),
-        ('src/i18n/locales/fr.json', 'i18n/locales'),
-        ('src/i18n/locales/ja.json', 'i18n/locales'),
-        ('src/i18n/locales/ko.json', 'i18n/locales'),
-        ('src/i18n/locales/ru.json', 'i18n/locales'),
-        ('src/i18n/locales/zh-CN.json', 'i18n/locales'),
-        ('src/i18n/locales/zh-TW.json', 'i18n/locales'),
+        ('src/i18n/locales', 'i18n/locales'),
+        ('assets', 'assets'),
         # 7za.exe 用于解压 BCJ2 压缩的 7z 包（py7zr 不支持 BCJ2）
         ('7z/7za.exe', '.'),
     ] + pyside6_data + faster_whisper_data + ctranslate2_data + tokenizers_data + huggingface_hub_data + funasr_onnx_data + onnxruntime_data + jieba_data,
@@ -136,6 +148,19 @@ a = Analysis(
         'scipy',
         'soundfile',
         'yaml',
+        'mistralai',
+        'mistralai.client',
+        'mistralai.client.errors.sdkerror',
+        'markdown',
+        'markdown.extensions.tables',
+        'markdown.extensions.fenced_code',
+        'markdown.extensions.extra',
+        'markdown.extensions.sane_lists',
+        'markdown.extensions.codehilite',
+        'pygments',
+        'pygments.lexers',
+        'pygments.formatters',
+        'pygments.styles',
     ] + pyside6_subs + ctranslate2_subs + tokenizers_subs + funasr_onnx_subs + onnxruntime_subs + kaldi_subs,
     hookspath=[],
     hooksconfig={},
@@ -238,7 +263,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=str(Path('assets/video2text_logo.ico')),
+    icon=os.path.join(ROOT_DIR, 'assets', 'video2text_logo.ico'),
 )
 
 coll = COLLECT(

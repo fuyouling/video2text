@@ -6,8 +6,10 @@ default 参数传入。本模块不内置任何默认配置值。
 
 import configparser
 import os
+import shutil
 import tempfile
 import threading
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -27,7 +29,7 @@ class Settings:
     """
 
     _instance: Optional["Settings"] = None
-    _lock = threading.Lock()
+    _lock = threading.RLock()
 
     PATH_KEYS: frozenset[str] = frozenset(
         [
@@ -35,6 +37,8 @@ class Settings:
             "paths.logs_dir",
             "paths.video_dir",
             "output.output_dir",
+            "app.main_image_path",
+            "app.result_image_path",
         ]
     )
 
@@ -111,21 +115,27 @@ class Settings:
 
     def _load(self) -> None:
         """内部加载，首次初始化时调用，输出日志"""
-        try:
-            self.config.read(self.config_path, encoding="utf-8")
-            logger.info(t("config_manager.settings_config_loaded", name=Path(self.config_path).name))
-        except Exception as e:
-            raise ConfigurationError(t("config_manager.settings_load_config_fail", error=e))
+        with self._lock:
+            try:
+                self.config.read(self.config_path, encoding="utf-8")
+                logger.info(t("config_manager.settings_config_loaded", name=Path(self.config_path).name))
+            except Exception as e:
+                raise ConfigurationError(t("config_manager.settings_load_config_fail", error=e))
 
     def reload(self) -> None:
         """从磁盘重新加载配置文件（不输出日志，供 GUI 刷新用）"""
-        try:
-            new_config = configparser.ConfigParser(interpolation=None)
-            new_config.read(self.config_path, encoding="utf-8")
-            with self._lock:
+        with self._lock:
+            p = Path(self.config_path)
+            if not p.is_file():
+                raise ConfigurationError(
+                    t("config_manager.settings_reload_config_fail", error=f"Config file not found: {self.config_path}")
+                )
+            try:
+                new_config = configparser.ConfigParser(interpolation=None)
+                new_config.read(self.config_path, encoding="utf-8")
                 self.config = new_config
-        except Exception as e:
-            raise ConfigurationError(t("config_manager.settings_reload_config_fail", error=e))
+            except Exception as e:
+                raise ConfigurationError(t("config_manager.settings_reload_config_fail", error=e))
 
     def save(self) -> None:
         """保存配置文件（原子写入，防止崩溃损坏）"""
@@ -135,18 +145,41 @@ class Settings:
 
             with self._lock:
                 fd, tmp_path = tempfile.mkstemp(dir=config_path.parent, suffix=".tmp")
+                closed = False
                 try:
                     with os.fdopen(fd, "w", encoding="utf-8") as f:
+                        closed = True
                         self.config.write(f)
-                    os.replace(tmp_path, config_path)
-                except BaseException:
-                    try:
-                        os.unlink(tmp_path)
-                    except OSError:
-                        pass
-                    raise
+                        f.flush()
+                        os.fsync(f.fileno())
 
-            # logger.info("Settings: ✓ 配置保存 (%s)", Path(self.config_path).name)
+                    # 在 Windows 下对瞬态文件锁提供指数退避重试（重试 5 次，最后回退 shutil.move）
+                    max_retries = 5
+                    delay = 0.05
+                    for attempt in range(max_retries):
+                        try:
+                            os.replace(tmp_path, config_path)
+                            break
+                        except OSError as err:
+                            if attempt < max_retries - 1:
+                                time.sleep(delay)
+                                delay *= 2
+                            else:
+                                try:
+                                    shutil.move(tmp_path, config_path)
+                                except Exception:
+                                    raise err
+                finally:
+                    if not closed:
+                        try:
+                            os.close(fd)
+                        except OSError:
+                            pass
+                    if os.path.exists(tmp_path):
+                        try:
+                            os.unlink(tmp_path)
+                        except OSError:
+                            pass
         except ConfigurationError:
             raise
         except Exception as e:
@@ -162,16 +195,17 @@ class Settings:
         Returns:
             配置值
         """
-        try:
-            section, option = key.split(".", 1)
-            value = self.config.get(section, option)
+        with self._lock:
+            try:
+                section, option = key.split(".", 1)
+                value = self.config.get(section, option)
 
-            if key in self.PATH_KEYS:
-                return self._resolve_path(value)
+                if key in self.PATH_KEYS:
+                    return self._resolve_path(value)
 
-            return value
-        except (ValueError, configparser.NoSectionError, configparser.NoOptionError):
-            return default
+                return value
+            except (ValueError, configparser.NoSectionError, configparser.NoOptionError):
+                return default
 
     def set(self, key: str, value: Any) -> None:
         """设置配置项
@@ -194,40 +228,44 @@ class Settings:
 
     def get_int(self, key: str, default: int = 0) -> int:
         """获取整数配置项"""
-        try:
-            section, option = key.split(".", 1)
-            return self.config.getint(section, option)
-        except (ValueError, configparser.NoSectionError, configparser.NoOptionError):
-            return default
+        with self._lock:
+            try:
+                section, option = key.split(".", 1)
+                return self.config.getint(section, option)
+            except (ValueError, configparser.NoSectionError, configparser.NoOptionError):
+                return default
 
     def get_float(self, key: str, default: float = 0.0) -> float:
         """获取浮点数配置项"""
-        try:
-            section, option = key.split(".", 1)
-            return self.config.getfloat(section, option)
-        except (ValueError, configparser.NoSectionError, configparser.NoOptionError):
-            return default
+        with self._lock:
+            try:
+                section, option = key.split(".", 1)
+                return self.config.getfloat(section, option)
+            except (ValueError, configparser.NoSectionError, configparser.NoOptionError):
+                return default
 
     def get_bool(self, key: str, default: bool = False) -> bool:
         """获取布尔配置项"""
-        try:
-            section, option = key.split(".", 1)
-            return self.config.getboolean(section, option)
-        except (ValueError, configparser.NoSectionError, configparser.NoOptionError):
-            return default
+        with self._lock:
+            try:
+                section, option = key.split(".", 1)
+                return self.config.getboolean(section, option)
+            except (ValueError, configparser.NoSectionError, configparser.NoOptionError):
+                return default
 
     def get_list(
         self, key: str, default: Optional[list[str]] = None, separator: str = ","
     ) -> list[str]:
         """获取列表配置项"""
-        value = self.get(key)
-        if value is None:
-            return default.copy() if default is not None else []
+        with self._lock:
+            value = self.get(key)
+            if value is None:
+                return default.copy() if default is not None else []
 
-        items = [item.strip() for item in value.split(separator)]
-        return [item for item in items if item] or (
-            default.copy() if default is not None else []
-        )
+            items = [item.strip() for item in value.split(separator)]
+            return [item for item in items if item] or (
+                default.copy() if default is not None else []
+            )
 
     def _resolve_section_paths(self, section: str, items: dict) -> dict:
         """对 section 中的 PATH_KEYS 条目自动解析路径"""
@@ -239,10 +277,11 @@ class Settings:
 
     def get_section(self, section: str) -> dict:
         """获取配置节，PATH_KEYS 中的路径会自动解析"""
-        if not self.config.has_section(section):
-            return {}
+        with self._lock:
+            if not self.config.has_section(section):
+                return {}
 
-        return self._resolve_section_paths(section, dict(self.config.items(section)))
+            return self._resolve_section_paths(section, dict(self.config.items(section)))
 
     def update_from_dict(self, config_dict: dict) -> None:
         """从字典更新配置"""
@@ -258,9 +297,10 @@ class Settings:
 
     def to_dict(self) -> dict:
         """转换为字典，PATH_KEYS 中的路径会自动解析"""
-        result = {}
-        for section in self.config.sections():
-            result[section] = self._resolve_section_paths(
-                section, dict(self.config.items(section))
-            )
-        return result
+        with self._lock:
+            result = {}
+            for section in self.config.sections():
+                result[section] = self._resolve_section_paths(
+                    section, dict(self.config.items(section))
+                )
+            return result

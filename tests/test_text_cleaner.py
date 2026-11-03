@@ -99,3 +99,36 @@ class TestTextCleaner:
         assert cleaner.fix_punctuation("你好！！！") == "你好！"
         assert cleaner.fix_punctuation("你好？？？") == "你好？"
         assert cleaner.fix_punctuation("你好，，，") == "你好，"
+
+    def test_normalize_quotes_unicode_codepoints(self):
+        """弯引号与书名引号归一化为直引号"""
+        text = "“你好” ‘世界’ „引用‟ «法语» ‹单书名›"
+        result = self.cleaner.normalize_quotes(text)
+        assert "“" not in result
+        assert "”" not in result
+        assert "‘" not in result
+        assert "’" not in result
+        assert "«" not in result
+        assert "»" not in result
+        assert '"你好"' in result
+        assert "'世界'" in result
+
+    def test_fix_punctuation_chinese_book_title_quotes(self):
+        """中文书名号《》在标点归一化时应转为双引号，而非尖括号"""
+        cleaner = TextCleaner({"normalize_punctuation": True})
+        text = "我看过《三国演义》这本书"
+        result = cleaner.fix_punctuation(text)
+        assert "<" not in result
+        assert ">" not in result
+        assert '"三国演义"' in result
+
+    def test_clean_removes_hanging_leading_punctuation_after_fillers(self):
+        """删除句首填充词后遗留的悬空句首逗号/标点应被消除"""
+        cleaner = TextCleaner({"filler_words": ["嗯", "啊"]})
+        text = "嗯，今天天气真好"
+        result = cleaner.clean(text)
+        assert result == "今天天气真好"
+
+        text2 = "啊；这也是个好日子"
+        result2 = cleaner.clean(text2)
+        assert result2 == "这也是个好日子"

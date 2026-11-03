@@ -22,60 +22,69 @@ def test_segment_streaming_newlines(qapp):
     # 为避免触发依赖检测，临时将 startup_dependency_check 置空
     orig_check = MainWindow._startup_dependency_check
     MainWindow._startup_dependency_check = lambda self: None
+    window = None
     try:
         window = MainWindow()
+
+        seg1 = TranscriptSegment(
+            start=7.0, end=9.0, text="第一段文本", confidence=90.0, language="zh"
+        )
+        seg2 = TranscriptSegment(
+            start=10.0, end=15.0, text="第二段文本", confidence=90.0, language="zh"
+        )
+        seg3 = TranscriptSegment(
+            start=16.0, end=20.0, text="第三段文本", confidence=90.0, language="zh"
+        )
+
+        video_name = "test_video"
+
+        # 1. 发射第一段
+        window._on_segment_emitted(video_name, seg1)
+        # 模拟定时器清空队列
+        while window._segment_text_queue:
+            window._pump_segment_text()
+        window._pump_segment_text()  # 触发队列空处理
+
+        text1 = window.transcript_view.toPlainText()
+        assert "[00:00:07 - 00:00:09] 第一段文本" in text1
+        assert text1.endswith("\n")
+
+        # 2. 发射第二段（此时前一段已完全排空，且队列为空）
+        window._on_segment_emitted(video_name, seg2)
+        while window._segment_text_queue:
+            window._pump_segment_text()
+        window._pump_segment_text()
+
+        text2 = window.transcript_view.toPlainText()
+        expected_lines = [
+            "[00:00:07 - 00:00:09] 第一段文本",
+            "[00:00:10 - 00:00:15] 第二段文本",
+        ]
+        actual_lines = [line for line in text2.split("\n") if line.strip()]
+        assert actual_lines == expected_lines
+
+        # 3. 故意截断末尾换行（模拟用户编辑），发射第三段仍能换行
+        window.transcript_view.setPlainText(text2.rstrip())
+        window._on_segment_emitted(video_name, seg3)
+        while window._segment_text_queue:
+            window._pump_segment_text()
+        window._pump_segment_text()
+
+        text3 = window.transcript_view.toPlainText()
+        expected_lines_3 = [
+            "[00:00:07 - 00:00:09] 第一段文本",
+            "[00:00:10 - 00:00:15] 第二段文本",
+            "[00:00:16 - 00:00:20] 第三段文本",
+        ]
+        actual_lines_3 = [line for line in text3.split("\n") if line.strip()]
+        assert actual_lines_3 == expected_lines_3
     finally:
         MainWindow._startup_dependency_check = orig_check
-
-    seg1 = TranscriptSegment(
-        start=7.0, end=9.0, text="第一段文本", confidence=90.0, language="zh"
-    )
-    seg2 = TranscriptSegment(
-        start=10.0, end=15.0, text="第二段文本", confidence=90.0, language="zh"
-    )
-    seg3 = TranscriptSegment(
-        start=16.0, end=20.0, text="第三段文本", confidence=90.0, language="zh"
-    )
-
-    video_name = "test_video"
-
-    # 1. 发射第一段
-    window._on_segment_emitted(video_name, seg1)
-    # 模拟定时器清空队列
-    while window._segment_text_queue:
-        window._pump_segment_text()
-    window._pump_segment_text()  # 触发队列空处理
-
-    text1 = window.transcript_view.toPlainText()
-    assert "[00:00:07 - 00:00:09] 第一段文本" in text1
-    assert text1.endswith("\n")
-
-    # 2. 发射第二段（此时前一段已完全排空，且队列为空）
-    window._on_segment_emitted(video_name, seg2)
-    while window._segment_text_queue:
-        window._pump_segment_text()
-    window._pump_segment_text()
-
-    text2 = window.transcript_view.toPlainText()
-    expected_lines = [
-        "[00:00:07 - 00:00:09] 第一段文本",
-        "[00:00:10 - 00:00:15] 第二段文本",
-    ]
-    actual_lines = [line for line in text2.split("\n") if line.strip()]
-    assert actual_lines == expected_lines
-
-    # 3. 故意截断末尾换行（模拟用户编辑），发射第三段仍能换行
-    window.transcript_view.setPlainText(text2.rstrip())
-    window._on_segment_emitted(video_name, seg3)
-    while window._segment_text_queue:
-        window._pump_segment_text()
-    window._pump_segment_text()
-
-    text3 = window.transcript_view.toPlainText()
-    expected_lines_3 = [
-        "[00:00:07 - 00:00:09] 第一段文本",
-        "[00:00:10 - 00:00:15] 第二段文本",
-        "[00:00:16 - 00:00:20] 第三段文本",
-    ]
-    actual_lines_3 = [line for line in text3.split("\n") if line.strip()]
-    assert actual_lines_3 == expected_lines_3
+        if window is not None:
+            if hasattr(window, "_segment_timer") and window._segment_timer is not None:
+                window._segment_timer.stop()
+            if hasattr(window, "_stop_watchdog_timer") and window._stop_watchdog_timer is not None:
+                window._stop_watchdog_timer.stop()
+            window.close()
+            window.deleteLater()
+            qapp.processEvents()

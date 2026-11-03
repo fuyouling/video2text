@@ -288,7 +288,7 @@ class TranscribeWorker(QObject):
     progress = Signal(int, int)
     error = Signal(str)
     finished = Signal()
-    confirm_download = Signal()
+    confirm_download = Signal(object)
 
     def __init__(
         self,
@@ -342,13 +342,16 @@ class TranscribeWorker(QObject):
         with self._service_lock:
             return self._service.is_paused if self._service else False
 
-    def _confirm_download_callback(self) -> bool:
+    def _confirm_download_callback(self, model_name: str = "") -> bool:
         if self._cancelled:
             return False
         self._confirm_event.clear()
         self._confirm_result[0] = False
-        self.confirm_download.emit()
-        self._confirm_event.wait()
+        self._download_model_name = model_name
+        self.confirm_download.emit(self)
+        while not self._confirm_event.wait(timeout=0.2):
+            if self._cancelled:
+                return False
         if self._cancelled:
             return False
         return self._confirm_result[0]
@@ -606,7 +609,7 @@ class PipelineWorker(QObject):
     progress = Signal(int, int)
     error = Signal(str)
     finished = Signal()
-    confirm_download = Signal()
+    confirm_download = Signal(object)
     phase_changed = Signal(str)
 
     def __init__(
@@ -688,13 +691,16 @@ class PipelineWorker(QObject):
     def is_sum_paused(self) -> bool:
         return self._sum_pause_ctrl.is_paused
 
-    def _confirm_download_callback(self) -> bool:
+    def _confirm_download_callback(self, model_name: str = "") -> bool:
         if self._cancelled:
             return False
         self._confirm_event.clear()
         self._confirm_result[0] = False
-        self.confirm_download.emit()
-        self._confirm_event.wait()
+        self._download_model_name = model_name
+        self.confirm_download.emit(self)
+        while not self._confirm_event.wait(timeout=0.2):
+            if self._cancelled:
+                return False
         if self._cancelled:
             return False
         return self._confirm_result[0]

@@ -77,6 +77,35 @@ class TestTranscriptionPromptCustomTemplates:
         assert "临时模板" not in pm.get_names()
         assert pm.get_template("临时模板") is None
 
+    def test_forbid_creating_builtin_preset_id(self, tmp_path):
+        pm = TranscriptionPromptManager(base_dir=tmp_path)
+        with pytest.raises(ValueError, match="禁止创建与系统内置预设 ID 重名"):
+            pm.set_template("general", "提示词", "热词")
+
+        with pytest.raises(ValueError, match="禁止创建与系统内置预设 ID 重名"):
+            pm.set_template("meeting", "提示词", "热词")
+
+    def test_delete_shadowed_builtin_unlocks(self, tmp_path):
+        pm = TranscriptionPromptManager(base_dir=tmp_path)
+        # 模拟通过底层或历史配置文件注入了同名覆盖模板
+        pm._custom_templates["general"] = TranscriptionPromptTemplate(
+            id="general",
+            name="general",
+            initial_prompt="覆盖提示词",
+            hotwords="覆盖热词",
+            is_builtin=False,
+        )
+        assert pm.get_initial_prompt("general") == "覆盖提示词"
+
+        # 修复后执行删除，解除覆盖而不锁死
+        pm.delete_template("general")
+        assert "general" not in pm._custom_templates
+        # 恢复内置预设内容
+        restored = pm.get_template("general")
+        assert restored is not None
+        assert restored.is_builtin is True
+        assert restored.initial_prompt != "覆盖提示词"
+
     def test_last_used_tracking(self, tmp_path):
         pm = TranscriptionPromptManager(base_dir=tmp_path)
         pm.set_last_used("ecommerce")
@@ -147,3 +176,13 @@ class TestTranscriptionPromptValidation:
         assert res["safe"] is False
         assert res["prompt_warning"] is not None
         assert res["hotwords_warning"] is not None
+
+    def test_validate_limits_chinese_delimiters(self):
+        # 顿号、中文分号、英文分号、全角空格容错
+        hotwords = "苹果、香蕉；橙子;西瓜\u3000葡萄,哈密瓜，草莓"
+        res = TranscriptionPromptManager.validate_limits(
+            initial_prompt="测试",
+            hotwords=hotwords,
+        )
+        assert res["safe"] is True
+        assert res["hotwords_count"] == 7

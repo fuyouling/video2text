@@ -115,3 +115,15 @@ class TestValidateExecutablePath:
         result = validate_executable_path("python")
         assert result is not None
         assert len(result) > 0
+
+    def test_non_executable_file_rejected(self, tmp_path):
+        txt_file = tmp_path / "not_an_exe.txt"
+        txt_file.write_text("hello world")
+        with pytest.raises(ConfigurationError, match="不可用"):
+            validate_executable_path(str(txt_file))
+
+    def test_media_file_rejected(self, tmp_path):
+        media_file = tmp_path / "video.mp4"
+        media_file.write_bytes(b"\x00\x00\x00\x18ftypisom")
+        with pytest.raises(ConfigurationError, match="不可用"):
+            validate_executable_path(str(media_file))

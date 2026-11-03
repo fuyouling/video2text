@@ -2,6 +2,7 @@
 
 import threading
 from pathlib import Path
+from typing import Optional
 
 from src.i18n import t
 from src.utils.json_utils import atomic_write_json, safe_read_json
@@ -76,33 +77,57 @@ class BookmarkItem:
 class BookmarkManager:
     """书签持久化管理器 —— 使用 JSON 文件存储，线程安全，原子写入。"""
 
+    _global_lock = threading.RLock()
+
     def __init__(self, file_path: Path):
         """初始化书签管理器。
 
         Args:
             file_path: 书签 JSON 文件路径
         """
-        self._file_path = file_path
-        self._lock = threading.Lock()
+        self._file_path = Path(file_path)
+        self._lock = BookmarkManager._global_lock
+        self._cache: Optional[list[BookmarkItem]] = None
+        self._last_mtime: float = -1.0
+
+    def _get_disk_mtime(self) -> float:
+        try:
+            return self._file_path.stat().st_mtime
+        except OSError:
+            return 0.0
 
     def load(self) -> list[BookmarkItem]:
-        """从 JSON 文件加载全部书签列表。"""
-        if not self._file_path.exists():
-            return []
-        data = safe_read_json(self._file_path)
-        if data is None:
-            logger.warning(t("storage.log.load_fail"), self._file_path.name)
-            return []
-        items = data.get("bookmarks", [])
-        return [BookmarkItem.from_dict(d) for d in items]
+        """从 JSON 文件加载全部书签列表（读前校验磁盘最新状态）。"""
+        with self._lock:
+            if not self._file_path.exists():
+                self._cache = []
+                self._last_mtime = 0.0
+                return []
+
+            disk_mtime = self._get_disk_mtime()
+            if self._cache is not None and disk_mtime == self._last_mtime:
+                return list(self._cache)
+
+            data = safe_read_json(self._file_path)
+            if data is None:
+                logger.warning(t("storage.log.load_fail"), self._file_path.name)
+                return []
+            items = data.get("bookmarks", [])
+            self._cache = [BookmarkItem.from_dict(d) for d in items]
+            self._last_mtime = disk_mtime
+            return list(self._cache)
 
     def save(self, bookmarks: list[BookmarkItem]) -> None:
-        """将书签列表原子写入 JSON 文件。"""
-        data = {"bookmarks": [b.to_dict() for b in bookmarks]}
-        try:
-            atomic_write_json(self._file_path, data)
-        except OSError as exc:
-            logger.error(t("storage.log.save_fail"), exc)
+        """将书签列表原子写入 JSON 文件（写前确保父目录存在并更新磁盘状态）。"""
+        with self._lock:
+            try:
+                self._file_path.parent.mkdir(parents=True, exist_ok=True)
+                data = {"bookmarks": [b.to_dict() for b in bookmarks]}
+                atomic_write_json(self._file_path, data)
+                self._cache = list(bookmarks)
+                self._last_mtime = self._get_disk_mtime()
+            except OSError as exc:
+                logger.error(t("storage.log.save_fail"), exc)
 
     def add(self, bookmark: BookmarkItem) -> None:
         """添加一个书签并持久化。"""

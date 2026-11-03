@@ -42,6 +42,9 @@ class TranscriptionPromptTemplate:
         )
 
 
+BUILTIN_PRESET_IDS = ("general", "meeting", "ecommerce", "tech", "bilingual")
+
+
 def get_builtin_tx_presets() -> dict[str, TranscriptionPromptTemplate]:
     """获取动态本地化的内置转写提示词预设字典"""
     return {

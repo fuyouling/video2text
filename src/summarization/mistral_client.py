@@ -66,6 +66,11 @@ class MistralClient:
             ensure_env_loaded()
         self._api_key = api_key or get_api_key("MISTRAL_API_KEY") or ""
 
+        if Mistral is None:
+            raise SummarizationError(
+                "MistralClient: mistralai SDK is not installed. Please install it with 'pip install mistralai'."
+            )
+
         init_kwargs = {
             "api_key": self._api_key,
             # timeout 配置（秒）必须显式传给 SDK，SDK 接收毫秒且默认为 None，
@@ -170,6 +175,9 @@ class MistralClient:
         cancel_check: Optional[Callable[[], bool]] = None,
         pause_event: Optional[threading.Event] = None,
     ) -> str:
+        if not self._api_key:
+            raise SummarizationError(t("services.summarization.mistral.api_key_missing"))
+
         if messages is not None:
             chat_messages = messages
         elif system_prompt:
@@ -216,7 +224,7 @@ class MistralClient:
                             )
                             stream_resp = self._client.chat.stream(
                                 model=model,
-                                messages=[{"role": "user", "content": prompt}],
+                                messages=chat_messages,
                                 temperature=temperature,
                                 max_tokens=max_tokens,
                             )
@@ -231,13 +239,34 @@ class MistralClient:
 
             except SDKError as e:
                 status = getattr(e, "status_code", None)
+                if status == 401:
+                    self._remember_connection(False)
+                    logger.error(t("services.summarization.mistral.api_key_invalid"))
+                    raise SummarizationError(t("services.summarization.mistral.api_key_invalid"))
                 if status == 429:
-                    wait = 2 ** (attempt + 1)
+                    headers = {}
+                    raw_response = getattr(e, "raw_response", None) or getattr(e, "response", None)
+                    if raw_response and hasattr(raw_response, "headers"):
+                        headers = dict(raw_response.headers)
+                    elif hasattr(e, "headers") and isinstance(e.headers, dict):
+                        headers = e.headers
+                    from src.utils.rate_limit import get_retry_after, exponential_backoff
+
+                    retry_after = get_retry_after(headers)
+                    wait = retry_after if retry_after is not None else exponential_backoff(attempt)
                     last_exc = SummarizationError(
-                        t("services.summarization.mistral.rate_limited", wait=wait)
+                        t(
+                            "services.summarization.mistral.rate_limited",
+                            wait=f"{wait:.1f}" if isinstance(wait, float) else wait,
+                        )
                     )
                     logger.warning(
-                        t("services.summarization.mistral.rate_limited_log", attempt=attempt, max=self.max_retries, wait=wait),
+                        t(
+                            "services.summarization.mistral.rate_limited_log",
+                            attempt=attempt,
+                            max=self.max_retries,
+                            wait=f"{wait:.1f}" if isinstance(wait, float) else wait,
+                        ),
                     )
                     if attempt < self.max_retries:
                         time.sleep(wait)
@@ -276,7 +305,7 @@ class MistralClient:
                     while not pause_event.is_set():
                         if cancel_check and cancel_check():
                             raise SummarizationError(t("services.summarization.mistral.user_cancelled"))
-                        time.sleep(0.1)
+                        pause_event.wait(timeout=0.1)
                 try:
                     chunk = getattr(event, "data", None)
                     if chunk is None:
@@ -311,10 +340,8 @@ class MistralClient:
         except (SummarizationError,):
             raise
         except Exception as e:
-            if full_text:
-                logger.warning(t("services.summarization.mistral.stream_interrupted", count=len(full_text)))
-            else:
-                raise SummarizationError(t("services.summarization.mistral.stream_connection_failed", error=e)) from e
+            logger.error("MistralClient: stream interrupted: %s", e)
+            raise SummarizationError(t("services.summarization.mistral.stream_connection_failed", error=e)) from e
         return full_text
 
     def close(self) -> None:

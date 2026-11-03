@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 import threading
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
@@ -13,9 +14,48 @@ _CONFIGURE_LOCK = threading.Lock()
 
 _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 
+_RE_BEARER = re.compile(r'(Bearer\s+)([a-zA-Z0-9_\-\.]{8,})', re.IGNORECASE)
+_RE_SK_KEY = re.compile(r'\b(sk-[a-zA-Z0-9_\-]{6,})\b')
+_RE_GENERIC_KEY = re.compile(
+    r'(["\']?(?:api[_-]?key|access[_-]?token|secret[_-]?key|auth[_-]?token)["\']?\s*[:=]\s*["\']?)([^"\'\s,\r\n]{8,})(["\']?)',
+    re.IGNORECASE,
+)
+
+
+def mask_sensitive_data(text: str) -> str:
+    """对日志中的敏感凭据（sk-*, Bearer *, API Key）进行掩码脱敏。"""
+    if not text:
+        return text
+
+    # 1. Bearer <token>
+    text = _RE_BEARER.sub(r'\1***MASKED***', text)
+
+    # 2. sk-* (OpenAI, DeepSeek, Anthropic 等)
+    def _mask_sk(m: re.Match) -> str:
+        val = m.group(1)
+        if len(val) > 12:
+            return f"{val[:4]}...{val[-4:]}"
+        return f"{val[:3]}****"
+
+    text = _RE_SK_KEY.sub(_mask_sk, text)
+
+    # 3. 通用 api_key / secret_key / access_token
+    def _mask_generic(m: re.Match) -> str:
+        prefix = m.group(1)
+        val = m.group(2)
+        suffix = m.group(3)
+        if len(val) > 8:
+            masked = f"{val[:2]}...{val[-2:]}"
+        else:
+            masked = "****"
+        return f"{prefix}{masked}{suffix}"
+
+    text = _RE_GENERIC_KEY.sub(_mask_generic, text)
+    return text
+
 
 class _ShortPathFormatter(logging.Formatter):
-    """自动缩短日志中的文件路径和 logger 名称。"""
+    """自动缩短日志中的文件路径和 logger 名称，并集成敏感凭据脱敏。"""
 
     def format(self, record):
         if record.name:
@@ -32,7 +72,47 @@ class _ShortPathFormatter(logging.Formatter):
                 if prefix in msg:
                     msg = msg.replace(prefix, "")
                     break
-        return msg
+
+        return mask_sensitive_data(msg)
+
+
+class SafeRotatingFileHandler(RotatingFileHandler):
+    """Windows 下安全的 RotatingFileHandler，防止 rollover 期间发生 WinError 32 崩溃。"""
+
+    def doRollover(self):
+        try:
+            super().doRollover()
+        except PermissionError:
+            # 在 Windows 上若文件被其他句柄持有，重命名会引发 PermissionError (WinError 32)
+            # 捕获并安全忽略，避免程序因日志轮转失败而崩溃
+            pass
+        except OSError:
+            pass
+
+
+_SHARED_FILE_HANDLERS: dict[str, SafeRotatingFileHandler] = {}
+_HANDLER_POOL_LOCK = threading.Lock()
+
+
+def get_shared_rotating_handler(
+    file_path: Path | str,
+    maxBytes: int = 10 * 1024 * 1024,
+    backupCount: int = 5,
+    encoding: str = "utf-8",
+) -> SafeRotatingFileHandler:
+    """获取全局共享的 SafeRotatingFileHandler 单例，按文件绝对路径复用。"""
+    resolved_path = str(Path(file_path).resolve())
+    with _HANDLER_POOL_LOCK:
+        if resolved_path not in _SHARED_FILE_HANDLERS:
+            Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+            handler = SafeRotatingFileHandler(
+                resolved_path,
+                maxBytes=maxBytes,
+                backupCount=backupCount,
+                encoding=encoding,
+            )
+            _SHARED_FILE_HANDLERS[resolved_path] = handler
+        return _SHARED_FILE_HANDLERS[resolved_path]
 
 
 def setup_logger(
@@ -91,7 +171,7 @@ def setup_logger(
             log_path = Path(log_dir)
             log_path.mkdir(parents=True, exist_ok=True)
 
-            app_handler = RotatingFileHandler(
+            app_handler = get_shared_rotating_handler(
                 log_path / "app.log",
                 maxBytes=5 * 1024 * 1024,
                 backupCount=7,
@@ -99,9 +179,10 @@ def setup_logger(
             )
             app_handler.setLevel(logging.INFO)
             app_handler.setFormatter(formatter)
-            logger.addHandler(app_handler)
+            if app_handler not in logger.handlers:
+                logger.addHandler(app_handler)
 
-            debug_handler = RotatingFileHandler(
+            debug_handler = get_shared_rotating_handler(
                 log_path / "debug.log",
                 maxBytes=10 * 1024 * 1024,
                 backupCount=3,
@@ -109,9 +190,10 @@ def setup_logger(
             )
             debug_handler.setLevel(logging.DEBUG)
             debug_handler.setFormatter(formatter)
-            logger.addHandler(debug_handler)
+            if debug_handler not in logger.handlers:
+                logger.addHandler(debug_handler)
 
-            error_handler = RotatingFileHandler(
+            error_handler = get_shared_rotating_handler(
                 log_path / "error.log",
                 maxBytes=10 * 1024 * 1024,
                 backupCount=30,
@@ -119,7 +201,8 @@ def setup_logger(
             )
             error_handler.setLevel(logging.ERROR)
             error_handler.setFormatter(formatter)
-            logger.addHandler(error_handler)
+            if error_handler not in logger.handlers:
+                logger.addHandler(error_handler)
 
         if log_to_console:
             console_handler = logging.StreamHandler()
@@ -138,21 +221,7 @@ def setup_dependency_logger(
     log_to_file: bool = True,
     log_to_console: bool = True,
 ) -> logging.Logger:
-    """配置「启动依赖检测」专用 logger，输出干净、带对齐树状的日志。
-
-    与 setup_logger 不同：本 logger **不**沿用 ``asctime - name - levelname``
-    的冗余前缀，且关闭向父 logger 的传播（propagate=False），避免同一行日志
-    被 video2text 根 logger 的 handler 再打印一次（带前缀）。
-
-    输出格式示例::
-
-        ▸ 启动依赖检测：开始
-          ├─ 模型 ✗ 不完整 (faster-whisper-large-v3-turbo-ct2)
-          ├─ DLL 依赖 ✗ 不完整
-          └─ 用户确认下载，启动后台线程…
-
-    日志面板（log_panel.py）的树状正则可直接对 ``  ├─ `` / ``  └─ `` 着色。
-    """
+    """配置「启动依赖检测」专用 logger，输出干净、带对齐树状的日志。"""
     level_upper = level.upper()
     level_int = logging.getLevelName(level_upper)
     if not isinstance(level_int, int):
@@ -169,8 +238,11 @@ def setup_dependency_logger(
         logger.propagate = False
         logger.handlers.clear()
 
-        # 干净格式：仅时间 + 级别 + 消息，无 logger 名与冗余分隔。
-        formatter = logging.Formatter(
+        # 干净格式：仅时间 + 级别 + 消息，无 logger 名与冗余分隔，同样经过脱敏
+        class _CleanFormatter(_ShortPathFormatter):
+            pass
+
+        formatter = _CleanFormatter(
             "%(asctime)s  %(levelname)-5s  %(message)s",
             datefmt="%H:%M:%S",
         )
@@ -178,7 +250,7 @@ def setup_dependency_logger(
         if log_to_file:
             log_path = Path(log_dir)
             log_path.mkdir(parents=True, exist_ok=True)
-            dep_handler = RotatingFileHandler(
+            dep_handler = get_shared_rotating_handler(
                 log_path / "dependency.log",
                 maxBytes=5 * 1024 * 1024,
                 backupCount=3,
@@ -186,7 +258,8 @@ def setup_dependency_logger(
             )
             dep_handler.setLevel(logging.INFO)
             dep_handler.setFormatter(formatter)
-            logger.addHandler(dep_handler)
+            if dep_handler not in logger.handlers:
+                logger.addHandler(dep_handler)
 
         if log_to_console:
             console_handler = logging.StreamHandler()
@@ -199,35 +272,5 @@ def setup_dependency_logger(
 
 
 def get_logger(name: str) -> logging.Logger:
-    """获取日志记录器
-
-    Args:
-        name: 日志记录器名称
-
-    Returns:
-        日志记录器
-    """
+    """获取日志记录器"""
     return logging.getLogger(name)
-
-
-# def log_error_with_context(
-#     logger_name: str,
-#     step_name: str,
-#     error: Exception,
-#     video_path: str = "",
-# ) -> None:
-#     """记录带上下文信息的错误日志。
-
-#     输出格式与 log_panel.py 的 _RE_STEP 正则兼容，可被正确着色。
-
-#     Args:
-#         logger_name: 日志记录器名称
-#         step_name: 失败步骤名称
-#         error: 异常对象
-#         video_path: 相关文件路径
-#     """
-#     log = logging.getLogger(logger_name)
-#     log.error("  ├─ %s ✗ 失败", step_name)
-#     if video_path:
-#         log.error("  ├─ 文件: %s", Path(video_path).name)
-#     log.error("  └─ 错误: %s", error)

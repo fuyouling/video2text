@@ -190,7 +190,7 @@
     "phase_switch_summarize": "Switching to summarization phase...",
     "phase_switch_transcribe": "Transcription phase...",
     "confirm_download_title": "Model Download Confirmation",
-    "confirm_download_msg": "It is recommended to use models already downloaded in your cloud drive; HuggingFace usually cannot be accessed directly.\n\nTo use another model, copy its core files into the models directory and update the model path in settings.\n\nStart downloading the model?",
+    "confirm_download_msg": "Transcription model not found locally: {model}.\n\nStart downloading automatically?\nIf download fails, you can download the model from cloud drive and place it into the models directory manually.",
     "pipeline_done_tx": "Transcription complete — success: {ok}, failed: {fail}",
     "pipeline_done_sum": "Summarization complete — success: {ok}, failed: {fail}",
     "pipeline_done_both": "Transcribe: success {tx_ok} / failed {tx_fail} | Summarize: success {sum_ok} / failed {sum_fail}",
@@ -257,19 +257,24 @@
   "about": {
     "title": "About Video2Text",
     "version": "Version {version} · Audio/Video to Text Tool",
-    "desc": "High-precision speech transcription and intelligent summarization powered by <b>faster-whisper</b>.",
+    "desc": "High-precision speech-to-text and AI summarization tool powered by <b>faster-whisper</b> and <b>FunASR</b>, featuring hardware acceleration and LLM-driven meeting summaries.",
     "author_label": "Author",
     "author_value": "MiaoWangLong",
     "license_label": "License",
     "license_value": "GNU GPL v3",
     "tech_label": "Tech Stack",
-    "tech_value": "faster-whisper · PySide6",
+    "tech_value": "faster-whisper · FunASR · PySide6 · LLM",
     "email_label": "Email",
     "repo_link": "GitHub Repository",
     "docs_link": "User Guide",
     "website_link": "Official Website",
     "netdisk_link": "Cloud Drive",
-    "copyright": "Copyright © 2026 MiaoWangLong"
+    "copyright": "Copyright © 2026 MiaoWangLong",
+    "qq_group_label": "QQ Group",
+    "qq_group_value": "296875960",
+    "copy_btn": "Copy",
+    "copied": "Copied",
+    "copy_tooltip": "Click to copy group number to clipboard"
   },
   "status": {
     "config_saved": "Configuration saved",
@@ -290,13 +295,13 @@
     "dep": {
       "title": "Dependency Download",
       "intro": "The following runtime dependencies are incomplete; transcription may not work.\nPlease choose what to download (or click \"Cancel\" to skip and handle it later in Settings):",
-      "model_group": "Speech Recognition Model",
+      "model_group": "Speech Recognition Models (Choose either one)",
       "model_yes": "Yes, download model (required for first use)",
       "model_no": "No, skip (transcription will not run)",
       "model_ready": "✓ Model complete, nothing to do",
       "whisper_opt": "Download Faster-Whisper (Multilingual, Large-v3-Turbo, ~1.4GB)",
       "whisper_ready": "✓ Faster-Whisper model ready",
-      "funasr_opt": "Download FunASR Paraformer (Chinese High-Accuracy, ~540MB, ModelScope)",
+      "funasr_opt": "Download FunASR Paraformer",
       "funasr_ready": "✓ FunASR Paraformer model ready",
       "dll_group": "DLL Dependencies (cuBLAS / cuDNN, for GPU acceleration)",
       "dll_yes": "Yes, download DLL (recommended for dedicated GPU)",
@@ -304,7 +309,8 @@
       "keep_label": "After download:",
       "keep_yes": "Keep archive",
       "keep_no": "Delete (save space)",
-      "dll_ready": "✓ DLL complete, nothing to do"
+      "dll_ready": "✓ DLL complete, nothing to do",
+      "cancel_launch": "Cancel, Launch Directly"
     },
     "file_select": {
       "title": "Select Media Files",
@@ -1299,7 +1305,9 @@
     "detected_language": "Transcriber: Detected language: {lang} (confidence: {prob})",
     "transcribe_done": "Transcriber: Transcription completed, {count} segments",
     "fallback_retry_failed": "Fallback {ct} failed: {error}",
-    "cpu_fallback_retry_failed": "CPU fallback {ct} failed: {error}"
+    "cpu_fallback_retry_failed": "CPU fallback {ct} failed: {error}",
+    "model_download_failed": "Model download failed or model files incomplete",
+    "transcribe_cancelled": "Transcription cancelled by user"
   },
   "transcription_prompt_manager": {
     "load_failed": "TranscriptionPromptManager: ✗ Load failed ({name})",

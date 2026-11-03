@@ -78,3 +78,24 @@ def test_i18n_direct_ok_formatting():
     assert "HuggingFace" in t("model_downloader.download.direct_ok", source="HuggingFace")
     assert "ModelScope" in t("model_downloader.download.direct_ok", source="ModelScope")
     assert "hf-mirror.com" in t("model_downloader.download.mirror_ok", mirror="hf-mirror.com")
+
+
+@pytest.fixture
+def qapp():
+    from PySide6.QtWidgets import QApplication
+    return QApplication.instance() or QApplication([])
+
+
+def test_startup_confirm_dialog_cancel_button_text(qapp):
+    """测试 StartupConfirmDialog 的取消按钮显示为「取消，直接启动」"""
+    from PySide6.QtWidgets import QDialogButtonBox
+    from src.ui.startup_confirm_dialog import StartupConfirmDialog
+
+    dialog = StartupConfirmDialog(model_missing=True, dll_missing=False)
+    btn_box = dialog.findChild(QDialogButtonBox)
+    assert btn_box is not None
+    cancel_btn = btn_box.button(QDialogButtonBox.Cancel)
+    assert cancel_btn is not None
+    assert cancel_btn.text() == t("dialogs.dep.cancel_launch")
+    assert "取消" in cancel_btn.text()
+    assert "直接启动" in cancel_btn.text()

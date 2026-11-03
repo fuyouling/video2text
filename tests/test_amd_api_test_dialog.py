@@ -254,6 +254,7 @@ def test_model_card_apply_on_double_click(qapp):
     event = QMouseEvent(
         QEvent.Type.MouseButtonDblClick,
         QPointF(10, 10),
+        QPointF(10, 10),
         Qt.MouseButton.LeftButton,
         Qt.MouseButton.LeftButton,
         Qt.KeyboardModifier.NoModifier,
@@ -324,8 +325,21 @@ def test_dialog_init_and_apply_model(qapp, monkeypatch):
         assert "GLM-5.3-Flash" in dialog._cards
         assert "Qwen3.8-Flash-Next" in dialog._cards
 
-        # 测试双击应用模型
-        dialog._on_apply_model("GLM-5.3-Flash")
+        # 测试双击卡片事件分发与模型应用
+        from PySide6.QtCore import QEvent, QPointF, Qt
+        from PySide6.QtGui import QMouseEvent
+
+        card = dialog._cards["GLM-5.3-Flash"]
+        card.set_result("ok", 0.5, "Snippet")
+        dbl_click = QMouseEvent(
+            QEvent.Type.MouseButtonDblClick,
+            QPointF(10, 10),
+            QPointF(10, 10),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        card.mouseDoubleClickEvent(dbl_click)
         assert settings.get("summarization.provider") == "amd"
         assert settings.get("summarization.amd_model") == "GLM-5.3-Flash"
         assert "GLM-5.3-Flash" in dialog._current_model_label.text()
@@ -335,3 +349,14 @@ def test_dialog_init_and_apply_model(qapp, monkeypatch):
         if orig_provider is not None:
             settings.set("summarization.provider", orig_provider)
         dialog.close()
+
+
+def test_dialog_reject_cleans_up_threads(qapp, monkeypatch):
+    """测试按 Esc (reject) 时安全清理后台线程。"""
+    settings = Settings()
+    monkeypatch.setattr(dlg_mod, "_MODEL_LIST_CACHE", [])
+    dialog = dlg_mod.AmdApiTestDialog(None, settings)
+    dialog._cleanup_background_threads = MagicMock()
+    dialog.reject()
+    dialog._cleanup_background_threads.assert_called_once()
+    dialog.close()

@@ -81,6 +81,28 @@ from src.i18n import (
 
 logger = get_logger(__name__)
 
+
+def _global_excepthook(exc_type, exc_value, exc_traceback):
+    """全局未捕获异常处理：记录 logs/crash.log，杜绝主线程 Qt 槽函数抛出异常时程序无声闪退。"""
+    import traceback
+
+    msg = "Unhandled exception in Qt GUI:\n" + "".join(
+        traceback.format_exception(exc_type, exc_value, exc_traceback)
+    )
+    logging.getLogger("video2text").critical(msg)
+    try:
+        log_dir = Path("logs")
+        log_dir.mkdir(parents=True, exist_ok=True)
+        with open(log_dir / "crash.log", "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.now()}] {msg}\n")
+    except Exception:
+        pass
+    if sys.__excepthook__ is not None:
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+
+
+sys.excepthook = _global_excepthook
+
 if getattr(sys, "frozen", False):
     _PROJECT_ROOT = Path(sys.executable).parent
 else:
@@ -222,6 +244,8 @@ class MainWindow(QMainWindow):
         self._segment_timer.timeout.connect(self._pump_segment_text)
         self._worker_thread: Optional[QThread] = None
         self._worker = None
+        self._stop_watchdog_timer: Optional[QTimer] = None
+        self._stop_state_step: int = 0
         self._result_viewer: Optional[ResultViewerWindow] = None
         self._current_mode = ""
         self._tx_success = 0
@@ -929,31 +953,10 @@ class MainWindow(QMainWindow):
         self.addToolBar(toolbar)
 
     def _show_about(self) -> None:
-        QMessageBox.about(
-            self,
-            t("about.title"),
-            "<div style='min-width:450px'>"
-            "<h2 style='margin-bottom:4px'>🎬 Video2Text</h2>"
-            f"<p style='color:#666;margin-top:0'>{t('about.version', version=APP_VERSION)}</p>"
-            "<hr>"
-            f"<p>{t('about.desc')}</p>"
-            "<hr>"
-            "<table style='font-size:13px'>"
-            f"<tr><td style='padding:2px 12px 2px 0;color:#888'>{t('about.author_label')}</td><td>{t('about.author_value')}</td></tr>"
-            f"<tr><td style='padding:2px 12px 2px 0;color:#888'>{t('about.license_label')}</td><td>{t('about.license_value')}</td></tr>"
-            f"<tr><td style='padding:2px 12px 2px 0;color:#888'>{t('about.tech_label')}</td><td>{t('about.tech_value')}</td></tr>"
-            f"<tr><td style='padding:2px 12px 2px 0;color:#888'>{t('about.email_label')}</td><td><a href='mailto:admin@video2text.dpdns.org'>admin@video2text.dpdns.org</a></td></tr>"
-            "</table>"
-            "<hr>"
-            "<p>"
-            f'<a href="https://github.com/fuyouling/video2text">{t("about.repo_link")}</a> · '
-            f'<a href="https://video2text.dpdns.org/en/docs/">{t("about.docs_link")}</a> · '
-            f'<a href="https://video2text.dpdns.org/">{t("about.website_link")}</a> · '
-            f'<a href="https://video2text.dpdns.org/zh/blog/access-github-download/">{t("about.netdisk_link")}</a>'
-            "</p>"
-            f"<p style='color:#999;font-size:12px'>{t('about.copyright')}</p>"
-            "</div>",
-        )
+        from src.ui.about_dialog import AboutDialog
+
+        dialog = AboutDialog(self)
+        dialog.exec()
 
     def _show_donate(self) -> None:
         from src.ui.donate_dialog import DonateDialog
@@ -1810,66 +1813,77 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage(t("main.transcribe_pause_waiting"))
 
     def _on_stop(self) -> None:
-        """立即停止当前的转写或总结任务：请求取消并退出工作线程。
+        """立即停止当前的转写或总结任务：非阻塞异步停止状态机。
 
         策略：
-        1. 立即设置取消标志，让 Worker 在下次检查时退出
-        2. 解除暂停状态（避免 Worker 卡在暂停循环中）
-        3. 等待线程自然退出（超时 5 秒）
-        4. 若仍卡死（faster-whisper 在 C 层挂起），使用 terminate() 强行终止
-        5. terminate() 后线程仍不退出的（Qt 6 中 terminate 是协作式请求，
-           对阻塞在 C 层/子进程中的线程不一定立即生效），**必须保留线程引用**，
-           等其自然结束后由 finished → _on_thread_finished 完成清理——否则
-           QThread 对象被垃圾回收时底层线程仍在运行，Qt 会直接终止整个进程
-           （"QThread: Destroyed while thread is still running"）。
+        1. 立即设置取消标志并解除暂停，让 Worker 在下次检查时退出
+        2. 禁用停止与暂停按钮，保持启动按钮禁用（直到 thread.finished -> _on_thread_finished 真正触发时才解禁）
+        3. 移除阻塞主线程的 wait(5000)，杜绝假死与未响应
+        4. 若线程已自然退出或可在 0ms 内返回，立即清理；否则启动异步状态机守护定时器（5秒 terminate，3秒提示延迟退出）
+        5. 保持 self._worker / self._worker_thread 引用，由 finished 信号完成最终清理，杜绝 QThread 提前析构崩溃
         """
         if self._worker is None or self._worker_thread is None:
             return
         get_logger("video2text").info(t("main.stop_requested"))
         self.status_bar.showMessage(t("main.stopping_task"))
-        if hasattr(self._worker, "cancel"):
-            self._worker.cancel()
-        if hasattr(self._worker, "unpause"):
-            self._worker.unpause()
-        if self._worker_thread.isRunning():
-            # 先等待 5 秒让 Worker 自然退出（检查取消标志后退出循环）
-            self._worker_thread.quit()
-            if not self._worker_thread.wait(5000):
-                get_logger("video2text").warning(
-                    t("main.stop_force_terminate")
-                )
-                self._worker_thread.terminate()
-                if not self._worker_thread.wait(3000):
-                    # 线程仍存活：不置空引用，保留 self._worker /
-                    # self._worker_thread，等线程自然结束后由
-                    # finished → _on_thread_finished 完成清理。
-                    get_logger("video2text").warning(t("main.stop_deferred"))
-                    self.status_bar.showMessage(
-                        t("main.stop_waiting_exit"), 8000
-                    )
-                    self.stop_btn.setEnabled(False)
-                    self.pause_btn.setEnabled(False)
-                    self._streaming_video = None
-                    self._segment_text_queue.clear()
-                    self._segment_timer.stop()
-                    # 确保界面从忙碌状态恢复
-                    self._set_busy_state(False)
-                    return
-        self._worker = None
-        self._worker_thread = None
         self.stop_btn.setEnabled(False)
         self.pause_btn.setEnabled(False)
         self._streaming_video = None
         self._segment_text_queue.clear()
         self._segment_timer.stop()
-        # 确保界面从忙碌状态恢复
+
+        if hasattr(self._worker, "cancel"):
+            self._worker.cancel()
+        if hasattr(self._worker, "unpause"):
+            self._worker.unpause()
+
+        if self._worker_thread.isRunning():
+            self._worker_thread.quit()
+            # 移除阻塞主线程的 wait(5000)，仅作快速等待（例如 500ms），若未退出则进入异步状态机
+            if not self._worker_thread.wait(500):
+                self._stop_state_step = 1
+                get_logger("video2text").warning(t("main.stop_deferred"))
+                self.status_bar.showMessage(t("main.stop_waiting_exit"), 8000)
+                if hasattr(self, "_stop_watchdog_timer") and self._stop_watchdog_timer is not None:
+                    self._stop_watchdog_timer.stop()
+                else:
+                    try:
+                        self._stop_watchdog_timer = QTimer(self)
+                    except (TypeError, RuntimeError):
+                        self._stop_watchdog_timer = QTimer()
+                    self._stop_watchdog_timer.setSingleShot(True)
+                    self._stop_watchdog_timer.timeout.connect(self._on_stop_watchdog_timeout)
+                self._stop_watchdog_timer.start(5000)
+                return
+
+        self._worker = None
+        self._worker_thread = None
         self._set_busy_state(False)
         self.status_bar.showMessage(t("main.task_stopped"))
+
+    def _on_stop_watchdog_timeout(self) -> None:
+        """异步停止状态机超时处理：5 秒未退出强行 terminate()，再 3 秒提示延迟退出。"""
+        if self._worker_thread is None or not self._worker_thread.isRunning():
+            return
+        if getattr(self, "_stop_state_step", 0) == 1:
+            get_logger("video2text").warning(t("main.stop_force_terminate"))
+            self._worker_thread.terminate()
+            self._stop_state_step = 2
+            if hasattr(self, "_stop_watchdog_timer") and self._stop_watchdog_timer is not None:
+                self._stop_watchdog_timer.start(3000)
+        elif getattr(self, "_stop_state_step", 0) == 2:
+            if self._worker_thread.isRunning():
+                get_logger("video2text").warning(t("main.stop_deferred"))
+                self.status_bar.showMessage(t("main.stop_waiting_exit"), 8000)
 
     # ── 仅转写 ──
 
     def _on_transcribe(self) -> None:
         """「仅转写」按钮点击处理：校验输入 → 清空结果 → 启动转写线程。"""
+        if self._worker_thread is not None and self._worker_thread.isRunning():
+            QMessageBox.warning(self, t("common.hint"), t("main.task_running_warning"))
+            return
+
         if not self._video_files:
             QMessageBox.warning(self, t("common.hint"), t("main.no_input_dialog"))
             return
@@ -2028,6 +2042,10 @@ class MainWindow(QMainWindow):
     # ── 仅总结 ──
 
     def _on_summarize(self) -> None:
+        if self._worker_thread is not None and self._worker_thread.isRunning():
+            QMessageBox.warning(self, t("common.hint"), t("main.task_running_warning"))
+            return
+
         output_dir = self._get_output_dir()
         video_files: list[str] = list(self._video_files)
 
@@ -2119,6 +2137,10 @@ class MainWindow(QMainWindow):
 
     def _on_pipeline(self) -> None:
         """「转写总结」按钮点击处理：校验输入 → 启动管道线程（先转写后总结）。"""
+        if self._worker_thread is not None and self._worker_thread.isRunning():
+            QMessageBox.warning(self, t("common.hint"), t("main.task_running_warning"))
+            return
+
         if not self._video_files:
             QMessageBox.warning(self, t("common.hint"), t("main.no_input_dialog"))
             return
@@ -2203,18 +2225,32 @@ class MainWindow(QMainWindow):
         elif phase == "transcribe":
             self.status_bar.showMessage(t("main.phase_switch_transcribe"))
 
-    def _on_confirm_download(self) -> None:
-        worker = self._worker
-        if worker is None:
+    def _on_confirm_download(self, worker: Optional[object] = None) -> None:
+        target_worker = worker if worker is not None else self._worker
+        if target_worker is None:
             return
+        from src.utils.model_downloader import DEFAULT_MODEL_NAME, get_model_display_name
+
+        model_key = getattr(target_worker, "_download_model_name", "")
+        if not model_key:
+            engine = self.settings.get("transcription.engine", "faster-whisper").lower().strip()
+            if engine in ("funasr", "paraformer"):
+                model_key = self.settings.get("transcription.funasr_model", "paraformer-large-vad-punc")
+            else:
+                model_key = self.settings.get("transcription.whisper_model") or self.settings.get(
+                    "transcription.model_path", DEFAULT_MODEL_NAME
+                )
+
+        model_display = get_model_display_name(model_key)
         reply = QMessageBox.question(
             self,
             t("main.confirm_download_title"),
-            t("main.confirm_download_msg"),
+            t("main.confirm_download_msg", model=model_display),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
-        worker.set_download_confirmed(reply == QMessageBox.StandardButton.Yes)
+        if hasattr(target_worker, "set_download_confirmed"):
+            target_worker.set_download_confirmed(reply == QMessageBox.StandardButton.Yes)
 
 
     # ── Nvidia API 响应测试（逻辑全部在 nvidia_api_test_dialog 中，此处仅入口） ──
@@ -2243,6 +2279,9 @@ class MainWindow(QMainWindow):
         sender = self.sender()
         if sender is not None and sender is not self._worker_thread:
             return
+
+        if hasattr(self, "_stop_watchdog_timer") and self._stop_watchdog_timer is not None:
+            self._stop_watchdog_timer.stop()
 
         self._set_busy_state(False)
 
@@ -2310,44 +2349,32 @@ class MainWindow(QMainWindow):
         )
         video_files = list(self._completed_names)
 
-        if self._result_viewer is None or not self._result_viewer.isVisible():
-            self._result_viewer = ResultViewerWindow()
-            # 先设置最大化窗口状态，确保首次 show() 即为最大化，
-            # 避免 showMaximized()「先以普通尺寸 show、再最大化」导致的小窗口闪烁。
-            self._result_viewer.setWindowState(Qt.WindowState.WindowMaximized)
-            # 强制创建原生 HWND（窗口仍隐藏），使 Windows 使用 resize(1400,900) 的几何信息
-            # 而非 CW_USEDEFAULT 默认小尺寸。
-            self._result_viewer.winId()
-            self._result_viewer.load_files(
-                video_files,
-                output_dir,
-                folder_mode=self._mirror_subdirs,
-                name_to_dir=self._name_to_output_dir,
-            )
-            # 以完全透明显示并强制同步绘制首帧到后台缓冲，再恢复不透明，
-            # 消除 Windows DWM 首帧默认白底/小窗一闪而过的现象。
-            # try/finally 确保即使 repaint/processEvents 期间抛出异常，
-            # 也不会留下一个永久透明（不可见但占用焦点）的窗口。
-            self._result_viewer.setWindowOpacity(0.0)
+        is_valid = False
+        if self._result_viewer is not None:
             try:
-                self._result_viewer.show()
-                self._result_viewer.repaint()
-                QApplication.processEvents()
-            finally:
-                self._result_viewer.setWindowOpacity(1.0)
-            self._result_viewer.raise_()
-            self._result_viewer.activateWindow()
-        else:
-            # 窗口已打开时同样刷新文件列表与输出目录，避免新完成的视频
-            # 或切换输出目录后仍显示旧快照。
-            self._result_viewer.load_files(
-                video_files,
-                output_dir,
-                folder_mode=self._mirror_subdirs,
-                name_to_dir=self._name_to_output_dir,
-            )
-            self._result_viewer.raise_()
-            self._result_viewer.activateWindow()
+                _ = self._result_viewer.windowTitle()
+                is_valid = True
+            except RuntimeError:
+                self._result_viewer = None
+                is_valid = False
+
+        if not is_valid:
+            self._result_viewer = ResultViewerWindow()
+            self._result_viewer.setWindowState(Qt.WindowState.WindowMaximized)
+            self._result_viewer.winId()
+
+        self._result_viewer.load_files(
+            video_files,
+            output_dir,
+            folder_mode=self._mirror_subdirs,
+            name_to_dir=self._name_to_output_dir,
+        )
+
+        if not self._result_viewer.isVisible():
+            self._result_viewer.show()
+
+        self._result_viewer.raise_()
+        self._result_viewer.activateWindow()
 
     def _show_file_context_menu(self, pos) -> None:
         item = self.file_list.itemAt(pos)
@@ -2502,6 +2529,10 @@ class MainWindow(QMainWindow):
         self._search_controller.refresh_if_active()
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        if hasattr(self, "_stop_watchdog_timer") and self._stop_watchdog_timer is not None:
+            self._stop_watchdog_timer.stop()
+        if hasattr(self, "_segment_timer") and self._segment_timer is not None:
+            self._segment_timer.stop()
         # ── 后台线程停止：任何情况下都不能在 QThread 仍运行时释放其引用，
         #    否则 Qt 会直接终止整个进程（"QThread: Destroyed while thread is
         #    still running"）。若线程无法在超时内停止（terminate 为协作式请求，

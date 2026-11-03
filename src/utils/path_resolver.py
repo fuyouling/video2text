@@ -4,7 +4,7 @@
 - 去除输入框可能夹带的引号 / 首尾空白
 - 相对路径基于程序基目录解析（与 config.ini 中 ``output.output_dir`` 的解析基准一致）
 - 用 ``normpath`` + ``normcase`` 做跨平台规范化与去重比较
-- 对 Windows 非法字符与超长路径做基础校验
+- 对 Windows 非法字符、保留设备名与超长路径做安全处理
 """
 
 import os
@@ -21,10 +21,36 @@ logger = get_logger(__name__)
 _ILLEGAL_NAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _MAX_PATH = 259
 
+# Windows 保留设备名称
+_WINDOWS_RESERVED_NAMES = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
+
 
 def normalize_path_key(path: str) -> str:
     """用于比较 / 去重的规范化键（不要求路径存在）。"""
     return os.path.normpath(os.path.normcase(path))
+
+
+def to_long_path(path: str | Path) -> str:
+    """Windows 下超过 259 字符时添加 \\\\?\\ 前缀以支持长路径。"""
+    path_str = str(path)
+    if os.name != "nt":
+        return path_str
+    if path_str.startswith("\\\\?\\"):
+        return path_str
+    norm = os.path.normpath(path_str)
+    if len(norm) > _MAX_PATH:
+        abs_path = os.path.abspath(norm)
+        if abs_path.startswith(r"\\"):
+            return "\\\\?\\UNC\\" + abs_path[2:]
+        return "\\\\?\\" + abs_path
+    return path_str
 
 
 def resolve_output_path(text: str, base_dir: Path | None = None) -> str:
@@ -34,6 +60,7 @@ def resolve_output_path(text: str, base_dir: Path | None = None) -> str:
     - 去引号、去首尾空白
     - ``~`` 展开为当前用户主目录
     - 相对路径基于 ``base_dir``（默认程序基目录）；绝对路径原样保留
+    - 超过 259 字符的路径自动转换长路径前缀
     """
     if not text:
         return ""
@@ -43,19 +70,34 @@ def resolve_output_path(text: str, base_dir: Path | None = None) -> str:
     p = Path(s).expanduser()
     if not p.is_absolute():
         p = (base_dir or get_base_dir()) / s
-    return str(p)
+    res = str(p)
+    if is_path_too_long(res):
+        res = to_long_path(res)
+    return res
 
 
 def sanitize_filename(name: str) -> str:
-    """把任意字符串清洗成合法的单个文件名（不含扩展名）。"""
+    """把任意字符串清洗成合法的单个文件名（不含扩展名）。
+
+    对 Windows 保留设备名（CON, PRN, AUX, NUL, COM1-9, LPT1-9）进行安全前缀转换。
+    """
     cleaned = _ILLEGAL_NAME_CHARS.sub("_", name)
     # 去除首尾空格与 Windows 保留的尾点
     cleaned = cleaned.strip().rstrip(".")
-    return cleaned or "untitled"
+    if not cleaned:
+        return "untitled"
+
+    # Windows 保留设备名安全前缀转换
+    stem = cleaned.split(".")[0].upper()
+    if stem in _WINDOWS_RESERVED_NAMES:
+        cleaned = f"_{cleaned}"
+    return cleaned
 
 
 def is_path_too_long(path: str) -> bool:
     """Windows 下未启用长路径支持时，完整路径（含盘符）超过 259 字符会失败。"""
+    if str(path).startswith("\\\\?\\"):
+        return False
     return len(os.path.normpath(path)) > _MAX_PATH
 
 
@@ -72,4 +114,5 @@ def validate_output_dir(text: str, base_dir: Path | None = None) -> tuple[bool, 
         return False, resolved
     if is_path_too_long(resolved):
         logger.warning(t("path_resolver.path_too_long", max=_MAX_PATH, path=resolved))
+        resolved = to_long_path(resolved)
     return True, resolved

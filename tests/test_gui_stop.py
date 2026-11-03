@@ -71,6 +71,8 @@ def _make_window() -> MainWindow:
     w.progress_label = MagicMock()
     w._save_fail_records = MagicMock()
     w._set_busy_state = MagicMock()
+    w._stop_watchdog_timer = MagicMock()
+    w._stop_state_step = 0
     return w
 
 
@@ -93,33 +95,31 @@ class TestGuiStop:
     def test_normal_path_cleans_up_immediately(self):
         """worker 快速响应取消：_on_stop 等待线程退出后立即清理引用"""
         w = _make_window()
-        worker = _StubWorker(hold_seconds=0.2)
-        thread = _start(w, worker, hold=0.2, connect_finished=False)
-        time.sleep(0.05)
+        worker = _StubWorker(hold_seconds=0.05)
+        thread = _start(w, worker, hold=0.05, connect_finished=False)
+        time.sleep(0.01)
 
         w._on_stop()
         assert w._worker_thread is None
         assert w._worker is None
 
         # 等线程真正结束，避免测试退出时 QThread 析构崩溃
-        deadline = time.monotonic() + 5.0
+        deadline = time.monotonic() + 2.0
         while time.monotonic() < deadline and thread.isRunning():
             _qapp().processEvents()
-            time.sleep(0.02)
+            time.sleep(0.01)
         assert not thread.isRunning()
 
-    def test_deferred_path_keeps_refs_then_cleans_up(self):
+    def test_deferred_path_keeps_refs_then_cleans_up(self, monkeypatch):
         """线程无法在超时内停止：保留引用直到线程自然结束，不崩溃。
 
-        这是修复前的崩溃场景：_on_stop 直接置空引用，QThread 对象被 GC
-        析构时底层线程仍在运行，Qt 会终止整个进程。
-        （_on_thread_finished 的真实清理逻辑由复现脚本与 review 验证；
-        此处不连接它，避免 __new__ 测试脚手架触发 sender() 报错。）
+        Mock thread.wait 模拟超时，消除 11 秒阻塞死等。
         """
         w = _make_window()
-        worker = _StubWorker(hold_seconds=10.0)
-        thread = _start(w, worker, hold=10.0, connect_finished=False)
-        time.sleep(1.0)  # 让 worker 跑起来
+        worker = _StubWorker(hold_seconds=0.1)
+        thread = _start(w, worker, hold=0.1, connect_finished=False)
+        monkeypatch.setattr(thread, "wait", lambda *args, **kwargs: False)
+        time.sleep(0.01)
 
         w._on_stop()
         # deferred 分支：引用必须保留（线程仍在后台运行），否则 GC 析构崩溃
@@ -130,10 +130,10 @@ class TestGuiStop:
         assert thread.isRunning()
 
         # 等待线程自然结束后，引用才可安全清理（测试进程正常退出即验证无崩溃）
-        deadline = time.monotonic() + 15.0
+        deadline = time.monotonic() + 3.0
         while time.monotonic() < deadline and thread.isRunning():
             _qapp().processEvents()
-            time.sleep(0.02)
+            time.sleep(0.01)
         assert not thread.isRunning()
         w._worker = None
         w._worker_thread = None

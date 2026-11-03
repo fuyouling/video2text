@@ -1,6 +1,8 @@
 """验证器"""
 
+import os
 import shutil
+import sys
 from pathlib import Path
 from typing import Optional, List
 from src.i18n import t
@@ -159,10 +161,22 @@ def validate_float_range(
     return float(value)
 
 
+def _is_executable_file(p: Path) -> bool:
+    """检查文件是否具有真实的可执行属性。"""
+    if not p.is_file():
+        return False
+    if sys.platform == "win32":
+        pathext = os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(";")
+        valid_exts = {ext.strip().upper() for ext in pathext if ext.strip()}
+        return p.suffix.upper() in valid_exts
+    return os.access(p, os.X_OK)
+
+
 def validate_executable_path(path: str, name: str = "executable") -> str:
     """验证可执行文件路径的安全性
 
     检查路径中是否包含危险字符，确保指向真实的可执行文件。
+    在 Windows 下结合 %PATHEXT% 校验，POSIX 下结合 os.X_OK 权限校验。
 
     Args:
         path: 可执行文件路径
@@ -172,7 +186,7 @@ def validate_executable_path(path: str, name: str = "executable") -> str:
         解析后的绝对路径
 
     Raises:
-        ConfigurationError: 路径不安全或文件不存在
+        ConfigurationError: 路径不安全、文件不存在或不可执行
     """
     if not path or not path.strip():
         raise ConfigurationError(t("errors.path_empty", name=name))
@@ -196,14 +210,16 @@ def validate_executable_path(path: str, name: str = "executable") -> str:
         if ch in path:
             raise ConfigurationError(t("errors.path_unsafe", name=name, ch=ch, path=path))
 
-    # 通过 shutil.which 解析（自动检查 PATH 和可执行权限）
+    # 通过 shutil.which 解析（自动检查 PATH 与可执行扩展名/权限）
     resolved = shutil.which(path)
     if resolved:
-        return resolved
+        res_p = Path(resolved)
+        if _is_executable_file(res_p):
+            return str(res_p.resolve())
 
-    # 如果 which 找不到，检查文件是否实际存在
+    # 如果 which 找不到或未通过，检查是否为显式文件路径且具备可执行属性
     p = Path(path)
-    if p.exists() and p.is_file():
+    if p.exists() and _is_executable_file(p):
         return str(p.resolve())
 
     raise ConfigurationError(t("errors.path_unavailable", name=name, path=path))

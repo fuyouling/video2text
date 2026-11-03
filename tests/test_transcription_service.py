@@ -1,11 +1,10 @@
 """TranscriptionService 单元测试"""
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.services.transcription_service import TranscriptionService, TranscribeResult
+from src.services.transcription_service import TranscriptionService
 from src.transcription.transcriber import TranscriptSegment
 
 
@@ -86,9 +85,11 @@ class TestTranscriptionService:
             duration = service._get_chunk_duration(chunk)
         assert duration == 5.0
 
-    def test_get_chunk_duration_fallback_to_segments(self, service, tmp_path):
-        chunk = tmp_path / "chunk.wav"
-        chunk.write_bytes(b"\x00" * 100)
+    def test_get_chunk_duration_fallback_to_segments_when_file_read_fails(
+        self, service, tmp_path
+    ):
+        # When file does not exist or stat fails, fallback to segments max_end
+        chunk = tmp_path / "nonexistent_chunk.wav"
         service.video_processor.ffprobe_path = "ffprobe"
 
         seg = MagicMock()
@@ -99,6 +100,19 @@ class TestTranscriptionService:
             mock_sub.CREATE_NO_WINDOW = 0
             duration = service._get_chunk_duration(chunk, segments=[seg])
         assert duration == 3.5
+
+    def test_get_chunk_duration_silent_chunk_not_zero(self, service, tmp_path):
+        # 彻底移除 if segments is not None and not segments: return 0.0
+        # 静音切片（segments 为空列表）不能直接返回 0.0，而应通过 ffprobe 或物理文件大小获取真实时长
+        chunk = tmp_path / "chunk.wav"
+        chunk.write_bytes(b"\x00" * (44 + 32000))  # 1.0 sec
+        service.video_processor.ffprobe_path = "ffprobe"
+
+        with patch("src.services.transcription_service.subprocess") as mock_sub:
+            mock_sub.run.return_value = MagicMock(stdout="5.0\n", returncode=0)
+            mock_sub.CREATE_NO_WINDOW = 0
+            duration = service._get_chunk_duration(chunk, segments=[])
+        assert duration == 5.0
 
     def test_get_chunk_duration_fallback_to_file_size(self, service, tmp_path):
         chunk = tmp_path / "chunk.wav"
@@ -140,7 +154,8 @@ class TestTranscriptionService:
         assert service._estimate_transcribe_time(10.0) is None
 
     def test_estimate_returns_none_when_below_threshold(self, service, tmp_path):
-        import json, time
+        import json
+        import time
 
         service._history_file = tmp_path / "history.json"
         now = time.time()
@@ -168,7 +183,8 @@ class TestTranscriptionService:
         assert service._estimate_transcribe_time(10.0) is None
 
     def test_estimate_returns_value_when_enough_samples(self, service, tmp_path):
-        import json, time
+        import json
+        import time
 
         service._history_file = tmp_path / "history.json"
         now = time.time()
@@ -206,7 +222,8 @@ class TestTranscriptionService:
         assert result == pytest.approx(5.0, rel=0.1)
 
     def test_estimate_recent_records_have_higher_weight(self, service, tmp_path):
-        import json, time
+        import json
+        import time
 
         service._history_file = tmp_path / "history.json"
         now = time.time()
@@ -280,7 +297,8 @@ class TestTranscriptionService:
         assert result == pytest.approx(5.0, rel=0.01)
 
     def test_save_history_record_includes_timestamp(self, service, tmp_path):
-        import json, time
+        import json
+        import time
 
         service._history_file = tmp_path / "history.json"
         before = time.time()
@@ -293,3 +311,70 @@ class TestTranscriptionService:
         ts = records[0].get("timestamp")
         assert ts is not None
         assert before <= ts <= after
+
+    def test_estimate_audio_duration_non_positive_returns_none(self, service):
+        assert service._estimate_transcribe_time(0.0) is None
+        assert service._estimate_transcribe_time(-5.0) is None
+
+    def test_estimate_very_old_samples_weight_lower_bound(self, service, tmp_path):
+        import json
+        import time
+
+        service._history_file = tmp_path / "history.json"
+        now = time.time()
+        # 10 years ago (would decay to 1e-36 without min clamp 1e-4)
+        very_old = now - 3650 * 86400
+        records = [
+            {
+                "model": "large-v3",
+                "device": "cpu",
+                "compute_type": "int8",
+                "audio_duration": 10.0,
+                "transcribe_time": 5.0,
+                "timestamp": very_old,
+            },
+            {
+                "model": "large-v3",
+                "device": "cpu",
+                "compute_type": "int8",
+                "audio_duration": 10.0,
+                "transcribe_time": 5.0,
+                "timestamp": very_old,
+            },
+            {
+                "model": "large-v3",
+                "device": "cpu",
+                "compute_type": "int8",
+                "audio_duration": 10.0,
+                "transcribe_time": 5.0,
+                "timestamp": very_old,
+            },
+        ]
+        service._history_file.write_text(
+            json.dumps({"records": records}), encoding="utf-8"
+        )
+        res = service._estimate_transcribe_time(10.0)
+        assert res is not None
+        assert res == pytest.approx(5.0)
+
+    def test_chunked_transcription_cancellation_raises(self, service, tmp_path):
+        from src.utils.exceptions import TranscriptionCancelledError
+
+        service.max_chunk_duration = 5
+        service._checkpoint_dir = tmp_path / ".checkpoint"
+        service._checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        chunk_file = tmp_path / "chunk_000.wav"
+        chunk_file.write_bytes(b"\x00" * 100)
+
+        service.cancel_check = MagicMock(return_value=True)
+
+        with patch.object(service.video_processor, "_run_ffmpeg_with_cancel") as mock_split:
+            mock_split.return_value = MagicMock(returncode=0)
+            with patch("pathlib.Path.glob", return_value=[chunk_file]):
+                with pytest.raises(TranscriptionCancelledError):
+                    service._transcribe_chunked(
+                        audio_path=chunk_file,
+                        video_name="test_vid",
+                        video_path=str(chunk_file),
+                        output_dir=str(tmp_path),
+                    )

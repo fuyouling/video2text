@@ -4,6 +4,7 @@ from pathlib import Path
 from src.i18n import t
 from typing import Callable, Optional
 
+from PySide6.QtCore import QTimer
 from PySide6.QtGui import QColor, QIcon, QTextCursor
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -54,6 +55,11 @@ class SearchController(QWidget):
         self._match_positions: list[tuple[int, int]] = []
         self._current_match_index: int = -1
 
+        self._debounce_timer = QTimer(self)
+        self._debounce_timer.setSingleShot(True)
+        self._debounce_timer.setInterval(250)
+        self._debounce_timer.timeout.connect(self._find_all_matches)
+
         self._init_ui()
         self.setVisible(False)
 
@@ -68,7 +74,7 @@ class SearchController(QWidget):
         self._search_input.setPlaceholderText(t("search.find_placeholder"))
         self._search_input.setClearButtonEnabled(True)
         self._search_input.returnPressed.connect(self._find_next)
-        self._search_input.textChanged.connect(self._find_all_matches)
+        self._search_input.textChanged.connect(self._on_search_text_changed)
         search_row.addWidget(self._search_input, 1)
 
         prev_btn = QPushButton()
@@ -145,15 +151,21 @@ class SearchController(QWidget):
         elif self._search_input.text():
             self._find_all_matches()
 
+    MAX_HIGHLIGHTS = 1000
+
     def hide(self) -> None:
         if not self.isVisible():
             return
+        if self._debounce_timer.isActive():
+            self._debounce_timer.stop()
         super().setVisible(False)
         self._clear_all_highlights()
         self._match_positions = []
         self._current_match_index = -1
 
     def clear_state(self) -> None:
+        if self._debounce_timer.isActive():
+            self._debounce_timer.stop()
         self._match_positions = []
         self._current_match_index = -1
         self._search_input.clear()
@@ -165,6 +177,15 @@ class SearchController(QWidget):
             self._find_all_matches()
 
     # ── 内部逻辑 ──
+
+    def _on_search_text_changed(self, text: str) -> None:
+        """输入内容变更：清空或启动 250ms 防抖定时器，消除长文本输入卡顿。"""
+        if not text:
+            if self._debounce_timer.isActive():
+                self._debounce_timer.stop()
+            self._find_all_matches()
+        else:
+            self._debounce_timer.start(250)
 
     def _find_all_matches(self) -> None:
         self._clear_all_highlights()
@@ -213,7 +234,18 @@ class SearchController(QWidget):
         edit = self._get_active_edit()
         document = edit.document()
         selections = []
-        for i, (start, end) in enumerate(self._match_positions):
+
+        total_matches = len(self._match_positions)
+        if total_matches <= self.MAX_HIGHLIGHTS:
+            indices = range(total_matches)
+        else:
+            # 超出上限时，高亮当前匹配项周围最多 MAX_HIGHLIGHTS 项
+            half = self.MAX_HIGHLIGHTS // 2
+            start_idx = max(0, min(self._current_match_index - half, total_matches - self.MAX_HIGHLIGHTS))
+            indices = range(start_idx, start_idx + self.MAX_HIGHLIGHTS)
+
+        for i in indices:
+            start, end = self._match_positions[i]
             sel = QTextEdit.ExtraSelection()
             sel.format.setBackground(
                 current_color if i == self._current_match_index else normal_color
@@ -244,6 +276,10 @@ class SearchController(QWidget):
         self._count_label.setText(f"{index + 1} / {total}")
 
     def _find_next(self) -> None:
+        if self._debounce_timer.isActive():
+            self._debounce_timer.stop()
+            self._find_all_matches()
+            return
         if not self._match_positions:
             self._find_all_matches()
             return
@@ -253,6 +289,10 @@ class SearchController(QWidget):
         self._goto_match(self._current_match_index)
 
     def _find_prev(self) -> None:
+        if self._debounce_timer.isActive():
+            self._debounce_timer.stop()
+            self._find_all_matches()
+            return
         if not self._match_positions:
             self._find_all_matches()
             return
@@ -269,10 +309,12 @@ class SearchController(QWidget):
         edit = self._get_active_edit()
         cursor = edit.textCursor()
         cursor.beginEditBlock()
-        cursor.setPosition(start)
-        cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
-        cursor.insertText(replace_text)
-        cursor.endEditBlock()
+        try:
+            cursor.setPosition(start)
+            cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+            cursor.insertText(replace_text)
+        finally:
+            cursor.endEditBlock()
         self._find_all_matches()
 
     def _replace_all(self) -> None:
@@ -286,18 +328,20 @@ class SearchController(QWidget):
         edit_cursor.beginEditBlock()
         count = 0
         pos = 0
-        while True:
-            found = document.find(search_text, pos)
-            if found.isNull():
-                break
-            edit_cursor.setPosition(found.selectionStart())
-            edit_cursor.setPosition(
-                found.selectionEnd(), QTextCursor.MoveMode.KeepAnchor
-            )
-            edit_cursor.insertText(replace_text)
-            count += 1
-            pos = edit_cursor.position()
-        edit_cursor.endEditBlock()
+        try:
+            while True:
+                found = document.find(search_text, pos)
+                if found.isNull():
+                    break
+                edit_cursor.setPosition(found.selectionStart())
+                edit_cursor.setPosition(
+                    found.selectionEnd(), QTextCursor.MoveMode.KeepAnchor
+                )
+                edit_cursor.insertText(replace_text)
+                count += 1
+                pos = edit_cursor.position()
+        finally:
+            edit_cursor.endEditBlock()
         self._match_positions = []
         self._current_match_index = -1
         self._clear_all_highlights()

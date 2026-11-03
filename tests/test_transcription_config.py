@@ -116,6 +116,52 @@ class TestLoadTxConfig:
         tc = _load_tx_config(s)
         assert tc.vad_parameters is None
 
+    def test_lower_bound_clamping(self, tmp_path):
+        s = _settings_with(
+            tmp_path,
+            "[transcription]\n"
+            "whisper_beam_size = 0\n"
+            "whisper_best_of = -5\n"
+            "whisper_num_workers = 0\n"
+            "[preprocessing]\n"
+            "max_chunk_duration = -100\n",
+        )
+        tc = _load_tx_config(s)
+        assert tc.beam_size == 1
+        assert tc.best_of == 1
+        assert tc.num_workers == 1
+        assert tc.max_chunk_duration == 1
+
+    def test_direct_instantiation_clamp_and_type_annotations(self):
+        tc = TranscriptionConfig(
+            language="zh",
+            model_path="dummy",
+            device="cpu",
+            compute_type="int8",
+            beam_size=-2,
+            best_of=0,
+            temperature=[0.0],
+            condition_on_previous_text=False,
+            word_timestamps=False,
+            max_chunk_duration=0,
+            output_formats=["txt"],
+            vad_filter=False,
+            vad_parameters=None,
+            initial_prompt="",
+            hotwords="",
+            compression_ratio_threshold=2.4,
+            log_prob_threshold=-1.0,
+            no_speech_threshold=0.6,
+            repetition_penalty=1.0,
+            no_repeat_ngram_size=0,
+            num_workers=0,
+        )
+        assert tc.beam_size == 1
+        assert tc.best_of == 1
+        assert tc.num_workers == 1
+        assert tc.max_chunk_duration == 1
+        assert tc.vad_parameters is None
+
 
 class TestTranscriptionServicePassthrough:
     @pytest.fixture

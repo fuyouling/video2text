@@ -1144,7 +1144,8 @@ class AmdApiTestDialog(QDialog):
             )
         )
 
-    def closeEvent(self, event) -> None:  # noqa: N802 (Qt 命名)
+    def _cleanup_background_threads(self) -> None:
+        """安全注销并中断后台模型拉取与测试线程，防止后台线程悬挂导致崩溃或死锁。"""
         if self._list_fetcher is not None and self._list_fetcher.isRunning():
             fetcher = self._list_fetcher
             self._list_fetcher = None
@@ -1155,4 +1156,12 @@ class AmdApiTestDialog(QDialog):
                 pass
             _ORPHAN_FETCHERS.add(fetcher)
         self._shutdown_worker()
+
+    def reject(self) -> None:
+        """按 Esc 键或关闭按钮时安全中断后台线程。"""
+        self._cleanup_background_threads()
+        super().reject()
+
+    def closeEvent(self, event) -> None:  # noqa: N802 (Qt 命名)
+        self._cleanup_background_threads()
         super().closeEvent(event)

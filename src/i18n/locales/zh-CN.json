@@ -192,7 +192,7 @@
     "phase_switch_summarize": "正在切换到总结阶段...",
     "phase_switch_transcribe": "正在转写阶段...",
     "confirm_download_title": "模型下载确认",
-    "confirm_download_msg": "建议使用网盘中已下载好的模型，HuggingFace 一般不可直连。\n\n如需使用其它模型，请把核心文件复制到 models 目录再到配置中更改模型路径。\n\n是否开始下载模型？",
+    "confirm_download_msg": "检测到本地缺少转写模型：{model}。\n\n是否开始自动下载？\n如无法下载，可从网盘下载对应模型并手动放入 models 目录。",
     "pipeline_done_tx": "转写完成 — 成功: {ok}, 失败: {fail}",
     "pipeline_done_sum": "总结完成 — 成功: {ok}, 失败: {fail}",
     "pipeline_done_both": "转写: 成功 {tx_ok} / 失败 {tx_fail} | 总结: 成功 {sum_ok} / 失败 {sum_fail}",
@@ -257,19 +257,24 @@
   "about": {
     "title": "关于 Video2Text",
     "version": "版本 {version} · 音视频转文本工具",
-    "desc": "基于 <b>faster-whisper</b> 的高精度语音转写和智能总结工具。",
+    "desc": "基于 <b>faster-whisper</b> 与 <b>FunASR</b> 的高精度音视频转文字与 AI 智能总结工具，支持本地硬件加速与大模型会议纪要提炼。",
     "author_label": "作者",
     "author_value": "喵王龙",
     "license_label": "许可证",
     "license_value": "GNU GPL v3",
     "tech_label": "技术栈",
-    "tech_value": "faster-whisper · PySide6",
+    "tech_value": "faster-whisper · FunASR · PySide6 · LLM",
     "email_label": "邮箱",
     "repo_link": "GitHub 仓库",
     "docs_link": "使用文档",
     "website_link": "官方网站",
     "netdisk_link": "网盘地址",
-    "copyright": "版权所有 © 2026 喵王龙"
+    "copyright": "版权所有 © 2026 喵王龙",
+    "qq_group_label": "QQ交流群",
+    "qq_group_value": "296875960",
+    "copy_btn": "复制",
+    "copied": "已复制",
+    "copy_tooltip": "点击复制群号到剪贴板"
   },
   "status": {
     "config_saved": "配置已保存",
@@ -290,13 +295,13 @@
     "dep": {
       "title": "依赖下载确认",
       "intro": "检测到以下运行依赖不完整，转写功能可能无法正常工作。\n请选择需要下载的项目（也可点击「取消」跳过，之后在「设置」中手动处理）：",
-      "model_group": "语音识别模型",
+      "model_group": "语音识别模型（任选一种即可）",
       "model_yes": "是，下载模型（首次使用必需）",
       "model_no": "否，跳过（转写将无法运行）",
       "model_ready": "✓ 模型已完整，无需处理",
       "whisper_opt": "下载 Faster-Whisper (多语种通用, Large-v3-Turbo, ~1.4GB)",
       "whisper_ready": "✓ Faster-Whisper 模型已完整",
-      "funasr_opt": "下载 FunASR Paraformer (中文高精度, ~540MB, 国内ModelScope源)",
+      "funasr_opt": "下载 FunASR Paraformer",
       "funasr_ready": "✓ FunASR Paraformer 模型已完整",
       "dll_group": "DLL 依赖（cuBLAS / cuDNN，用于 GPU 加速）",
       "dll_yes": "是，下载 DLL（推荐有独显的用户）",
@@ -304,7 +309,8 @@
       "keep_label": "下载后：",
       "keep_yes": "保留压缩包",
       "keep_no": "删除（节省空间）",
-      "dll_ready": "✓ DLL 已完整，无需处理"
+      "dll_ready": "✓ DLL 已完整，无需处理",
+      "cancel_launch": "取消，直接启动"
     },
     "file_select": {
       "title": "选择音视频文件",
@@ -1299,7 +1305,9 @@
     "detected_language": "Transcriber: 检测到语言: {lang} (置信度: {prob})",
     "transcribe_done": "Transcriber: 转写完成，共 {count} 个段落",
     "fallback_retry_failed": "回退 {ct} 失败: {error}",
-    "cpu_fallback_retry_failed": "CPU 回退 {ct} 失败: {error}"
+    "cpu_fallback_retry_failed": "CPU 回退 {ct} 失败: {error}",
+    "model_download_failed": "模型下载失败或模型文件不完整",
+    "transcribe_cancelled": "用户取消了转写"
   },
   "transcription_prompt_manager": {
     "load_failed": "TranscriptionPromptManager: ✗ 加载失败 ({name})",

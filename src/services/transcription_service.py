@@ -6,7 +6,6 @@ import os
 import shutil
 import math
 import subprocess
-import sys
 import tempfile
 import threading
 import time
@@ -308,7 +307,7 @@ class TranscriptionService:
                 output_paths=output_paths,
             )
 
-        except Exception as e:
+        except Exception:
             # log_error_with_context(__name__, "转写流程", e, video_path)
             raise
         finally:
@@ -506,7 +505,8 @@ class TranscriptionService:
                     )
                 except TranscriptionCancelledError:
                     # 用户取消：不当作切片失败记录断点，直接中断整个转写
-                    raise
+                    cancelled = True
+                    break
                 except Exception as chunk_err:
                     logger.warning(
                         "  ├─ " + t("services.transcription.chunk_failed", current=idx + 1, total=total_chunks, error=chunk_err),
@@ -563,6 +563,9 @@ class TranscriptionService:
             else:
                 checkpoint_file.unlink(missing_ok=True)
 
+            if cancelled:
+                raise TranscriptionCancelledError(t("services.transcription.user_cancelled"))
+
             return all_segments
 
         finally:
@@ -580,8 +583,6 @@ class TranscriptionService:
         Returns:
             切片时长（秒）
         """
-        if segments is not None and not segments:
-            return 0.0
         try:
             result = subprocess.run(
                 [
@@ -607,12 +608,6 @@ class TranscriptionService:
         except Exception:
             logger.info("  ├─ ⚠ " + t("services.transcription.ffprobe_failed"))
 
-        if segments:
-            max_end = max(seg.end for seg in segments)
-            if max_end > 0:
-                logger.info("  ├─ " + t("services.transcription.estimate_from_segments", value=round(max_end, 1)))
-                return max_end
-
         try:
             file_size = chunk_path.stat().st_size
             wav_data_size = file_size - 44
@@ -621,8 +616,14 @@ class TranscriptionService:
                 duration_from_size = wav_data_size / byte_rate
                 logger.info("  ├─ " + t("services.transcription.estimate_from_size", value=round(duration_from_size, 1)))
                 return duration_from_size
-        except OSError:
+        except (OSError, Exception):
             pass
+
+        if segments:
+            max_end = max(seg.end for seg in segments)
+            if max_end > 0:
+                logger.info("  ├─ " + t("services.transcription.estimate_from_segments", value=round(max_end, 1)))
+                return max_end
 
         logger.info("  ├─ ⚠ " + t("services.transcription.estimate_fallback"))
         return 0.0
@@ -699,6 +700,9 @@ class TranscriptionService:
         使用同模型/设备的历史记录，计算加权中位数速度（时间衰减），
         样本不足 3 条时返回 None。
         """
+        if audio_duration <= 0:
+            return None
+
         MIN_SAMPLE_THRESHOLD = 3
         HALF_LIFE_DAYS = 30
 
@@ -729,13 +733,15 @@ class TranscriptionService:
             ts = r.get("timestamp", 0)
             if ts > 0:
                 age = max(0, now - ts)
-                weight = math.exp(-decay_factor * age)
+                weight = max(1e-4, math.exp(-decay_factor * age))
             else:
                 weight = 0.5
             weighted_speeds.append((speed, weight))
 
         weighted_speeds.sort(key=lambda x: x[0])
         total_weight = sum(w for _, w in weighted_speeds)
+        if total_weight <= 0:
+            return None
         cumulative = 0.0
         median_speed = weighted_speeds[0][0]
         for speed, weight in weighted_speeds:

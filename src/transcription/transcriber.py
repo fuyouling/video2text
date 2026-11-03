@@ -1,5 +1,6 @@
 """转写器"""
 
+import gc
 import os
 import sys
 import threading
@@ -11,9 +12,21 @@ from src.utils.exceptions import TranscriptionError, TranscriptionCancelledError
 from src.i18n import t
 from src.utils.logger import get_logger
 from src.utils.paths import get_base_dir as _get_base_dir, ensure_cuda_libs
+from src.utils.compat import apply_all_patches
 from src.text_processing.text_cleaner import remove_replacement_chars
 
 logger = get_logger(__name__)
+
+
+def _clean_gpu_memory() -> None:
+    """清理 Python 垃圾对象并在 CUDA 可用时释放显存缓存。"""
+    gc.collect()
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
 
 # 加载模型前需要预先确认可用的 CUDA/cuDNN 依赖，缺失会导致
 # faster-whisper 在转写时挂起（不抛异常）而非快速失败。
@@ -99,11 +112,26 @@ def get_cached_transcriber(
     return transcriber
 
 
-def _logprob_to_confidence(avg_logprob: float) -> float:
-    """将 avg_logprob（负值）转换为 0~100% 的置信度。"""
+def _logprob_to_confidence(avg_logprob: Optional[float]) -> float:
+    """将 avg_logprob（负值）转换为 0~100% 的置信度。
+
+    增加 None、NaN、Overflow 安全防护。
+    """
+    if avg_logprob is None:
+        return 0.0
     import math
 
-    return round(max(0.0, min(100.0, math.exp(avg_logprob) * 100)), 2)
+    try:
+        val = float(avg_logprob)
+        if math.isnan(val) or math.isinf(val):
+            return 0.0
+        if val > 10.0:
+            return 100.0
+        if val < -100.0:
+            return 0.0
+        return round(max(0.0, min(100.0, math.exp(val) * 100)), 2)
+    except (ValueError, OverflowError):
+        return 0.0
 
 
 _CORE_FILES = [
@@ -291,6 +319,7 @@ class Transcriber:
             ensure_cuda_libs()
             self._check_cuda_dlls()
 
+        apply_all_patches()
         try:
             from faster_whisper import WhisperModel
 
@@ -332,6 +361,7 @@ class Transcriber:
             if is_oom:
                 logger.warning(t("transcriber.oom_fallback"))
                 self.model = None
+                _clean_gpu_memory()
                 self._load_model_fallback()
             else:
                 raise TranscriptionError(t("transcriber.transcribe_failed", error=str(e)))
@@ -341,6 +371,7 @@ class Transcriber:
             if is_oom:
                 logger.warning(t("transcriber.oom_fallback"))
                 self.model = None
+                _clean_gpu_memory()
                 self._load_model_fallback()
             else:
                 raise TranscriptionError(t("transcriber.transcribe_failed", error=str(e)))
@@ -380,6 +411,7 @@ class Transcriber:
             except Exception as inner_e:
                 logger.debug(t("transcriber.fallback_retry_failed", ct=ct, error=inner_e))
                 self.model = None
+                _clean_gpu_memory()
                 continue
 
         if self.device != "cpu":
@@ -402,6 +434,7 @@ class Transcriber:
                 except Exception as inner_e:
                     logger.debug(t("transcriber.cpu_fallback_retry_failed", ct=ct, error=inner_e))
                     self.model = None
+                    _clean_gpu_memory()
                     continue
 
         raise TranscriptionError(t("transcriber.model_load_failed_oom"))
@@ -479,62 +512,62 @@ class Transcriber:
 
         try:
             with self._model_lock:
-                model = self.model
-                if model is None:
+                if self.model is None:
                     raise TranscriptionError(t("transcriber.model_not_loaded"))
-            segments, info = model.transcribe(
-                audio_path,
-                language=language if language != "auto" else None,
-                beam_size=beam_size,
-                best_of=best_of,
-                temperature=temperature,
-                vad_filter=vad_filter,
-                vad_parameters=vad_parameters,
-                word_timestamps=word_timestamps,
-                condition_on_previous_text=condition_on_previous_text,
-                initial_prompt=initial_prompt or None,
-                hotwords=hotwords or None,
-                compression_ratio_threshold=compression_ratio_threshold,
-                log_prob_threshold=log_prob_threshold,
-                no_speech_threshold=no_speech_threshold,
-                repetition_penalty=repetition_penalty,
-                no_repeat_ngram_size=no_repeat_ngram_size,
-            )
 
-            detected_language = info.language
-            language_probability = info.language_probability
-
-            logger.debug(
-                t("transcriber.detected_language", lang=detected_language, prob=f"{language_probability:.2f}")
-            )
-
-            transcript_segments = []
-
-            for segment in segments:
-                # 段粒度取消检查：用户在转写过程中点停止时快速中断
-                if cancel_check and cancel_check():
-                    raise TranscriptionCancelledError(
-                        "Transcription cancelled by user"
-                    )
-                transcript_segment = TranscriptSegment(
-                    start=segment.start,
-                    end=segment.end,
-                    text=remove_replacement_chars(segment.text.strip()),
-                    confidence=_logprob_to_confidence(segment.avg_logprob),
-                    language=detected_language,
+                segments, info = self.model.transcribe(
+                    audio_path,
+                    language=language if language != "auto" else None,
+                    beam_size=beam_size,
+                    best_of=best_of,
+                    temperature=temperature,
+                    vad_filter=vad_filter,
+                    vad_parameters=vad_parameters,
+                    word_timestamps=word_timestamps,
+                    condition_on_previous_text=condition_on_previous_text,
+                    initial_prompt=initial_prompt or None,
+                    hotwords=hotwords or None,
+                    compression_ratio_threshold=compression_ratio_threshold,
+                    log_prob_threshold=log_prob_threshold,
+                    no_speech_threshold=no_speech_threshold,
+                    repetition_penalty=repetition_penalty,
+                    no_repeat_ngram_size=no_repeat_ngram_size,
                 )
-                transcript_segments.append(transcript_segment)
 
-                if progress_callback:
-                    progress_callback(
-                        segment.start,
-                        segment.end,
-                        len(transcript_segments),
-                        transcript_segment,
+                detected_language = info.language
+                language_probability = info.language_probability
+
+                logger.debug(
+                    t("transcriber.detected_language", lang=detected_language, prob=f"{language_probability:.2f}")
+                )
+
+                transcript_segments = []
+
+                for segment in segments:
+                    # 段粒度取消检查：用户在转写过程中点停止时快速中断
+                    if cancel_check and cancel_check():
+                        raise TranscriptionCancelledError(
+                            "Transcription cancelled by user"
+                        )
+                    transcript_segment = TranscriptSegment(
+                        start=segment.start,
+                        end=segment.end,
+                        text=remove_replacement_chars(segment.text.strip()),
+                        confidence=_logprob_to_confidence(segment.avg_logprob),
+                        language=detected_language,
                     )
+                    transcript_segments.append(transcript_segment)
 
-            logger.debug(t("transcriber.transcribe_done", count=len(transcript_segments)))
-            return transcript_segments
+                    if progress_callback:
+                        progress_callback(
+                            segment.start,
+                            segment.end,
+                            len(transcript_segments),
+                            transcript_segment,
+                        )
+
+                logger.debug(t("transcriber.transcribe_done", count=len(transcript_segments)))
+                return transcript_segments
 
         except TranscriptionCancelledError:
             # 用户取消：原样传播，让上层（TranscriptionService）静默中止，
@@ -561,7 +594,10 @@ class Transcriber:
                     self.device = self._original_device
                 if hasattr(self, "_original_compute_type"):
                     self.compute_type = self._original_compute_type
+                _clean_gpu_memory()
                 logger.info(t("transcriber.model_unloaded"))
+            else:
+                _clean_gpu_memory()
         finally:
             self._model_lock.release()
 

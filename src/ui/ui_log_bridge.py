@@ -22,4 +22,8 @@ class UiLogHandler(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         """将日志记录格式化后通过 Qt 信号发送到 UI 线程。"""
-        self._signal.message.emit(self.format(record))
+        try:
+            self._signal.message.emit(self.format(record))
+        except RuntimeError:
+            # 当底层 Qt C++ 对象已析构（如窗口已关闭）时忽略，防止崩溃
+            pass

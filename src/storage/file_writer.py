@@ -18,7 +18,7 @@ from src.utils.output_validator import (
     validate_output_file,
     validate_output_content,
 )
-from src.utils.path_resolver import normalize_path_key
+from src.utils.path_resolver import normalize_path_key, sanitize_filename
 
 logger = get_logger(__name__)
 
@@ -39,19 +39,25 @@ class FileLocator:
     @staticmethod
     def find_transcript(output_dir: str, video_name: str) -> Optional[Path]:
         """查找已存在的转写文件（支持 txt/srt/vtt/json），未找到返回 None"""
+        clean_name = sanitize_filename(video_name)
+        names = [clean_name] if clean_name == video_name else [clean_name, video_name]
         for ext in TRANSCRIPT_FORMATS:
-            candidate = Path(output_dir) / f"{video_name}.{ext}"
-            if candidate.exists():
-                return candidate
+            for name in names:
+                candidate = Path(output_dir) / f"{name}.{ext}"
+                if candidate.exists():
+                    return candidate
         return None
 
     @staticmethod
     def find_summary(output_dir: str, video_name: str) -> Optional[Path]:
         """查找已存在的摘要文件（支持 txt/md），未找到返回 None"""
+        clean_name = sanitize_filename(video_name)
+        names = [clean_name] if clean_name == video_name else [clean_name, video_name]
         for fmt in SUMMARY_FORMATS:
-            candidate = Path(output_dir) / f"{video_name}{SUMMARY_SUFFIX}.{fmt}"
-            if candidate.exists():
-                return candidate
+            for name in names:
+                candidate = Path(output_dir) / f"{name}{SUMMARY_SUFFIX}.{fmt}"
+                if candidate.exists():
+                    return candidate
         return None
 
     @staticmethod
@@ -64,16 +70,16 @@ class FileLocator:
         root = Path(output_dir)
         if not root.exists():
             return
-        for ext in TRANSCRIPT_FORMATS:
-            for p in root.rglob(f"*.{ext}"):
-                if any(part.startswith(".") for part in p.relative_to(root).parts):
+        for dirpath, dirnames, filenames in os.walk(str(root), topdown=True):
+            dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+            pdir = Path(dirpath)
+            for fname in filenames:
+                if fname.startswith("."):
                     continue
-                yield p
-        for fmt in SUMMARY_FORMATS:
-            for p in root.rglob(f"{SUMMARY_SUFFIX}.{fmt}"):
-                if any(part.startswith(".") for part in p.relative_to(root).parts):
-                    continue
-                yield p
+                if any(fname.endswith(f".{ext}") for ext in TRANSCRIPT_FORMATS):
+                    yield pdir / fname
+                elif any(fname.endswith(f"{SUMMARY_SUFFIX}.{fmt}") for fmt in SUMMARY_FORMATS):
+                    yield pdir / fname
 
 
 class FileWriter:
@@ -102,10 +108,16 @@ class FileWriter:
     @staticmethod
     def _atomic_write(file_path: Path, content: str, encoding: str = "utf-8") -> None:
         """原子写入文本文件，防止崩溃或磁盘满导致部分写入。"""
+        # 确保父目录存在
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        # 规范化换行符为 \n，显式使用 newline="\n"，杜绝 Windows 系统自动将 \r\n 膨胀为 \r\r\n
+        normalized_content = content.replace("\r\n", "\n").replace("\r", "\n")
         fd, tmp_path = tempfile.mkstemp(dir=file_path.parent, suffix=".tmp")
         try:
-            with os.fdopen(fd, "w", encoding=encoding) as f:
-                f.write(content)
+            with os.fdopen(fd, "w", encoding=encoding, newline="\n") as f:
+                f.write(normalized_content)
+                f.flush()
+                os.fsync(f.fileno())
             try:
                 os.replace(tmp_path, str(file_path))
             except OSError:
@@ -140,11 +152,12 @@ class FileWriter:
             输出文件路径
         """
         self._ensure_dir()
-        output_path = self.output_dir / f"{filename}.{fmt}"
+        clean_filename = sanitize_filename(filename)
+        output_path = self.output_dir / f"{clean_filename}.{fmt}"
 
         if not segments:
             raise TranscriptionError(
-                t("storage.file_writer.empty_transcript", fmt=fmt.upper(), filename=filename)
+                t("storage.file_writer.empty_transcript", fmt=fmt.upper(), filename=clean_filename)
             )
 
         if fmt == "txt":
@@ -162,7 +175,7 @@ class FileWriter:
 
         if not content or not content.strip():
             raise TranscriptionError(
-                t("storage.file_writer.empty_content", fmt=fmt.upper(), filename=filename)
+                t("storage.file_writer.empty_content", fmt=fmt.upper(), filename=clean_filename)
             )
 
         try:
@@ -196,11 +209,12 @@ class FileWriter:
         Returns:
             输出文件路径
         """
+        clean_filename = sanitize_filename(filename)
         if not segments:
-            raise OutputError(t("storage.file_writer.empty_merged", filename=filename))
+            raise OutputError(t("storage.file_writer.empty_merged", filename=clean_filename))
 
         self._ensure_dir()
-        output_path = self.output_dir / f"{filename}.txt"
+        output_path = self.output_dir / f"{clean_filename}.txt"
         content = self.formatter.format_merged_transcript(segments, include_timestamps)
 
         try:
@@ -239,7 +253,8 @@ class FileWriter:
                 t("storage.file_writer.unsupported_summary_format", fmt=fmt, formats=", ".join(SUMMARY_FORMATS))
             )
         self._ensure_dir()
-        output_path = self.output_dir / f"{filename}{SUMMARY_SUFFIX}.{fmt_clean}"
+        clean_filename = sanitize_filename(filename)
+        output_path = self.output_dir / f"{clean_filename}{SUMMARY_SUFFIX}.{fmt_clean}"
         content = self.formatter.format_summary(summary)
 
         try:
@@ -274,7 +289,8 @@ class FileWriter:
             输出文件路径
         """
         self._ensure_dir()
-        output_path = self.output_dir / f"{filename}.json"
+        clean_filename = sanitize_filename(filename)
+        output_path = self.output_dir / f"{clean_filename}.json"
 
         try:
             atomic_write_json(output_path, data)
@@ -301,7 +317,8 @@ class FileWriter:
             输出文件路径
         """
         self._ensure_dir()
-        output_path = self.output_dir / f"{filename}.txt"
+        clean_filename = sanitize_filename(filename)
+        output_path = self.output_dir / f"{clean_filename}.txt"
 
         try:
             self._atomic_write(output_path, text)
@@ -328,11 +345,12 @@ class FileWriter:
         Returns:
             输出文件路径
         """
+        clean_filename = sanitize_filename(filename)
         if not keywords:
-            raise OutputError(t("storage.file_writer.empty_keywords", filename=filename))
+            raise OutputError(t("storage.file_writer.empty_keywords", filename=clean_filename))
 
         self._ensure_dir()
-        output_path = self.output_dir / f"{filename}{KEYWORD_SUFFIX}.txt"
+        output_path = self.output_dir / f"{clean_filename}{KEYWORD_SUFFIX}.txt"
         content = "\n".join(keywords)
 
         try:

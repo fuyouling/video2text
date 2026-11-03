@@ -184,7 +184,7 @@ class NvidiaClient:
         system_prompt: Optional[str] = None,
         messages: Optional[list[dict[str, str]]] = None,
         temperature: float = 1.0,
-        max_tokens: int = 100000,
+        max_tokens: int = 4096,
         top_p: float = 1.0,
         frequency_penalty: float = 0.0,
         presence_penalty: float = 0.0,
@@ -193,6 +193,9 @@ class NvidiaClient:
         cancel_check: Optional[Callable[[], bool]] = None,
         pause_event: Optional[threading.Event] = None,
     ) -> str:
+        if not self._api_key:
+            raise SummarizationError(t("services.summarization.nvidia.api_key_missing"))
+
         if messages is not None:
             chat_messages = messages
         elif system_prompt:
@@ -246,13 +249,43 @@ class NvidiaClient:
                             continue
                         raise last_exc
 
-                    if response.status_code != 200:
-                        error_msg = t("services.summarization.nvidia.api_error", code=response.status_code)
+                    status = response.status_code
+                    if status != 200:
+                        error_msg = t("services.summarization.nvidia.api_error", code=status)
                         try:
                             error_detail = response.json()
                             error_msg += f", {error_detail}"
                         except Exception:
                             error_msg += f", {response.text[:500]}"
+
+                        # 401 致命鉴权错误：主动失效 300s 类级连接缓存并抛出
+                        if status == 401:
+                            self._remember_connection(False)
+                            logger.error("%s", error_msg)
+                            raise SummarizationError(error_msg)
+
+                        # 4xx 客户端错误不可重试，直接抛出
+                        if isinstance(status, int) and 400 <= status < 500:
+                            logger.error("%s", error_msg)
+                            raise SummarizationError(error_msg)
+
+                        # 5xx 服务端错误（500/502/503/504 等）：记录日志后参与退避重试
+                        if isinstance(status, int) and 500 <= status < 600:
+                            logger.warning(
+                                "NvidiaClient: server error (%d), attempt %d/%d: %s",
+                                status,
+                                attempt,
+                                self.max_retries,
+                                error_msg,
+                            )
+                            last_exc = SummarizationError(error_msg)
+                            if attempt < self.max_retries:
+                                wait = 2 ** attempt
+                                logger.info(t("services.summarization.nvidia.retry_log", wait=wait))
+                                time.sleep(wait)
+                                continue
+                            raise last_exc
+
                         logger.error("%s", error_msg)
                         raise SummarizationError(error_msg)
 
@@ -317,37 +350,57 @@ class NvidiaClient:
             for line in response.iter_lines():
                 if cancel_check and cancel_check():
                     raise SummarizationError(t("services.summarization.nvidia.user_cancelled"))
+
+                if pause_event is not None and not pause_event.is_set():
+                    while not pause_event.is_set():
+                        if cancel_check and cancel_check():
+                            raise SummarizationError(t("services.summarization.nvidia.user_cancelled"))
+                        pause_event.wait(timeout=0.1)
+
                 if not line:
                     continue
-                decoded = line.decode("utf-8")
-                if not decoded.startswith("data: "):
+
+                decoded = line.decode("utf-8", errors="replace").strip()
+                if not decoded.startswith("data:"):
                     continue
-                data_str = decoded[6:]
-                if data_str.strip() == "[DONE]":
+
+                data_str = decoded[5:].lstrip()
+                if data_str == "[DONE]":
                     break
+
                 try:
                     data = _json.loads(data_str)
                     if "error" in data:
                         raise SummarizationError(t("services.summarization.nvidia.stream_error", error=data["error"]))
                     choices = data.get("choices", [])
                     if choices:
-                        delta = choices[0].get("delta", {})
-                        content = delta.get("content", "")
+                        delta = choices[0].get("delta", {}) or {}
+                        content = (
+                            delta.get("content")
+                            or delta.get("reasoning_content")
+                            or delta.get("reasoning")
+                            or ""
+                        )
                         if content:
                             full_text += content
                             if on_token:
                                 on_token(content)
+                except SummarizationError:
+                    raise
                 except _json.JSONDecodeError:
                     logger.warning(t("services.summarization.nvidia.stream_json_error"))
                     continue
+        except SummarizationError:
+            raise
         except (
+            requests.exceptions.RequestException,
             requests.exceptions.ConnectionError,
             requests.exceptions.ChunkedEncodingError,
         ) as e:
-            if full_text:
-                logger.warning(
-                    t("services.summarization.nvidia.stream_interrupted", count=len(full_text)),
-                )
-            else:
-                raise SummarizationError(t("services.summarization.nvidia.stream_connection_failed", error=e)) from e
+            logger.error("NvidiaClient: stream interrupted: %s", e)
+            raise SummarizationError(t("services.summarization.nvidia.stream_connection_failed", error=e)) from e
+        except Exception as e:
+            logger.error("NvidiaClient: stream failed: %s", e)
+            raise SummarizationError(t("services.summarization.nvidia.stream_connection_failed", error=e)) from e
+
         return full_text

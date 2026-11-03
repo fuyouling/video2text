@@ -150,7 +150,7 @@
     "phase_switch_summarize": "Passage à la phase de résumé...",
     "phase_switch_transcribe": "Phase de transcription...",
     "confirm_download_title": "Confirmation de téléchargement du modèle",
-    "confirm_download_msg": "Il est recommandé d'utiliser des modèles déjà téléchargés dans votre espace cloud ; HuggingFace n'est généralement pas accessible directement.\n\nPour utiliser un autre modèle, copiez ses fichiers principaux dans le répertoire models et mettez à jour le chemin du modèle dans les paramètres.\n\nCommencer le téléchargement du modèle ?",
+    "confirm_download_msg": "Modèle de transcription introuvable localement : {model}.\n\nCommencer le téléchargement automatique ?\nEn cas d'échec du téléchargement, vous pouvez le télécharger depuis le cloud et le placer manuellement dans le répertoire models.",
     "pipeline_done_tx": "Transcription terminée — succès : {ok}, échec : {fail}",
     "pipeline_done_sum": "Résumé terminé — succès : {ok}, échec : {fail}",
     "pipeline_done_both": "Transcrire : succès {tx_ok} / échec {tx_fail} | Résumer : succès {sum_ok} / échec {sum_fail}",
@@ -236,13 +236,18 @@
     "license_label": "Licence",
     "license_value": "GNU GPL v3",
     "tech_label": "Pile technologique",
-    "tech_value": "faster-whisper · PySide6",
+    "tech_value": "faster-whisper · FunASR · PySide6 · LLM",
     "email_label": "E-mail",
     "repo_link": "Dépôt GitHub",
     "docs_link": "Guide d'utilisation",
     "website_link": "Site officiel",
     "netdisk_link": "Stockage cloud",
-    "copyright": "Copyright © 2026 MiaoWangLong"
+    "copyright": "Copyright © 2026 MiaoWangLong",
+    "qq_group_label": "QQ Group",
+    "qq_group_value": "296875960",
+    "copy_btn": "Copy",
+    "copied": "Copied",
+    "copy_tooltip": "Click to copy group number to clipboard"
   },
   "status": {
     "config_saved": "Configuration enregistrée",
@@ -263,7 +268,7 @@
     "dep": {
       "title": "Téléchargement des dépendances",
       "intro": "Les dépendances d'exécution suivantes sont incomplètes ; la transcription peut ne pas fonctionner.\nVeuillez choisir quoi télécharger (ou cliquez sur \"Annuler\" pour ignorer et gérer plus tard dans les Paramètres) :",
-      "model_group": "Modèle de reconnaissance vocale",
+      "model_group": "Modèle de reconnaissance vocale (choisir un seul suffit)",
       "model_yes": "Oui, télécharger le modèle (obligatoire pour la première utilisation)",
       "model_no": "Non, ignorer (la transcription ne fonctionnera pas)",
       "model_ready": "✓ Modèle complet, rien à faire",
@@ -274,10 +279,11 @@
       "keep_yes": "Conserver l'archive",
       "keep_no": "Supprimer (économiser de l'espace)",
       "dll_ready": "✓ DLL complètes, rien à faire",
-      "funasr_opt": "Télécharger FunASR Paraformer (Chinois haute précision, ~540 Mo, ModelScope)",
+      "funasr_opt": "Télécharger FunASR Paraformer",
       "funasr_ready": "✓ Modèle FunASR Paraformer prêt",
       "whisper_opt": "Télécharger Faster-Whisper (Multilingue, Large-v3-Turbo, ~1,4 Go)",
-      "whisper_ready": "✓ Modèle Faster-Whisper prêt"
+      "whisper_ready": "✓ Modèle Faster-Whisper prêt",
+      "cancel_launch": "Annuler, démarrer directement"
     },
     "file_select": {
       "title": "Sélectionner des fichiers multimédia",
@@ -1272,7 +1278,9 @@
     "detected_language": "Transcripteur : Langue détectée : {lang} (confiance : {prob})",
     "transcribe_done": "Transcripteur : Transcription terminée, {count} segments",
     "fallback_retry_failed": "Échec du repli {ct} : {error}",
-    "cpu_fallback_retry_failed": "Échec du repli CPU {ct} : {error}"
+    "cpu_fallback_retry_failed": "Échec du repli CPU {ct} : {error}",
+    "model_download_failed": "Échec du téléchargement du modèle ou fichiers incomplets",
+    "transcribe_cancelled": "Transcription annulée par l'utilisateur"
   },
   "transcription_prompt_manager": {
     "load_failed": "TranscriptionPromptManager : ✗ Échec du chargement ({name})",
@@ -1367,7 +1375,7 @@
       "start": "Téléchargement du modèle ({model})",
       "check_network": "Vérification de la connexion réseau",
       "using_proxy": "Utilisation du proxy {proxy} ({source})",
-      "direct_ok": "Connexion directe à HuggingFace réussie",
+      "direct_ok": "Connexion directe à {source} réussie",
       "direct_fail_proxy": "Échec de la connexion directe, essai du proxy {proxy}",
       "proxy_ok": "Connexion proxy réussie",
       "proxy_fail": "Échec de la connexion proxy, veuillez vérifier le proxy {source}",
@@ -1389,7 +1397,9 @@
       "conn_failed": "Échec de connexion ({attempt}/{max_retries})",
       "fail_generic": "Échec ({attempt}/{max_retries}) : {error}",
       "retry_wait": "Nouvelle tentative dans {seconds}s…",
-      "file_failed": "Échec du téléchargement (réessayé {max_retries} fois) : {name}"
+      "file_failed": "Échec du téléchargement (réessayé {max_retries} fois) : {name}",
+      "mirror_ok": "Bascule vers le serveur miroir ({mirror}) réussie",
+      "switch_mirror": "Connexion directe à HuggingFace échouée, tentative avec le serveur miroir ({mirror})..."
     },
     "integrity": {
       "skipped": "Vérification de l'intégrité du modèle ignorée (is_check_model_file=false)",
@@ -1471,7 +1481,11 @@
     "error_invalid_key": "Le nom de la clé ne peut contenir que des lettres, chiffres et tirets bas, et doit commencer par une lettre ou un tiret bas",
     "error_dup_key": "Le nom de la clé existe déjà (insensible à la casse)",
     "save_failed": "Échec de l'enregistrement : {error}",
-    "saved_msg": "Enregistré avec succès dans :\n{path}"
+    "saved_msg": "Enregistré avec succès dans :\n{path}",
+    "col_vendor": "Fournisseur",
+    "col_key": "Variable d'environnement",
+    "col_value": "Valeur secrète",
+    "col_action": "Action"
   },
   "app": {
     "result_viewer": {
@@ -1553,7 +1567,8 @@
     "whisper_vad_min_silence_ms": "Silence min. VAD (ms)",
     "whisper_vad_speech_pad_ms": "Remplissage vocal VAD (ms)",
     "whisper_vad_threshold": "Seuil vocal VAD",
-    "whisper_word_timestamps": "Horodatage au niveau des mots"
+    "whisper_word_timestamps": "Horodatage au niveau des mots",
+    "funasr_compute_type": "Type de calcul"
   },
   "tx_tooltips": {
     "funasr_device": "Périphérique de calcul d'inférence : auto (détection automatique), cuda (GPU), cpu",

@@ -5,8 +5,13 @@ from pathlib import Path
 import sys
 import traceback
 
-from dotenv import load_dotenv
-from src.utils.paths import ensure_cuda_libs, get_base_dir
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+from dotenv import load_dotenv  # noqa: E402
+from src.utils.compat import apply_all_patches  # noqa: E402
+from src.utils.paths import ensure_cuda_libs, get_base_dir  # noqa: E402
 
 
 def main():
@@ -15,6 +20,7 @@ def main():
     打包模式（frozen）下无参数启动时打开 GUI，否则启动 CLI（Typer）。
     启动异常时在打包模式下将 traceback 写入 logs/error_startup.log。
     """
+    apply_all_patches()
     ensure_cuda_libs()
     # 所有运行模式（GUI / CLI）在入口处统一加载一次项目根目录的 .env，
     # 确保 NVIDIA_API_KEY 等环境变量在任意工作目录下均可读取。

@@ -215,3 +215,31 @@ def test_api_key_dialog_ui(qapp, tmp_path, monkeypatch):
     assert os.environ.get("DEEPSEEK_API_KEY") == "sk-deepseek-123"
 
     dlg.close()
+
+
+def test_export_prefix_preserves_variable_name():
+    # export_key 不应被剥离前缀
+    lines = parse_env("export_var=123\nexport FOO=456\nexport\tBAR=789\n")
+    assert len(lines) == 3
+    assert lines[0].key == "export_var"
+    assert lines[0].value == "123"
+    assert lines[1].key == "FOO"
+    assert lines[1].value == "456"
+    assert lines[2].key == "BAR"
+    assert lines[2].value == "789"
+
+
+def test_crlf_injection_sanitization():
+    entries = [
+        EnvLine(kind="kv", key="CLEAN\r\n_KEY", value="injected\r\nvalue", vendor="bad\r\nvendor"),
+    ]
+    serialized = serialize_env(entries)
+    # 不应出现未经转义的额外行注入
+    assert "\r\n_KEY" not in serialized
+    assert "\r\nvalue" not in serialized
+    lines = [l for l in serialized.strip().split("\n") if l]
+    assert len(lines) == 1
+    assert lines[0].startswith("CLEAN_KEY=")
+    assert "\\r\\nvalue" in lines[0]
+    assert "bad vendor" in lines[0]
+

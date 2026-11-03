@@ -54,6 +54,14 @@ PARAFORMER_FILES = {
 
 PARAFORMER_CORE_FILES = list(PARAFORMER_FILES.keys())
 
+# 核心模型文件最小合法大小下限（字节），防止被截断的网络残片或 0 字节文件被误判为完整
+CORE_FILE_MIN_SIZES: Dict[str, int] = {
+    "model.bin": 100 * 1024 * 1024,           # Whisper 核心权重通常在 1.5GB ~ 3GB，至少 >100MB
+    "asr/model_quant.onnx": 50 * 1024 * 1024, # Paraformer ASR 模型至少 >50MB (约 200MB)
+    "punc/model_quant.onnx": 50 * 1024 * 1024,# 标点模型至少 >50MB (约 200MB)
+    "vad/model_quant.onnx": 100 * 1024,       # FSMN VAD INT8 量化模型约 500KB，至少 >100KB
+}
+
 MODEL_CONFIG = {
     "large-v3": {
         "base_url": LARGE_V3_BASE,
@@ -62,6 +70,7 @@ MODEL_CONFIG = {
         "optional_files": LARGE_V3_OPTIONAL_FILES,
         "all_files": LARGE_V3_ALL_FILES,
         "source": "huggingface",
+        "display_name": "Faster-Whisper Large-v3 (通用多语种, 约3.0GB)",
     },
     "faster-whisper-large-v3-turbo-ct2": {
         "base_url": TURBO_CT2_BASE,
@@ -70,6 +79,7 @@ MODEL_CONFIG = {
         "optional_files": LARGE_V3_OPTIONAL_FILES,
         "all_files": LARGE_V3_ALL_FILES,
         "source": "huggingface",
+        "display_name": "Faster-Whisper Large-v3-Turbo (通用多语种, 约1.4GB)",
     },
     "paraformer-large-vad-punc": {
         "base_url": "",
@@ -79,8 +89,23 @@ MODEL_CONFIG = {
         "all_files": PARAFORMER_CORE_FILES,
         "file_urls": PARAFORMER_FILES,
         "source": "modelscope",
+        "display_name": "FunASR Paraformer (中文离线高精度, 约540MB)",
     },
 }
+
+
+def get_model_display_name(model_name: str) -> str:
+    """获取模型友好展示名称。"""
+    if not model_name:
+        return ""
+    cfg = MODEL_CONFIG.get(model_name)
+    if cfg and "display_name" in cfg:
+        return cfg["display_name"]
+    pure_name = Path(model_name).name
+    cfg = MODEL_CONFIG.get(pure_name)
+    if cfg and "display_name" in cfg:
+        return cfg["display_name"]
+    return model_name
 
 
 class ModelDownloader:
@@ -106,9 +131,14 @@ class ModelDownloader:
             self._session = None
 
     def is_model_exists(self) -> bool:
+        """检查所有核心模型文件是否已存在且满足最小大小限制。"""
         for f in self.model_config["core_files"]:
             fp = self.models_dir / f
-            if not fp.exists() or fp.stat().st_size == 0:
+            min_size = CORE_FILE_MIN_SIZES.get(f, 1)
+            try:
+                if not fp.exists() or fp.stat().st_size < min_size:
+                    return False
+            except OSError:
                 return False
         return True
 
@@ -158,8 +188,6 @@ class ModelDownloader:
         if self._session is None:
             self._session = requests.Session()
             # 探测连通性时禁用自动重试，避免超时时间被 urllib3 放大数倍
-            # （默认 Retry 会让 timeout=3 实际阻塞 ~10s，进而导致关闭窗口时线程仍
-            # running 触发 "QThread: Destroyed while thread is still running"）。
             adapter = HTTPAdapter(max_retries=0, pool_connections=1, pool_maxsize=1)
             self._session.mount("http://", adapter)
             self._session.mount("https://", adapter)
@@ -175,8 +203,6 @@ class ModelDownloader:
     def _check_hf_accessible(self, proxy: str = "") -> bool:
         session = self._get_session(proxy)
         url = "https://huggingface.co"
-        # 探测连通性时留足 5s 连接与 4s 读取超时并支持重试一次，
-        # 避免在 VPN TUN 模式或代理握手冷启动时因极短超时误判不通。
         for attempt in range(2):
             try:
                 r = session.get(
@@ -235,19 +261,25 @@ class ModelDownloader:
         proxy: str = "",
         file_progress_callback=None,
         max_retries: int = 5,
+        min_size: int = 1,
     ) -> bool:
+        """下载单个文件到 .tmp 临时文件，下载并校验完成后原子替换到目标路径。"""
         import requests
 
         session = self._get_session(proxy)
         connect_timeout = 30
         read_timeout = 300
 
+        tmp_dest = dest.with_name(dest.name + ".tmp")
+        tmp_dest.parent.mkdir(parents=True, exist_ok=True)
+
         for attempt in range(1, max_retries + 1):
             response = None
             try:
-                existing_size = dest.stat().st_size if dest.exists() else 0
+                existing_size = tmp_dest.stat().st_size if tmp_dest.exists() else 0
                 headers = {}
-                if existing_size > 0:
+                resume_requested = existing_size > 0
+                if resume_requested:
                     headers["Range"] = f"bytes={existing_size}-"
                     logger.info(t("model_downloader.download.resume_existing", size=self._fmt_size(existing_size)))
 
@@ -260,10 +292,21 @@ class ModelDownloader:
 
                 if response.status_code == 416:
                     logger.info(t("model_downloader.download.downloaded_complete", size=self._fmt_size(existing_size)))
-                    return True
+                    if existing_size >= min_size:
+                        try:
+                            tmp_dest.replace(dest)
+                            return True
+                        except OSError as e:
+                            logger.error(f"Failed to replace {dest} with {tmp_dest}: {e}")
+                            return False
+                    else:
+                        logger.warning(f"File {tmp_dest.name} on 416 is smaller than min_size {min_size}, restarting download.")
+                        tmp_dest.unlink(missing_ok=True)
+                        existing_size = 0
+                        continue
 
                 is_resume = response.status_code == 206
-                if not is_resume and existing_size > 0:
+                if resume_requested and not is_resume:
                     existing_size = 0
 
                 response.raise_for_status()
@@ -280,7 +323,7 @@ class ModelDownloader:
                 throttle_step = max(1024 * 1024, 8192)
 
                 mode = "ab" if is_resume else "wb"
-                with open(dest, mode) as f:
+                with open(tmp_dest, mode) as f:
                     for chunk in response.iter_content(chunk_size=65536):
                         if chunk:
                             f.write(chunk)
@@ -297,7 +340,6 @@ class ModelDownloader:
                     if total_size > 0 and last_reported < downloaded:
                         file_progress_callback(downloaded, total_size)
                     elif total_size == 0 and downloaded - last_reported >= throttle_step:
-                        # 未知总量的文件仍实时上报已下载字节（GUI 以无限滚动展示）
                         file_progress_callback(downloaded, 0)
 
                 if total_size > 0 and downloaded != total_size:
@@ -306,7 +348,22 @@ class ModelDownloader:
                     )
                     continue
 
-                return True
+                # 校验文件大小下限
+                if tmp_dest.stat().st_size < min_size:
+                    logger.warning(
+                        f"Downloaded file {dest.name} size ({self._fmt_size(tmp_dest.stat().st_size)}) "
+                        f"is below required minimum ({self._fmt_size(min_size)}). Retrying."
+                    )
+                    tmp_dest.unlink(missing_ok=True)
+                    continue
+
+                # 校验完成，原子替换到目标路径
+                try:
+                    tmp_dest.replace(dest)
+                    return True
+                except OSError as e:
+                    logger.error(f"Failed to replace {dest} with temp file: {e}")
+                    return False
 
             except requests.exceptions.Timeout:
                 logger.warning(t("model_downloader.download.timeout_short", attempt=attempt, max_retries=max_retries))
@@ -340,10 +397,14 @@ class ModelDownloader:
         core_files = set(self.model_config["core_files"])
         self.models_dir.mkdir(parents=True, exist_ok=True)
 
-        if confirm_callback and not confirm_callback():
-            #logger.info("用户取消了模型下载")
-            self.download_cancelled = True
-            return False
+        if confirm_callback:
+            try:
+                confirmed = confirm_callback(self.model_name)
+            except TypeError:
+                confirmed = confirm_callback()
+            if not confirmed:
+                self.download_cancelled = True
+                return False
 
         proxy = self._get_proxy()
 
@@ -388,16 +449,11 @@ class ModelDownloader:
                 self._clean_incomplete_core_files()
                 return False
 
-        # logger.info("  └─ 下载文件 (%d 个 -> %s)", len(files), self.models_dir)
-
         total_downloaded = 0
 
         def _make_file_cb(filename: str, base_downloaded: int, file_index: int):
             def _file_cb(downloaded: int, file_total: int):
                 if progress_callback:
-                    # 进度条展示「当前文件」的完成度：downloaded/file_total。
-                    # 若该文件总量未知(file_total<=0)则传 0 让 GUI 以无限滚动显示。
-                    # current_item/total_items 用于 label 显示「第 N 个 / 共 M 个」。
                     progress_callback(
                         downloaded,
                         file_total if file_total > 0 else 0,
@@ -416,9 +472,12 @@ class ModelDownloader:
                 url = f"{base_url}/{filename}?download=true"
             dest = self.models_dir / filename
             dest.parent.mkdir(parents=True, exist_ok=True)
+            min_size = CORE_FILE_MIN_SIZES.get(filename, 1)
 
-            if dest.exists() and dest.stat().st_size > 0:
+            if dest.exists() and dest.stat().st_size >= min_size:
                 logger.info(t("model_downloader.download.file_exists", filename=filename, size=self._fmt_size(dest.stat().st_size)))
+                total_downloaded += dest.stat().st_size
+                continue
             else:
                 logger.info(t("model_downloader.download.downloading", filename=filename))
 
@@ -429,6 +488,7 @@ class ModelDownloader:
                 file_progress_callback=_make_file_cb(
                     filename, total_downloaded, file_index
                 ),
+                min_size=min_size,
             )
             if ok:
                 if dest.exists():
@@ -453,7 +513,7 @@ class ModelDownloader:
         return True
 
     def _clean_incomplete_core_files(self) -> None:
-        """删除不完整的残留核心文件（size==0 或部分下载）。
+        """删除不完整的残留核心文件（size < min_size 或空文件）。
 
         仅删除明显损坏的文件，保留已完整下载的文件，避免下次启动时
         因残留损坏文件导致转写阶段 'model.bin is incomplete' 崩溃。
@@ -461,7 +521,8 @@ class ModelDownloader:
         for f in self.model_config["core_files"]:
             fp = self.models_dir / f
             try:
-                if fp.exists() and fp.stat().st_size == 0:
+                min_size = CORE_FILE_MIN_SIZES.get(f, 1)
+                if fp.exists() and fp.stat().st_size < min_size:
                     fp.unlink()
                     logger.warning(t("model_downloader.download.cleaned_empty", file=f))
             except OSError as e:
@@ -500,8 +561,7 @@ def check_models_integrity(
 
     仅当 config.ini 的 [app]is_check_model_file 为 true（或缺失）时执行。
     检查配置的模型或传入的 target_models：
-    - 文件已完整：标记通过，将 is_check_model_file 置为 false 并保存。
-    - 文件不完整：尝试下载，下载成功同样置为 false 并保存。
+    - 仅当全部模型完整（all_ok is True）时：将 is_check_model_file 置为 false。
     """
     do_check = settings.get_bool("app.is_check_model_file", True)
     if not do_check:
@@ -543,12 +603,10 @@ def check_models_integrity(
             all_ok = False
             logger.error(t("model_downloader.integrity.failed", model=model_name))
 
-    # 无论本次检测结果如何，只标记内存中的配置值，不写磁盘。
-    # 配置保存由调用方在主线程中执行，避免 configparser 跨线程写
-    # 导致主线程读取到损坏的配置数据进而引发崩溃。
+    # 仅当 all_ok is True 时才将 is_check_model_file 设置为 false
     try:
-        settings.set("app.is_check_model_file", "false")
         if all_ok:
+            settings.set("app.is_check_model_file", "false")
             logger.info(t("model_downloader.integrity.passed"))
         else:
             logger.info(t("model_downloader.integrity.not_passed"))
@@ -556,6 +614,3 @@ def check_models_integrity(
         logger.warning(t("model_downloader.integrity.config_update_fail", error=e))
 
     return all_ok
-
-
-

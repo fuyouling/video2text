@@ -2,11 +2,13 @@
 
 import os
 import tempfile
+import threading
 from pathlib import Path
 
 import pytest
 from src.config.settings import Settings
 from src.config.version import APP_NAME, APP_VERSION
+from src.utils.exceptions import ConfigurationError
 
 
 @pytest.fixture(autouse=True)
@@ -20,7 +22,7 @@ def _reset_settings():
 class TestSettings:
     def test_app_constants(self):
         assert APP_NAME == "video2text"
-        assert APP_VERSION == "2.7.0"
+        assert APP_VERSION == "2.7.1"
 
     def test_load_existing_config(self, tmp_path):
         config_file = tmp_path / "config.ini"
@@ -121,3 +123,58 @@ class TestSettings:
         assert settings.get("transcription.model_path") is None
         assert settings.get("transcription.model_path", "large-v3") == "large-v3"
         assert settings.get_int("summarization.max_length", 5000) == 5000
+
+    def test_path_keys_images(self, tmp_path):
+        config_file = tmp_path / "config.ini"
+        config_file.write_text(
+            "[app]\nmain_image_path = assets/main.png\nresult_image_path = assets/result.png\n",
+            encoding="utf-8",
+        )
+        settings = Settings(config_path=str(config_file))
+        assert "app.main_image_path" in Settings.PATH_KEYS
+        assert "app.result_image_path" in Settings.PATH_KEYS
+        assert Path(settings.get("app.main_image_path")).is_absolute()
+        assert Path(settings.get("app.result_image_path")).is_absolute()
+
+    def test_reload_file_missing_preserves_config(self, tmp_path):
+        config_file = tmp_path / "config.ini"
+        config_file.write_text("[app]\nui_language = zh-CN\n", encoding="utf-8")
+        settings = Settings(config_path=str(config_file))
+        assert settings.get("app.ui_language") == "zh-CN"
+        config_file.unlink()
+        with pytest.raises(ConfigurationError):
+            settings.reload()
+        assert settings.get("app.ui_language") == "zh-CN"
+
+    def test_thread_safe_concurrent_access(self, tmp_path):
+        config_file = tmp_path / "config.ini"
+        config_file.write_text("[transcription]\nbeam_size = 5\n", encoding="utf-8")
+        settings = Settings(config_path=str(config_file))
+
+        errors = []
+
+        def reader():
+            try:
+                for _ in range(50):
+                    _ = settings.get("transcription.beam_size")
+                    _ = settings.get_section("transcription")
+                    _ = settings.to_dict()
+            except Exception as e:
+                errors.append(e)
+
+        def writer():
+            try:
+                for i in range(50):
+                    settings.set("transcription.beam_size", i)
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=reader) for _ in range(3)] + [
+            threading.Thread(target=writer) for _ in range(2)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert errors == []

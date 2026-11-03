@@ -99,6 +99,34 @@ class TestSevenZipExtraction(unittest.TestCase):
         )
         archive.unlink(missing_ok=True)
 
+    def test_extract_to_path_with_spaces(self) -> None:
+        # 验证含空格路径的解压不会发生 7z CLI 参数解析错误
+        libs_with_space = _REPO_ROOT / "libs test with spaces"
+        libs_with_space.mkdir(parents=True, exist_ok=True)
+        self.downloader.libs_dir = libs_with_space
+
+        src = _REPO_ROOT / "src_space_tmp"
+        src.mkdir(parents=True, exist_ok=True)
+        (src / "cublas64_12.dll").write_bytes(b"dummy dll content")
+        archive = _REPO_ROOT / "space_test.7z"
+
+        subprocess_run = __import__("subprocess").run
+        subprocess_run(
+            [str(_7ZA), "a", "-y", str(archive), str(src / "cublas64_12.dll")],
+            capture_output=True,
+            text=True,
+        )
+        shutil.rmtree(src, ignore_errors=True)
+
+        self.downloader.archive_path = archive
+        try:
+            self.assertTrue(self.downloader._extract_archive())
+            self.assertTrue((libs_with_space / "cublas64_12.dll").exists())
+        finally:
+            shutil.rmtree(libs_with_space, ignore_errors=True)
+            archive.unlink(missing_ok=True)
+
+
 
 class TestDllIntegrity(unittest.TestCase):
     """DLL 完整性检测（仅判文件存在与大小，不依赖网络/7z）。"""
@@ -132,6 +160,34 @@ class TestDllIntegrity(unittest.TestCase):
         for name in DLL_REQUIRED_FILES:
             self._write(name, 1024)
         self.assertTrue(self.downloader.is_dlls_complete())
+
+    def test_sha256_computation_and_verify(self) -> None:
+        import hashlib
+        dummy_file = self.work_libs / "dummy_archive.7z"
+        content = b"test payload for sha256"
+        dummy_file.write_bytes(content)
+        expected_hash = hashlib.sha256(content).hexdigest()
+
+        computed = self.downloader.compute_sha256(dummy_file)
+        self.assertEqual(computed.lower(), expected_hash.lower())
+
+        self.downloader.archive_path = dummy_file
+        self.assertTrue(self.downloader.verify_archive(expected_hash))
+        self.assertFalse(self.downloader.verify_archive("wrong_hash"))
+
+    def test_check_dlls_in_use(self) -> None:
+        dll_name = "cublas64_12.dll"
+        dll_path = self.work_libs / dll_name
+        dll_path.write_bytes(b"content")
+
+        # 未被占用时
+        self.assertEqual(self.downloader.check_dlls_in_use(), [])
+
+        # 模拟文件被写锁/独占模式占用
+        with open(dll_path, "r+b"):
+            # 在同一进程内 r+b 是允许共享读取的，因此测试锁函数无异常
+            locked = self.downloader.check_dlls_in_use()
+            self.assertIsInstance(locked, list)
 
 
 if __name__ == "__main__":

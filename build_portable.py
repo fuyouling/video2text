@@ -97,6 +97,24 @@ def get_file_hash(filepath):
     return h.hexdigest()
 
 
+def compute_build_hash(root, spec_file):
+    """联合计算 spec 文件与 src/ 目录下所有 Python 文件的 sha256 哈希值。"""
+    h = hashlib.sha256()
+    if spec_file.exists():
+        h.update(get_file_hash(spec_file).encode())
+    src_dir = root / "src"
+    if src_dir.is_dir():
+        py_files = sorted(
+            src_dir.rglob("*.py"),
+            key=lambda p: str(p.relative_to(src_dir)).replace("\\", "/")
+        )
+        for py_path in py_files:
+            rel_path = str(py_path.relative_to(src_dir)).replace("\\", "/")
+            h.update(rel_path.encode("utf-8"))
+            h.update(get_file_hash(py_path).encode())
+    return h.hexdigest()
+
+
 def run_cmd(cmd, check=True, verbose=False):
     result = subprocess.run(
         cmd, capture_output=True, text=True, encoding="utf-8", errors="replace"
@@ -408,6 +426,22 @@ def main():
     else:
         log("  All dependencies satisfied", "green")
 
+    # 检查 ffmpeg.exe 与 ffprobe.exe 存在性
+    ffmpeg_bin = root / "ffmpeg" / "bin"
+    ffmpeg_exe = ffmpeg_bin / "ffmpeg.exe"
+    ffprobe_exe = ffmpeg_bin / "ffprobe.exe"
+    missing_ffmpeg = []
+    if not ffmpeg_exe.is_file():
+        missing_ffmpeg.append("ffmpeg.exe")
+    if not ffprobe_exe.is_file():
+        missing_ffmpeg.append("ffprobe.exe")
+    if missing_ffmpeg:
+        log(f"  [ERROR] Missing required FFmpeg binary: {', '.join(missing_ffmpeg)} in {ffmpeg_bin}", "red")
+        log("  Please ensure ffmpeg.exe and ffprobe.exe are placed in ffmpeg/bin/ before building.", "red")
+        sys.exit(1)
+    else:
+        log("  FFmpeg binaries verified (ffmpeg.exe, ffprobe.exe)", "green")
+
     # 步骤 4：PyInstaller 打包
     step_log(4, "Building executable...")
     if not spec_file.exists():
@@ -418,14 +452,10 @@ def main():
     if args.clean:
         needs_rebuild = True
     else:
-        current_spec_hash = get_file_hash(spec_file)
-        current_main_hash = get_file_hash(main_py) if main_py.exists() else ""
-        combined_hash = hashlib.sha256(
-            (current_spec_hash + current_main_hash).encode()
-        ).hexdigest()
+        current_build_hash = compute_build_hash(root, spec_file)
         if cache_file.exists():
-            cached_hash = cache_file.read_text().strip()
-            if combined_hash != cached_hash:
+            cached_hash = cache_file.read_text(encoding="utf-8").strip()
+            if current_build_hash != cached_hash:
                 needs_rebuild = True
         else:
             needs_rebuild = True
@@ -446,12 +476,8 @@ def main():
                 str(spec_file),
             ]
             run_cmd_stream(pyinstaller_cmd, verbose=args.verbose)
-            current_spec_hash = get_file_hash(spec_file)
-            current_main_hash = get_file_hash(main_py) if main_py.exists() else ""
-            combined_hash = hashlib.sha256(
-                (current_spec_hash + current_main_hash).encode()
-            ).hexdigest()
-            cache_file.write_text(combined_hash)
+            current_build_hash = compute_build_hash(root, spec_file)
+            cache_file.write_text(current_build_hash, encoding="utf-8")
             log("  Build complete (cached for next run)", "green")
     else:
         log("  Skipped (using previous build)", "green")
@@ -461,7 +487,7 @@ def main():
     if args.dry_run:
         log("  [dry-run] Would create portable directory structure", "white")
         log("  [dry-run] Would copy: assets/, docs/", "white")
-        log("  [dry-run] Would copy config_realease.ini -> config.ini (release defaults)", "white")
+        log("  [dry-run] Would copy config_release.ini (or config_realease.ini) -> config.ini (release defaults)", "white")
         log("  [dry-run] Would copy README.md", "white")
         log("  [dry-run] Would copy ffmpeg/ (bundled FFmpeg)", "white")
     else:
@@ -481,13 +507,15 @@ def main():
             except Exception as e:
                 log(f"  Warning: Failed to copy docs/: {e}", "yellow")
 
-        config_src = root / "config_realease.ini"
+        config_release = root / "config_release.ini"
+        config_fallback = root / "config_realease.ini"
+        config_src = config_release if config_release.exists() else (config_fallback if config_fallback.exists() else None)
         try:
-            if config_src.exists():
+            if config_src:
                 shutil.copy2(config_src, portable_dir / "config.ini")
-                log("  Copied: config_realease.ini -> config.ini (release defaults)", "green")
+                log(f"  Copied: {config_src.name} -> config.ini (release defaults)", "green")
             else:
-                log("  Warning: config_realease.ini not found, skipped", "yellow")
+                log("  Warning: Neither config_release.ini nor config_realease.ini found, skipped", "yellow")
         except Exception as e:
             log(f"  Warning: Failed to copy config.ini: {e}", "yellow")
 
@@ -507,34 +535,88 @@ start "" "%~dp0video2text.exe" %*
         (portable_dir / "video2text.bat").write_text(bat_content, encoding="ascii")
         log("  Created: video2text.bat", "green")
 
-        libs_src = root / "libs"
-        if libs_src.is_dir():
-            if args.not_copy_dll:
-                log("  Skipped: libs/ (--not-copy-dll specified)", "yellow")
-            else:
-                dst = portable_dir / "libs"
-                dst.mkdir(parents=True, exist_ok=True)
+        if not args.not_copy_dll and not args.cpu_only:
+            dst = portable_dir / "libs"
+            dst.mkdir(parents=True, exist_ok=True)
+            copied_count = 0
+
+            # 1. 优先复制项目本地 libs/ 目录下的 DLL（如果有）
+            libs_src = root / "libs"
+            if libs_src.is_dir():
                 for p in libs_src.iterdir():
                     if p.suffix.lower() == ".dll":
                         shutil.copy2(p, dst / p.name)
-                log("  Copied: libs/ (CUDA/cuDNN DLLs, loaded at runtime)", "green")
+                        copied_count += 1
+                if copied_count > 0:
+                    log(f"  Copied {copied_count} DLL(s) from local libs/", "green")
+
+            # 2. 从当前 Python 环境的 site-packages/nvidia/*/bin 提取 cudart*.dll, cufft*.dll, nvJitLink*.dll
+            import fnmatch
+            import site
+            import sysconfig
+
+            site_dirs = set()
+            try:
+                for sp in site.getsitepackages():
+                    site_dirs.add(Path(sp))
+                user_site = site.getusersitepackages()
+                if user_site:
+                    site_dirs.add(Path(user_site))
+            except Exception:
+                pass
+            try:
+                for name in ("purelib", "platlib"):
+                    p = sysconfig.get_path(name)
+                    if p:
+                        site_dirs.add(Path(p))
+            except Exception:
+                pass
+
+            nvidia_patterns = ["cudart*.dll", "cufft*.dll", "nvjitlink*.dll"]
+            nvidia_count = 0
+            for sp in site_dirs:
+                nvidia_dir = sp / "nvidia"
+                if nvidia_dir.is_dir():
+                    for bin_dir in nvidia_dir.glob("*/bin"):
+                        if bin_dir.is_dir():
+                            for dll in bin_dir.glob("*.dll"):
+                                dll_lower = dll.name.lower()
+                                if any(fnmatch.fnmatch(dll_lower, pat.lower()) for pat in nvidia_patterns):
+                                    shutil.copy2(dll, dst / dll.name)
+                                    nvidia_count += 1
+                                    log(f"  Extracted NVIDIA DLL: {dll.name}", "green")
+
+            if copied_count == 0 and nvidia_count == 0:
+                log("  Notice: No CUDA DLLs found in libs/ or site-packages/nvidia/*/bin", "yellow")
+            else:
+                log(f"  Copied: libs/ ({copied_count + nvidia_count} total DLLs, loaded at runtime)", "green")
+        else:
+            log("  Skipped: libs/ (--not-copy-dll or --cpu-only specified)", "yellow")
 
         # 7za.exe：由 spec 的 datas ('7z/7za.exe', '.') 已打包进 _internal/，
         # 运行时由 dll_downloader 通过 sys._MEIPASS / _internal 查找，故此处
         # 不再重复复制到根目录（避免根目录与 _internal 各存一份）。
 
-        ffmpeg_src = root / "ffmpeg"
-        if ffmpeg_src.exists():
-            dst = portable_dir / "ffmpeg"
-            (dst / "bin").mkdir(parents=True, exist_ok=True)
-            for name in ["ffmpeg.exe", "ffprobe.exe"]:
-                src_file = ffmpeg_src / "bin" / name
-                if src_file.exists():
-                    shutil.copy2(src_file, dst / "bin" / name)
-            presets_src = ffmpeg_src / "presets"
-            if presets_src.exists():
-                shutil.copytree(presets_src, dst / "presets", dirs_exist_ok=True)
-            log("  Copied: ffmpeg", "green")
+        ffmpeg_bin = root / "ffmpeg" / "bin"
+        ffmpeg_exe = ffmpeg_bin / "ffmpeg.exe"
+        ffprobe_exe = ffmpeg_bin / "ffprobe.exe"
+        missing_ffmpeg = []
+        if not ffmpeg_exe.is_file():
+            missing_ffmpeg.append("ffmpeg.exe")
+        if not ffprobe_exe.is_file():
+            missing_ffmpeg.append("ffprobe.exe")
+        if missing_ffmpeg:
+            log(f"  [ERROR] Missing required FFmpeg binaries: {', '.join(missing_ffmpeg)} in {ffmpeg_bin}", "red")
+            sys.exit(1)
+
+        dst = portable_dir / "ffmpeg"
+        (dst / "bin").mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ffmpeg_exe, dst / "bin" / "ffmpeg.exe")
+        shutil.copy2(ffprobe_exe, dst / "bin" / "ffprobe.exe")
+        presets_src = root / "ffmpeg" / "presets"
+        if presets_src.exists():
+            shutil.copytree(presets_src, dst / "presets", dirs_exist_ok=True)
+        log("  Copied: ffmpeg (ffmpeg.exe, ffprobe.exe, presets)", "green")
 
     # 步骤 6：打包 ZIP
     zip_path = None

@@ -150,7 +150,7 @@
     "phase_switch_summarize": "要約フェーズに切り替え中...",
     "phase_switch_transcribe": "文字起こしフェーズ...",
     "confirm_download_title": "モデルダウンロードの確認",
-    "confirm_download_msg": "クラウドドライブに既にダウンロード済みのモデルを使用することを推奨します。通常HuggingFaceには直接アクセスできません。\n\n別のモデルを使用するには、コアファイルをmodelsディレクトリにコピーし、設定でモデルパスを更新してください。\n\nモデルのダウンロードを開始しますか？",
+    "confirm_download_msg": "ローカルに転写モデルが見つかりません: {model}。\n\n自動ダウンロードを開始しますか？\nダウンロードできない場合は、クラウドストレージからモデルを取得し、models ディレクトリに手動で配置してください。",
     "pipeline_done_tx": "文字起こし完了 — 成功: {ok}, 失敗: {fail}",
     "pipeline_done_sum": "要約完了 — 成功: {ok}, 失敗: {fail}",
     "pipeline_done_both": "文字起こし: 成功 {tx_ok} / 失敗 {tx_fail} | 要約: 成功 {sum_ok} / 失敗 {sum_fail}",
@@ -236,13 +236,18 @@
     "license_label": "ライセンス",
     "license_value": "GNU GPL v3",
     "tech_label": "技術スタック",
-    "tech_value": "faster-whisper · PySide6",
+    "tech_value": "faster-whisper · FunASR · PySide6 · LLM",
     "email_label": "メール",
     "repo_link": "GitHub リポジトリ",
     "docs_link": "ユーザーガイド",
     "website_link": "公式サイト",
     "netdisk_link": "クラウドストレージ",
-    "copyright": "Copyright © 2026 MiaoWangLong"
+    "copyright": "Copyright © 2026 MiaoWangLong",
+    "qq_group_label": "QQ Group",
+    "qq_group_value": "296875960",
+    "copy_btn": "Copy",
+    "copied": "Copied",
+    "copy_tooltip": "Click to copy group number to clipboard"
   },
   "status": {
     "config_saved": "設定が保存されました",
@@ -263,7 +268,7 @@
     "dep": {
       "title": "依存関係のダウンロード",
       "intro": "以下のランタイム依存関係が不完全です。文字起こしが動作しない可能性があります。\nダウンロードするものを選択してください（または「キャンセル」をクリックしてスキップし、後で設定で処理してください）：",
-      "model_group": "音声認識モデル",
+      "model_group": "音声認識モデル（いずれか1つを選択）",
       "model_yes": "はい、モデルをダウンロード（初回使用時に必要）",
       "model_no": "いいえ、スキップ（文字起こしは実行されません）",
       "model_ready": "✓ モデルは完全です。何もする必要はありません",
@@ -274,10 +279,11 @@
       "keep_yes": "アーカイブを保持",
       "keep_no": "削除（容量節約）",
       "dll_ready": "✓ DLLは完全です。何もする必要はありません",
-      "funasr_opt": "FunASR Paraformer をダウンロード (中国語高精度, ~540MB, ModelScope)",
+      "funasr_opt": "FunASR Paraformer をダウンロード",
       "funasr_ready": "✓ FunASR Paraformer モデル準備完了",
       "whisper_opt": "Faster-Whisper をダウンロード (多言語対応, Large-v3-Turbo, ~1.4GB)",
-      "whisper_ready": "✓ Faster-Whisper モデル準備完了"
+      "whisper_ready": "✓ Faster-Whisper モデル準備完了",
+      "cancel_launch": "キャンセルして直接起動"
     },
     "file_select": {
       "title": "メディアファイルを選択",
@@ -1272,7 +1278,9 @@
     "detected_language": "Transcriber: 検出言語: {lang} (信頼度: {prob})",
     "transcribe_done": "Transcriber: 文字起こし完了、{count} セグメント",
     "fallback_retry_failed": "フォールバック {ct} 失敗: {error}",
-    "cpu_fallback_retry_failed": "CPUフォールバック {ct} 失敗: {error}"
+    "cpu_fallback_retry_failed": "CPUフォールバック {ct} 失敗: {error}",
+    "model_download_failed": "モデルのダウンロードに失敗したか、不完全です",
+    "transcribe_cancelled": "ユーザーによって文字起こしがキャンセルされました"
   },
   "transcription_prompt_manager": {
     "load_failed": "TranscriptionPromptManager: ✗ 読み込み失敗 ({name})",
@@ -1367,7 +1375,7 @@
       "start": "モデルダウンロード ({model})",
       "check_network": "ネットワーク接続を確認中",
       "using_proxy": "プロキシ {proxy} を使用 ({source})",
-      "direct_ok": "HuggingFaceへの直接接続に成功",
+      "direct_ok": "{source}への直接接続に成功",
       "direct_fail_proxy": "直接接続に失敗、プロキシ {proxy} を試行",
       "proxy_ok": "プロキシ接続成功",
       "proxy_fail": "プロキシ接続失敗、{source} プロキシを確認してください",
@@ -1389,7 +1397,9 @@
       "conn_failed": "接続失敗 ({attempt}/{max_retries})",
       "fail_generic": "失敗 ({attempt}/{max_retries}): {error}",
       "retry_wait": "{seconds}秒後に再試行…",
-      "file_failed": "ダウンロード失敗 ({max_retries} 回再試行): {name}"
+      "file_failed": "ダウンロード失敗 ({max_retries} 回再試行): {name}",
+      "mirror_ok": "ミラーサイト ({mirror}) への切り替えに成功しました",
+      "switch_mirror": "HuggingFaceへの直接接続が失敗しました。ミラーサイト ({mirror}) への接続を試行しています..."
     },
     "integrity": {
       "skipped": "モデル整合性チェックをスキップ (is_check_model_file=false)",
@@ -1558,7 +1568,8 @@
     "whisper_vad_min_silence_ms": "VAD 最小無音時間(ms)",
     "whisper_vad_speech_pad_ms": "VAD 音声パディング(ms)",
     "whisper_vad_threshold": "VAD 音声しきい値",
-    "whisper_word_timestamps": "単語レベルのタイムスタンプ"
+    "whisper_word_timestamps": "単語レベルのタイムスタンプ",
+    "funasr_compute_type": "計算精度"
   },
   "tx_tooltips": {
     "funasr_device": "推論計算デバイス: auto (自動検出), cuda (GPU), cpu",

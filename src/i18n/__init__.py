@@ -10,6 +10,7 @@
 
 import json
 import sys
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -21,21 +22,24 @@ class I18N:
     """国际化单例：负责加载、缓存、查找与兜底。"""
 
     _instance: Optional["I18N"] = None
+    _lock = threading.RLock()
 
     def __new__(cls) -> "I18N":
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
+                cls._instance._initialized = False
         return cls._instance
 
     def __init__(self) -> None:
-        if getattr(self, "_initialized", False):
-            return
-        self._lang = "zh-CN"
-        self._registry: dict[str, dict] = {}
-        self._catalogs: dict[str, dict] = {}
-        self._load_registry()
-        self._initialized = True
+        with self._lock:
+            if getattr(self, "_initialized", False):
+                return
+            self._lang = "zh-CN"
+            self._registry: dict[str, dict] = {}
+            self._catalogs: dict[str, dict] = {}
+            self._load_registry()
+            self._initialized = True
 
     # ── 路径 ────────────────────────────────────────────────
 
@@ -63,36 +67,41 @@ class I18N:
 
     def available_languages(self) -> list[str]:
         """返回所有已启用语言代码（按注册表顺序）。"""
-        return [
-            code
-            for code, meta in self._registry.items()
-            if meta.get("enabled", True)
-        ]
+        with self._lock:
+            return [
+                code
+                for code, meta in self._registry.items()
+                if meta.get("enabled", True)
+            ]
 
     def language_meta(self, code: str) -> dict:
-        return self._registry.get(code, {})
+        with self._lock:
+            return dict(self._registry.get(code, {}))
 
     # ── 加载 ────────────────────────────────────────────────
 
     def load(self, lang: str) -> None:
         """加载 locales/<lang>.json 到内存（带缓存）。"""
-        if lang in self._catalogs:
-            return
-        path = self._base_dir() / "locales" / f"{lang}.json"
-        try:
-            self._catalogs[lang] = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            self._catalogs[lang] = {}
+        with self._lock:
+            if lang in self._catalogs:
+                return
+            path = self._base_dir() / "locales" / f"{lang}.json"
+            try:
+                self._catalogs[lang] = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                self._catalogs[lang] = {}
 
     def set_lang(self, lang: str) -> None:
-        if lang not in self._registry:
-            lang = "zh-CN"
-        self._lang = lang
-        self.load(lang)
+        with self._lock:
+            if lang not in self._registry:
+                lang = "zh-CN"
+            self._lang = lang
+            self.load(lang)
 
     @property
     def lang(self) -> str:
-        return self._lang
+        with self._lock:
+            return self._lang
 
     # ── 查找 ────────────────────────────────────────────────
 
@@ -137,26 +146,27 @@ class I18N:
     # ── 主入口 ───────────────────────────────────────────────
 
     def t(self, msg_key: str, count=None, **kwargs) -> str:
-        text = self._fallback_lookup(msg_key)
-        if text is None:
-            return msg_key
+        with self._lock:
+            text = self._fallback_lookup(msg_key)
+            if text is None:
+                return msg_key
 
-        if count is not None and "|" in text:
-            segments = text.split("|")
-            idx = self._plural_index(count)
-            text = segments[idx] if idx < len(segments) else segments[-1]
+            if count is not None and "|" in text:
+                segments = text.split("|")
+                idx = self._plural_index(count)
+                text = segments[idx] if idx < len(segments) else segments[-1]
 
-        fmt: dict = {}
-        if count is not None:
-            fmt["count"] = count
-            fmt["n"] = count
-        fmt.update(kwargs)
-        if fmt:
-            try:
-                return text.format(**fmt)
-            except (KeyError, IndexError, ValueError):
-                return text
-        return text
+            fmt: dict = {}
+            if count is not None:
+                fmt["count"] = count
+                fmt["n"] = count
+            fmt.update(kwargs)
+            if fmt:
+                try:
+                    return text.format(**fmt)
+                except (KeyError, IndexError, ValueError):
+                    return text
+            return text
 
 
 # ── 模块级便捷接口 ───────────────────────────────────────────
@@ -250,6 +260,13 @@ def install_qt_translator(app: QApplication, lang: Optional[str] = None) -> None
 
     若对应 .qm 文件不存在（PySide6 未必打包），则静默跳过，不影响自有文案。
     """
+    while _QT_TRANSLATORS:
+        old_tr = _QT_TRANSLATORS.pop()
+        try:
+            app.removeTranslator(old_tr)
+        except Exception:
+            pass
+
     lang = lang or get_lang()
     qt_code = language_meta(lang).get("qt")
     if not qt_code:

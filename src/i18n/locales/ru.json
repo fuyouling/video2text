@@ -150,7 +150,7 @@
     "phase_switch_summarize": "Переключение на этап суммаризации…",
     "phase_switch_transcribe": "Этап расшифровки…",
     "confirm_download_title": "Подтверждение загрузки модели",
-    "confirm_download_msg": "Рекомендуется использовать модели, уже загруженные в ваше облачное хранилище; HuggingFace обычно недоступен напрямую.\n\nЧтобы использовать другую модель, скопируйте её основные файлы в папку models и обновите путь к модели в настройках.\n\nНачать загрузку модели?",
+    "confirm_download_msg": "Локально не найдена модель транскрипции: {model}.\n\nНачать автоматическую загрузку?\nЕсли скачивание не удается, вы можете скачать модель с облачного диска и вручную поместить ее в каталог models.",
     "pipeline_done_tx": "Расшифровка завершена — успешно: {ok}, ошибок: {fail}",
     "pipeline_done_sum": "Суммаризация завершена — успешно: {ok}, ошибок: {fail}",
     "pipeline_done_both": "Расшифровка: успешно {tx_ok} / ошибок {tx_fail} | Суммаризация: успешно {sum_ok} / ошибок {sum_fail}",
@@ -236,13 +236,18 @@
     "license_label": "Лицензия",
     "license_value": "GNU GPL v3",
     "tech_label": "Технологии",
-    "tech_value": "faster-whisper · PySide6",
+    "tech_value": "faster-whisper · FunASR · PySide6 · LLM",
     "email_label": "Эл. почта",
     "repo_link": "Репозиторий GitHub",
     "docs_link": "Руководство пользователя",
     "website_link": "Официальный сайт",
     "netdisk_link": "Облачный диск",
-    "copyright": "Copyright © 2026 MiaoWangLong"
+    "copyright": "Copyright © 2026 MiaoWangLong",
+    "qq_group_label": "QQ Group",
+    "qq_group_value": "296875960",
+    "copy_btn": "Copy",
+    "copied": "Copied",
+    "copy_tooltip": "Click to copy group number to clipboard"
   },
   "status": {
     "config_saved": "Конфигурация сохранена",
@@ -263,7 +268,7 @@
     "dep": {
       "title": "Загрузка зависимостей",
       "intro": "Следующие компоненты среды выполнения неполны; расшифровка может не работать.\nВыберите, что загрузить (или нажмите «Отмена», чтобы пропустить и настроить позже в Настройках):",
-      "model_group": "Модель распознавания речи",
+      "model_group": "Модель распознавания речи (достаточно выбрать одну)",
       "model_yes": "Да, загрузить модель (необходимо для первого использования)",
       "model_no": "Нет, пропустить (расшифровка не будет работать)",
       "model_ready": "✓ Модель готова, ничего делать не нужно",
@@ -274,10 +279,11 @@
       "keep_yes": "Сохранить архив",
       "keep_no": "Удалить (экономия места)",
       "dll_ready": "✓ DLL готовы, ничего делать не нужно",
-      "funasr_opt": "Скачать FunASR Paraformer (высокая точность для китайского, ~540МБ, ModelScope)",
+      "funasr_opt": "Скачать FunASR Paraformer",
       "funasr_ready": "✓ Модель FunASR Paraformer готова",
       "whisper_opt": "Скачать Faster-Whisper (многоязычный, Large-v3-Turbo, ~1.4ГБ)",
-      "whisper_ready": "✓ Модель Faster-Whisper готова"
+      "whisper_ready": "✓ Модель Faster-Whisper готова",
+      "cancel_launch": "Отмена, запустить напрямую"
     },
     "file_select": {
       "title": "Выбор медиафайлов",
@@ -1272,7 +1278,9 @@
     "detected_language": "Transcriber: Определён язык: {lang} (уверенность: {prob})",
     "transcribe_done": "Transcriber: Расшифровка завершена, сегментов: {count}",
     "fallback_retry_failed": "Запасной вариант {ct} не удался: {error}",
-    "cpu_fallback_retry_failed": "Запасной вариант CPU {ct} не удался: {error}"
+    "cpu_fallback_retry_failed": "Запасной вариант CPU {ct} не удался: {error}",
+    "model_download_failed": "Не удалось загрузить модель или файлы неполные",
+    "transcribe_cancelled": "Транскрибация отменена пользователем"
   },
   "transcription_prompt_manager": {
     "load_failed": "TranscriptionPromptManager: ✗ Ошибка загрузки ({name})",
@@ -1367,7 +1375,7 @@
       "start": "Загрузка модели ({model})",
       "check_network": "Проверка сетевого подключения",
       "using_proxy": "Используется прокси {proxy} ({source})",
-      "direct_ok": "Прямое подключение к HuggingFace успешно",
+      "direct_ok": "Прямое подключение к {source} успешно",
       "direct_fail_proxy": "Прямое подключение не удалось, попытка через прокси {proxy}",
       "proxy_ok": "Подключение через прокси успешно",
       "proxy_fail": "Подключение через прокси не удалось, проверьте {source} прокси",
@@ -1389,7 +1397,9 @@
       "conn_failed": "Ошибка подключения ({attempt}/{max_retries})",
       "fail_generic": "Ошибка ({attempt}/{max_retries}): {error}",
       "retry_wait": "Повтор через {seconds} с…",
-      "file_failed": "Загрузка не удалась (повторов: {max_retries}): {name}"
+      "file_failed": "Загрузка не удалась (повторов: {max_retries}): {name}",
+      "mirror_ok": "Переключение на зеркало ({mirror}) прошло успешно",
+      "switch_mirror": "Прямое подключение к HuggingFace недоступно, попытка переключения на зеркало ({mirror})..."
     },
     "integrity": {
       "skipped": "Проверка целостности модели пропущена (is_check_model_file=false)",
@@ -1471,7 +1481,11 @@
     "error_invalid_key": "Имя ключа может содержать только буквы, цифры и подчёркивания и должно начинаться с буквы или подчёркивания",
     "error_dup_key": "Имя ключа уже существует (без учёта регистра)",
     "save_failed": "Ошибка сохранения: {error}",
-    "saved_msg": "Успешно сохранено в:\n{path}"
+    "saved_msg": "Успешно сохранено в:\n{path}",
+    "col_vendor": "Поставщик",
+    "col_key": "Переменная окружения",
+    "col_value": "Ключ",
+    "col_action": "Действие"
   },
   "app": {
     "result_viewer": {
@@ -1553,7 +1567,8 @@
     "whisper_vad_min_silence_ms": "VAD мин. тишина (мс)",
     "whisper_vad_speech_pad_ms": "VAD отступ речи (мс)",
     "whisper_vad_threshold": "VAD порог речи",
-    "whisper_word_timestamps": "Пословные временные метки"
+    "whisper_word_timestamps": "Пословные временные метки",
+    "funasr_compute_type": "Тип вычислений"
   },
   "tx_tooltips": {
     "funasr_device": "Устройство вычислений: auto (автоопределение), cuda (GPU), cpu",

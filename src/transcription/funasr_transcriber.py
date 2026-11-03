@@ -8,7 +8,7 @@ import gc
 import os
 import threading
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import soundfile as sf
@@ -198,6 +198,17 @@ class FunASRTranscriber:
             except Exception as e:
                 if device_id != "-1":
                     logger.warning("FunASR GPU 加载失败 (%s)，平滑回退至 CPU 推理", e)
+                    self.asr_model = None
+                    self.vad_model = None
+                    self.punc_model = None
+                    gc.collect()
+                    try:
+                        import torch
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                    except Exception:
+                        pass
+
                     device_id = "-1"
                     self.device = "cpu"
                     from funasr_onnx import CT_Transformer, Fsmn_vad, Paraformer
@@ -237,8 +248,61 @@ class FunASRTranscriber:
             self.vad_model = None
             self.punc_model = None
             self._loaded = False
+            if hasattr(self, "_original_device"):
+                self.device = self._original_device
+            if hasattr(self, "_original_compute_type"):
+                self.compute_type = self._original_compute_type
             gc.collect()
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except Exception:
+                pass
             logger.info(t("transcriber.model_unloaded"))
+
+    def get_supported_languages(self) -> Dict[str, str]:
+        """获取支持的语言列表（多态兼容接口）
+
+        FunASR Paraformer-large 专精普通话及常见中英混杂。
+        """
+        return {
+            "zh": "Chinese",
+            "en": "English",
+        }
+
+    def detect_language(self, audio_path: str) -> Tuple[str, float]:
+        """检测音频语言（多态兼容接口）
+
+        Args:
+            audio_path: 音频文件路径
+
+        Returns:
+            (语言代码, 置信度)
+        """
+        if not self._loaded:
+            self.load_model()
+
+        audio_file = Path(audio_path)
+        if not audio_file.exists():
+            raise TranscriptionError(t("transcriber.audio_file_not_found", path=audio_path))
+
+        return ("zh", 0.99)
+
+    def get_model_info(self) -> Dict[str, Any]:
+        """获取模型信息（不触发模型加载，多态兼容接口）"""
+        return {
+            "model_path": self.model_path,
+            "device": self.device,
+            "compute_type": self.compute_type,
+            "num_workers": self.num_workers,
+            "download_root": self.download_root,
+            "loaded": self._loaded,
+            "quantize": self.quantize,
+            "punc_filter": self.punc_filter,
+            "vad_max_end_sil": self.vad_max_end_sil,
+            "engine": "funasr",
+        }
 
     def transcribe(
         self,
@@ -300,19 +364,34 @@ class FunASRTranscriber:
 
             # 1. 语音活动检测 (VAD 切分)
             vad_times: List[List[int]] = []
+            vad_executed = False
             if vad_filter and self.vad_model is not None:
                 try:
                     if hasattr(self.vad_model, "max_end_sil"):
                         self.vad_model.max_end_sil = self.vad_max_end_sil
                     raw_vad = self.vad_model(waveform)
+                    vad_executed = True
                     if raw_vad and isinstance(raw_vad, list) and len(raw_vad) > 0:
                         vad_times = raw_vad[0]
+                    else:
+                        vad_times = []
                 except Exception as e:
-                    logger.warning("VAD 切片异常，回退至全音频转写: %s", e)
+                    logger.warning("VAD 切片异常，回退至分块安全转写: %s", e)
+                    vad_executed = False
 
-            # 若 VAD 未检测出分段或未启用 VAD，按整体处理
-            if not vad_times:
-                vad_times = [[0, int(total_duration * 1000)]]
+            if vad_executed:
+                # 启用了 VAD 且无语音时直接返回空，避免无效推理或静音误识
+                if not vad_times:
+                    logger.debug("VAD 检测未发现有效语音活动，直接返回空结果")
+                    return []
+            else:
+                # 未启用 VAD 或 VAD 异常时：强制切分为 30s 安全小块，防止长音频全量灌入导致显存 OOM 爆炸
+                chunk_len_ms = 30000
+                total_ms = int(total_duration * 1000)
+                vad_times = [
+                    [start_ms, min(start_ms + chunk_len_ms, total_ms)]
+                    for start_ms in range(0, total_ms, chunk_len_ms)
+                ]
 
             # 2. 逐段 ASR + PUNC 转写
             for idx, seg_time in enumerate(vad_times):
@@ -374,7 +453,14 @@ class FunASRTranscriber:
     @staticmethod
     def _apply_hotwords_bias(text: str, hotwords: str) -> str:
         """根据用户热词对识别文本进行关键词匹配校准与纠偏"""
-        words = [w.strip() for w in hotwords.replace(",", " ").replace("，", " ").split() if w.strip()]
+        normalized_hotwords = (
+            hotwords.replace(",", " ")
+            .replace("，", " ")
+            .replace("、", " ")
+            .replace(";", " ")
+            .replace("；", " ")
+        )
+        words = [w.strip() for w in normalized_hotwords.split() if w.strip()]
         for hw in words:
             # 过滤掉权重数字 (如 "达摩院 20")
             if hw.isdigit():

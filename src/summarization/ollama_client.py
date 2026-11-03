@@ -155,6 +155,7 @@ class OllamaClient:
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     timeout=10,
+                    creationflags=CREATE_NO_WINDOW,
                 )
             else:
                 proc.terminate()
@@ -324,7 +325,7 @@ class OllamaClient:
     def _post_with_retry(
         self, url: str, json: dict, timeout: int, stream: bool = False
     ) -> requests.Response:
-        """POST request with retry (only retries non-streaming requests)."""
+        """POST request with retry (retries connection and timeout errors during request creation even for streaming)."""
         last_exc = None
         for attempt in range(1, self.max_retries + 1):
             try:
@@ -337,7 +338,7 @@ class OllamaClient:
                 requests.exceptions.Timeout,
             ) as e:
                 last_exc = e
-                if stream or attempt == self.max_retries:
+                if attempt == self.max_retries:
                     raise
                 wait = 2**attempt
                 logger.warning(
@@ -480,13 +481,16 @@ class OllamaClient:
         if system_prompt:
             payload["system"] = system_prompt
 
+        options = {}
         if temperature is not None:
-            payload["options"] = {"temperature": temperature}
+            options["temperature"] = temperature
 
         if max_tokens is not None:
-            if "options" not in payload:
-                payload["options"] = {}
-            payload["options"]["num_predict"] = max_tokens
+            options["num_predict"] = max_tokens
+
+        # 根据输入提示词动态计算并传入 options["num_ctx"]（max(4096, min(len(prompt) + 2048, 32768))），彻底杜绝本地模型静默截断为 2048 Token
+        options["num_ctx"] = max(4096, min(len(prompt) + 2048, 32768))
+        payload["options"] = options
 
         logger.debug("Ollama request params: %s", payload)
 
@@ -516,6 +520,11 @@ class OllamaClient:
                     for line in response.iter_lines():
                         if cancel_check and cancel_check():
                             raise SummarizationError(t("services.summarization.ollama.user_cancelled"))
+                        if pause_event is not None and not pause_event.is_set():
+                            while not pause_event.is_set():
+                                if cancel_check and cancel_check():
+                                    raise SummarizationError(t("services.summarization.ollama.user_cancelled"))
+                                pause_event.wait(timeout=0.1)
                         if line:
                             try:
                                 data = _json.loads(line)

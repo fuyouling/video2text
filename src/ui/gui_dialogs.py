@@ -1635,9 +1635,20 @@ class ConfigEditorDialog(QDialog):
             except ValueError:
                 edit.setText(file_path)
 
+    def done(self, r: int) -> None:
+        if hasattr(self, "_summarization_tab"):
+            try:
+                self._summarization_tab.cleanup_threads()
+            except Exception:
+                pass
+        super().done(r)
+
     def closeEvent(self, event) -> None:
         if hasattr(self, "_summarization_tab"):
-            self._summarization_tab.cleanup_threads()
+            try:
+                self._summarization_tab.cleanup_threads()
+            except Exception:
+                pass
         super().closeEvent(event)
 
     def _on_button_clicked(self, button: QAbstractButton) -> None:

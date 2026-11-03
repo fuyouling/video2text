@@ -3,6 +3,7 @@
 import pytest
 from src.storage.output_formatter import OutputFormatter
 from src.transcription.transcriber import TranscriptSegment
+from src.utils.output_validator import validate_srt_content, validate_vtt_content
 from src.utils.time_format import format_time_hms, format_time_srt, format_time_vtt
 
 
@@ -68,3 +69,42 @@ class TestOutputFormatter:
         assert result == ""
         result = self.formatter.format_vtt([])
         assert result.startswith("WEBVTT")
+
+    def test_srt_and_vtt_inverted_timestamp_compensation(self):
+        # start > end: 防倒挂与最小持续时长补偿保证 end >= start + 0.05s
+        segments = [
+            _make_segment(5.0, 2.0, "时间倒挂测试"),
+            _make_segment(10.0, 10.0, "零持续时长测试"),
+            _make_segment(20.0, 20.01, "极短持续时长测试"),
+        ]
+        srt = self.formatter.format_srt(segments)
+        # 应无异常通过校验器
+        blocks = validate_srt_content(srt)
+        assert len(blocks) == 3
+        assert "00:00:05,000 --> 00:00:05,050" in srt
+        assert "00:00:10,000 --> 00:00:10,050" in srt
+        assert "00:00:20,000 --> 00:00:20,050" in srt
+
+        vtt = self.formatter.format_vtt(segments)
+        cues = validate_vtt_content(vtt)
+        assert len(cues) == 3
+        assert "00:00:05.000 --> 00:00:05.050" in vtt
+        assert "00:00:10.000 --> 00:00:10.050" in vtt
+        assert "00:00:20.000 --> 00:00:20.050" in vtt
+
+    def test_srt_and_vtt_filter_cue_empty_lines(self):
+        # cue 内部夹带多余空行，应当被过滤，不影响分块解析
+        segments = [
+            _make_segment(0.0, 1.5, "第一行\n\n\n第二行\r\n\r\n第三行\n"),
+            _make_segment(1.5, 3.0, "   \n\n  "),  # 纯空白文本
+        ]
+        srt = self.formatter.format_srt(segments)
+        blocks = validate_srt_content(srt)
+        assert len(blocks) == 2
+        assert "第一行\n第二行\n第三行" in srt
+        assert "..." in blocks[1]
+
+        vtt = self.formatter.format_vtt(segments)
+        cues = validate_vtt_content(vtt)
+        assert len(cues) == 2
+        assert "第一行\n第二行\n第三行" in vtt
