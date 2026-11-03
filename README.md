@@ -22,6 +22,7 @@ Download the portable version from the release page, extract it, and double-clic
 If the download fails, check if the download source exists:
 
 - [faster-whisper-large-v3-turbo-ct2](https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2) (transcription speech model)
+- [paraformer-large-vad-punc](https://www.modelscope.cn/models/damo/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-onnx) (FunASR transcription speech model, Chinese high accuracy)
 - [cuBLAS.and.cuDNN_CUDA12_win_v3.7z](https://github.com/Purfview/whisper-standalone-win/releases/tag/libs) (GPU acceleration dependency libraries)
 
 libs directory description:
@@ -46,25 +47,46 @@ video2text\libs\
 
 models directory structure:
 
-Normally automatically downloads the `faster-whisper-large-v3-turbo-ct2` model. If you want to use other models, you can download them from [Systran](https://huggingface.co/Systran)
+Normally automatically downloads `faster-whisper-large-v3-turbo-ct2` and `paraformer-large-vad-punc`. If you want to use other whisper models, you can download them from [Systran](https://huggingface.co/Systran)
 
 ```text
 video2text\models\
-└── faster-whisper-large-v3-turbo-ct2\
-    ├── config.json
-    ├── model.bin
-    ├── preprocessor_config.json
-    ├── README.md
-    ├── tokenizer.json
-    ├── vocabulary.json
-    └── .gitattributes
+├── faster-whisper-large-v3-turbo-ct2\
+│   ├── config.json
+│   ├── model.bin
+│   ├── preprocessor_config.json
+│   ├── README.md
+│   ├── tokenizer.json
+│   ├── vocabulary.json
+│   └── .gitattributes
+└── paraformer-large-vad-punc\
+    ├── asr\
+    │   ├── am.mvn
+    │   ├── config.yaml
+    │   ├── model_quant.onnx
+    │   └── tokens.json
+    ├── vad\
+    │   ├── config.yaml
+    │   └── model_quant.onnx
+    └── punc\
+        ├── config.yaml
+        ├── model_quant.onnx
+        └── tokens.json
 ```
+
+**FunASR Model Description:**
+- FunASR Paraformer is an industrial-grade, high-accuracy Chinese speech recognition model open-sourced by Alibaba DAMO Academy, integrating Paraformer speech recognition, FSMN-VAD voice activity detection, and CT-Transformer punctuation restoration.
+- Utilizing a non-autoregressive end-to-end architecture, it provides fast inference speed and high Chinese accuracy, especially suitable for long audio, Chinese meetings, and lecture transcriptions.
+- Supports hotword (Hotwords) configuration to improve recognition accuracy for domain-specific terminology and proper nouns.
+- Can be selected under `Settings > Edit Config > Transcription` (`Faster-Whisper (multilingual)` or `FunASR (Chinese High-Accuracy)`).
 
 > After placing the models, you can use the audio/video to text feature.
 
 **2. Summary Model Installation**
 
-Supports two summary services: NVIDIA online models and local Ollama models. Choose one as needed. Configuration steps: `Settings > Edit Config > Summary > Radio button selection`
+Supports multiple summary services: NVIDIA online models, local Ollama models, Mistral online models, and AMD online models. Choose one as needed. Configuration steps: `Settings > Edit Config > Summary > Radio button selection`
+
+> **Note**: In the "Transcription + Summary" workflow, FunASR / Faster-Whisper is responsible for the first stage of speech-to-text transcription to generate punctuated text with timestamps. Once transcription is complete, the configured summary model (AMD, NVIDIA, Mistral, or Ollama) will generate structured summaries from the transcript.
 
 **2.1 NVIDIA Online (Use online NVIDIA models for summarization)**
 
@@ -83,3 +105,12 @@ Ollama is a local large language model runtime framework used for generating tex
 
 You need to first register on [mistral](https://v2.auth.mistral.ai/login), then create an API Key, and add it to the program via `Settings > Manage API Key`
 
+**2.4 AMD Online Model (Use online AMD Radeon Cloud models for summarization)**
+
+You need to first register on the [AMD Developer Community](https://developer.amd.com.cn/) and create an API Key (Token Factory), then add it to the program via `Settings > Manage API Key`.
+- Default summary model is `Qwen3.8-Flash-Next` (can be customized to other models such as `MiMo-V2.6-Flash` in configuration)
+- Supports single-thread streaming output and multi-threaded concurrent chunk summarization
+- Built-in "Tools > AMD API Response Test" dialog allows you to quickly test connectivity and apply available models
+
+## Discussion Group
+QQ Group: 296875960

@@ -22,6 +22,7 @@ python -m src.ui.gui
 如果下载失败可以查看下载源是否存在:
 
 - [faster-whisper-large-v3-turbo-ct2](https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2)（转写语音模型）
+- [paraformer-large-vad-punc](https://www.modelscope.cn/models/damo/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-onnx)（FunASR 转写语音模型，中文高精度）
 - [cuBLAS.and.cuDNN_CUDA12_win_v3.7z](https://github.com/Purfview/whisper-standalone-win/releases/tag/libs)（GPU 加速依赖库）
 
 libs目录说明:
@@ -46,25 +47,46 @@ video2text\libs\
 
  models目录结构说明：
 
- 正常自动下载模型`faster-whisper-large-v3-turbo-ct2`,如果想使用其它模型可以到[Systran](https://huggingface.co/Systran)进行下载
+ 正常自动下载模型`faster-whisper-large-v3-turbo-ct2`与`paraformer-large-vad-punc`,如果想使用其它 whisper 模型可以到[Systran](https://huggingface.co/Systran)进行下载
 
 ```text
 video2text\models\
-└── faster-whisper-large-v3-turbo-ct2\
-    ├── config.json                 
-    ├── model.bin                   
-    ├── preprocessor_config.json    
-    ├── README.md                   
-    ├── tokenizer.json              
-    ├── vocabulary.json             
-    └── .gitattributes              
+├── faster-whisper-large-v3-turbo-ct2\
+│   ├── config.json                 
+│   ├── model.bin                   
+│   ├── preprocessor_config.json    
+│   ├── README.md                   
+│   ├── tokenizer.json              
+│   ├── vocabulary.json             
+│   └── .gitattributes              
+└── paraformer-large-vad-punc\
+    ├── asr\
+    │   ├── am.mvn
+    │   ├── config.yaml
+    │   ├── model_quant.onnx
+    │   └── tokens.json
+    ├── vad\
+    │   ├── config.yaml
+    │   └── model_quant.onnx
+    └── punc\
+        ├── config.yaml
+        ├── model_quant.onnx
+        └── tokens.json
 ```
+
+**FunASR 模型说明：**
+- FunASR Paraformer 是阿里达摩院开源的工业级中文高精度语音识别模型，内置 Paraformer 语音识别、FSMN-VAD 语音活动检测和 CT-Transformer 标点恢复。
+- 采用非自回归（Non-autoregressive）端到端架构，识别速度快，特别适合长音频与中文会议转写。
+- 支持热词（Hotwords）配置，可输入专有名词以提升特定词汇的识别准确率。
+- 在`设置 > 编辑配置 > 转写`中可通过单选框切换 `Faster-Whisper (通用多语言)` 与 `FunASR (中文高精度)`。
 
 > 放好模型后就可以使用音视频转文本功能了。
 
 **2. 总结模型安装**
 
-支持两种总结服务：NVIDIA 在线模型和本地 Ollama 模型，按需选择其一即可。配置步骤`设置>编辑配置>总结>单选框选择`
+支持多种总结服务：NVIDIA 在线模型、本地 Ollama 模型、Mistral 在线模型和 AMD 在线模型，按需选择其一即可。配置步骤`设置>编辑配置>总结>单选框选择`
+
+> **说明**：在“转写+总结”全流程中，FunASR / Faster-Whisper 负责第一阶段的音视频语音识别转写，输出带标点和时间戳的文本；转写完成后，再由配置好的总结大模型（AMD、NVIDIA、Mistral、Ollama）对文本进行摘要总结。
 
 **2.1 NVIDIA 在线（使用在线 NVIDIA 模型总结）**
 
@@ -82,6 +104,13 @@ Ollama 是一个本地大语言模型运行框架，使用它来生成文本摘�
 **2.3 mistral 在线模型**
 
 需要先在[mistral](https://v2.auth.mistral.ai/login)注册账号,再创建 API Key,再通过`设置>设置 API Key`添加到程序
+
+**2.4 AMD 在线模型（使用在线 AMD Radeon Cloud 模型总结）**
+
+需要先在 [AMD 开发者社区](https://developer.amd.com.cn/) 注册账号并创建 API Key（Token Factory），再通过`设置>设置 API Key`添加到程序。
+- 默认总结模型为 `Qwen3.8-Flash-Next`（可根据需要修改为其他模型如 `MiMo-V2.6-Flash` 等）
+- 支持单线程流式输出（Stream）与多线程并发切片加速总结
+- 程序内置“工具 > AMD API 响应测试”，可便捷测试网络延迟并一键获取/应用可用模型
 
 ## 讨论小组
 QQ群: 296875960
