@@ -19,6 +19,19 @@ from src.summarization.providers import (
 from src.utils.exceptions import SummarizationError
 
 
+def _make_sdk_error(message: str, status_code: int = 500, raw_response=None) -> SDKError:
+    """创建跨版本兼容的 SDKError 异常实例，规避 mistralai 构造函数参数要求。"""
+    try:
+        err = SDKError.__new__(SDKError)
+        Exception.__init__(err, message)
+    except Exception:
+        err = Exception(message)
+    err.status_code = status_code
+    if raw_response is not None:
+        err.raw_response = raw_response
+    return err
+
+
 class FakeResponse:
     def __init__(self, status_code=200, json_data=None, headers=None, text=""):
         self.status_code = status_code
@@ -62,11 +75,9 @@ class TestMistralClientFixes:
         mock_sdk.return_value = mock_client
 
         # from mistralai SDKError
-        err = SDKError("Rate limited")
-        err.status_code = 429
         mock_resp = MagicMock()
         mock_resp.headers = {"Retry-After": "0.1"}
-        err.raw_response = mock_resp
+        err = _make_sdk_error("Rate limited", status_code=429, raw_response=mock_resp)
 
         # 第一次抛 429，第二次成功
         success_resp = MagicMock()
@@ -89,7 +100,7 @@ class TestMistralClientFixes:
         mock_client = MagicMock()
         mock_sdk.return_value = mock_client
 
-        stream_force_err = SDKError("Unexpected response received: text/event-stream")
+        stream_force_err = _make_sdk_error("Unexpected response received: text/event-stream")
         mock_client.chat.complete.side_effect = stream_force_err
 
         # 模拟流式事件
