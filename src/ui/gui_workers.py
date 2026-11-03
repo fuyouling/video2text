@@ -140,17 +140,11 @@ def _is_multi_mode(value) -> bool:
 def _build_rate_limiter(settings: Settings, provider_name: str, max_workers: int) -> Optional[RateLimiter]:
     """根据 provider 与模式构建速率限制器。
 
-    - 多线程模式（max_workers > 1）的 nvidia/mistral：沿用固定 1.5s 间隔控制批次提交速率。
-    - 单线程 mistral：读取 ``summarization.mistral_rate_limit``（每秒请求数，默认 2.0），
-      转换为 min_interval = 1 / rate_limit，防止 codestral 等强制流式模型触发限流。
+    - 多线程模式（max_workers > 1）的 nvidia/amd：沿用固定 1.5s 间隔控制批次提交速率。
     - 其余情况返回 None（不限速）。
     """
-    if max_workers > 1 and provider_name in ("nvidia", "mistral", "amd"):
+    if max_workers > 1 and provider_name in ("nvidia", "amd"):
         return RateLimiter(1.5)
-    if provider_name == "mistral" and max_workers <= 1:
-        rps = settings.get_float("summarization.mistral_rate_limit", 2.0)
-        if rps > 0:
-            return RateLimiter(1.0 / rps)
     return None
 
 
@@ -158,7 +152,6 @@ def _get_provider_label(provider: str) -> str:
     return {
         "ollama": "Ollama",
         "nvidia": "NVIDIA API",
-        "mistral": "Mistral AI",
         "amd": "AMD Radeon Cloud",
     }.get(provider, provider)
 
@@ -507,7 +500,7 @@ class SummarizeWorker(QObject):
                 mode = _get_online_cfg(self.settings, "mode", "single")
                 max_workers = (
                     _get_online_cfg(self.settings, "thread_count", 5)
-                    if provider_name in ("nvidia", "mistral", "amd") and _is_multi_mode(mode)
+                    if provider_name in ("nvidia", "amd") and _is_multi_mode(mode)
                     else 1
                 )
                 stream = self.stream and max_workers <= 1
@@ -793,7 +786,7 @@ class PipelineWorker(QObject):
                     mode = _get_online_cfg(self.settings, "mode", "single")
                     max_workers = (
                         _get_online_cfg(self.settings, "thread_count", 5)
-                        if provider_name in ("nvidia", "mistral", "amd") and _is_multi_mode(mode)
+                        if provider_name in ("nvidia", "amd") and _is_multi_mode(mode)
                         else 1
                     )
                     stream = self.stream and max_workers <= 1
@@ -875,8 +868,6 @@ class CheckWorker(QObject):
                 ok, detail = self._check_ollama()
             elif self.provider_type == "nvidia":
                 ok, detail = self._check_nvidia()
-            elif self.provider_type == "mistral":
-                ok, detail = self._check_mistral()
             elif self.provider_type == "amd":
                 ok, detail = self._check_amd()
             else:
@@ -906,18 +897,6 @@ class CheckWorker(QObject):
         client = NvidiaClient(
             api_url=self.kwargs["api_url"],
             api_key=get_api_key("NVIDIA_API_KEY"),
-            model=self.kwargs.get("model", ""),
-        )
-        try:
-            return client.check_connection(), ""
-        finally:
-            client.close()
-
-    def _check_mistral(self) -> tuple[bool, str]:
-        from src.summarization.mistral_client import MistralClient
-
-        client = MistralClient(
-            api_key=get_api_key("MISTRAL_API_KEY"),
             model=self.kwargs.get("model", ""),
         )
         try:

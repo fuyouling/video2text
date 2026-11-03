@@ -46,15 +46,6 @@ _SUMM_KEY_LABELS: dict[str, str] = {
     "summarization.nvidia_mode": "summ_labels.nvidia_mode",
     "summarization.nvidia_thread_count": "summ_labels.nvidia_thread_count",
     "summarization.nvidia_stream": "summ_labels.nvidia_stream",
-    "summarization.mistral_base_url": "summ_labels.mistral_base_url",
-    "summarization.mistral_model": "summ_labels.mistral_model",
-    "summarization.mistral_rate_limit": "summ_labels.mistral_rate_limit",
-    "summarization.mistral_max_tokens": "summ_labels.mistral_max_tokens",
-    "summarization.mistral_temperature": "summ_labels.mistral_temperature",
-    "summarization.mistral_timeout": "summ_labels.mistral_timeout",
-    "summarization.mistral_mode": "summ_labels.mistral_mode",
-    "summarization.mistral_thread_count": "summ_labels.mistral_thread_count",
-    "summarization.mistral_stream": "summ_labels.mistral_stream",
     "summarization.amd_api_url": "summ_labels.amd_api_url",
     "summarization.amd_model": "summ_labels.amd_model",
     "summarization.amd_max_tokens": "summ_labels.amd_max_tokens",
@@ -82,15 +73,6 @@ _SUMM_KEY_TOOLTIPS: dict[str, str] = {
     "summarization.nvidia_mode": "summ_tooltips.nvidia_mode",
     "summarization.nvidia_thread_count": "summ_tooltips.nvidia_thread_count",
     "summarization.nvidia_stream": "summ_tooltips.nvidia_stream",
-    "summarization.mistral_base_url": "summ_tooltips.mistral_base_url",
-    "summarization.mistral_model": "summ_tooltips.mistral_model",
-    "summarization.mistral_rate_limit": "summ_tooltips.mistral_rate_limit",
-    "summarization.mistral_max_tokens": "summ_tooltips.mistral_max_tokens",
-    "summarization.mistral_temperature": "summ_tooltips.mistral_temperature",
-    "summarization.mistral_timeout": "summ_tooltips.mistral_timeout",
-    "summarization.mistral_mode": "summ_tooltips.mistral_mode",
-    "summarization.mistral_thread_count": "summ_tooltips.mistral_thread_count",
-    "summarization.mistral_stream": "summ_tooltips.mistral_stream",
     "summarization.amd_api_url": "summ_tooltips.amd_api_url",
     "summarization.amd_model": "summ_tooltips.amd_model",
     "summarization.amd_max_tokens": "summ_tooltips.amd_max_tokens",
@@ -116,20 +98,17 @@ class SummarizationTab(QWidget):
         return self._section_edits
 
     def get_provider(self) -> str:
-        """获取当前选择的总结提供商名称（'ollama' / 'nvidia' / 'mistral' / 'amd'）。"""
+        """获取当前选择的总结提供商名称（'ollama' / 'nvidia' / 'amd'）。"""
         if self._radio_amd.isChecked():
             return "amd"
-        if self._radio_mistral.isChecked():
-            return "mistral"
         if self._radio_nvidia.isChecked():
             return "nvidia"
         return "ollama"
 
     def set_provider(self, provider: str) -> None:
         """设置 provider 选择（用于 _reset）"""
-        self._radio_ollama.setChecked(provider not in ("nvidia", "mistral", "amd"))
+        self._radio_ollama.setChecked(provider not in ("nvidia", "amd"))
         self._radio_nvidia.setChecked(provider == "nvidia")
-        self._radio_mistral.setChecked(provider == "mistral")
         self._radio_amd.setChecked(provider == "amd")
 
     def cleanup_threads(self) -> None:
@@ -140,7 +119,6 @@ class SummarizationTab(QWidget):
             "_ollama_start_thread",
             "_ollama_stop_thread",
             "_nvidia_check_thread",
-            "_mistral_check_thread",
             "_amd_check_thread",
         ):
             thread = getattr(self, attr, None)
@@ -168,20 +146,16 @@ class SummarizationTab(QWidget):
         provider_layout = QHBoxLayout(provider_group)
         self._radio_ollama = QRadioButton(t("summarization_tab.radio_ollama"))
         self._radio_nvidia = QRadioButton(t("summarization_tab.radio_nvidia"))
-        self._radio_mistral = QRadioButton(t("summarization_tab.radio_mistral"))
         self._radio_amd = QRadioButton(t("summarization_tab.radio_amd"))
         current_provider = self._settings.get("summarization.provider", "ollama")
         if current_provider == "nvidia":
             self._radio_nvidia.setChecked(True)
-        elif current_provider == "mistral":
-            self._radio_mistral.setChecked(True)
         elif current_provider == "amd":
             self._radio_amd.setChecked(True)
         else:
             self._radio_ollama.setChecked(True)
         provider_layout.addWidget(self._radio_ollama)
         provider_layout.addWidget(self._radio_nvidia)
-        provider_layout.addWidget(self._radio_mistral)
         provider_layout.addWidget(self._radio_amd)
         main_layout.addWidget(provider_group)
 
@@ -315,99 +289,6 @@ class SummarizationTab(QWidget):
         self._add_nvidia_test_button(nvidia_form)
         main_layout.addWidget(self._nvidia_group)
 
-        # ---- Mistral 区域 ----
-        self._mistral_group = QGroupBox(t("summarization_tab.mistral_group"))
-        mistral_form = QFormLayout(self._mistral_group)
-        mistral_form.setContentsMargins(8, 8, 8, 8)
-
-        mistral_items = {
-            "mistral_base_url": self._settings.get(
-                "summarization.mistral_base_url", ""
-            ),
-            "mistral_model": self._settings.get(
-                "summarization.mistral_model", "mistral-large-latest"
-            ),
-            "mistral_rate_limit": self._settings.get(
-                "summarization.mistral_rate_limit", "2.0"
-            ),
-            "mistral_max_tokens": self._settings.get(
-                "summarization.mistral_max_tokens", "10000"
-            ),
-            "mistral_temperature": self._settings.get(
-                "summarization.mistral_temperature", "0.7"
-            ),
-            "mistral_timeout": self._settings.get(
-                "summarization.mistral_timeout", "30"
-            ),
-        }
-
-        for key, value in mistral_items.items():
-            full_key = f"summarization.{key}"
-            widget = QLineEdit(value)
-            tooltip_key = _SUMM_KEY_TOOLTIPS.get(full_key)
-            if tooltip_key:
-                widget.setToolTip(t(tooltip_key))
-            label_key = _SUMM_KEY_LABELS.get(full_key)
-            label = t(label_key) if label_key else key
-            mistral_form.addRow(f"{label}:", widget)
-            self._section_edits[key] = widget
-
-        self._mistral_mode_combo = QComboBox()
-        self._mistral_mode_combo.setProperty(
-            "_combo_key", "summarization.mistral_mode"
-        )
-        self._mistral_mode_combo.addItem(t("summarization_tab.mode_single"), "single")
-        self._mistral_mode_combo.addItem(t("summarization_tab.mode_multi"), "multi")
-        mistral_mode_val = self._settings.get("summarization.mistral_mode", "single")
-        if _is_multi_mode(mistral_mode_val):
-            mistral_mode_val = "multi"
-        else:
-            mistral_mode_val = "single"
-        self._set_widget_text(self._mistral_mode_combo, mistral_mode_val)
-        self._mistral_mode_combo.setToolTip(
-            _SUMM_KEY_TOOLTIPS.get("summarization.mistral_mode", "")
-        )
-        mistral_form.addRow(t("summarization_tab.mistral_mode_label"), self._mistral_mode_combo)
-        self._section_edits["mistral_mode"] = self._mistral_mode_combo
-
-        self._mistral_stream_combo = QComboBox()
-        self._mistral_stream_combo.setProperty(
-            "_combo_key", "summarization.mistral_stream"
-        )
-        self._mistral_stream_combo.addItem(t("common.yes"))
-        self._mistral_stream_combo.addItem(t("common.no"))
-        mistral_stream_val = self._settings.get("summarization.mistral_stream", "true")
-        self._set_widget_text(self._mistral_stream_combo, mistral_stream_val)
-        self._mistral_stream_combo.setToolTip(
-            _SUMM_KEY_TOOLTIPS.get("summarization.mistral_stream", "")
-        )
-        self._mistral_stream_row_label = QLabel(t("summarization_tab.mistral_stream_label"))
-        mistral_form.addRow(
-            self._mistral_stream_row_label, self._mistral_stream_combo
-        )
-        self._section_edits["mistral_stream"] = self._mistral_stream_combo
-
-        mistral_thread_count = self._settings.get(
-            "summarization.mistral_thread_count", "4"
-        )
-        self._mistral_thread_edit = QLineEdit(mistral_thread_count)
-        self._mistral_thread_edit.setToolTip(
-            _SUMM_KEY_TOOLTIPS.get("summarization.mistral_thread_count", "")
-        )
-        self._mistral_thread_row_label = QLabel(t("summarization_tab.mistral_threads_label"))
-        mistral_form.addRow(
-            self._mistral_thread_row_label, self._mistral_thread_edit
-        )
-        self._section_edits["mistral_thread_count"] = self._mistral_thread_edit
-
-        self._mistral_mode_combo.currentIndexChanged.connect(
-            self._on_mistral_mode_changed
-        )
-        self._on_mistral_mode_changed()
-
-        self._add_mistral_test_button(mistral_form)
-        main_layout.addWidget(self._mistral_group)
-
         # ---- AMD 区域 ----
         self._amd_group = QGroupBox(t("summarization_tab.amd_group"))
         amd_form = QFormLayout(self._amd_group)
@@ -504,15 +385,13 @@ class SummarizationTab(QWidget):
         # 连接信号
         self._radio_ollama.toggled.connect(self._on_provider_changed)
         self._radio_nvidia.toggled.connect(self._on_provider_changed)
-        self._radio_mistral.toggled.connect(self._on_provider_changed)
         self._radio_amd.toggled.connect(self._on_provider_changed)
         self._on_provider_changed()
 
     def _on_provider_changed(self) -> None:
-        """切换 Ollama / NVIDIA / Mistral / AMD 区域的显示"""
+        """切换 Ollama / NVIDIA / AMD 区域的显示"""
         self._ollama_group.setVisible(self._radio_ollama.isChecked())
         self._nvidia_group.setVisible(self._radio_nvidia.isChecked())
-        self._mistral_group.setVisible(self._radio_mistral.isChecked())
         self._amd_group.setVisible(self._radio_amd.isChecked())
 
     def _on_amd_mode_changed(self) -> None:
@@ -584,70 +463,6 @@ class SummarizationTab(QWidget):
         thread.start()
         self._amd_check_thread = thread
         self._amd_check_worker = worker
-
-    def _on_mistral_mode_changed(self) -> None:
-        """切换 single/multi 模式时联动显隐流式输出和线程数"""
-        is_multi = self._mistral_mode_combo.currentData() == "multi"
-        self._mistral_stream_combo.setVisible(not is_multi)
-        self._mistral_stream_row_label.setVisible(not is_multi)
-        self._mistral_thread_edit.setVisible(is_multi)
-        self._mistral_thread_row_label.setVisible(is_multi)
-
-    def _add_mistral_test_button(self, form: QFormLayout) -> None:
-        """添加 Mistral 测试连接按钮"""
-        btn_row = QHBoxLayout()
-        self._mistral_test_btn = QPushButton(t("summarization_tab.test_btn"))
-        self._mistral_test_btn.clicked.connect(self._test_mistral)
-        btn_row.addWidget(self._mistral_test_btn)
-        self._mistral_status_label = QLabel("")
-        btn_row.addWidget(self._mistral_status_label, 1)
-        form.addRow(btn_row)
-
-        self._mistral_check_thread: Optional[QThread] = None
-        self._mistral_check_worker: Optional[CheckWorker] = None
-
-    def _test_mistral(self) -> None:
-        """测试 Mistral API 连接"""
-        model_edit = self._section_edits.get("mistral_model")
-        model = model_edit.text().strip() if model_edit else ""
-
-        self._mistral_status_label.setText(t("summarization_tab.testing"))
-        self._mistral_status_label.setStyleSheet("color: orange")
-        self._mistral_test_btn.setEnabled(False)
-
-        self._wait_async_thread("_mistral_check_thread")
-        thread = QThread()
-        worker = CheckWorker("mistral", model=model)
-        worker.moveToThread(thread)
-
-        def _on_result(ok: bool, latency_ms: float, _detail: str = ""):
-            if ok:
-                self._mistral_status_label.setText(t("summarization_tab.status_connected", latency_ms=latency_ms))
-                self._mistral_status_label.setStyleSheet("color: green")
-                get_logger("video2text").info(
-                    t("summarization_tab.log_mistral_ok", latency_ms=latency_ms, model=model)
-                )
-            else:
-                self._mistral_status_label.setText(t("summarization_tab.status_connect_fail"))
-                self._mistral_status_label.setStyleSheet("color: red")
-                get_logger("video2text").warning(
-                    t("summarization_tab.log_mistral_fail", model=model)
-                )
-
-        def _cleanup():
-            self._mistral_check_thread = None
-            self._mistral_check_worker = None
-            self._mistral_test_btn.setEnabled(True)
-
-        worker.result.connect(_on_result)
-        thread.finished.connect(_cleanup)
-        thread.finished.connect(thread.deleteLater)
-        thread.finished.connect(worker.deleteLater)
-        thread.started.connect(worker.run)
-        worker.finished.connect(thread.quit)
-        thread.start()
-        self._mistral_check_thread = thread
-        self._mistral_check_worker = worker
 
     def _on_nvidia_mode_changed(self) -> None:
         """切换 single/multi 模式时联动显隐流式输出和线程数"""

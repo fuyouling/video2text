@@ -84,9 +84,9 @@ video2text\models\
 
 **2. Summary Model Installation**
 
-Supports multiple summary services: NVIDIA online models, local Ollama models, Mistral online models, and AMD online models. Choose one as needed. Configuration steps: `Settings > Edit Config > Summary > Radio button selection`
+Supports multiple summary services: NVIDIA online models, local Ollama models, and AMD online models. Choose one as needed. Configuration steps: `Settings > Edit Config > Summary > Radio button selection`
 
-> **Note**: In the "Transcription + Summary" workflow, FunASR / Faster-Whisper is responsible for the first stage of speech-to-text transcription to generate punctuated text with timestamps. Once transcription is complete, the configured summary model (AMD, NVIDIA, Mistral, or Ollama) will generate structured summaries from the transcript.
+> **Note**: In the "Transcription + Summary" workflow, FunASR / Faster-Whisper is responsible for the first stage of speech-to-text transcription to generate punctuated text with timestamps. Once transcription is complete, the configured summary model (AMD, NVIDIA, or Ollama) will generate structured summaries from the transcript.
 
 **2.1 NVIDIA Online (Use online NVIDIA models for summarization)**
 
@@ -101,11 +101,7 @@ Ollama is a local large language model runtime framework used for generating tex
 
 > After registering for an Ollama account, there are also free online models you can use
 
-**2.3 mistral Online Model**
-
-You need to first register on [mistral](https://v2.auth.mistral.ai/login), then create an API Key, and add it to the program via `Settings > Manage API Key`
-
-**2.4 AMD Online Model (Use online AMD Radeon Cloud models for summarization)**
+**2.3 AMD Online Model (Use online AMD Radeon Cloud models for summarization)**
 
 You need to first register on the [AMD Developer Community](https://developer.amd.com.cn/) and create an API Key (Token Factory), then add it to the program via `Settings > Manage API Key`.
 - Default summary model is `Qwen3.8-Flash-Next` (can be customized to other models such as `MiMo-V2.6-Flash` in configuration)

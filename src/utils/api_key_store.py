@@ -41,7 +41,6 @@ class EnvLine:
 _KNOWN_VENDORS = {
     "OLLAMA_API_KEY": "Ollama",
     "NVIDIA_API_KEY": "NVIDIA",
-    "MISTRAL_API_KEY": "Mistral AI",
     "AMD_API_KEY": "AMD Radeon Cloud",
     "OPENAI_API_KEY": "OpenAI",
     "DEEPSEEK_API_KEY": "DeepSeek",

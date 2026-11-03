@@ -1,4 +1,4 @@
-"""Unit tests for Wave 2 Track F: Model adapter fixes (Mistral, Ollama, AMD, NVIDIA, Providers)"""
+"""Unit tests for Wave 2 Track F: Model adapter fixes (Ollama, AMD, NVIDIA, Providers)"""
 
 import threading
 import time
@@ -8,31 +8,13 @@ import pytest
 import requests
 
 from src.summarization.amd_client import AmdClient
-from src.summarization.mistral_client import MistralClient, SDKError
 from src.summarization.ollama_client import OllamaClient
 from src.summarization.providers import (
     AmdProvider,
-    MistralProvider,
     NvidiaProvider,
     OllamaProvider,
 )
 from src.utils.exceptions import SummarizationError
-
-
-def _make_sdk_error(message: str, status_code: int = 500, raw_response=None) -> SDKError:
-    """创建跨版本兼容的 SDKError 异常实例，规避 mistralai 构造函数参数要求。"""
-    try:
-        err = SDKError.__new__(SDKError)
-        Exception.__init__(err, message)
-    except Exception:
-        err = Exception(message)
-    err.message = message
-    err.body = message
-    err.status_code = status_code
-    err.raw_response = raw_response
-    if raw_response and hasattr(raw_response, "headers"):
-        err.headers = raw_response.headers
-    return err
 
 
 class FakeResponse:
@@ -53,85 +35,7 @@ class FakeResponse:
 
 
 # ──────────────────────────────────────────────────────────────────
-# 1. MistralClient Tests
-# ──────────────────────────────────────────────────────────────────
-
-class TestMistralClientFixes:
-    def test_mistral_none_raises_summarization_error(self):
-        """Mistral is None 时抛出友好的 SummarizationError，杜绝原生 TypeError。"""
-        with patch("src.summarization.mistral_client.Mistral", None):
-            with pytest.raises(SummarizationError, match="mistralai SDK"):
-                MistralClient(api_key="test-key")
-
-    def test_generate_missing_api_key(self):
-        """API Key 缺失时在 generate 入口拦截。"""
-        with patch("src.summarization.mistral_client.Mistral"):
-            client = MistralClient(api_key="placeholder")
-            client._api_key = ""
-            with pytest.raises(SummarizationError, match="API Key"):
-                client.generate(prompt="hi")
-
-    def test_rate_limit_retry_after_and_backoff(self):
-        """429 限流解析 Retry-After 并引入指数退避。"""
-        mock_sdk = MagicMock()
-        mock_client = MagicMock()
-        mock_sdk.return_value = mock_client
-
-        # from mistralai SDKError
-        mock_resp = MagicMock()
-        mock_resp.headers = {"Retry-After": "0.1"}
-        err = _make_sdk_error("Rate limited", status_code=429, raw_response=mock_resp)
-
-        # 第一次抛 429，第二次成功
-        success_resp = MagicMock()
-        success_resp.choices = [MagicMock(message=MagicMock(content="mistral summary"))]
-        mock_client.chat.complete.side_effect = [err, success_resp]
-
-        with patch("src.summarization.mistral_client.Mistral", mock_sdk):
-            client = MistralClient(api_key="valid-key")
-            client.max_retries = 3
-            with patch("time.sleep") as mock_sleep:
-                res = client.generate(prompt="hi")
-                assert res == "mistral summary"
-                mock_sleep.assert_called_once()
-                # 确认等待时间解析了 Retry-After (0.1s)
-                assert mock_sleep.call_args[0][0] == 0.1
-
-    def test_fallback_streaming_preserves_chat_messages(self):
-        """模型强制流式回退时，保持完整的 chat_messages（含系统提示词）。"""
-        mock_sdk = MagicMock()
-        mock_client = MagicMock()
-        mock_sdk.return_value = mock_client
-
-        stream_force_err = _make_sdk_error("Unexpected response received: text/event-stream")
-        mock_client.chat.complete.side_effect = stream_force_err
-
-        # 模拟流式事件
-        chunk_event = MagicMock()
-        chunk_data = MagicMock()
-        chunk_data.error = None
-        choice = MagicMock()
-        choice.delta = MagicMock(content="fallback chunk")
-        chunk_data.choices = [choice]
-        chunk_event.data = chunk_data
-        mock_client.chat.stream.return_value = [chunk_event]
-
-        with patch("src.summarization.mistral_client.Mistral", mock_sdk):
-            client = MistralClient(api_key="valid-key")
-            messages = [
-                {"role": "system", "content": "You are a summarizer"},
-                {"role": "user", "content": "The main content"},
-            ]
-            res = client.generate(messages=messages, stream=False)
-            assert res == "fallback chunk"
-
-            # 验证 stream 收到的是完整的 chat_messages，而非单纯用户 prompt
-            call_kwargs = mock_client.chat.stream.call_args[1]
-            assert call_kwargs["messages"] == messages
-
-
-# ──────────────────────────────────────────────────────────────────
-# 2. OllamaClient Tests
+# 1. OllamaClient Tests
 # ──────────────────────────────────────────────────────────────────
 
 class TestOllamaClientFixes:
@@ -218,7 +122,7 @@ class TestOllamaClientFixes:
 
 
 # ──────────────────────────────────────────────────────────────────
-# 3. AmdClient Tests
+# 2. AmdClient Tests
 # ──────────────────────────────────────────────────────────────────
 
 class TestAmdClientFixes:
@@ -286,7 +190,7 @@ class TestAmdClientFixes:
 
 
 # ──────────────────────────────────────────────────────────────────
-# 4. Providers Layer Tests
+# 3. Providers Layer Tests
 # ──────────────────────────────────────────────────────────────────
 
 class TestProvidersConsistency:

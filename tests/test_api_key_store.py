@@ -37,7 +37,7 @@ def _zh_locale():
 def test_infer_vendor_name():
     assert infer_vendor_name("OLLAMA_API_KEY") == "Ollama"
     assert infer_vendor_name("NVIDIA_API_KEY") == "NVIDIA"
-    assert infer_vendor_name("MISTRAL_API_KEY") == "Mistral AI"
+    assert infer_vendor_name("GROQ_API_KEY") == "Groq"
     assert infer_vendor_name("AMD_API_KEY") == "AMD Radeon Cloud"
     assert infer_vendor_name("OPENAI_API_KEY") == "OpenAI"
     assert infer_vendor_name("DEEPSEEK_API_KEY") == "DeepSeek"
@@ -62,7 +62,7 @@ def test_parse_env_basic_and_comments():
         'OLLAMA_API_KEY="" # Ollama\n'
         'NVIDIA_API_KEY="sk-12345" # NVIDIA\n'
         "AMD_API_KEY=rc-999 # AMD Radeon Cloud\n"
-        'MISTRAL_API_KEY="mistral-secret"\n'
+        'GROQ_API_KEY="groq-secret"\n'
         "UNKNOWN_API_KEY=foo\n"
     )
     entries = parse_env(raw_text)
@@ -88,11 +88,11 @@ def test_parse_env_basic_and_comments():
     assert entries[4].value == "rc-999"
     assert entries[4].vendor == "AMD Radeon Cloud"
 
-    # MISTRAL_API_KEY 没有行尾注释，自动根据 key 推断出 "Mistral AI"
+    # GROQ_API_KEY 没有行尾注释，自动根据 key 推断出 "Groq"
     assert entries[5].kind == "kv"
-    assert entries[5].key == "MISTRAL_API_KEY"
-    assert entries[5].value == "mistral-secret"
-    assert entries[5].vendor == "Mistral AI"
+    assert entries[5].key == "GROQ_API_KEY"
+    assert entries[5].value == "groq-secret"
+    assert entries[5].vendor == "Groq"
 
     # UNKNOWN_API_KEY 自动推断为 "Unknown"
     assert entries[6].kind == "kv"

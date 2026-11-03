@@ -47,7 +47,6 @@ _DEFAULT_ENV_NAME = ".env"
 _DEFAULT_ENV_PRESETS: tuple = (
     ("Ollama", "OLLAMA_API_KEY"),
     ("NVIDIA", "NVIDIA_API_KEY"),
-    ("Mistral AI", "MISTRAL_API_KEY"),
     ("AMD Radeon Cloud", "AMD_API_KEY"),
 )
 #: 合法 key：字母 / 数字 / 下划线，且以字母或下划线开头
@@ -64,8 +63,6 @@ def suggest_key_from_vendor(vendor_text: str) -> str:
     mapped = {
         "ollama": "OLLAMA_API_KEY",
         "nvidia": "NVIDIA_API_KEY",
-        "mistral": "MISTRAL_API_KEY",
-        "mistral ai": "MISTRAL_API_KEY",
         "amd": "AMD_API_KEY",
         "amd radeon": "AMD_API_KEY",
         "amd radeon cloud": "AMD_API_KEY",

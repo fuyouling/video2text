@@ -84,9 +84,9 @@ video2text\models\
 
 **2. 总结模型安装**
 
-支持多种总结服务：NVIDIA 在线模型、本地 Ollama 模型、Mistral 在线模型和 AMD 在线模型，按需选择其一即可。配置步骤`设置>编辑配置>总结>单选框选择`
+支持多种总结服务：NVIDIA 在线模型、本地 Ollama 模型和 AMD 在线模型，按需选择其一即可。配置步骤`设置>编辑配置>总结>单选框选择`
 
-> **说明**：在“转写+总结”全流程中，FunASR / Faster-Whisper 负责第一阶段的音视频语音识别转写，输出带标点和时间戳的文本；转写完成后，再由配置好的总结大模型（AMD、NVIDIA、Mistral、Ollama）对文本进行摘要总结。
+> **说明**：在“转写+总结”全流程中，FunASR / Faster-Whisper 负责第一阶段的音视频语音识别转写，输出带标点和时间戳的文本；转写完成后，再由配置好的总结大模型（AMD、NVIDIA、Ollama）对文本进行摘要总结。
 
 **2.1 NVIDIA 在线（使用在线 NVIDIA 模型总结）**
 
@@ -101,11 +101,7 @@ Ollama 是一个本地大语言模型运行框架，使用它来生成文本摘�
 
 >注册Ollama账号后也有免费的在线模型可以使用
 
-**2.3 mistral 在线模型**
-
-需要先在[mistral](https://v2.auth.mistral.ai/login)注册账号,再创建 API Key,再通过`设置>设置 API Key`添加到程序
-
-**2.4 AMD 在线模型（使用在线 AMD Radeon Cloud 模型总结）**
+**2.3 AMD 在线模型（使用在线 AMD Radeon Cloud 模型总结）**
 
 需要先在 [AMD 开发者社区](https://developer.amd.com.cn/) 注册账号并创建 API Key（Token Factory），再通过`设置>设置 API Key`添加到程序。
 - 默认总结模型为 `Qwen3.8-Flash-Next`（可根据需要修改为其他模型如 `MiMo-V2.6-Flash` 等）
