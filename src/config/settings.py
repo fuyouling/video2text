@@ -117,7 +117,7 @@ class Settings:
         """内部加载，首次初始化时调用，输出日志"""
         with self._lock:
             try:
-                self.config.read(self.config_path, encoding="utf-8")
+                self.config.read(self.config_path, encoding="utf-8-sig")
                 logger.info(t("config_manager.settings_config_loaded", name=Path(self.config_path).name))
             except Exception as e:
                 raise ConfigurationError(t("config_manager.settings_load_config_fail", error=e))
@@ -132,7 +132,7 @@ class Settings:
                 )
             try:
                 new_config = configparser.ConfigParser(interpolation=None)
-                new_config.read(self.config_path, encoding="utf-8")
+                new_config.read(self.config_path, encoding="utf-8-sig")
                 self.config = new_config
             except Exception as e:
                 raise ConfigurationError(t("config_manager.settings_reload_config_fail", error=e))

@@ -20,3 +20,28 @@ def get_no_window_kwargs() -> dict:
     if sys.platform == "win32":
         return {"creationflags": CREATE_NO_WINDOW}
     return {}
+
+
+SENSITIVE_ENV_KEYS = {
+    "OPENAI_API_KEY",
+    "DEEPSEEK_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "CLAUDE_API_KEY",
+    "GEMINI_API_KEY",
+    "SILICONFLOW_API_KEY",
+    "GROQ_API_KEY",
+    "NVIDIA_API_KEY",
+    "AMD_API_KEY",
+    "ZHIPU_API_KEY",
+}
+
+
+def get_sanitized_env() -> dict:
+    """返回剥离了云端商业大模型敏感凭据的子进程环境变量副本，防止泄露给外部第三方 CLI 二进制。"""
+    import os
+
+    env = os.environ.copy()
+    for key in list(env.keys()):
+        if key in SENSITIVE_ENV_KEYS or key.endswith("_API_KEY"):
+            env.pop(key, None)
+    return env

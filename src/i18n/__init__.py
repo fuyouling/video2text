@@ -59,7 +59,7 @@ class I18N:
     def _load_registry(self) -> None:
         path = self._base_dir() / "languages.json"
         try:
-            self._registry = json.loads(path.read_text(encoding="utf-8"))
+            self._registry = json.loads(path.read_text(encoding="utf-8-sig"))
         except Exception:
             self._registry = {}
 
@@ -87,7 +87,7 @@ class I18N:
                 return
             path = self._base_dir() / "locales" / f"{lang}.json"
             try:
-                self._catalogs[lang] = json.loads(path.read_text(encoding="utf-8"))
+                self._catalogs[lang] = json.loads(path.read_text(encoding="utf-8-sig"))
             except Exception:
                 self._catalogs[lang] = {}
 
@@ -145,11 +145,14 @@ class I18N:
 
     # ── 主入口 ───────────────────────────────────────────────
 
-    def t(self, msg_key: str, count=None, **kwargs) -> str:
+    def t(self, msg_key: str, count=None, default: Optional[str] = None, **kwargs) -> str:
         with self._lock:
             text = self._fallback_lookup(msg_key)
             if text is None:
-                return msg_key
+                if default is not None:
+                    text = default
+                else:
+                    return msg_key
 
             if count is not None and "|" in text:
                 segments = text.split("|")
@@ -174,8 +177,8 @@ class I18N:
 _i18n = I18N()
 
 
-def t(msg_key: str, count=None, **kwargs) -> str:
-    return _i18n.t(msg_key, count=count, **kwargs)
+def t(msg_key: str, count=None, default: Optional[str] = None, **kwargs) -> str:
+    return _i18n.t(msg_key, count=count, default=default, **kwargs)
 
 
 def set_lang(lang: str) -> None:

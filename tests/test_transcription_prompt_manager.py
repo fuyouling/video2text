@@ -21,7 +21,7 @@ def _reset_tx_prompt_manager():
 class TestTranscriptionPromptPresets:
     def test_builtin_presets_exist(self):
         presets = get_builtin_tx_presets()
-        for expected in ["general", "meeting", "ecommerce", "tech", "bilingual"]:
+        for expected in ["general", "meeting"]:
             assert expected in presets
             p = presets[expected]
             assert p.is_builtin is True
@@ -32,7 +32,6 @@ class TestTranscriptionPromptPresets:
         pm = TranscriptionPromptManager(base_dir=tmp_path)
         assert pm.is_builtin("general") is True
         assert pm.is_builtin("meeting") is True
-        assert pm.is_builtin("ecommerce") is True
         assert pm.is_builtin("non_existent_preset") is False
 
     def test_cannot_delete_builtin_preset(self, tmp_path):
@@ -108,13 +107,13 @@ class TestTranscriptionPromptCustomTemplates:
 
     def test_last_used_tracking(self, tmp_path):
         pm = TranscriptionPromptManager(base_dir=tmp_path)
-        pm.set_last_used("ecommerce")
-        assert pm.get_last_used() == "ecommerce"
+        pm.set_last_used("meeting")
+        assert pm.get_last_used() == "meeting"
 
         # 持久化验证
         TranscriptionPromptManager._reset()
         pm2 = TranscriptionPromptManager(base_dir=tmp_path)
-        assert pm2.get_last_used() == "ecommerce"
+        assert pm2.get_last_used() == "meeting"
 
     def test_get_all_templates(self, tmp_path):
         pm = TranscriptionPromptManager(base_dir=tmp_path)

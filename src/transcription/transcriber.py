@@ -2,7 +2,6 @@
 
 import gc
 import os
-import sys
 import threading
 from collections import OrderedDict
 from pathlib import Path
@@ -74,12 +73,9 @@ def get_cached_transcriber(
     with _model_cache_lock:
         if cache_key in _model_cache:
             cached = _model_cache[cache_key]
-            if cached._loaded:
-                _model_cache.move_to_end(cache_key)
-                logger.info(t("transcriber.cache_hit"))
-                return cached
-            else:
-                del _model_cache[cache_key]
+            _model_cache.move_to_end(cache_key)
+            logger.info(t("transcriber.cache_hit"))
+            return cached
 
         while len(_model_cache) >= _MAX_MODEL_CACHE:
             evicted_key, evicted = _model_cache.popitem(last=False)
@@ -574,6 +570,7 @@ class Transcriber:
             # 不能被包装成 TranscriptionError 误报为转写失败。
             raise
         except Exception as e:
+            self._clean_gpu_memory()
             raise TranscriptionError(t("transcriber.transcribe_failed", error=str(e)))
 
     def unload_model(self) -> None:
@@ -644,10 +641,9 @@ class Transcriber:
 
         try:
             with self._model_lock:
-                model = self.model
-                if model is None:
+                if self.model is None:
                     raise TranscriptionError(t("transcriber.model_not_loaded"))
-            language, probability = model.detect_language(audio_path)
+                language, probability = self.model.detect_language(audio_path)
 
             logger.info(t("transcriber.language_detected", lang=language, prob=f"{probability:.2f}"))
 

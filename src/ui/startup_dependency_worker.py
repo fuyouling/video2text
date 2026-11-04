@@ -70,6 +70,7 @@ class StartupDependencyWorker(QObject):
                     Settings(),
                     progress_callback=self._make_model_cb(),
                     target_models=self._target_models,
+                    cancel_check=lambda: self._cancelled,
                 )
 
             # Phase 2b: DLL 下载（即使模型下载失败，用户勾选了 DLL 也继续尝试补齐）

@@ -68,12 +68,29 @@ class SummarizationService:
             self.max_input_chars = 100000
 
         self._summarize_log_lock = threading.Lock()
+        self._active_providers_lock = threading.Lock()
+        self._active_providers: set = set()
 
         if pause_event is not None:
             self._pause_event = pause_event
         else:
             self._pause_event = threading.Event()
             self._pause_event.set()
+
+    def abort(self) -> None:
+        """立即中止所有进行中的网络连接（线程安全）。"""
+        with self._active_providers_lock:
+            for p in list(self._active_providers):
+                try:
+                    p.close()
+                except Exception:
+                    pass
+            self._active_providers.clear()
+        if hasattr(self, "provider") and self.provider is not None:
+            try:
+                self.provider.close()
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------
     # 公开 API
@@ -251,6 +268,8 @@ class SummarizationService:
                 self.on_item_started(video_name)
 
             provider = create_provider(self.settings)
+            with self._active_providers_lock:
+                self._active_providers.add(provider)
             try:
                 if not text or not text.strip():
                     logger.warning(t("services.summarization.text_empty", name=video_name))
@@ -291,6 +310,8 @@ class SummarizationService:
                     self.on_item_error(video_name, str(e))
                 return idx, ""
             finally:
+                with self._active_providers_lock:
+                    self._active_providers.discard(provider)
                 provider.close()
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -302,6 +323,11 @@ class SummarizationService:
                 futures[future] = idx
 
             for future in as_completed(futures):
+                if self.cancel_check and self.cancel_check():
+                    self.abort()
+                    for f in futures:
+                        f.cancel()
+                    break
                 try:
                     idx, summary = future.result()
                     results[idx] = summary

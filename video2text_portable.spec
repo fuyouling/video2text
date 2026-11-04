@@ -121,7 +121,7 @@ a = Analysis(
     pathex=[ROOT_DIR],
     binaries=pyside6_bins + ctranslate2_bins + onnxruntime_bins + kaldi_bins,
     datas=[
-        ('config.ini', '.'),
+        ('config_release.ini' if os.path.exists(os.path.join(ROOT_DIR, 'config_release.ini')) else 'config.ini', '.'),
         ('src/i18n/languages.json', 'i18n'),
         ('src/i18n/locales', 'i18n/locales'),
         ('assets', 'assets'),

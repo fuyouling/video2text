@@ -90,3 +90,26 @@ def test_bookmark_manager_disk_state_sync(tmp_path: Path):
     # bm2 清空
     bm2.clear()
     assert len(bm1.get_all()) == 0
+
+
+def test_bookmark_manager_remove_duplicates_and_none_text(tmp_path: Path):
+    """测试重复索引删除不会级联误删邻近书签，以及 None text 容错。"""
+    file_path = tmp_path / "dup_bookmarks.json"
+    bm = BookmarkManager(file_path)
+
+    # None text 容错
+    item_none = BookmarkItem.from_dict({"video_name": "v0", "text": None})
+    assert item_none.text == ""
+
+    b0 = BookmarkItem(video_name="b0", content_type="transcript", position=0, text="0")
+    b1 = BookmarkItem(video_name="b1", content_type="transcript", position=1, text="1")
+    b2 = BookmarkItem(video_name="b2", content_type="transcript", position=2, text="2")
+    b3 = BookmarkItem(video_name="b3", content_type="transcript", position=3, text="3")
+
+    for b in [b0, b1, b2, b3]:
+        bm.add(b)
+
+    # 传入重复索引 [2, 2]：应当只删除 b2，保留 b0, b1, b3
+    bm.remove([2, 2])
+    remaining = [b.video_name for b in bm.get_all()]
+    assert remaining == ["b0", "b1", "b3"]

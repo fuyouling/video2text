@@ -1087,7 +1087,7 @@ class NvidiaApiTestDialog(QDialog):
         self._test_all_btn.setEnabled(False)
         self._set_cards_retest_enabled(False)
         self._progress_label.setText(t("nvidia_test.refresh_list_loading"))
-        fetcher = _ModelListFetcher(self._timeout, self)
+        fetcher = _ModelListFetcher(self._timeout, parent=None)
         self._list_fetcher = fetcher
         fetcher.models_ready.connect(self._on_models_ready)
         fetcher.fetch_failed.connect(self._on_models_fetch_failed)

@@ -31,7 +31,7 @@ def safe_read_json(file_path: Path, default: T = None) -> T:
         解析后的数据，失败时返回 default
     """
     try:
-        return json.loads(file_path.read_text(encoding="utf-8"))
+        return json.loads(file_path.read_text(encoding="utf-8-sig"))
     except FileNotFoundError:
         return default
     except json.JSONDecodeError as exc:
@@ -53,7 +53,7 @@ def safe_read_json(file_path: Path, default: T = None) -> T:
         for bak_path in bak_candidates:
             if bak_path.exists() and bak_path != file_path:
                 try:
-                    data = json.loads(bak_path.read_text(encoding="utf-8"))
+                    data = json.loads(bak_path.read_text(encoding="utf-8-sig"))
                     logger.info(f"Recovered JSON data for {file_path.name} from backup {bak_path.name}")
                     try:
                         atomic_write_json(file_path, data)

@@ -621,7 +621,9 @@
     "cleared_output": "Se eliminaron todos los directorios de salida favoritos",
     "removed_input": "Directorio de entrada favorito eliminado: {path}",
     "removed_output": "Directorio de salida favorito eliminado: {path}",
-    "context_delete": "Eliminar «{path}»"
+    "context_delete": "Eliminar «{path}»",
+    "not_found_title": "Directorio no encontrado",
+    "not_found_msg": "Este directorio no existe o fue eliminado:\n{path}\n\n¿Eliminar de favoritos?"
   },
   "search": {
     "find_label": "Buscar:",
@@ -719,7 +721,7 @@
     "tip3": "3. In PowerShell, call the executable by its full path, e.g.: .\\video2text.exe transcribe video.mp4 -o output",
     "opt_initial_prompt": "Sobrescribir temporalmente la indicación inicial de transcripción",
     "opt_hotwords": "Sobrescribir temporalmente las palabras clave (separadas por espacios o comas)",
-    "opt_prompt_template": "Nombre de ajuste o plantilla (ej.: general, meeting, ecommerce, tech, bilingual)"
+    "opt_prompt_template": "Nombre de ajuste o plantilla (ej.: general, meeting)"
   },
   "errors": {
     "file_not_found": "Archivo no encontrado: {path}",
@@ -1006,14 +1008,14 @@
       "prompt_load_failed": "PromptManager: error al cargar ({name})",
       "prompt_loaded": "PromptManager: cargado ({name})",
       "prompt_save_error": "PromptManager: error al guardar ({error})",
-      "default_prompt": "Eres un asistente profesional de resumen de texto. Tu tarea es proporcionar un resumen exhaustivo y completo del texto sin omitir ningún punto clave ni hecho fundamental. Solo muestra el cuerpo del resumen. **No añadas ninguna introducción, nota final, explicación ni anotación.** **No añadas adornos ni relleno adicional — muestra únicamente el contenido del resumen.** No incluyas un resumen final al final.",
+      "default_prompt": "Eres un asistente profesional de resumen de texto. Proporciona un resumen estructurado, objetivo y completo del texto, extrayendo los puntos clave y detalles esenciales. Muestra solo el cuerpo del resumen sin introducciones ni comentarios finales.",
       "text_content_label": "Contenido del texto:",
       "markdown_prompt": "\nPresenta el resumen en formato Markdown de la siguiente manera:\n- **Punto clave**\n\t- Contenido\n\t- Contenido\n- **Punto clave**\n\t- Contenido\n\t- Contenido\n\nMantén el formato Markdown correcto para que la salida se renderice directamente.\n",
       "presets": {
         "default": {
           "name": "Resumen estándar",
           "desc": "Resumen exhaustivo y completo que cubre todos los puntos clave y detalles esenciales sin omisiones",
-          "prompt": "Eres un asistente profesional de resumen de texto. Tu misión es proporcionar un resumen estructurado, exhaustivo, completo y profundo del texto ingresado, asegurando que no se omita ningún punto central, hecho clave, argumento o detalle esencial.\n\nRequisitos:\n1. Cobertura completa: Analiza minuciosamente todo el texto. Desarrolla según la extensión y densidad de la información sin límite en la cantidad de puntos, garantizando que se recojan todos los datos importantes sin omisiones.\n2. Estructura clara: Presenta en formato Markdown con una lista jerárquica bien definida:\n   - **Título del punto clave**: Identifica el tema principal\n     - Explicación detallada de hechos de respaldo, contexto lógico, datos y detalles específicos\n3. Salida limpia: Solo muestra el cuerpo del resumen. **No añadas ninguna introducción, nota final, explicación ni anotación.** **No añadas adornos ni relleno adicional — muestra únicamente el contenido del resumen.** No incluyas un resumen final al final."
+          "prompt": "Eres un asistente profesional de resumen de texto. Proporciona un resumen estructurado, objetivo y completo del texto de entrada, extrayendo los argumentos centrales y detalles clave.\n\nRequisitos:\n1. Utiliza una lista Markdown clara: sintetiza primero el tema principal y luego desarrolla los hechos y detalles de apoyo.\n2. Muestra solo el cuerpo del resumen. No incluyas introducciones, fórmulas de cortesía ni explicaciones finales."
         },
         "meeting": {
           "name": "Acta de reunión",
@@ -1024,16 +1026,6 @@
           "name": "Notas de estudio profundas",
           "desc": "Organización sistemática de conferencias/clases con conceptos, teorías y ejemplos",
           "prompt": "Eres un asistente académico profesional. Transforma el contenido en notas de estudio estructuradas en Markdown:\n\n## 1. Temas centrales y conceptos\n## 2. Puntos clave y teorías\n## 3. Casos prácticos y argumentos\n## 4. Conclusiones y reflexiones\n\nBien organizado, muestra únicamente el contenido de las notas."
-        },
-        "tldr": {
-          "name": "Vistazo rápido (TL;DR)",
-          "desc": "Menos de 150 palabras, resumen ultracompacto de conclusiones clave",
-          "prompt": "Eres un asistente de resúmenes ultracompactos. Resume el texto en menos de 150 palabras (TL;DR), presentando directamente las conclusiones y hechos principales sin preámbulos ni rodeos."
-        },
-        "takeaways": {
-          "name": "Citas e ideas destacadas",
-          "desc": "Extraer citas textuales memorables, puntos de vista e ideas inspiradoras",
-          "prompt": "Eres un asistente para recopilar ideas y citas memorables. Extrae los puntos más destacados en formato Markdown:\n\n### 💡 Ideas fundamentales\n- Puntos de vista esenciales\n\n### 💬 Citas destacadas\n> Cita textual (breve contexto)\n\n### 🔍 Reflexiones y aprendizajes\n- Ideas inspiradoras\n\nSolo muestra el contenido curado."
         }
       },
       "ollama": {
@@ -1253,24 +1245,6 @@
         "desc": "Refuerza términos de trabajo en equipo, decisiones y tareas",
         "prompt": "Esta es una reunión de trabajo o entrevista. Conserve los términos del dominio y el contexto profesional.",
         "hotwords": "Reunión Agenda Acuerdo Sincronización Informe Revisión Seguimiento"
-      },
-      "ecommerce": {
-        "name": "Comercio electrónico y Ventas",
-        "desc": "Sesgado hacia términos de comercio electrónico, directos y tiendas en línea",
-        "prompt": "Contenido sobre comercio electrónico y ventas. Transcriba con precisión los términos comerciales.",
-        "hotwords": "SKU GMV Tienda Carrito Conversión Campaña Pasarela Pedido"
-      },
-      "tech": {
-        "name": "Tecnología y Programación",
-        "desc": "Conserva mayúsculas y minúsculas y términos de desarrollo de software",
-        "prompt": "Contenido sobre desarrollo de software e informática. Conserve los términos técnicos y su formato exacto.",
-        "hotwords": "Python API Docker Linux PyTorch Git GPU CUDA Front-end Back-end Framework Bug Debug Web CI/CD LLM"
-      },
-      "bilingual": {
-        "name": "Bilingüe y Conversación",
-        "desc": "Transición fluida para conversaciones que mezclan términos habituales",
-        "prompt": "Conversación con expresiones bilingües. Conserve los nombres propios y la fluidez natural del diálogo.",
-        "hotwords": "OK PPT follow up update meeting schedule review project team catch up sync call demo"
       }
     }
   },

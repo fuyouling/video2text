@@ -14,12 +14,27 @@ from src.utils.compat import apply_all_patches  # noqa: E402
 from src.utils.paths import ensure_cuda_libs, get_base_dir  # noqa: E402
 
 
+def _attach_parent_console_if_needed():
+    """若在打包 GUI 模式下运行 CLI 参数，重新连接至调用终端的标准输入输出。"""
+    if getattr(sys, "frozen", False) and sys.platform == "win32" and len(sys.argv) > 1:
+        try:
+            import ctypes
+
+            # ATTACH_PARENT_PROCESS = -1
+            if ctypes.windll.kernel32.AttachConsole(-1):
+                sys.stdout = open("CONOUT$", "w", encoding="utf-8", errors="replace")
+                sys.stderr = open("CONOUT$", "w", encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
 def main():
     """应用程序主入口。
 
     打包模式（frozen）下无参数启动时打开 GUI，否则启动 CLI（Typer）。
     启动异常时在打包模式下将 traceback 写入 logs/error_startup.log。
     """
+    _attach_parent_console_if_needed()
     apply_all_patches()
     ensure_cuda_libs()
     # 所有运行模式（GUI / CLI）在入口处统一加载一次项目根目录的 .env，

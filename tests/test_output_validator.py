@@ -200,3 +200,15 @@ class TestValidateOutputContent:
             encoding="utf-8",
         )
         validate_output_content(str(f), "json")
+
+    def test_parse_srt_and_vtt_subsecond_padding(self):
+        from src.utils.output_validator import _parse_srt_timestamp, _parse_vtt_timestamp
+
+        # 验证 1位、2位、3位毫秒解析精度，防止 1,5 被缩放成 0.005s 的严重偏差
+        assert abs(_parse_srt_timestamp("00:00:01,5") - 1.5) < 1e-4
+        assert abs(_parse_srt_timestamp("00:00:01,05") - 1.05) < 1e-4
+        assert abs(_parse_srt_timestamp("00:00:01,005") - 1.005) < 1e-4
+
+        assert abs(_parse_vtt_timestamp("00:00:01.5") - 1.5) < 1e-4
+        assert abs(_parse_vtt_timestamp("00:00:01.05") - 1.05) < 1e-4
+        assert abs(_parse_vtt_timestamp("00:00:01.005") - 1.005) < 1e-4

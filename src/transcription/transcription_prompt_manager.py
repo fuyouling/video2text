@@ -2,7 +2,7 @@
 
 import threading
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from src.i18n import t
 from src.transcription.transcription_prompt_types import (
@@ -258,17 +258,18 @@ class TranscriptionPromptManager:
         self.save()
 
     @staticmethod
-    def validate_limits(initial_prompt: str, hotwords: str) -> dict[str, Any]:
+    def validate_limits(initial_prompt: Optional[str], hotwords: Optional[str]) -> dict[str, Any]:
         """校验 initial_prompt 与 hotwords 长度安全预算
 
         Whisper 模型的文本上下文上限为 448 Token。
         - initial_prompt 建议在 300 字符（~150-200 Token）以内，避免挤占解码窗口。
         - hotwords 偏置预算建议在 220 Token（约 50 个词）以内，避免在 condition_on_previous_text 时报错。
         """
-        prompt_len = len(initial_prompt.strip())
+        prompt_len = len((initial_prompt or "").strip())
         # 热词按空格、逗号、顿号、分号（含中英文）及全角空格容错分割
         normalized_hotwords = (
-            hotwords.replace(",", " ")
+            (hotwords or "")
+            .replace(",", " ")
             .replace("，", " ")
             .replace("、", " ")
             .replace(";", " ")

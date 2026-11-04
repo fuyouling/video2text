@@ -18,7 +18,7 @@ from src.utils.output_validator import (
     validate_output_file,
     validate_output_content,
 )
-from src.utils.path_resolver import normalize_path_key, sanitize_filename
+from src.utils.path_resolver import sanitize_filename
 
 logger = get_logger(__name__)
 
@@ -41,24 +41,49 @@ class FileLocator:
         """查找已存在的转写文件（支持 txt/srt/vtt/json），未找到返回 None"""
         clean_name = sanitize_filename(video_name)
         names = [clean_name] if clean_name == video_name else [clean_name, video_name]
+        candidates = []
         for ext in TRANSCRIPT_FORMATS:
             for name in names:
                 candidate = Path(output_dir) / f"{name}.{ext}"
                 if candidate.exists():
-                    return candidate
-        return None
+                    candidates.append(candidate)
+        if not candidates:
+            return None
+        if len(candidates) == 1:
+            return candidates[0]
+        try:
+            # 若有显著较晚修改的文件（例如重新转写生成了其他格式），优先返回最新文件；
+            # 同批次生成的（mtime 相近）则按 TRANSCRIPT_FORMATS 优先级（txt 优先）
+            max_mtime = max(p.stat().st_mtime for p in candidates)
+            recent_candidates = [
+                p for p in candidates if max_mtime - p.stat().st_mtime < 2.0
+            ]
+            def format_priority(p: Path) -> int:
+                ext = p.suffix.lstrip(".").lower()
+                return TRANSCRIPT_FORMATS.index(ext) if ext in TRANSCRIPT_FORMATS else 99
+            return min(recent_candidates, key=format_priority)
+        except OSError:
+            return candidates[0]
 
     @staticmethod
     def find_summary(output_dir: str, video_name: str) -> Optional[Path]:
-        """查找已存在的摘要文件（支持 txt/md），未找到返回 None"""
+        """查找已存在的摘要文件（支持 txt/md），未找到返回 None；若同时存在多个格式则优先返回最新修改的"""
         clean_name = sanitize_filename(video_name)
         names = [clean_name] if clean_name == video_name else [clean_name, video_name]
+        candidates = []
         for fmt in SUMMARY_FORMATS:
             for name in names:
                 candidate = Path(output_dir) / f"{name}{SUMMARY_SUFFIX}.{fmt}"
                 if candidate.exists():
-                    return candidate
-        return None
+                    candidates.append(candidate)
+        if not candidates:
+            return None
+        if len(candidates) == 1:
+            return candidates[0]
+        try:
+            return max(candidates, key=lambda p: p.stat().st_mtime)
+        except OSError:
+            return candidates[0]
 
     @staticmethod
     def iter_output_files(output_dir: str):
@@ -76,9 +101,11 @@ class FileLocator:
             for fname in filenames:
                 if fname.startswith("."):
                     continue
+                if fname.endswith(SKIP_SUFFIXES):
+                    if any(fname.endswith(f"{SUMMARY_SUFFIX}.{fmt}") for fmt in SUMMARY_FORMATS):
+                        yield pdir / fname
+                    continue
                 if any(fname.endswith(f".{ext}") for ext in TRANSCRIPT_FORMATS):
-                    yield pdir / fname
-                elif any(fname.endswith(f"{SUMMARY_SUFFIX}.{fmt}") for fmt in SUMMARY_FORMATS):
                     yield pdir / fname
 
 
@@ -153,20 +180,21 @@ class FileWriter:
         """
         self._ensure_dir()
         clean_filename = sanitize_filename(filename)
-        output_path = self.output_dir / f"{clean_filename}.{fmt}"
+        clean_fmt = fmt.lower().strip()
+        output_path = self.output_dir / f"{clean_filename}.{clean_fmt}"
 
         if not segments:
             raise TranscriptionError(
-                t("storage.file_writer.empty_transcript", fmt=fmt.upper(), filename=clean_filename)
+                t("storage.file_writer.empty_transcript", fmt=clean_fmt.upper(), filename=clean_filename)
             )
 
-        if fmt == "txt":
+        if clean_fmt == "txt":
             content = self.formatter.format_transcript(segments, include_timestamps)
-        elif fmt == "srt":
+        elif clean_fmt == "srt":
             content = self.formatter.format_srt(segments)
-        elif fmt == "vtt":
+        elif clean_fmt == "vtt":
             content = self.formatter.format_vtt(segments)
-        elif fmt == "json":
+        elif clean_fmt == "json":
             content = json.dumps(
                 [asdict(segment) for segment in segments], ensure_ascii=False, indent=2
             )

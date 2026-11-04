@@ -194,9 +194,29 @@ class VideoSelectionDialog(QDialog):
             padding-right: 4px;
         }
         QComboBox QAbstractItemView {
+            background-color: #ffffff;
+            color: #2c3e50;
             border: 1px solid #ced4da;
             border-radius: 6px;
             selection-background-color: #4a90d9;
+            selection-color: #ffffff;
+            outline: none;
+            padding: 4px;
+        }
+        QComboBox QAbstractItemView::item, QComboBox::item {
+            min-height: 24px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            background-color: #ffffff;
+            color: #2c3e50;
+        }
+        QComboBox QAbstractItemView::item:hover, QComboBox::item:hover {
+            background-color: #eaf2fb;
+            color: #4a90d9;
+        }
+        QComboBox QAbstractItemView::item:selected, QComboBox::item:selected {
+            background-color: #4a90d9;
+            color: #ffffff;
         }
         QComboBox::drop-down {
             width: 24px;
@@ -1274,9 +1294,29 @@ class ConfigEditorDialog(QDialog):
             border: 1px solid #aac4e4;
         }
         QComboBox QAbstractItemView {
+            background-color: #ffffff;
+            color: #2c3e50;
             border: 1px solid #ced4da;
             border-radius: 6px;
             selection-background-color: #4a90d9;
+            selection-color: #ffffff;
+            outline: none;
+            padding: 4px;
+        }
+        QComboBox QAbstractItemView::item, QComboBox::item {
+            min-height: 24px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            background-color: #ffffff;
+            color: #2c3e50;
+        }
+        QComboBox QAbstractItemView::item:hover, QComboBox::item:hover {
+            background-color: #eaf2fb;
+            color: #4a90d9;
+        }
+        QComboBox QAbstractItemView::item:selected, QComboBox::item:selected {
+            background-color: #4a90d9;
+            color: #ffffff;
         }
         QComboBox::drop-down {
             width: 24px;

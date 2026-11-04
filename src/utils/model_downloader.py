@@ -1,11 +1,8 @@
 """模型下载工具 - 支持绿色版首次运行自动下载模型"""
 
-import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
-
-from PySide6.QtCore import QObject, Signal
+from typing import Callable, Dict, Optional
 
 from src.i18n import t
 from src.utils.logger import get_logger
@@ -262,6 +259,7 @@ class ModelDownloader:
         file_progress_callback=None,
         max_retries: int = 5,
         min_size: int = 1,
+        cancel_check: Optional[Callable[[], bool]] = None,
     ) -> bool:
         """下载单个文件到 .tmp 临时文件，下载并校验完成后原子替换到目标路径。"""
         import requests
@@ -325,6 +323,10 @@ class ModelDownloader:
                 mode = "ab" if is_resume else "wb"
                 with open(tmp_dest, mode) as f:
                     for chunk in response.iter_content(chunk_size=65536):
+                        if cancel_check and cancel_check():
+                            response.close()
+                            logger.info("Download cancelled by user.")
+                            return False
                         if chunk:
                             f.write(chunk)
                             downloaded += len(chunk)
@@ -391,7 +393,12 @@ class ModelDownloader:
             size /= 1024.0
         return f"{size:.2f} TB"
 
-    def download_model(self, progress_callback=None, confirm_callback=None) -> bool:
+    def download_model(
+        self,
+        progress_callback=None,
+        confirm_callback=None,
+        cancel_check: Optional[Callable[[], bool]] = None,
+    ) -> bool:
         base_url = self.model_config["base_url"]
         files = self.model_config["all_files"]
         core_files = set(self.model_config["core_files"])
@@ -489,6 +496,7 @@ class ModelDownloader:
                     filename, total_downloaded, file_index
                 ),
                 min_size=min_size,
+                cancel_check=cancel_check,
             )
             if ok:
                 if dest.exists():
@@ -556,6 +564,7 @@ def check_models_integrity(
     progress_callback=None,
     confirm_callback=None,
     target_models: Optional[list] = None,
+    cancel_check: Optional[Callable[[], bool]] = None,
 ) -> bool:
     """启动时一次性检查模型文件完整性。
 
@@ -582,6 +591,10 @@ def check_models_integrity(
     all_ok = True
 
     for model_name in model_names:
+        if cancel_check and cancel_check():
+            logger.info("Integrity check cancelled by user.")
+            return False
+
         if model_name not in MODEL_CONFIG:
             logger.warning(t("model_downloader.integrity.skip_unknown", key="model", model=model_name))
             continue
@@ -596,7 +609,7 @@ def check_models_integrity(
             continue
 
         logger.info(t("model_downloader.integrity.model_incomplete", model=model_name))
-        ok = downloader.download_model(progress_callback, confirm_callback)
+        ok = downloader.download_model(progress_callback, confirm_callback, cancel_check=cancel_check)
         if ok and downloader.is_model_exists():
             logger.info(t("model_downloader.integrity.repaired", model=model_name))
         else:

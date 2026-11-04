@@ -37,14 +37,14 @@ class BookmarkItem:
             created_at: 创建时间
             note: 用户备注
         """
-        self.video_name = video_name
-        self.content_type = content_type  # 'transcript' or 'summary'
-        self.position = position
-        self.text = text[:100]
-        self.file_path = file_path
-        self.relative_path = relative_path
-        self.created_at = created_at
-        self.note = note
+        self.video_name = video_name or ""
+        self.content_type = content_type or "transcript"
+        self.position = position or 0
+        self.text = (text or "")[:100]
+        self.file_path = file_path or ""
+        self.relative_path = relative_path or ""
+        self.created_at = created_at or ""
+        self.note = note or ""
 
     def to_dict(self) -> dict:
         """将书签项序列化为字典。"""
@@ -137,10 +137,10 @@ class BookmarkManager:
             self.save(bookmarks)
 
     def remove(self, indices: list[int]) -> None:
-        """按索引列表移除书签（从大到小删除避免偏移）。"""
+        """按索引列表移除书签（去重后从大到小删除避免偏移与重复删错）。"""
         with self._lock:
             bookmarks = self.load()
-            for idx in sorted(indices, reverse=True):
+            for idx in sorted(set(indices), reverse=True):
                 if 0 <= idx < len(bookmarks):
                     del bookmarks[idx]
             self.save(bookmarks)

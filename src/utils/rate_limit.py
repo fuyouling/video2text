@@ -32,8 +32,11 @@ class RateLimiter:
             time.sleep(wait_time)
 
 
-def get_retry_after(response_headers: dict) -> Optional[float]:
-    """解析 Retry-After 头，支持秒数（float）或 RFC 7231 HTTP-Date 格式，返回等待秒数。"""
+MAX_RETRY_AFTER_CAP = 60.0
+
+
+def get_retry_after(response_headers: dict, max_cap: float = MAX_RETRY_AFTER_CAP) -> Optional[float]:
+    """解析 Retry-After 头，支持秒数（float）或 RFC 7231 HTTP-Date 格式，返回等待秒数（带上限保护，默认最大 60 秒）。"""
     raw = ""
     for k, v in response_headers.items():
         if str(k).lower() == "retry-after":
@@ -44,7 +47,8 @@ def get_retry_after(response_headers: dict) -> Optional[float]:
 
     # 1. 尝试直接解析秒数
     try:
-        return max(0.0, float(raw))
+        val = max(0.0, float(raw))
+        return min(val, max_cap)
     except ValueError:
         pass
 
@@ -55,7 +59,8 @@ def get_retry_after(response_headers: dict) -> Optional[float]:
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=datetime.timezone.utc)
         diff = (dt - now).total_seconds()
-        return max(0.0, float(diff))
+        val = max(0.0, float(diff))
+        return min(val, max_cap)
     except Exception:
         pass
 

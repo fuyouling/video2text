@@ -699,6 +699,7 @@ class ResultViewerWindow(QMainWindow):
         output_dir: str,
         folder_mode: bool = False,
         name_to_dir: Optional[dict] = None,
+        target_video: Optional[str] = None,
     ):
         """加载多个文件
 
@@ -708,6 +709,7 @@ class ResultViewerWindow(QMainWindow):
             folder_mode: 是否进入文件夹树模式
             name_to_dir: name -> 真实结果目录 映射（历史/索引提供），
                 使平铺模式下也能定位镜像子目录里的文件
+            target_video: 指定优先选中的视频名，未指定则保持当前选中或首项
         """
         self._output_dir = output_dir
         self._root_output_dir = output_dir
@@ -716,35 +718,59 @@ class ResultViewerWindow(QMainWindow):
         self._all_video_names = list(self._flat_video_names)
         self._file_filter.clear()
 
+        # 确定需要选中的视频项：优先传入的 target_video，其次当前查看的视频，最后首个视频
+        selected_name = target_video or self._current_video_name
+        if selected_name and selected_name not in self._all_video_names and not folder_mode:
+            selected_name = None
+        if not selected_name and self._all_video_names:
+            selected_name = self._all_video_names[0]
+
         if folder_mode:
             self._folder_mode_action.setChecked(True)
             self._folder_mode = True
             self.file_list.setVisible(False)
             self._folder_tree.setVisible(True)
-            self._populate_file_list(self._all_video_names)
-            self._scan_and_build_tree()
+            self._populate_file_list(self._all_video_names, selected_name)
+            tree_selected = self._scan_and_build_tree(selected_name)
             self._filter_folder_tree(self._file_filter.text())
             self._folder_tree.setFocus()
+            chosen_video = tree_selected or selected_name
         else:
             self._folder_mode_action.setChecked(False)
             self._folder_mode = False
             self.file_list.setVisible(True)
             self._file_filter.setVisible(True)
             self._folder_tree.setVisible(False)
-            self._populate_file_list(self._all_video_names)
+            list_selected = self._populate_file_list(self._all_video_names, selected_name)
             self.file_list.setFocus()
+            chosen_video = list_selected or selected_name
 
-    def _populate_file_list(self, names: list[str]):
+        # 强制重新加载最新文件内容，确保重写/重新总结后的文本自动刷新
+        if chosen_video:
+            real_dir = self._name_to_dir.get(chosen_video) or self._output_dir
+            self.load_content(chosen_video, real_dir)
+
+    def _populate_file_list(
+        self, names: list[str], selected_name: Optional[str] = None
+    ) -> Optional[str]:
         """填充文件列表（blockSignals 防止逐项触发选择事件）"""
         self.file_list.blockSignals(True)
         self.file_list.clear()
+        target_item = None
         for video_name in names:
             item = QListWidgetItem(video_name)
             item.setData(Qt.ItemDataRole.UserRole, video_name)
             self.file_list.addItem(item)
+            if video_name == selected_name:
+                target_item = item
+        if target_item is None and self.file_list.count() > 0:
+            target_item = self.file_list.item(0)
+        chosen = None
+        if target_item is not None:
+            self.file_list.setCurrentItem(target_item)
+            chosen = target_item.data(Qt.ItemDataRole.UserRole)
         self.file_list.blockSignals(False)
-        if names:
-            self.file_list.setCurrentRow(0)
+        return chosen
 
     def _filter_file_list(self, text: str):
         """根据输入文本过滤文件列表 / 文件夹模式下的树形列表"""
@@ -814,29 +840,31 @@ class ResultViewerWindow(QMainWindow):
 
         if checked and self._root_output_dir:
             self._output_dir = self._root_output_dir
-            self._scan_and_build_tree()
+            tree_selected = self._scan_and_build_tree(self._current_video_name)
             self._filter_folder_tree(self._file_filter.text())
             self._folder_tree.setFocus()
+            chosen = tree_selected or self._current_video_name
+            if chosen:
+                real_dir = self._name_to_dir.get(chosen) or self._output_dir
+                self.load_content(chosen, real_dir)
         elif not checked:
             self._output_dir = self._root_output_dir
             self._all_video_names = list(self._flat_video_names)
-            self._populate_file_list(self._all_video_names)
+            list_selected = self._populate_file_list(self._all_video_names, self._current_video_name)
             self._filter_file_list(self._file_filter.text())
-            if self._current_video_name:
-                for i in range(self.file_list.count()):
-                    item = self.file_list.item(i)
-                    if item.data(Qt.ItemDataRole.UserRole) == self._current_video_name:
-                        self.file_list.setCurrentItem(item)
-                        break
             self.file_list.setFocus()
+            chosen = list_selected or self._current_video_name
+            if chosen:
+                real_dir = self._name_to_dir.get(chosen) or self._output_dir
+                self.load_content(chosen, real_dir)
 
-    def _scan_and_build_tree(self):
+    def _scan_and_build_tree(self, selected_video: Optional[str] = None) -> Optional[str]:
         """扫描输出目录下所有转写和摘要文件，构建按子目录分层的树形列表"""
         # 始终以根输出目录（主界面所选 base dir）为扫描起点，
         # 避免 load_content 把 _output_dir 改成单个文件子目录后只显示该子目录
         output_path = Path(self._root_output_dir) if self._root_output_dir else Path(self._output_dir)
         if not output_path.exists():
-            return
+            return None
 
         self._folder_tree.blockSignals(True)
         self._folder_tree.clear()
@@ -938,26 +966,36 @@ class ResultViewerWindow(QMainWindow):
 
         root.setExpanded(True)
 
-        self._folder_tree.blockSignals(False)
-
+        target: Optional[QTreeWidgetItem] = None
         if video_names:
             self._all_video_names = sorted(video_names, key=natural_sort_key)
-            target: Optional[QTreeWidgetItem] = None
-            for i in range(root.childCount()):
-                child = root.child(i)
-                if child.flags() & Qt.ItemFlag.ItemIsSelectable:
-                    target = child
-                    break
+            if selected_video:
+                target = self._find_tree_item_by_name(selected_video)
             if target is None:
                 for i in range(root.childCount()):
                     child = root.child(i)
-                    if child.childCount() > 0:
-                        target = child.child(0)
-                        while target and target.childCount() > 0:
-                            target = target.child(0)
+                    if child.flags() & Qt.ItemFlag.ItemIsSelectable:
+                        target = child
                         break
+                if target is None:
+                    for i in range(root.childCount()):
+                        child = root.child(i)
+                        if child.childCount() > 0:
+                            target = child.child(0)
+                            while target and target.childCount() > 0:
+                                target = target.child(0)
+                            break
             if target:
+                p = target.parent()
+                while p:
+                    p.setExpanded(True)
+                    p = p.parent()
                 self._folder_tree.setCurrentItem(target)
+
+        self._folder_tree.blockSignals(False)
+        if target:
+            return target.data(0, Qt.ItemDataRole.UserRole)
+        return None
 
     def _sort_folders_first(self, item: QTreeWidgetItem):
         """递归排序：每层文件夹排在文件前面，子文件夹默认闭合"""
@@ -1042,6 +1080,7 @@ class ResultViewerWindow(QMainWindow):
             self.transcript_view.setPlainText(t("viewer.transcript_not_found"))
 
         # 加载摘要（Markdown渲染）
+        self._md_renderer.invalidate_cache()
         summary_path = _find_summary_path(real_dir, video_name)
         if summary_path:
             try:
@@ -1053,6 +1092,12 @@ class ResultViewerWindow(QMainWindow):
             self.summary_view.setPlainText(t("viewer.summary_not_found"))
 
         self.status_bar.showMessage(t("viewer.loaded", name=video_name))
+
+    def reload_file_if_active(self, video_name: str) -> None:
+        """若当前正在查看指定文件，则重新加载其内容"""
+        if self._current_video_name == video_name:
+            real_dir = self._name_to_dir.get(video_name) or self._output_dir
+            self.load_content(video_name, real_dir)
 
     def _on_file_selected(
         self, current: Optional[QListWidgetItem], previous: Optional[QListWidgetItem]
@@ -1656,19 +1701,14 @@ class ResultViewerWindow(QMainWindow):
         self._file_filter.clear()
 
         if self._folder_mode:
-            self._scan_and_build_tree()
+            self._scan_and_build_tree(select_video)
             self._filter_folder_tree(self._file_filter.text())
             target = self._find_tree_item_by_name(select_video)
             if target:
                 self._folder_tree.setCurrentItem(target)
             self._folder_tree.setFocus()
         else:
-            self._populate_file_list(video_names)
-            for i in range(self.file_list.count()):
-                list_item = self.file_list.item(i)
-                if list_item.data(Qt.ItemDataRole.UserRole) == select_video:
-                    self.file_list.setCurrentItem(list_item)
-                    break
+            self._populate_file_list(video_names, select_video)
             self.file_list.setFocus()
 
         self._navigate_to_bookmark(bookmark)

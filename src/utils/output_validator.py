@@ -312,18 +312,20 @@ def validate_output_content(file_path: str, fmt: str) -> None:
 def _parse_srt_timestamp(ts: str) -> float:
     """解析 SRT 时间戳 HH:MM:SS,mmm 为秒数。"""
     h, m, rest = ts.split(":")
-    s, ms = rest.split(",")
-    h, m, s, ms = int(h), int(m), int(s), int(ms)
-    if h >= 100 or m >= 60 or s >= 60 or ms >= 1000:
+    s, ms_str = rest.split(",")
+    ms_val = int(ms_str.ljust(3, "0")[:3])
+    h_val, m_val, s_val = int(h), int(m), int(s)
+    if h_val >= 100 or m_val >= 60 or s_val >= 60 or ms_val >= 1000:
         raise ValueError(t("output_validator.timestamp.out_of_range", timestamp=ts))
-    return h * 3600 + m * 60 + s + ms / 1000
+    return h_val * 3600 + m_val * 60 + s_val + ms_val / 1000
 
 
 def _parse_vtt_timestamp(ts: str) -> float:
     """解析 VTT 时间戳 HH:MM:SS.mmm 为秒数。"""
     h, m, rest = ts.split(":")
-    s, ms = rest.split(".")
-    h, m, s, ms = int(h), int(m), int(s), int(ms)
-    if h >= 100 or m >= 60 or s >= 60 or ms >= 1000:
+    s, ms_str = rest.split(".")
+    ms_val = int(ms_str.ljust(3, "0")[:3])
+    h_val, m_val, s_val = int(h), int(m), int(s)
+    if h_val >= 100 or m_val >= 60 or s_val >= 60 or ms_val >= 1000:
         raise ValueError(t("output_validator.timestamp.out_of_range", timestamp=ts))
-    return h * 3600 + m * 60 + s + ms / 1000
+    return h_val * 3600 + m_val * 60 + s_val + ms_val / 1000

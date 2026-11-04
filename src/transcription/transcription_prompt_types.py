@@ -1,7 +1,7 @@
 """转写提示词数据结构与内置预设定义"""
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from src.i18n import t
 
@@ -34,15 +34,15 @@ class TranscriptionPromptTemplate:
     ) -> "TranscriptionPromptTemplate":
         return cls(
             id=template_id,
-            name=data.get("name", template_id),
-            initial_prompt=data.get("initial_prompt", ""),
-            hotwords=data.get("hotwords", ""),
+            name=str(data.get("name") or template_id),
+            initial_prompt=str(data.get("initial_prompt") or ""),
+            hotwords=str(data.get("hotwords") or ""),
             is_builtin=is_builtin,
-            description=data.get("description", ""),
+            description=str(data.get("description") or ""),
         )
 
 
-BUILTIN_PRESET_IDS = ("general", "meeting", "ecommerce", "tech", "bilingual")
+BUILTIN_PRESET_IDS = ("general", "meeting")
 
 
 def get_builtin_tx_presets() -> dict[str, TranscriptionPromptTemplate]:
@@ -63,29 +63,5 @@ def get_builtin_tx_presets() -> dict[str, TranscriptionPromptTemplate]:
             hotwords=t("transcription_prompt_manager.presets.meeting.hotwords"),
             is_builtin=True,
             description=t("transcription_prompt_manager.presets.meeting.desc"),
-        ),
-        "ecommerce": TranscriptionPromptTemplate(
-            id="ecommerce",
-            name=t("transcription_prompt_manager.presets.ecommerce.name"),
-            initial_prompt=t("transcription_prompt_manager.presets.ecommerce.prompt"),
-            hotwords=t("transcription_prompt_manager.presets.ecommerce.hotwords"),
-            is_builtin=True,
-            description=t("transcription_prompt_manager.presets.ecommerce.desc"),
-        ),
-        "tech": TranscriptionPromptTemplate(
-            id="tech",
-            name=t("transcription_prompt_manager.presets.tech.name"),
-            initial_prompt=t("transcription_prompt_manager.presets.tech.prompt"),
-            hotwords=t("transcription_prompt_manager.presets.tech.hotwords"),
-            is_builtin=True,
-            description=t("transcription_prompt_manager.presets.tech.desc"),
-        ),
-        "bilingual": TranscriptionPromptTemplate(
-            id="bilingual",
-            name=t("transcription_prompt_manager.presets.bilingual.name"),
-            initial_prompt=t("transcription_prompt_manager.presets.bilingual.prompt"),
-            hotwords=t("transcription_prompt_manager.presets.bilingual.hotwords"),
-            is_builtin=True,
-            description=t("transcription_prompt_manager.presets.bilingual.desc"),
         ),
     }

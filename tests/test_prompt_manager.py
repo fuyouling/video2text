@@ -23,8 +23,6 @@ class TestPromptManagerPresets:
         assert "default" in presets
         assert "meeting" in presets
         assert "lecture" in presets
-        assert "tldr" in presets
-        assert "takeaways" in presets
 
         for p in presets.values():
             assert p.is_builtin is True

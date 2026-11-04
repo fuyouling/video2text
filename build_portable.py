@@ -98,20 +98,27 @@ def get_file_hash(filepath):
 
 
 def compute_build_hash(root, spec_file):
-    """联合计算 spec 文件与 src/ 目录下所有 Python 文件的 sha256 哈希值。"""
+    """联合计算 spec 文件、关键配置与 src/ 目录下所有源码与资源文件的 sha256 哈希值。"""
     h = hashlib.sha256()
-    if spec_file.exists():
-        h.update(get_file_hash(spec_file).encode())
+    for extra in [spec_file, root / "requirements.txt", root / "config_release.ini", root / "config_realease.ini"]:
+        if extra.exists():
+            h.update(extra.name.encode("utf-8"))
+            h.update(get_file_hash(extra).encode())
+
     src_dir = root / "src"
     if src_dir.is_dir():
-        py_files = sorted(
-            src_dir.rglob("*.py"),
+        src_files = sorted(
+            [
+                p
+                for p in src_dir.rglob("*")
+                if p.is_file() and p.suffix.lower() in (".py", ".json", ".ini", ".ico", ".png")
+            ],
             key=lambda p: str(p.relative_to(src_dir)).replace("\\", "/")
         )
-        for py_path in py_files:
-            rel_path = str(py_path.relative_to(src_dir)).replace("\\", "/")
+        for fpath in src_files:
+            rel_path = str(fpath.relative_to(src_dir)).replace("\\", "/")
             h.update(rel_path.encode("utf-8"))
-            h.update(get_file_hash(py_path).encode())
+            h.update(get_file_hash(fpath).encode())
     return h.hexdigest()
 
 

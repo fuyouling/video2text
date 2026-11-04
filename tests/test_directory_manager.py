@@ -135,3 +135,52 @@ class TestDirectoryManager:
                 mgr.add_input_dir("/second")
         # In-memory list must be rolled back
         assert mgr.get_input_dirs() == ["/first"]
+
+    def test_clean_dir_path(self):
+        assert DirectoryManager.clean_dir_path("C:/dev/video (1 file(s) selected)") == "C:/dev/video"
+        assert DirectoryManager.clean_dir_path("C:/dev/video (已选择 12 个文件)") == "C:/dev/video"
+        assert DirectoryManager.clean_dir_path("C:/dev/video（已選擇 3 個文件）") == "C:/dev/video"
+        assert DirectoryManager.clean_dir_path("C:/dev/video (2 files)") == "C:/dev/video"
+        assert DirectoryManager.clean_dir_path("C:/dev/video (1 Datei(en) ausgewählt)") == "C:/dev/video"
+        assert DirectoryManager.clean_dir_path("C:/normal/path") == "C:/normal/path"
+        # 验证合法年份/数字括号路径不被误截断
+        assert DirectoryManager.clean_dir_path("D:/Films/Matrix (1999)") == "D:/Films/Matrix (1999)"
+        assert DirectoryManager.clean_dir_path("E:/Work/Reports (2024)") == "E:/Work/Reports (2024)"
+
+    def test_auto_clean_dirty_data_on_load(self, tmp_json: Path):
+        data = {
+            "input_dirs": [
+                "C:/0make/douyin-downloader/Downloaded (1891 file(s) selected)",
+                "C:/dev/video (已选择 2 个文件)",
+                "C:/normal/path",
+            ],
+            "output_dirs": [
+                "C:/output/video (1 file(s) selected)",
+                "C:/output/normal",
+            ],
+        }
+        tmp_json.write_text(json.dumps(data), encoding="utf-8")
+        mgr = DirectoryManager(tmp_json)
+        assert mgr.get_input_dirs() == [
+            "C:/0make/douyin-downloader/Downloaded",
+            "C:/dev/video",
+            "C:/normal/path",
+        ]
+        assert mgr.get_output_dirs() == [
+            "C:/output/video",
+            "C:/output/normal",
+        ]
+        # Verify file on disk was also updated
+        saved_data = json.loads(tmp_json.read_text(encoding="utf-8"))
+        assert saved_data["input_dirs"] == [
+            "C:/0make/douyin-downloader/Downloaded",
+            "C:/dev/video",
+            "C:/normal/path",
+        ]
+
+    def test_add_dirty_dir_cleans_before_save(self, mgr: DirectoryManager):
+        mgr.add_input_dir("C:/dev/windowsTools/video2text/video (1 file(s) selected)")
+        assert mgr.get_input_dirs() == ["C:/dev/windowsTools/video2text/video"]
+
+        mgr.add_output_dir("C:/output/dir (已选择 5 个文件)")
+        assert mgr.get_output_dirs() == ["C:/output/dir"]

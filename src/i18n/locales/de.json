@@ -621,7 +621,9 @@
     "cleared_output": "Alle bevorzugten Ausgabeordner entfernt",
     "removed_input": "Bevorzugten Eingabeordner entfernt: {path}",
     "removed_output": "Bevorzugten Ausgabeordner entfernt: {path}",
-    "context_delete": "«{path}» löschen"
+    "context_delete": "«{path}» löschen",
+    "not_found_title": "Verzeichnis nicht gefunden",
+    "not_found_msg": "Dieses Verzeichnis existiert nicht oder wurde entfernt:\n{path}\n\nAus Favoriten entfernen?"
   },
   "search": {
     "find_label": "Suchen:",
@@ -719,7 +721,7 @@
     "tip3": "3. In PowerShell, call the executable by its full path, e.g.: .\\video2text.exe transcribe video.mp4 -o output",
     "opt_initial_prompt": "Initialen Transkriptions-Prompt temporär überschreiben",
     "opt_hotwords": "Transkriptions-Hotwords temporär überschreiben (durch Leerzeichen oder Kommas getrennt)",
-    "opt_prompt_template": "Prompt-Preset oder Vorlagenname (z.B. general, meeting, ecommerce, tech, bilingual)"
+    "opt_prompt_template": "Prompt-Preset oder Vorlagenname (z.B. general, meeting)"
   },
   "errors": {
     "file_not_found": "Datei nicht gefunden: {path}",
@@ -1006,14 +1008,14 @@
       "prompt_load_failed": "PromptManager: Laden fehlgeschlagen ({name})",
       "prompt_loaded": "PromptManager: geladen ({name})",
       "prompt_save_error": "PromptManager: Speichern fehlgeschlagen ({error})",
-      "default_prompt": "Sie sind ein professioneller Textzusammenfassungs-Assistent. Ihre Aufgabe ist es, den Text umfassend und vollständig zusammenzufassen, ohne wesentliche Kernpunkte oder Fakten auszulassen. Geben Sie nur den Zusammenfassungstext aus. **Fügen Sie keine Einleitung, Schlussbemerkung, Erklärungen oder Anmerkungen hinzu.** **Vermeiden Sie zusätzliche Ausschmückungen — geben Sie nur den Zusammenfassungsinhalt aus.** Fügen Sie am Ende keine erneute Zusammenfassung an.",
+      "default_prompt": "Sie sind ein professioneller Textzusammenfassungs-Assistent. Bitte erstellen Sie eine objektive und vollständige strukturierte Zusammenfassung des Textes mit den Kernpunkten und wichtigen Details. Geben Sie nur den Zusammenfassungstext ohne Einleitung oder Schlussbemerkungen aus.",
       "text_content_label": "Textinhalt:",
       "markdown_prompt": "\nGib die Zusammenfassung im Markdown-Format wie folgt aus:\n- **Kernpunkt**\n\t- Inhalt\n\t- Inhalt\n- **Kernpunkt**\n\t- Inhalt\n\t- Inhalt\n\nAchte auf korrektes Markdown-Format, damit die Ausgabe direkt gerendert werden kann.\n",
       "presets": {
         "default": {
           "name": "Standard-Zusammenfassung",
           "desc": "Umfassende und vollständige Zusammenfassung aller Kernpunkte und Details ohne Auslassungen",
-          "prompt": "Sie sind ein professioneller Textzusammenfassungs-Assistent. Ihre Aufgabe ist es, den eingegebenen Text umfassend, vollständig und tiefgehend strukturiert zusammenzufassen, sodass keine wesentlichen Kernpunkte, Fakten, Argumente oder Details ausgelassen werden.\n\nAnforderungen:\n1. Vollständige Abdeckung: Erfassen Sie den gesamten Textablauf gründlich. Passen Sie den Umfang der tatsächlichen Textlänge und Informationstiefe ohne Obergrenze für die Anzahl der Punkte an, damit keine wichtigen Details fehlen.\n2. Klare Strukturierung: Ausgabe in sauberem Markdown mit hierarchischer Aufzählung:\n   - **Kernpunkttitel**: Klares Thema prägnant formulieren\n     - Ausführliche Erläuterung der stützenden Fakten, logischen Zusammenhänge, Daten oder Details\n3. Reine Textausgabe: Geben Sie nur den Zusammenfassungstext aus. **Fügen Sie keine Einleitung, Schlussbemerkung, Erklärungen oder Anmerkungen hinzu.** **Vermeiden Sie zusätzliche Ausschmückungen — geben Sie nur den Zusammenfassungsinhalt aus.** Fügen Sie am Ende keine erneute Zusammenfassung an."
+          "prompt": "Sie sind ein professioneller Textzusammenfassungs-Assistent. Bitte erstellen Sie eine objektive und vollständige strukturierte Zusammenfassung des eingegebenen Textes, indem Sie Kernargumente und wesentliche Details herausarbeiten.\n\nAnforderungen:\n1. Verwenden Sie eine übersichtliche Markdown-Aufzählung: Fassen Sie zuerst das Kernthema zusammen und führen Sie dann Belege und Details aus.\n2. Geben Sie nur den Zusammenfassungstext aus. Fügen Sie keinerlei Einleitung, Höflichkeitsfloskeln oder Schlusserklärungen hinzu."
         },
         "meeting": {
           "name": "Besprechungsprotokoll",
@@ -1024,16 +1026,6 @@
           "name": "Studien- & Vorlesungsnotizen",
           "desc": "Systematische Aufbereitung von Vorlesungen mit Konzepten, Theorien und Belegen",
           "prompt": "Sie sind ein professioneller wissenschaftlicher Assistent. Strukturieren Sie die Inhalte als fundierte Studiennotizen in Markdown:\n\n## 1. Kernthemen & Konzepte\n## 2. Wichtigste Fachpunkte & Theorien\n## 3. Fallstudien & Belege\n## 4. Fazit & Reflexion\n\nKlar gegliedert, nur die Notizinhalte ausgeben."
-        },
-        "tldr": {
-          "name": "Kurzüberblick (TL;DR)",
-          "desc": "Unter 150 Wörtern, ultrakompakte Zusammenfassung der wichtigsten Kernaussagen",
-          "prompt": "Sie sind ein Assistent für ultrakompakte Zusammenfassungen. Fassen Sie den Text in unter 150 Wörtern zusammen (TL;DR). Nennen Sie direkt die Kernschlüsse und Hauptthemen ohne Einleitung oder Füllwörter."
-        },
-        "takeaways": {
-          "name": "Kernaussagen & Zitate",
-          "desc": "Besondere Zitate, Kernstandpunkte und inspirierende Gedanken hervorheben",
-          "prompt": "Sie sind ein Assistent zum Kuratieren von Kernaussagen und Zitaten. Extrahieren Sie die bemerkenswertesten Einsichten in Markdown:\n\n### 💡 Kernaussagen\n- Wesentliche Standpunkte\n\n### 💬 Bemerkenswerte Zitate\n> Wörtliches Zitat (kurzer Kontext)\n\n### 🔍 Erkenntnisse & Reflexion\n- Wichtige Impulse\n\nNur den kuratierten Inhalt ausgeben."
         }
       },
       "ollama": {
@@ -1253,24 +1245,6 @@
         "desc": "Verbessert Erkennung von Besprechungs- und Geschäftsbegriffen",
         "prompt": "Geschäftstreffen oder Interview. Bitte Fachbegriffe und professionellen Kontext beibehalten.",
         "hotwords": "Meeting Agenda Beschluss Abstimmung Bericht Review Roadmap Sprint Aufgabe"
-      },
-      "ecommerce": {
-        "name": "E-Commerce & Live-Shopping",
-        "desc": "Begriffe für Online-Shops, Verkaufsaktionen und Marketing",
-        "prompt": "E-Commerce und Online-Handel. Bitte Fachbegriffe präzise transkribieren.",
-        "hotwords": "SKU GMV Onlineshop Warenkorb Konvertierung Kampagne Bestellung Rabatt"
-      },
-      "tech": {
-        "name": "IT & Softwareentwicklung",
-        "desc": "Behält Programmier- und IT-Begriffe sowie Groß-/Kleinschreibung bei",
-        "prompt": "Inhalt über Softwareentwicklung und Technologie. Technische Fachbegriffe und Schreibweisen präzise beibehalten.",
-        "hotwords": "Python API Docker Linux PyTorch Git GPU CUDA Front-end Back-end Framework Bug Debug Web CI/CD LLM"
-      },
-      "bilingual": {
-        "name": "Zweisprachig & Konversation",
-        "desc": "Fließende Übergänge bei gemischtsprachigen Gesprächen",
-        "prompt": "Gespräch mit zweisprachigen Fachbegriffen. Bitte Fachausdrücke und Eigennamen natürlich beibehalten.",
-        "hotwords": "OK PPT follow up update meeting schedule review project team catch up sync call demo"
       }
     }
   },

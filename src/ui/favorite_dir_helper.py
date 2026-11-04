@@ -49,33 +49,32 @@ class FavoriteDirHelper(QObject):
 
     def _refresh_input_combo(self) -> None:
         current_text = self._input_combo.currentText()
+        clean_current = self._extract_dir_from_input(current_text) if current_text else ""
         self._input_combo.blockSignals(True)
         self._input_combo.clear()
         for d in self._dir_manager.get_input_dirs():
             self._input_combo.addItem(d)
-        if current_text:
-            self._input_combo.setCurrentText(current_text)
+        if clean_current:
+            self._input_combo.setCurrentText(clean_current)
         self._input_combo.blockSignals(False)
 
     def _refresh_output_combo(self) -> None:
         current_text = self._output_combo.currentText()
+        clean_current = self._extract_dir_from_input(current_text) if current_text else ""
         self._output_combo.blockSignals(True)
         self._output_combo.clear()
         for d in self._dir_manager.get_output_dirs():
             self._output_combo.addItem(d)
-        if current_text:
-            self._output_combo.setCurrentText(current_text)
+        if clean_current:
+            self._output_combo.setCurrentText(clean_current)
         else:
             self._output_combo.setCurrentText(self._default_output_dir)
         self._output_combo.blockSignals(False)
 
     @staticmethod
     def _extract_dir_from_input(text: str) -> str:
-        # 匹配任意语言中 "路径 (N 个文件/selected)" 格式的显示文本
-        m = re.match(r"^(.+?)\s*\([^)]*\d+[^)]*\)\s*$", text)
-        if m:
-            return m.group(1).strip()
-        return text.strip()
+        # 使用 DirectoryManager.clean_dir_path 规范化并剔除选择文件等额外后缀
+        return DirectoryManager.clean_dir_path(text)
 
     def fav_input_dir(self, parent: QWidget) -> None:
         raw = self._input_combo.currentText().strip()
@@ -89,13 +88,14 @@ class FavoriteDirHelper(QObject):
         self._show_status(t("fav.fav_input_done", folder=folder))
 
     def fav_output_dir(self, parent: QWidget) -> None:
-        text = self._output_combo.currentText().strip()
-        if not text:
+        raw = self._output_combo.currentText().strip()
+        if not raw:
             QMessageBox.warning(parent, t("fav.hint_title"), t("fav.empty_output"))
             return
-        self._dir_manager.add_output_dir(text)
+        clean_text = self._extract_dir_from_input(raw)
+        self._dir_manager.add_output_dir(clean_text)
         self._refresh_output_combo()
-        self._show_status(t("fav.fav_output_done", text=text))
+        self._show_status(t("fav.fav_output_done", text=clean_text))
 
     def fav_both_dirs(self, parent: QWidget) -> None:
         raw_input = self._input_combo.currentText().strip()
@@ -112,7 +112,8 @@ class FavoriteDirHelper(QObject):
             )
             self._dir_manager.add_input_dir(folder)
         if output_text:
-            self._dir_manager.add_output_dir(output_text)
+            clean_output = self._extract_dir_from_input(output_text)
+            self._dir_manager.add_output_dir(clean_output)
         self._refresh_input_combo()
         self._refresh_output_combo()
         self._show_status(t("fav.fav_both_done"))

@@ -820,7 +820,9 @@
     "cleared_output": "已移除所有常用輸出目錄",
     "removed_input": "已移除常用輸入目錄: {path}",
     "removed_output": "已移除常用輸出目錄: {path}",
-    "context_delete": "刪除「{path}」"
+    "context_delete": "刪除「{path}」",
+    "not_found_title": "目錄不存在",
+    "not_found_msg": "該目錄不存在或已被移除：\n{path}\n\n是否從常用目錄列表中刪除？"
   },
   "search": {
     "find_label": "查找:",
@@ -918,7 +920,7 @@
     "tip3": "3. In PowerShell, call the executable by its full path, e.g.: .\\video2text.exe transcribe video.mp4 -o output",
     "opt_initial_prompt": "臨時覆蓋初始轉寫提示詞",
     "opt_hotwords": "臨時覆蓋轉寫熱詞（空格或逗號分隔）",
-    "opt_prompt_template": "轉寫提示詞預設或範本名稱（例如: general, meeting, ecommerce, tech, bilingual）"
+    "opt_prompt_template": "轉寫提示詞預設或範本名稱（例如: general, meeting）"
   },
   "errors": {
     "file_not_found": "文件不存在: {path}",
@@ -1033,14 +1035,14 @@
       "prompt_load_failed": "PromptManager: 加載失敗 ({name})",
       "prompt_loaded": "PromptManager: 已加載 ({name})",
       "prompt_save_error": "PromptManager: 保存失敗 ({error})",
-      "default_prompt": "你是一個專業的文字總結助手，擅長提取關鍵資訊並產生簡潔準確的總結，只輸出總結正文，**禁止添加任何開頭語、結尾說明、解釋性語句、備註**，**不要額外修飾、補充話術，純輸出總結內容**，結尾無需再次總結。",
+      "default_prompt": "你是一個專業的文字總結助手。請對文本進行客觀、完整的結構化總結，提煉核心要點與關鍵細節。直接輸出總結正文，不添加任何開場白或結尾說明。",
       "text_content_label": "文字內容：",
       "markdown_prompt": "\n請將總結內容以 Markdown 格式輸出，形式如下：\n- **要點標題**\n\t- 內容\n\t- 內容\n- **要點標題**\n\t- 內容\n\t- 內容\n\n保持 Markdown 格式的正確性，確保輸出可以直接渲染。\n",
       "presets": {
         "default": {
           "name": "標準要點總結",
           "desc": "全面完整總結全篇內容，條理清晰，不漏掉任何核心要點與關鍵細節",
-          "prompt": "你是一個專業的文本總結助手。你的任務是對輸入的文本進行全面、完整且深入的結構化總結，確保不遺漏任何核心要點、重要事實、論據與關鍵細節。\n\n總結要求：\n1. 全面詳盡：全面梳理原文脈絡，根據內容的實際長短與資訊量充分展開，不設要點數量上限，完整覆蓋所有關鍵論點與事實，絕不漏點。\n2. 結構規範：以規範的 Markdown 格式輸出，採用層級清晰的要點列表組織：\n   - **核心要點標題**：提煉明確主題\n     - 詳細展開闡述支撐事實、邏輯脈絡、數據或具體細節\n3. 純淨輸出：只輸出總結正文，**禁止添加任何開頭語、結尾說明、解釋性語句或備註**，**不要額外修飾、補充話術，純輸出總結內容**，結尾無需再次總結。"
+          "prompt": "你是一個專業的文字總結助手。請對輸入內容進行客觀、完整的結構化總結，提煉核心論點與關鍵細節。\n\n要求：\n1. 採用清晰的 Markdown 無序清單，先提煉核心要點主題，再展開支撐事實與細節。\n2. 直接輸出總結正文，嚴禁添加任何開場白、寒暄或結尾說明。"
         },
         "meeting": {
           "name": "會議與訪談紀要",
@@ -1051,16 +1053,6 @@
           "name": "深度學習筆記",
           "desc": "系統梳理學術/講座內容，涵蓋概念解釋、核心原理與案例支撐",
           "prompt": "你是一個專業的學術與知識整理助手。請將以下學習內容以結構化 Markdown 提煉為系統性的深度學習筆記：\n\n## 一、核心主題與背景概念\n## 二、關鍵知識點與理論闡述\n## 三、典型案例與論據支撐\n## 四、總結與啟發反思\n\n層次分明，深入淺出，純輸出筆記內容。"
-        },
-        "tldr": {
-          "name": "一句話速覽 (TL;DR)",
-          "desc": "控制在150字內，極簡概括最核心結論與事件",
-          "prompt": "你是一個極簡摘要助手。請用最精煉的語言（控制在150字以內）對輸入文本進行極簡概述（TL;DR），直接給出最核心的結論、主要事件或論點。禁止任何開場白或廢話，直奔主題。"
-        },
-        "takeaways": {
-          "name": "金句與觀點提煉",
-          "desc": "提取對話亮點、精彩金句原話及啟發性觀點",
-          "prompt": "你是一個金句與核心觀點提煉助手。請從文本中提煉出最有啟發性、深刻的觀點與金句原話，以清晰的 Markdown 格式輸出：\n\n### 💡 核心觀點速覽\n- 核心觀點梳理\n\n### 💬 精彩金句摘錄\n> 金句原話（簡要標明上下文語境）\n\n### 🔍 啟發與反思\n- 啟發性思考\n\n純輸出提煉正文，無需多餘寒暄。"
         }
       },
       "ollama": {
@@ -1280,24 +1272,6 @@
         "desc": "強化會議討論、團隊協作與業務彙報等高頻職場詞彙",
         "prompt": "這是一場工作會議與深度訪談對話，包含業務討論、決策和任務分工，請準確辨識發言並保留專業語境。",
         "hotwords": "會議 議題 決議 協同 同步 彙報 對齊 複盤 進度 方案 痛點 落地 抓手 賦能"
-      },
-      "ecommerce": {
-        "name": "電商帶貨與營運",
-        "desc": "針對電商直播、平台營運、投流投放與短影音帶貨黑話提供精準熱詞偏置",
-        "prompt": "電商教學與直播帶貨影片，包含平台營運、短影音帶貨與流量投放，請準確轉寫專業電商術語與行業詞彙。",
-        "hotwords": "抖店 淘寶 拼多多 小紅書 淘系 SKU 一件代發 無貨源 GMV 千川 隨心推 DOU+ 憋單 拉停留 達人帶貨 精選聯盟 掛車 起店 破零 測款 動銷 投流 私域 促活 復購"
-      },
-      "tech": {
-        "name": "IT科技與程式設計",
-        "desc": "針對軟體開發、AI演算法與電腦前沿技術，保持中英文術語大小寫與準確拼寫",
-        "prompt": "軟體開發、AI演算法與電腦技術的教學與分享，包含專業術語與程式碼概念，請保持準確拼寫與大小寫規範。",
-        "hotwords": "Python API Docker Linux PyTorch Git GPU CUDA Front-end Back-end Framework Bug Debug Web CI/CD LLM PySide PySide6"
-      },
-      "bilingual": {
-        "name": "雙語混合日常交流",
-        "desc": "針對日常工作、雙語夾雜口語交流，準確辨識常見外來詞彙與縮寫",
-        "prompt": "日常工作交流與雙語混合對話，請保持專有名詞與語句的自然過渡。",
-        "hotwords": "OK PPT follow up update meeting schedule review project team catch up sync call deck demo"
       }
     }
   },

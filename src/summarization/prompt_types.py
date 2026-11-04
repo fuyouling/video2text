@@ -1,8 +1,8 @@
 """Prompt template data structures and built-in preset definitions"""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import threading
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from src.i18n import t
 
@@ -68,26 +68,10 @@ def get_builtin_presets() -> dict[str, PromptTemplate]:
             is_builtin=True,
             description=t("services.summarization.presets.lecture.desc"),
         ),
-        "tldr": PromptTemplate(
-            id="tldr",
-            name=t("services.summarization.presets.tldr.name"),
-            system_prompt=t("services.summarization.presets.tldr.prompt"),
-            enable_markdown=False,
-            is_builtin=True,
-            description=t("services.summarization.presets.tldr.desc"),
-        ),
-        "takeaways": PromptTemplate(
-            id="takeaways",
-            name=t("services.summarization.presets.takeaways.name"),
-            system_prompt=t("services.summarization.presets.takeaways.prompt"),
-            enable_markdown=True,
-            is_builtin=True,
-            description=t("services.summarization.presets.takeaways.desc"),
-        ),
     }
 
 
-BUILTIN_PRESET_IDS = ("default", "meeting", "lecture", "tldr", "takeaways")
+BUILTIN_PRESET_IDS = ("default", "meeting", "lecture")
 _CANONICAL_PRESET_IDS = set(BUILTIN_PRESET_IDS)
 _NAME_TO_CANONICAL_ID_CACHE: Optional[dict[str, str]] = None
 _CACHE_LOCK = threading.Lock()
@@ -133,7 +117,7 @@ def _get_name_to_canonical_id_map() -> dict[str, str]:
 
 
 def resolve_builtin_preset_id(name_or_id: str) -> Optional[str]:
-    """跨语言反查内置预设规范 ID (default, meeting, lecture, tldr, takeaways)。
+    """跨语言反查内置预设规范 ID (default, meeting, lecture)。
 
     支持传入规范 ID 或任意受支持语言下的预设显示名称，均可反查其标准英文规范 ID。
     若非内置预设则返回 None。

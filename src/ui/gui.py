@@ -18,7 +18,6 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QApplication,
-    QCheckBox,
     QComboBox,
     QFileDialog,
     QGridLayout,
@@ -35,6 +34,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSplitter,
     QStatusBar,
+    QStyledItemDelegate,
     QTabWidget,
     QTextEdit,
     QToolBar,
@@ -45,13 +45,12 @@ from PySide6.QtWidgets import (
 
 from src.config.directory_manager import DirectoryManager
 from src.config.settings import Settings
-from src.config.version import APP_VERSION
 from src.services.transcription_service import TranscriptionService
 from src.summarization.prompt_manager import PromptManager
 from src.storage.file_writer import FileWriter, FileLocator
 from src.storage.output_index import OutputIndex
 from src.storage.output_formatter import OutputFormatter
-from src.utils.natural_sort import natural_sorted, natural_sort_key
+from src.utils.natural_sort import natural_sorted
 from src.utils.path_resolver import resolve_output_path
 from src.summarization.ollama_client import OllamaClient
 from src.ui.background_content import BackgroundContent
@@ -236,6 +235,7 @@ class MainWindow(QMainWindow):
         )
         self._input_exts = self._video_exts | self._audio_exts
         self._video_files: list[str] = []
+        self._last_confirmed_input_text: str = ""
         self._completed_names: set[str] = set()
         self._streaming_video: Optional[str] = None
         self._segment_text_queue: list[str] = []
@@ -633,6 +633,10 @@ class MainWindow(QMainWindow):
         self.input_combo.lineEdit().setPlaceholderText(self.input_combo.placeholderText())
         self.input_combo.setMinimumWidth(300)
         self.input_combo.activated.connect(self._on_input_combo_activated)
+        if self.input_combo.lineEdit():
+            self.input_combo.lineEdit().returnPressed.connect(
+                lambda: self._on_input_combo_activated(-1)
+            )
         grid.addWidget(self.input_combo, row, 1)
 
         self.input_folder_btn = QPushButton(t("main.input_btn"))
@@ -752,6 +756,11 @@ class MainWindow(QMainWindow):
 
         self.tx_prompt_template_combo = QComboBox()
         self.tx_prompt_template_combo.setObjectName("TxPromptCombo")
+        self.tx_prompt_template_combo.setItemDelegate(QStyledItemDelegate(self.tx_prompt_template_combo))
+        self.tx_prompt_template_combo.view().setStyleSheet(
+            "QAbstractItemView::item:hover, QAbstractItemView::item:selected {"
+            " background-color: palette(highlight); color: palette(highlighted-text); }"
+        )
         self.tx_prompt_template_combo.setMinimumWidth(150)
         self.tx_prompt_template_combo.setPlaceholderText(t("main.tx_prompt_template_placeholder"))
         self.tx_prompt_template_combo.currentIndexChanged.connect(
@@ -801,6 +810,11 @@ class MainWindow(QMainWindow):
         prompt_btn_row = QHBoxLayout()
         self.prompt_template_combo = QComboBox()
         self.prompt_template_combo.setObjectName("SummaryPromptCombo")
+        self.prompt_template_combo.setItemDelegate(QStyledItemDelegate(self.prompt_template_combo))
+        self.prompt_template_combo.view().setStyleSheet(
+            "QAbstractItemView::item:hover, QAbstractItemView::item:selected {"
+            " background-color: palette(highlight); color: palette(highlighted-text); }"
+        )
         self.prompt_template_combo.setMinimumWidth(160)
         self.prompt_template_combo.setPlaceholderText(t("main.summary_prompt_template_placeholder"))
         self.prompt_template_combo.currentIndexChanged.connect(
@@ -1390,16 +1404,37 @@ class MainWindow(QMainWindow):
     def _select_input_folder(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, t("main.select_input_folder"))
         if folder:
-            self._scan_context = {"mode": "folder_select", "folder": folder}
+            self._scan_context = {
+                "mode": "folder_select",
+                "folder": folder,
+                "previous_text": self._last_confirmed_input_text or self.input_combo.currentText(),
+            }
             self._start_scan(folder)
 
     def _on_input_combo_activated(self, index: int) -> None:
-        """从下拉框选择常用目录时，自动执行对应的选择文件/文件夹逻辑"""
-        text = self.input_combo.itemText(index).strip()
+        """从下拉框选择常用目录或按回车时，自动执行对应的选择文件/文件夹逻辑"""
+        text = self.input_combo.currentText().strip()
+        if not text and index >= 0:
+            text = self.input_combo.itemText(index).strip()
         if not text:
             return
 
-        path = Path(FavoriteDirHelper._extract_dir_from_input(text))
+        clean_path = FavoriteDirHelper._extract_dir_from_input(text)
+        path = Path(clean_path)
+
+        if not path.exists():
+            reply = QMessageBox.question(
+                self,
+                t("fav.not_found_title"),
+                t("fav.not_found_msg", path=clean_path),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self._fav_helper._remove_input_favorite(text)
+            self.input_combo.setCurrentText(self._last_confirmed_input_text)
+            return
+
+        previous_text = self._last_confirmed_input_text or self.input_combo.currentText()
 
         if path.is_file():
             self._input_folder = None
@@ -1407,14 +1442,17 @@ class MainWindow(QMainWindow):
             self._mirror_depth = 1
             self._name_to_output_dir = {}
             self._video_files = [str(path)]
+            self._last_confirmed_input_text = str(path)
             self.input_combo.setCurrentText(str(path))
             last_dir = path.parent.name
             self.output_combo.setCurrentText(str(Path(self._default_output_dir) / last_dir))
+            self.status_bar.showMessage(str(path), 5000)
         elif path.is_dir():
             self._scan_context = {
                 "mode": "combo_select",
                 "folder": str(path),
                 "index": index,
+                "previous_text": previous_text,
             }
             self._start_scan(str(path))
 
@@ -1490,11 +1528,15 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage("")
 
         if dialog.result() != dialog.DialogCode.Accepted or ctx is None:
+            if ctx and "previous_text" in ctx:
+                self.input_combo.setCurrentText(ctx["previous_text"])
             return
 
         selected_files = dialog.get_selected_files()
         if not selected_files:
             QMessageBox.information(self, t("common.hint"), t("main.no_files_selected"))
+            if ctx and "previous_text" in ctx:
+                self.input_combo.setCurrentText(ctx["previous_text"])
             return
 
         self._mirror_subdirs = dialog.get_mirror_subdirs()
@@ -1502,21 +1544,16 @@ class MainWindow(QMainWindow):
         self._input_folder = dialog.get_input_folder() if self._mirror_subdirs else None
         self._name_to_output_dir = {}
 
-        if ctx["mode"] == "folder_select":
-            self.input_combo.setCurrentText(
-                t("main.files_selected", folder=folder, count=len(selected_files))
-            )
-            last_dir = Path(folder).name
-        else:
-            index = ctx["index"]
-            self.input_combo.setItemText(
-                index,
-                t("main.files_selected", folder=folder, count=len(selected_files)),
-            )
-            last_dir = Path(folder).name
+        self.input_combo.setCurrentText(folder)
+        self._last_confirmed_input_text = folder
+        last_dir = Path(folder).name
 
         self._video_files = natural_sorted(selected_files)
         self.output_combo.setCurrentText(str(Path(self._default_output_dir) / last_dir))
+        self.status_bar.showMessage(
+            t("main.files_selected", folder=folder, count=len(selected_files)),
+            5000,
+        )
 
     def _select_output_dir(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, t("main.select_output_dir"))
@@ -1574,7 +1611,7 @@ class MainWindow(QMainWindow):
         self.output_combo.setCurrentText(output_dir)
         try:
             Path(output_dir).mkdir(parents=True, exist_ok=True)
-        except OSError as exc:
+        except OSError:
             QMessageBox.warning(
                 self, t("common.hint"), t("main.output_dir_not_exist", dir=output_dir)
             )
@@ -1694,17 +1731,36 @@ class MainWindow(QMainWindow):
         thread.started.connect(worker.run)
         worker.finished.connect(thread.quit)
         thread.finished.connect(self._on_thread_finished)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
         thread.start()
         return True
 
     def _set_busy_state(self, busy: bool) -> None:
-        """设置界面忙碌状态：禁用/启用各操作按钮，控制暂停按钮可见性。"""
+        """设置界面忙碌状态：禁用/启用各操作按钮，控制暂停按钮可见性，并锁定输入输出控件。"""
         self.transcribe_btn.setEnabled(not busy)
         self.summarize_btn.setEnabled(not busy)
         self.combine_btn.setEnabled(not busy)
         self.input_folder_btn.setEnabled(not busy)
         self.output_btn.setEnabled(not busy)
         self.load_history_btn.setEnabled(not busy)
+
+        # 忙碌时锁定输入/输出下拉框及常用目录管理按钮，防止多线程数据踩踏
+        if hasattr(self, "input_combo") and self.input_combo is not None:
+            self.input_combo.setEnabled(not busy)
+        if hasattr(self, "output_combo") and self.output_combo is not None:
+            self.output_combo.setEnabled(not busy)
+        if hasattr(self, "fav_input_btn") and self.fav_input_btn is not None:
+            self.fav_input_btn.setEnabled(not busy)
+        if hasattr(self, "fav_output_btn") and self.fav_output_btn is not None:
+            self.fav_output_btn.setEnabled(not busy)
+        if hasattr(self, "fav_both_btn") and self.fav_both_btn is not None:
+            self.fav_both_btn.setEnabled(not busy)
+        if hasattr(self, "clear_input_btn") and self.clear_input_btn is not None:
+            self.clear_input_btn.setEnabled(not busy)
+        if hasattr(self, "clear_output_btn") and self.clear_output_btn is not None:
+            self.clear_output_btn.setEnabled(not busy)
+
         self.stop_btn.setEnabled(busy)
         self._update_pause_button(busy)
         if not busy:
@@ -1824,6 +1880,7 @@ class MainWindow(QMainWindow):
         """
         if self._worker is None or self._worker_thread is None:
             return
+        self._is_stopping = True
         get_logger("video2text").info(t("main.stop_requested"))
         self.status_bar.showMessage(t("main.stopping_task"))
         self.stop_btn.setEnabled(False)
@@ -1862,15 +1919,15 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage(t("main.task_stopped"))
 
     def _on_stop_watchdog_timeout(self) -> None:
-        """异步停止状态机超时处理：5 秒未退出强行 terminate()，再 3 秒提示延迟退出。"""
+        """异步停止状态机超时处理：优雅等待退出，避免暴力 terminate 破坏 C++/CUDA 运行时状态。"""
         if self._worker_thread is None or not self._worker_thread.isRunning():
             return
         if getattr(self, "_stop_state_step", 0) == 1:
-            get_logger("video2text").warning(t("main.stop_force_terminate"))
-            self._worker_thread.terminate()
+            get_logger("video2text").warning("Worker thread cancellation pending, waiting gracefully...")
+            self.status_bar.showMessage(t("main.stop_waiting_exit"), 8000)
             self._stop_state_step = 2
             if hasattr(self, "_stop_watchdog_timer") and self._stop_watchdog_timer is not None:
-                self._stop_watchdog_timer.start(3000)
+                self._stop_watchdog_timer.start(5000)
         elif getattr(self, "_stop_state_step", 0) == 2:
             if self._worker_thread.isRunning():
                 get_logger("video2text").warning(t("main.stop_deferred"))
@@ -1967,6 +2024,13 @@ class MainWindow(QMainWindow):
                 self._load_transcript_content(video_name)
         else:
             self._load_transcript_content(video_name)
+
+        if self._result_viewer is not None:
+            try:
+                if self._result_viewer.isVisible():
+                    self._result_viewer.reload_file_if_active(video_name)
+            except RuntimeError:
+                self._result_viewer = None
 
         self.status_bar.showMessage(
             t("main.tx_done_count", name=video_name, segments=segments_count), 5000
@@ -2125,6 +2189,12 @@ class MainWindow(QMainWindow):
             self.summary_view.setPlainText(summary)
         elif self._current_video_name == video_name:
             self.summary_view.setPlainText(summary)
+        if self._result_viewer is not None:
+            try:
+                if self._result_viewer.isVisible():
+                    self._result_viewer.reload_file_if_active(video_name)
+            except RuntimeError:
+                self._result_viewer = None
         self.status_bar.showMessage(t("main.sum_done_count", name=video_name), 5000)
 
     def _on_summarize_error(self, video_name: str, error_msg: str) -> None:
@@ -2299,6 +2369,12 @@ class MainWindow(QMainWindow):
         if worker is not None:
             worker.deleteLater()
 
+        is_cancelled = getattr(self, "_is_stopping", False) or (worker is not None and getattr(worker, "_cancelled", False))
+        self._is_stopping = False
+        if is_cancelled:
+            self.status_bar.showMessage(t("main.task_stopped"))
+            return
+
         self.progress_bar.setValue(self.progress_bar.maximum())
 
         if self._current_mode == "transcribe":
@@ -2363,11 +2439,13 @@ class MainWindow(QMainWindow):
             self._result_viewer.setWindowState(Qt.WindowState.WindowMaximized)
             self._result_viewer.winId()
 
+        name_to_dir = {name: self._resolve_video_output_dir(name) for name in video_files}
         self._result_viewer.load_files(
             video_files,
             output_dir,
             folder_mode=self._mirror_subdirs,
-            name_to_dir=self._name_to_output_dir,
+            name_to_dir=name_to_dir,
+            target_video=self._current_video_name,
         )
 
         if not self._result_viewer.isVisible():
@@ -2386,8 +2464,12 @@ class MainWindow(QMainWindow):
         resummarize_action = menu.addAction(t("main.file_context_resummarize"))
         action = menu.exec(self.file_list.viewport().mapToGlobal(pos))
         if action == retranscribe_action:
+            self.file_list.setCurrentItem(item)
+            self._current_video_name = video_name
             self._on_retranscribe(video_name)
         elif action == resummarize_action:
+            self.file_list.setCurrentItem(item)
+            self._current_video_name = video_name
             self._on_resummarize(video_name)
 
     def _find_video_path_by_name(self, video_name: str) -> Optional[str]:
@@ -2401,6 +2483,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, t("common.hint"), t("main.task_running_warning"))
             return
 
+        self._current_video_name = video_name
         video_path = self._find_video_path_by_name(video_name)
         if video_path is None:
             QMessageBox.warning(
@@ -2442,6 +2525,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, t("common.hint"), t("main.task_running_warning"))
             return
 
+        self._current_video_name = video_name
         output_dir = self._get_output_dir()
         resolved_dir = self._resolve_video_output_dir(video_name)
         transcript_path = FileWriter(resolved_dir).find_transcript_file(video_name)
@@ -2830,8 +2914,6 @@ def main() -> None:
         app.setStyleSheet("QMainWindow { background-color: #f4f6fa; }")
 
         # ── 国际化：解析并应用语言（须在构建窗口前完成）──
-        import os
-
         cli_lang = None
         for i, a in enumerate(sys.argv[1:]):
             if a == "--lang" and i + 1 < len(sys.argv[1:]):

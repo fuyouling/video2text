@@ -621,7 +621,9 @@
     "cleared_output": "Tous les répertoires de sortie favoris ont été supprimés",
     "removed_input": "Répertoire d'entrée favori supprimé : {path}",
     "removed_output": "Répertoire de sortie favori supprimé : {path}",
-    "context_delete": "Supprimer « {path} »"
+    "context_delete": "Supprimer « {path} »",
+    "not_found_title": "Répertoire non trouvé",
+    "not_found_msg": "Ce répertoire n'existe pas ou a été supprimé :\n{path}\n\nLe supprimer des favoris ?"
   },
   "search": {
     "find_label": "Rechercher :",
@@ -719,7 +721,7 @@
     "tip3": "3. In PowerShell, call the executable by its full path, e.g.: .\\video2text.exe transcribe video.mp4 -o output",
     "opt_initial_prompt": "Remplacer temporairement l'invite de transcription initiale",
     "opt_hotwords": "Remplacer temporairement les mots-clés (séparés par espaces ou virgules)",
-    "opt_prompt_template": "Nom du préréglage ou modèle (ex: general, meeting, ecommerce, tech, bilingual)"
+    "opt_prompt_template": "Nom du préréglage ou modèle (ex: general, meeting)"
   },
   "errors": {
     "file_not_found": "Fichier introuvable : {path}",
@@ -1006,14 +1008,14 @@
       "prompt_load_failed": "PromptManager : échec du chargement ({name})",
       "prompt_loaded": "PromptManager : chargé ({name})",
       "prompt_save_error": "PromptManager : échec de l'enregistrement ({error})",
-      "default_prompt": "Vous êtes un assistant de résumé de texte professionnel. Votre tâche est de fournir un résumé exhaustif et complet du texte sans omettre aucun point clé ni fait essentiel. Ne produisez que le corps du résumé. **N'ajoutez aucune introduction, note de conclusion, explication ou annotation.** **N'ajoutez pas d'ornements superflus — ne produisez que le contenu du résumé.** N'ajoutez pas de résumé final à la fin.",
+      "default_prompt": "Vous êtes un assistant de résumé de texte professionnel. Veuillez fournir un résumé structuré, objectif et complet du texte, en dégageant les points essentiels et les détails clés. Ne produisez que le corps du résumé sans introduction ni remarques finales.",
       "text_content_label": "Contenu du texte :",
       "markdown_prompt": "\nProduis le résumé au format Markdown comme suit :\n- **Point clé**\n\t- Contenu\n\t- Contenu\n- **Point clé**\n\t- Contenu\n\t- Contenu\n\nConserve un formatage Markdown valide afin que la sortie puisse être rendue directement.\n",
       "presets": {
         "default": {
           "name": "Résumé standard",
           "desc": "Résumé complet et exhaustif couvrant tous les points clés et détails essentiels sans omission",
-          "prompt": "Vous êtes un assistant de résumé de texte professionnel. Votre tâche consiste à fournir un résumé structuré, exhaustif, complet et approfondi du texte fourni, en veillant à n'omettre aucun point fondamental, fait déterminant, argument ou détail essentiel.\n\nExigences :\n1. Couverture intégrale : Parcourez l'ensemble du texte. Développez selon la longueur et la densité réelles sans limite du nombre de points, afin de capturer l'ensemble des informations clés sans omission.\n2. Structure claire : Produisez le résultat au format Markdown selon une hiérarchie structurée :\n   - **Titre du point clé** : Thème principal clairement identifié\n     - Développement des faits à l'appui, du fil conducteur, des données et détails concrets\n3. Sortie pure : Ne produisez que le corps du résumé. **N'ajoutez aucune introduction, note de conclusion, explication ou annotation.** **N'ajoutez pas d'ornements superflus — ne produisez que le contenu du résumé.** N'ajoutez pas de résumé final à la fin."
+          "prompt": "Vous êtes un assistant de résumé de texte professionnel. Veuillez fournir un résumé structuré, objectif et complet du texte d'entrée, en dégageant les arguments principaux et les détails clés.\n\nExigences :\n1. Utilisez une liste à puces Markdown claire : résumez d'abord le thème central, puis développez les faits et détails d'appui.\n2. Ne produisez que le corps du résumé. N'ajoutez aucune introduction, formule de politesse ou explication finale."
         },
         "meeting": {
           "name": "Compte-rendu de réunion",
@@ -1024,16 +1026,6 @@
           "name": "Notes de cours approfondies",
           "desc": "Synthèse systématique de cours/conférences avec concepts, théories et exemples",
           "prompt": "Vous êtes un assistant académique professionnel. Structurez le contenu en notes d'étude approfondies au format Markdown :\n\n## 1. Thèmes clés & Concepts fondamentaux\n## 2. Points de connaissances & Théories\n## 3. Études de cas & Éléments de preuve\n## 4. Synthèse & Réflexions\n\nBien structuré, ne produisez que le contenu des notes."
-        },
-        "tldr": {
-          "name": "En un coup d'œil (TL;DR)",
-          "desc": "Moins de 150 mots, résumé ultra-concis des conclusions principales",
-          "prompt": "Vous êtes un assistant de synthèse ultra-rapide. Résumez le texte en moins de 150 mots (TL;DR), en exposant directement les conclusions et faits majeurs sans préambule ni fioriture."
-        },
-        "takeaways": {
-          "name": "Citations & Idées marquantes",
-          "desc": "Extraire les citations remarquables, idées fortes et réflexions inspirantes",
-          "prompt": "Vous êtes un assistant de sélection d'idées et de citations marquantes. Extrayez les points saillants au format Markdown :\n\n### 💡 Idées maîtresses\n- Points de vue essentiels\n\n### 💬 Citations marquantes\n> Citation textuelle (bref contexte)\n\n### 🔍 Enseignements & Réflexions\n- Perspectives inspirantes\n\nNe produisez que le contenu sélectionné."
         }
       },
       "ollama": {
@@ -1253,24 +1245,6 @@
         "desc": "Renforce le vocabulaire professionnel, les décisions et les actions",
         "prompt": "Il s'agit d'une réunion professionnelle. Veuillez préserver fidèlement le contexte et les termes techniques.",
         "hotwords": "Réunion Ordre du jour Décision Synthèse Synchronisation Compte-rendu Livrable"
-      },
-      "ecommerce": {
-        "name": "E-commerce & Vente",
-        "desc": "Optimisé pour le commerce électronique, le streaming et les ventes en ligne",
-        "prompt": "Contenu e-commerce et vente en ligne. Veuillez transcrire fidèlement les termes spécialisés.",
-        "hotwords": "SKU GMV Boutique Panier Commande Conversion Marketing Campagne"
-      },
-      "tech": {
-        "name": "IT & Développement logiciel",
-        "desc": "Préserve la casse et les termes de programmation et technologies",
-        "prompt": "Contenu sur le développement logiciel et les technologies. Conservez les termes techniques et leur casse.",
-        "hotwords": "Python API Docker Linux PyTorch Git GPU CUDA Front-end Back-end Framework Bug Debug Web CI/CD LLM"
-      },
-      "bilingual": {
-        "name": "Bilingue & Oral",
-        "desc": "Transition fluide pour les conversations intégrant des termes variés",
-        "prompt": "Conversation bilingue et échanges professionnels courants. Conservez la fluidité des termes et des noms propres.",
-        "hotwords": "OK PPT follow up update meeting schedule review project team catch up sync call demo"
       }
     }
   },

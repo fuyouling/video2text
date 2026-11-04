@@ -76,10 +76,14 @@ def resolve_output_path(text: str, base_dir: Path | None = None) -> str:
     return res
 
 
+_MAX_NAME_STEM_LEN = 200
+
+
 def sanitize_filename(name: str) -> str:
     """把任意字符串清洗成合法的单个文件名（不含扩展名）。
 
-    对 Windows 保留设备名（CON, PRN, AUX, NUL, COM1-9, LPT1-9）进行安全前缀转换。
+    对 Windows 保留设备名（CON, PRN, AUX, NUL, COM1-9, LPT1-9）进行安全前缀转换，
+    并限制最大单分量长度，防止追加后缀后超出 NTFS 255 字符上限。
     """
     cleaned = _ILLEGAL_NAME_CHARS.sub("_", name)
     # 去除首尾空格与 Windows 保留的尾点
@@ -91,6 +95,10 @@ def sanitize_filename(name: str) -> str:
     stem = cleaned.split(".")[0].upper()
     if stem in _WINDOWS_RESERVED_NAMES:
         cleaned = f"_{cleaned}"
+
+    # 截断单分量长度，保留后缀空间
+    if len(cleaned) > _MAX_NAME_STEM_LEN:
+        cleaned = cleaned[:_MAX_NAME_STEM_LEN].rstrip(".")
     return cleaned
 
 
@@ -109,8 +117,14 @@ def validate_output_dir(text: str, base_dir: Path | None = None) -> tuple[bool, 
     resolved = resolve_output_path(text, base_dir)
     if not resolved:
         return False, ""
-    # 必须落在当前盘符内，且不含残留的通配 / 非法分隔
-    if any(ch in resolved for ch in "*?"):
+    # 剥离 Windows 扩展长路径前缀 \\?\ 或 \\?\UNC\ 后再检验非法通配符
+    check_target = resolved
+    if check_target.startswith("\\\\?\\UNC\\"):
+        check_target = "\\\\" + check_target[8:]
+    elif check_target.startswith("\\\\?\\"):
+        check_target = check_target[4:]
+
+    if any(ch in check_target for ch in "*?"):
         return False, resolved
     if is_path_too_long(resolved):
         logger.warning(t("path_resolver.path_too_long", max=_MAX_PATH, path=resolved))

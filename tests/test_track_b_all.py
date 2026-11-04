@@ -68,10 +68,17 @@ def test_dll_downloader_check_dlls_in_use(tmp_path):
     # 未被锁定时返回空列表
     assert downloader.check_dlls_in_use() == []
 
-    # 模拟锁定（在 Windows 上以写锁打开）
-    with open(test_dll, "r+b"):
+    # 模拟真实占用状态（抛出 PermissionError）
+    orig_open = open
+
+    def mock_open(path, *args, **kwargs):
+        if str(path) == str(test_dll):
+            raise PermissionError("Access denied")
+        return orig_open(path, *args, **kwargs)
+
+    with patch("builtins.open", side_effect=mock_open):
         res = downloader.check_dlls_in_use()
-        assert isinstance(res, list)
+        assert res == ["cublas64_12.dll"]
 
 
 # ── 2. model_downloader ───────────────────────────────────────

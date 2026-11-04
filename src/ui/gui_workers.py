@@ -740,6 +740,10 @@ class PipelineWorker(QObject):
 
             results = service.run(self.video_files, self.output_dir)
 
+            # 若转写阶段已被取消，立即退出，切勿继续进入总结阶段或发送信号
+            if self._cancelled:
+                return
+
             # ---- Phase 2: 总结 ----
             provider_name = self.settings.get("summarization.provider", "ollama")
             sum_available = _check_summarization_connection(

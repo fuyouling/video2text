@@ -1051,9 +1051,6 @@ class TranscriptionPromptTemplate:
 **内置场景预设**（多语言动态本地化）：
 - `general`：通用标准规范（引导标点完整、规范简体中文输出）
 - `meeting`：职场会议与访谈（强化议题、决议、同步、汇报等职场沟通词汇）
-- `ecommerce`：电商带货与运营（偏置抖店、淘宝、小红书、GMV、千川、DOU+ 等平台黑话）
-- `tech`：IT科技与编程（精准保留 Python、Docker、PyTorch、CUDA 等技术专有名词）
-- `bilingual`：中英混合日常交流（针对日常交流中英夹杂，平滑中英文过渡）
 
 **数据存储**（`transcription_prompts.json`，与 `config.ini` 同目录）：
 
@@ -1068,7 +1065,7 @@ class TranscriptionPromptTemplate:
       "description": "自定义电商词汇"
     }
   },
-  "last_used": "ecommerce"
+  "last_used": "meeting"
 }
 ```
 

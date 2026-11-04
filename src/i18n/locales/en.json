@@ -648,7 +648,9 @@
     "cleared_output": "Removed all favorite output directories",
     "removed_input": "Removed favorite input directory: {path}",
     "removed_output": "Removed favorite output directory: {path}",
-    "context_delete": "Delete «{path}»"
+    "context_delete": "Delete «{path}»",
+    "not_found_title": "Directory Not Found",
+    "not_found_msg": "The directory does not exist or has been removed:\n{path}\n\nDo you want to remove it from favorites?"
   },
   "search": {
     "find_label": "Find:",
@@ -746,7 +748,7 @@
     "tip3": "3. In PowerShell, call the executable by its full path, e.g.: .\\video2text.exe transcribe video.mp4 -o output",
     "opt_initial_prompt": "Temporarily override initial transcription prompt",
     "opt_hotwords": "Temporarily override transcription hotwords (space or comma separated)",
-    "opt_prompt_template": "Transcription prompt preset or template name (e.g. general, meeting, ecommerce, tech, bilingual)"
+    "opt_prompt_template": "Transcription prompt preset or template name (e.g. general, meeting)"
   },
   "errors": {
     "file_not_found": "File not found: {path}",
@@ -1033,14 +1035,14 @@
       "prompt_load_failed": "PromptManager: load failed ({name})",
       "prompt_loaded": "PromptManager: loaded ({name})",
       "prompt_save_error": "PromptManager: save failed ({error})",
-      "default_prompt": "You are a professional text summarization assistant. Your task is to provide a comprehensive and complete summary without omitting any core points or essential facts. Output only the summary body. **Do not add any opening remarks, closing notes, explanatory statements, or annotations.** **Do not add extra embellishments or filler — output only the summary content.** Do not add a concluding summary at the end.",
+      "default_prompt": "You are a professional text summarization assistant. Please provide an objective and complete structured summary of the text, extracting core points and key details. Output only the summary body without any preamble or closing remarks.",
       "text_content_label": "Text content:",
       "markdown_prompt": "\nOutput the summary in Markdown format as follows:\n- **Key Point**\n\t- Detail\n\t- Detail\n- **Key Point**\n\t- Detail\n\t- Detail\n\nKeep the Markdown formatting valid so the output renders directly.\n",
       "presets": {
         "default": {
           "name": "Standard Summary",
           "desc": "Comprehensive and complete summary covering all key points and essential details without omissions",
-          "prompt": "You are a professional text summarization assistant. Your task is to provide a comprehensive, complete, and in-depth structured summary of the input text, ensuring no core points, crucial facts, arguments, or key details are omitted.\n\nRequirements:\n1. Complete Coverage: Thoroughly cover the entire text. Expand appropriately according to the length and depth of the content with no upper limit on the number of points, ensuring all critical information and arguments are captured without omission.\n2. Clear Structure: Output in clean Markdown format using a well-defined hierarchical bullet list:\n   - **Core Point Title**: Extract clear key theme\n     - Elaborate supporting facts, logical context, data, or specific details\n3. Pure Output: Output only the summary body. **Do not add any opening remarks, closing notes, explanatory statements, or annotations.** **Do not add extra embellishments or filler — output only the summary content.** Do not add a concluding summary at the end."
+          "prompt": "You are a professional text summarization assistant. Please provide an objective and complete structured summary of the input text, extracting core arguments and key details.\n\nRequirements:\n1. Use a clear Markdown bulleted list: summarize the core topic first, then elaborate with supporting facts and details.\n2. Output only the summary body. Do not include any opening remarks, pleasantries, or closing explanations."
         },
         "meeting": {
           "name": "Meeting Minutes",
@@ -1051,16 +1053,6 @@
           "name": "In-depth Study Notes",
           "desc": "Systematic notes for lectures/courses with concepts, core principles and evidence",
           "prompt": "You are a professional academic and research assistant. Please transform the content into structured Markdown in-depth study notes:\n\n## 1. Core Themes & Concepts\n## 2. Key Knowledge Points & Theories\n## 3. Case Studies & Supporting Evidence\n## 4. Key Takeaways & Reflections\n\nWell-structured, profound yet accessible, output only the notes content."
-        },
-        "tldr": {
-          "name": "Quick TL;DR",
-          "desc": "Within 150 words, ultra-concise overview of main conclusions",
-          "prompt": "You are an ultra-concise summary assistant. Please summarize the text in under 150 words (TL;DR), directly stating core conclusions, primary events or arguments. No preamble or fluff, get straight to the point."
-        },
-        "takeaways": {
-          "name": "Key Takeaways & Quotes",
-          "desc": "Extract standout quotes, core viewpoints, and inspiring insights",
-          "prompt": "You are a key takeaways and quotes curation assistant. Please extract standout quotes and insights in clean Markdown format:\n\n### 💡 Core Takeaways\n- Key viewpoints\n\n### 💬 Notable Quotes\n> Verbatim quote (brief context)\n\n### 🔍 Insights & Reflections\n- Key reflection\n\nOutput only the curated content."
         }
       },
       "ollama": {
@@ -1280,24 +1272,6 @@
         "desc": "Enhances workplace discussion, team collaboration, and action item terminology",
         "prompt": "Workplace meeting and interview covering business discussions, decisions, and action items. Maintain professional context.",
         "hotwords": "Meeting Agenda Decision Action Sync Report Review Follow-up Roadmap Sprint Task Milestone"
-      },
-      "ecommerce": {
-        "name": "E-Commerce & Live Stream",
-        "desc": "Biases toward platform operations, live commerce, traffic, and sales jargon",
-        "prompt": "E-commerce tutorial and live commerce video covering online operations, product promotion, and advertising. Transcribe specialized commerce terminology accurately.",
-        "hotwords": "SKU GMV Live Stream Cart Checkout Conversion Campaign Orders Traffic Dropshipping Promotion Discount"
-      },
-      "tech": {
-        "name": "Tech & Software Dev",
-        "desc": "Preserves programming terminology, AI algorithms, and software casing conventions",
-        "prompt": "Software engineering, AI algorithms, and technical tutorial. Preserve programming concepts, code identifiers, and exact casing.",
-        "hotwords": "Python API Docker Linux PyTorch Git GPU CUDA Front-end Back-end Framework Bug Debug Web CI/CD LLM PySide PySide6"
-      },
-      "bilingual": {
-        "name": "Bilingual & Conversational",
-        "desc": "Smooth transition for casual workplace conversations and mixed common terms",
-        "prompt": "Workplace dialogue and conversational exchange with mixed terms. Maintain natural transitions and proper nouns.",
-        "hotwords": "OK PPT follow up update meeting schedule review project team catch up sync call deck demo"
       }
     }
   },

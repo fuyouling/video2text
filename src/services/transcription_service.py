@@ -362,6 +362,8 @@ class TranscriptionService:
         try:
             split_cmd = [
                 self.video_processor.ffmpeg_path,
+                "-nostdin",
+                "-y",
                 "-i",
                 str(audio_path),
                 "-f",
@@ -372,7 +374,7 @@ class TranscriptionService:
                 "pcm_s16le",
                 "-reset_timestamps",
                 "1",
-                str(chunk_dir / "chunk_%03d.wav"),
+                str(chunk_dir / "chunk_%05d.wav"),
             ]
             try:
                 split_result = self.video_processor._run_ffmpeg_with_cancel(
@@ -393,7 +395,12 @@ class TranscriptionService:
                         error=split_result.stderr or split_result.stdout,
                     )
                 )
-            chunk_files = sorted(chunk_dir.glob("chunk_*.wav"))
+            # 按数值索引排序切片文件，防止超长音频切片 >999 时字母序错乱
+            def _extract_chunk_index(p: Path) -> int:
+                parts = p.stem.split("_")
+                return int(parts[-1]) if parts and parts[-1].isdigit() else 0
+
+            chunk_files = sorted(chunk_dir.glob("chunk_*.wav"), key=_extract_chunk_index)
             total_chunks = len(chunk_files)
 
             if total_chunks == 0:
@@ -566,6 +573,10 @@ class TranscriptionService:
             if cancelled:
                 raise TranscriptionCancelledError(t("services.transcription.user_cancelled"))
 
+            if failed_chunks:
+                err_msg = f"长音频共有 {len(failed_chunks)}/{total_chunks} 个切片转写失败，已保留断点文件供重试。"
+                raise TranscriptionError(err_msg)
+
             return all_segments
 
         finally:
@@ -634,26 +645,18 @@ class TranscriptionService:
         """原子写入断点文件，防止崩溃导致数据损坏。"""
         atomic_write_json(checkpoint_file, data)
 
-    def _cleanup_stale_checkpoints(self, video_files: List[str]) -> None:
-        """清理不属于当前批次的过期断点文件。"""
+    def _cleanup_stale_checkpoints(self, video_files: List[str], max_age_days: int = 14) -> None:
+        """清理已超过保存期限（默认 14 天）的废弃断点文件，避免误删未包含在当前批次中的历史断点。"""
         if not self._checkpoint_dir or not self._checkpoint_dir.exists():
             return
-        current_stems = {Path(v).stem for v in video_files}
+        cutoff = time.time() - (max_age_days * 86400)
         for cp_file in self._checkpoint_dir.glob("*_chunks.json"):
-            name_part = cp_file.name.removesuffix("_chunks.json")
-            # 文件名格式: {video_name}_{hash}_chunks.json
-            # 提取 video_name: 取最后一个 '_' 前的部分（hash 固定 12 字符）
-            underscore_idx = name_part.rfind("_")
-            if underscore_idx > 0:
-                stem = name_part[:underscore_idx]
-            else:
-                stem = name_part
-            if stem not in current_stems:
-                try:
+            try:
+                if cp_file.stat().st_mtime < cutoff:
                     cp_file.unlink()
                     logger.info("  ├─ " + t("services.transcription.cleanup_stale", name=cp_file.name))
-                except OSError:
-                    pass
+            except OSError:
+                pass
 
     def _load_history(self) -> List[dict]:
         """加载转写历史记录（用于时间估算）。"""
