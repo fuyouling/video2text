@@ -318,7 +318,7 @@
       "type_label": "Type:",
       "suffix_label": "Suffix:",
       "size_label": "Size:",
-      "search_placeholder": "Enter file name keyword...",
+      "search_placeholder": "Enter keyword",
       "type_all": "All",
       "type_video": "Video Only",
       "type_audio": "Audio Only",
@@ -359,6 +359,16 @@
       "delete_btn": "Delete",
       "batch_delete_btn": "Batch Delete",
       "clear_btn": "Clear"
+    },
+    "bg_opacity": {
+      "title": "Adjust Background Opacity",
+      "hint": "Drag slider to preview opacity in real time, click OK to save",
+      "opacity_label": "Opacity:",
+      "no_bg_hint": "No background image set. Changes will take effect after setting an image",
+      "choose_image": "Choose Image",
+      "preset_label": "Presets:",
+      "preset_default": "Default",
+      "reset": "Restore Default"
     }
   },
   "viewer": {

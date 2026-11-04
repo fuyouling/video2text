@@ -1,6 +1,7 @@
 """GUI 对话框组件"""
 
 import os
+import re
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -36,6 +37,7 @@ from PySide6.QtWidgets import (
 
 from src.config.settings import Settings
 from src.i18n import available_languages, language_meta, t
+from src.ui.combo_helper import setup_combo
 from src.ui.summarization_tab import SummarizationTab
 from src.ui.transcription_tab import TranscriptionTab
 
@@ -63,6 +65,17 @@ class _SortTreeWidgetItem(QTreeWidgetItem):
             if a is not None and b is not None:
                 return int(a) < int(b)
         return self.text(col) < other.text(col)
+
+
+class _SearchLineEdit(QLineEdit):
+    """搜索输入框 —— 拦截回车键触发搜索，防止回车触发对话框的默认确定按钮。"""
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self.returnPressed.emit()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
 
 class VideoSelectionDialog(QDialog):
@@ -193,6 +206,12 @@ class VideoSelectionDialog(QDialog):
             subcontrol-position: center right;
             padding-right: 4px;
         }
+        QComboBox:editable QLineEdit {
+            border: none;
+            background: transparent;
+            padding: 0;
+            min-height: 20px;
+        }
         QComboBox QAbstractItemView {
             background-color: #ffffff;
             color: #2c3e50;
@@ -201,20 +220,22 @@ class VideoSelectionDialog(QDialog):
             selection-background-color: #4a90d9;
             selection-color: #ffffff;
             outline: none;
-            padding: 4px;
+            padding: 2px;
         }
-        QComboBox QAbstractItemView::item, QComboBox::item {
-            min-height: 24px;
-            padding: 3px 8px;
-            border-radius: 4px;
-            background-color: #ffffff;
+        QComboBox QAbstractItemView::item {
+            height: 26px;
+            min-height: 26px;
+            max-height: 26px;
+            padding: 0px 8px;
+            margin: 0px;
+            border: none;
             color: #2c3e50;
         }
-        QComboBox QAbstractItemView::item:hover, QComboBox::item:hover {
+        QComboBox QAbstractItemView::item:hover {
             background-color: #eaf2fb;
             color: #4a90d9;
         }
-        QComboBox QAbstractItemView::item:selected, QComboBox::item:selected {
+        QComboBox QAbstractItemView::item:selected {
             background-color: #4a90d9;
             color: #ffffff;
         }
@@ -331,6 +352,7 @@ class VideoSelectionDialog(QDialog):
 
         toolbar.addWidget(QLabel(t("dialogs.file_select.type_label")))
         self._file_type_combo = QComboBox()
+        setup_combo(self._file_type_combo)
         self._file_type_combo.addItems([t("dialogs.file_select.type_all"), t("dialogs.file_select.type_video"), t("dialogs.file_select.type_audio")])
         self._file_type_combo.setMinimumWidth(90)
         self._file_type_combo.currentIndexChanged.connect(self._apply_filters)
@@ -338,12 +360,14 @@ class VideoSelectionDialog(QDialog):
         toolbar.addSpacing(8)
         toolbar.addWidget(QLabel(t("dialogs.file_select.suffix_label")))
         self._suffix_combo = QComboBox()
+        setup_combo(self._suffix_combo)
         self._suffix_combo.setMinimumWidth(80)
         self._suffix_combo.currentIndexChanged.connect(self._apply_filters)
         toolbar.addWidget(self._suffix_combo)
         toolbar.addSpacing(8)
         toolbar.addWidget(QLabel(t("dialogs.file_select.size_label")))
         self._size_combo = QComboBox()
+        setup_combo(self._size_combo)
         self._size_combo.setMinimumWidth(120)
         self._size_tiers = [
             (t("dialogs.file_select.type_all"), 0, None),
@@ -359,14 +383,15 @@ class VideoSelectionDialog(QDialog):
         toolbar.addWidget(self._size_combo)
         toolbar.addStretch()
         toolbar.addWidget(QLabel(t("dialogs.file_select.search_label")))
-        self._search_edit = QLineEdit()
+        self._search_edit = _SearchLineEdit()
         self._search_edit.setPlaceholderText(t("dialogs.file_select.search_placeholder"))
         self._search_edit.setClearButtonEnabled(True)
         self._search_edit.setMinimumWidth(180)
-        self._search_timer = QTimer()
+        self._search_timer = QTimer(self)
         self._search_timer.setSingleShot(True)
         self._search_timer.timeout.connect(self._apply_filters)
         self._search_edit.textChanged.connect(self._on_search_changed)
+        self._search_edit.returnPressed.connect(self._on_search_return)
         toolbar.addWidget(self._search_edit)
         layout.addWidget(toolbar_widget)
 
@@ -595,15 +620,16 @@ class VideoSelectionDialog(QDialog):
                 self._suffix_combo.setCurrentIndex(idx)
         self._tree.setUpdatesEnabled(True)
         self._tree.expandAll()
-        self._apply_filters()
         # 恢复用户勾选（仅针对仍存在的文件）
-        self._tree.blockSignals(True)
-        for item in self._leaf_items:
-            p = item.data(0, Qt.ItemDataRole.UserRole)
-            st = check_states.get(p)
-            if st is not None:
-                item.setCheckState(0, st)
-        self._tree.blockSignals(False)
+        if check_states:
+            self._tree.blockSignals(True)
+            for item in self._leaf_items:
+                p = item.data(0, Qt.ItemDataRole.UserRole)
+                st = check_states.get(p)
+                if st is not None:
+                    item.setCheckState(0, st)
+            self._tree.blockSignals(False)
+        self._apply_filters()
         # 恢复排序
         if self._sort_order:
             self._tree.sortByColumn(sort_col, sort_order)
@@ -788,10 +814,14 @@ class VideoSelectionDialog(QDialog):
 
         keyword = self._search_edit.text().strip().lower()
 
+        first_match: Optional[QTreeWidgetItem] = None
+
         self._tree.blockSignals(True)
         for item in self._iter_leaves():
             ext = item.data(0, Qt.ItemDataRole.UserRole + 3)
-            name = item.data(0, Qt.ItemDataRole.UserRole + 4)
+            name = item.data(0, Qt.ItemDataRole.UserRole + 4) or ""
+            abs_path = item.data(0, Qt.ItemDataRole.UserRole) or ""
+            rel_parts = item.data(0, Qt.ItemDataRole.UserRole + 2) or ()
             size_bytes: int = item.data(0, Qt.ItemDataRole.UserRole + 1)
 
             match = True
@@ -807,17 +837,71 @@ class VideoSelectionDialog(QDialog):
                         match = False
                     if size_hi is not None and size_bytes >= size_hi:
                         match = False
-            if keyword and keyword not in name:
-                match = False
+            if keyword:
+                if keyword.isdigit():
+                    # 纯数字搜索：按独立数字片段或数值匹配，避免如 02 被 2026/1024 等大数字年份包含导致误匹配
+                    tokens: list[str] = re.findall(r"\d+", name)
+                    for part in rel_parts:
+                        tokens.extend(re.findall(r"\d+", part))
+
+                    matched_num = False
+                    if keyword in tokens:
+                        matched_num = True
+                    else:
+                        try:
+                            kw_int = int(keyword)
+                            for tok in tokens:
+                                if int(tok) == kw_int:
+                                    matched_num = True
+                                    break
+                        except ValueError:
+                            pass
+
+                    # 兼容 6 位及以上连续纯数字日期（如 20260622 匹配 2026-06-22）
+                    if not matched_num and len(keyword) >= 6:
+                        stem_digits = "".join(re.findall(r"\d+", name))
+                        rel_digits = "".join(re.findall(r"\d+", "/".join(rel_parts)))
+                        if keyword in stem_digits or keyword in rel_digits:
+                            matched_num = True
+
+                    if not matched_num:
+                        match = False
+                else:
+                    file_name = Path(abs_path).name.lower() if abs_path else ""
+                    rel_path = "/".join(rel_parts).lower() if rel_parts else ""
+                    if (
+                        keyword not in name
+                        and keyword not in file_name
+                        and keyword not in rel_path
+                    ):
+                        match = False
 
             item.setCheckState(
                 0, Qt.CheckState.Checked if match else Qt.CheckState.Unchecked
             )
+            if match and first_match is None:
+                first_match = item
         self._tree.blockSignals(False)
         self._update_info_label()
 
-    def _on_search_changed(self, _text: str) -> None:
-        self._search_timer.start(150)
+        if keyword and first_match:
+            parent = first_match.parent()
+            while parent is not None:
+                parent.setExpanded(True)
+                parent = parent.parent()
+            self._tree.scrollToItem(first_match)
+            self._tree.setCurrentItem(first_match)
+
+    def _on_search_changed(self, text: str) -> None:
+        if not text.strip():
+            self._search_timer.stop()
+            self._apply_filters()
+        else:
+            self._search_timer.start(300)
+
+    def _on_search_return(self) -> None:
+        self._search_timer.stop()
+        self._apply_filters()
 
     def _select_all(self) -> None:
         self._tree.blockSignals(True)
@@ -1282,7 +1366,7 @@ class ConfigEditorDialog(QDialog):
         QLineEdit, QComboBox {
             border: 1px solid #ced4da;
             border-radius: 6px;
-            padding: 5px 8px;
+            padding: 4px 8px;
             background-color: #ffffff;
             min-height: 22px;
             color: #2c3e50;
@@ -1293,6 +1377,12 @@ class ConfigEditorDialog(QDialog):
         QLineEdit:hover, QComboBox:hover {
             border: 1px solid #aac4e4;
         }
+        QComboBox:editable QLineEdit {
+            border: none;
+            background: transparent;
+            padding: 0;
+            min-height: 20px;
+        }
         QComboBox QAbstractItemView {
             background-color: #ffffff;
             color: #2c3e50;
@@ -1301,20 +1391,22 @@ class ConfigEditorDialog(QDialog):
             selection-background-color: #4a90d9;
             selection-color: #ffffff;
             outline: none;
-            padding: 4px;
+            padding: 2px;
         }
-        QComboBox QAbstractItemView::item, QComboBox::item {
-            min-height: 24px;
-            padding: 3px 8px;
-            border-radius: 4px;
-            background-color: #ffffff;
+        QComboBox QAbstractItemView::item {
+            height: 26px;
+            min-height: 26px;
+            max-height: 26px;
+            padding: 0px 8px;
+            margin: 0px;
+            border: none;
             color: #2c3e50;
         }
-        QComboBox QAbstractItemView::item:hover, QComboBox::item:hover {
+        QComboBox QAbstractItemView::item:hover {
             background-color: #eaf2fb;
             color: #4a90d9;
         }
-        QComboBox QAbstractItemView::item:selected, QComboBox::item:selected {
+        QComboBox QAbstractItemView::item:selected {
             background-color: #4a90d9;
             color: #ffffff;
         }
@@ -1569,6 +1661,12 @@ class ConfigEditorDialog(QDialog):
             ConfigEditorDialog._set_widget_text(widget, value)
             if tooltip:
                 widget.setToolTip(tooltip)
+            if full_key in _BOOL_COMBO_KEYS:
+                setup_combo(widget, max_width=140)
+            elif full_key == "app.ui_language":
+                setup_combo(widget, max_width=240)
+            else:
+                setup_combo(widget, max_width=280)
             return widget
         elif full_key in Settings.PATH_KEYS:
             widget = QLineEdit(value)
@@ -1608,6 +1706,9 @@ class ConfigEditorDialog(QDialog):
             widget = QLineEdit(value)
             if tooltip:
                 widget.setToolTip(tooltip)
+            if full_key == "app.proxy":
+                widget.setMaximumWidth(280)
+                widget.setPlaceholderText("http://127.0.0.1:7890")
             return widget
 
     @staticmethod

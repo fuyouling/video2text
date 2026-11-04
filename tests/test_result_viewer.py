@@ -193,3 +193,42 @@ def test_result_viewer_reload_file_if_active(qapp, tmp_path: Path):
     viewer.close()
     viewer.deleteLater()
 
+
+def test_result_viewer_adjust_bg_transparency(qapp, monkeypatch):
+    """测试通过 BackgroundOpacityDialog 调整背景透明度及实时响应"""
+    viewer = ResultViewerWindow()
+    viewer._bg_opacity = 0.4
+    viewer._bg_content.set_bg_opacity(0.4)
+
+    class MockDialog:
+        def __init__(self, parent=None, current_value=100, has_bg_image=True, on_preview=None, on_choose_image=None):
+            self.on_preview = on_preview
+            self.val = 200
+
+        def exec(self):
+            if self.on_preview:
+                self.on_preview(self.val)
+            return True
+
+        def get_value(self):
+            return self.val
+
+    monkeypatch.setattr("src.ui.opacity_dialog.BackgroundOpacityDialog", MockDialog)
+    save_called = False
+
+    def mock_save():
+        nonlocal save_called
+        save_called = True
+
+    monkeypatch.setattr(viewer, "_save_bg_config", mock_save)
+
+    viewer._adjust_bg_transparency()
+
+    assert abs(viewer._bg_opacity - (200 / 255.0)) < 1e-4
+    assert abs(viewer._bg_content.bg_opacity - (200 / 255.0)) < 1e-4
+    assert save_called
+
+    viewer.close()
+    viewer.deleteLater()
+
+

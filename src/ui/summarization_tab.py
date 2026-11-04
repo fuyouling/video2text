@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 from src.config.settings import Settings
 from src.i18n import t
 from src.summarization.ollama_client import OllamaClient
+from src.ui.combo_helper import setup_combo
 from src.ui.gui_workers import (
     CheckWorker,
     OllamaListModelWorker,
@@ -231,7 +232,7 @@ class SummarizationTab(QWidget):
             nvidia_form.addRow(f"{label}:", widget)
             self._section_edits[key] = widget
 
-        self._nvidia_mode_combo = QComboBox()
+        self._nvidia_mode_combo = setup_combo(QComboBox(), max_width=280)
         self._nvidia_mode_combo.setProperty(
             "_combo_key", "summarization.nvidia_mode"
         )
@@ -251,7 +252,7 @@ class SummarizationTab(QWidget):
         nvidia_form.addRow(t("summarization_tab.nvidia_mode_label"), self._nvidia_mode_combo)
         self._section_edits["nvidia_mode"] = self._nvidia_mode_combo
 
-        self._nvidia_stream_combo = QComboBox()
+        self._nvidia_stream_combo = setup_combo(QComboBox(), max_width=140)
         self._nvidia_stream_combo.setProperty(
             "_combo_key", "summarization.nvidia_stream"
         )
@@ -324,7 +325,7 @@ class SummarizationTab(QWidget):
             amd_form.addRow(f"{label}:", widget)
             self._section_edits[key] = widget
 
-        self._amd_mode_combo = QComboBox()
+        self._amd_mode_combo = setup_combo(QComboBox(), max_width=280)
         self._amd_mode_combo.setProperty(
             "_combo_key", "summarization.amd_mode"
         )
@@ -342,7 +343,7 @@ class SummarizationTab(QWidget):
         amd_form.addRow(t("summarization_tab.amd_mode_label"), self._amd_mode_combo)
         self._section_edits["amd_mode"] = self._amd_mode_combo
 
-        self._amd_stream_combo = QComboBox()
+        self._amd_stream_combo = setup_combo(QComboBox(), max_width=140)
         self._amd_stream_combo.setProperty(
             "_combo_key", "summarization.amd_stream"
         )
@@ -537,6 +538,7 @@ class SummarizationTab(QWidget):
     def _create_model_combo(self, current_value: str, form: QFormLayout) -> QComboBox:
         combo = QComboBox()
         combo.setEditable(True)
+        setup_combo(combo, max_width=480)
         combo.setMinimumWidth(250)
         combo.setCurrentText(current_value)
         row = QHBoxLayout()

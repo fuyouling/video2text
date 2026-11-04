@@ -2806,23 +2806,31 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage(t("main.bg_cleared"))
 
     def _adjust_bg_transparency(self) -> None:
-        """弹出输入框修改背景透明度 (0~255)"""
+        """弹出滑动条对话框修改背景透明度 (0~255)，支持实时响应与取消还原"""
+        from src.ui.opacity_dialog import BackgroundOpacityDialog
+
         current_val = round(self._bg_opacity * 255)
-        value, ok = QInputDialog.getInt(
-            self,
-            t("main.bg_transparency_title"),
-            t("main.bg_transparency_label"),
-            current_val,
-            0,
-            255,
-            1,
+
+        def on_preview(val: int) -> None:
+            self._bg_opacity = max(0.0, min(1.0, val / 255.0))
+            if hasattr(self, "_bg_content"):
+                self._bg_content.set_bg_opacity(self._bg_opacity)
+
+        has_bg = bool(self._bg_pixmap and not self._bg_pixmap.isNull())
+        dialog = BackgroundOpacityDialog(
+            parent=self,
+            current_value=current_val,
+            has_bg_image=has_bg,
+            on_preview=on_preview,
+            on_choose_image=self._change_bg_image,
         )
-        if ok:
-            self._bg_opacity = max(0.0, min(1.0, value / 255.0))
+        if dialog.exec():
+            final_val = dialog.get_value()
+            self._bg_opacity = max(0.0, min(1.0, final_val / 255.0))
             if hasattr(self, "_bg_content"):
                 self._bg_content.set_bg_opacity(self._bg_opacity)
             self._save_bg_config()
-            self.status_bar.showMessage(t("main.bg_transparency_set", value=value))
+            self.status_bar.showMessage(t("main.bg_transparency_set", value=final_val))
 
     def _apply_bg_transparency(self) -> None:
         """有背景图片时设置面板透明，否则恢复默认样式"""

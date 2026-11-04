@@ -291,7 +291,7 @@
       "type_label": "Typ:",
       "suffix_label": "Suffix:",
       "size_label": "Größe:",
-      "search_placeholder": "Dateiname-Schlüsselwort eingeben...",
+      "search_placeholder": "Schlüsselwort eingeben",
       "type_all": "Alle",
       "type_video": "Nur Video",
       "type_audio": "Nur Audio",
@@ -332,6 +332,16 @@
       "delete_btn": "Löschen",
       "batch_delete_btn": "Stapellöschung",
       "clear_btn": "Leeren"
+    },
+    "bg_opacity": {
+      "title": "Hintergrundtransparenz anpassen",
+      "hint": "Schieberegler für Echtzeit-Vorschau ziehen, OK zum Speichern",
+      "opacity_label": "Transparenz:",
+      "no_bg_hint": "Kein Hintergrundbild festgelegt. Änderungen werden nach dem Festlegen wirksam",
+      "choose_image": "Bild wählen",
+      "preset_label": "Voreinstellungen:",
+      "preset_default": "Standard",
+      "reset": "Standard wiederherstellen"
     }
   },
   "viewer": {

@@ -291,7 +291,7 @@
       "type_label": "Tipo:",
       "suffix_label": "Extensión:",
       "size_label": "Tamaño:",
-      "search_placeholder": "Ingrese palabra clave del nombre de archivo...",
+      "search_placeholder": "Ingrese palabra clave",
       "type_all": "Todos",
       "type_video": "Solo video",
       "type_audio": "Solo audio",
@@ -332,6 +332,16 @@
       "delete_btn": "Eliminar",
       "batch_delete_btn": "Eliminar en lote",
       "clear_btn": "Limpiar"
+    },
+    "bg_opacity": {
+      "title": "Ajustar opacidad del fondo",
+      "hint": "Arrastre el deslizador para previsualizar en tiempo real, OK para guardar",
+      "opacity_label": "Opacidad:",
+      "no_bg_hint": "No hay imagen de fondo. Los cambios se aplicarán tras configurar una imagen",
+      "choose_image": "Elegir imagen",
+      "preset_label": "Preajustes:",
+      "preset_default": "Predeterminado",
+      "reset": "Restablecer"
     }
   },
   "viewer": {

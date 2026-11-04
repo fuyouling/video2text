@@ -291,7 +291,7 @@
       "type_label": "種類：",
       "suffix_label": "拡張子：",
       "size_label": "サイズ：",
-      "search_placeholder": "ファイル名キーワードを入力...",
+      "search_placeholder": "キーワードを入力",
       "type_all": "すべて",
       "type_video": "動画のみ",
       "type_audio": "音声のみ",
@@ -332,6 +332,16 @@
       "delete_btn": "削除",
       "batch_delete_btn": "一括削除",
       "clear_btn": "クリア"
+    },
+    "bg_opacity": {
+      "title": "背景の不透明度を調整",
+      "hint": "スライダーをドラッグしてリアルタイム調整、OKで保存",
+      "opacity_label": "不透明度:",
+      "no_bg_hint": "背景画像が未設定です。画像設定後に反映されます",
+      "choose_image": "画像を選択",
+      "preset_label": "プリセット:",
+      "preset_default": "デフォルト",
+      "reset": "デフォルトに戻す"
     }
   },
   "viewer": {

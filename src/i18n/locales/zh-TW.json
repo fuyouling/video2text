@@ -318,7 +318,7 @@
       "type_label": "類型:",
       "suffix_label": "後綴:",
       "size_label": "大小:",
-      "search_placeholder": "輸入文件名關鍵字...",
+      "search_placeholder": "輸入關鍵字",
       "type_all": "全部",
       "type_video": "僅視頻",
       "type_audio": "僅音頻",
@@ -359,6 +359,16 @@
       "delete_btn": "刪除",
       "batch_delete_btn": "批量刪除",
       "clear_btn": "清空"
+    },
+    "bg_opacity": {
+      "title": "調整背景透明度",
+      "hint": "拖動滑塊即時調整透明度，確定後儲存設定",
+      "opacity_label": "透明度：",
+      "no_bg_hint": "當前未設定背景圖片，調整將在設定背景圖片後生效",
+      "choose_image": "選擇背景圖片",
+      "preset_label": "快捷預設：",
+      "preset_default": "預設",
+      "reset": "恢復預設"
     }
   },
   "viewer": {

@@ -291,7 +291,7 @@
       "type_label": "유형:",
       "suffix_label": "확장자:",
       "size_label": "크기:",
-      "search_placeholder": "파일 이름 키워드 입력...",
+      "search_placeholder": "키워드 입력",
       "type_all": "전체",
       "type_video": "비디오만",
       "type_audio": "오디오만",
@@ -332,6 +332,16 @@
       "delete_btn": "삭제",
       "batch_delete_btn": "일괄 삭제",
       "clear_btn": "지우기"
+    },
+    "bg_opacity": {
+      "title": "배경 투명도 조정",
+      "hint": "슬라이더를 드래그하여 실시간 조정, 확인을 눌러 저장",
+      "opacity_label": "투명도:",
+      "no_bg_hint": "배경 이미지가 설정되지 않았습니다. 설정 후 적용됩니다",
+      "choose_image": "이미지 선택",
+      "preset_label": "프리셋:",
+      "preset_default": "기본값",
+      "reset": "기본값 복원"
     }
   },
   "viewer": {

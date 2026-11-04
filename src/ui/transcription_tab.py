@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 
 from src.config.settings import Settings
 from src.i18n import t
+from src.ui.combo_helper import setup_combo
 
 
 class TranscriptionTab(QWidget):
@@ -70,6 +71,7 @@ class TranscriptionTab(QWidget):
 
     def _create_combo(self, options: list[str], default_val: str, tooltip: str = "") -> QComboBox:
         combo = QComboBox()
+        setup_combo(combo, max_width=280)
         for opt in options:
             combo.addItem(opt)
         self._set_widget_text(combo, default_val)
@@ -79,6 +81,7 @@ class TranscriptionTab(QWidget):
 
     def _create_bool_combo(self, default_val: str, tooltip: str = "") -> QComboBox:
         combo = QComboBox()
+        setup_combo(combo, max_width=140)
         combo.addItem(t("common.yes"), "True")
         combo.addItem(t("common.no"), "False")
         # 根据 default_val 匹配
@@ -102,6 +105,7 @@ class TranscriptionTab(QWidget):
 
         combo = QComboBox()
         combo.setEditable(True)
+        setup_combo(combo, max_width=480)
         for opt in combo_options:
             combo.addItem(opt)
         combo.setEditText(default_val)

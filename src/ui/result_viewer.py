@@ -14,6 +14,7 @@ from src.ui.markdown_renderer import MarkdownRenderer
 from src.utils.natural_sort import natural_sort_key
 from src.utils.paths import get_base_dir as _get_base_dir
 from src.i18n import t
+from src.ui.combo_helper import setup_combo
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import (
@@ -386,7 +387,7 @@ class ResultViewerWindow(QMainWindow):
         """为所有 QComboBox 设置统一样式 —— 关键是下拉列表必须保证白底黑字可见。
 
         使用 background-color（而非 background 简写）以避免被父控件的 background:transparent 覆盖。
-        显式为 ::item、::item:selected 写背景，保证选中行/未选中行都可读。
+        显式为 ::item:selected, ::item:hover 写背景，保证悬停与选中都清晰美观。
         """
         combo_style = (
             "QComboBox {"
@@ -407,33 +408,35 @@ class ResultViewerWindow(QMainWindow):
             "}"
             "QComboBox QAbstractItemView {"
             "  background-color: #ffffff;"
-            "  color: #000000;"
-            "  selection-background-color: #cce5ff;"
-            "  selection-color: #000000;"
-            "  border: 1px solid #999999;"
+            "  color: #2c3e50;"
+            "  selection-background-color: #4a90d9;"
+            "  selection-color: #ffffff;"
+            "  border: 1px solid #ced4da;"
+            "  border-radius: 4px;"
             "  outline: 0;"
             "  padding: 2px;"
             "}"
             "QComboBox QAbstractItemView::item {"
-            "  background-color: #ffffff;"
-            "  color: #000000;"
-            "  min-height: 1.4em;"
-            "  padding: 2px 4px;"
+            "  height: 26px;"
+            "  min-height: 26px;"
+            "  max-height: 26px;"
+            "  padding: 0px 8px;"
+            "  margin: 0px;"
+            "  border: none;"
+            "  color: #2c3e50;"
             "}"
             "QComboBox QAbstractItemView::item:hover {"
-            "  background-color: #e6f0ff;"
-            "  color: #000000;"
+            "  background-color: #eaf2fb;"
+            "  color: #4a90d9;"
             "}"
             "QComboBox QAbstractItemView::item:selected {"
-            "  background-color: #cce5ff;"
-            "  color: #000000;"
+            "  background-color: #4a90d9;"
+            "  color: #ffffff;"
             "}"
         )
         for combo in self.findChildren(QComboBox):
+            setup_combo(combo)
             combo.setStyleSheet(combo_style)
-            view = combo.view()
-            if view is not None:
-                view.setStyleSheet("background-color: #ffffff; color: #000000;")
 
     def _apply_tooltip_style(self) -> None:
         """为所有 ToolTip 设置统一样式 —— 避免系统深色主题下黑色背景看不见文字。
@@ -608,6 +611,7 @@ class ResultViewerWindow(QMainWindow):
         filter_row.addWidget(self._bookmark_filter, 1)
 
         self._bookmark_date_combo = QComboBox()
+        setup_combo(self._bookmark_date_combo)
         self._bookmark_date_combo.addItem(t("viewer.all_dates"), "")
         self._bookmark_date_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToContents
@@ -618,6 +622,7 @@ class ResultViewerWindow(QMainWindow):
         filter_row.addWidget(self._bookmark_date_combo)
 
         self._bookmark_sort_combo = QComboBox()
+        setup_combo(self._bookmark_sort_combo)
         self._bookmark_sort_combo.addItems([t("viewer.sort_by_time"), t("viewer.sort_by_name"), t("viewer.sort_by_type")])
         self._bookmark_sort_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToContents
@@ -627,17 +632,7 @@ class ResultViewerWindow(QMainWindow):
         )
         filter_row.addWidget(self._bookmark_sort_combo)
 
-        self._bookmark_date_combo.setStyleSheet(
-            "QComboBox { background-color: transparent; color: palette(text);"
-            " border: 1px solid palette(mid); border-radius: 3px; padding: 2px 6px; }"
-            "QComboBox QAbstractItemView { background-color: #ffffff; color: #000000;"
-            " selection-background-color: #cce5ff; selection-color: #000000;"
-            " border: 1px solid #999999; outline: 0; }"
-            "QComboBox QAbstractItemView::item { background-color: #ffffff; color: #000000; }"
-            "QComboBox QAbstractItemView::item:selected {"
-            " background-color: #cce5ff; color: #000000; }"
-        )
-        self._bookmark_sort_combo.setStyleSheet(self._bookmark_date_combo.styleSheet())
+        self._apply_combo_style()
 
         bookmark_layout.addWidget(self._bookmark_filter_row)
 
@@ -2006,24 +2001,33 @@ class ResultViewerWindow(QMainWindow):
         self.status_bar.showMessage(t("viewer.bg_cleared"))
 
     def _adjust_bg_transparency(self) -> None:
-        """弹出输入框修改背景透明度 (0~255)"""
+        """弹出滑动条对话框修改背景透明度 (0~255)，支持实时响应与取消还原"""
+        from src.ui.opacity_dialog import BackgroundOpacityDialog
+
         current_val = round(self._bg_opacity * 255)
-        value, ok = QInputDialog.getInt(
-            self,
-            t("viewer.bg_transparency_title"),
-            t("viewer.bg_transparency_label"),
-            current_val,
-            0,
-            255,
-            1,
+
+        def on_preview(val: int) -> None:
+            self._bg_opacity = max(0.0, min(1.0, val / 255.0))
+            if hasattr(self, "_bg_content"):
+                self._bg_content.set_bg_opacity(self._bg_opacity)
+            self.update()
+
+        has_bg = bool(self._bg_pixmap and not self._bg_pixmap.isNull())
+        dialog = BackgroundOpacityDialog(
+            parent=self,
+            current_value=current_val,
+            has_bg_image=has_bg,
+            on_preview=on_preview,
+            on_choose_image=self._change_bg_image,
         )
-        if ok:
-            self._bg_opacity = max(0.0, min(1.0, value / 255.0))
+        if dialog.exec():
+            final_val = dialog.get_value()
+            self._bg_opacity = max(0.0, min(1.0, final_val / 255.0))
             if hasattr(self, "_bg_content"):
                 self._bg_content.set_bg_opacity(self._bg_opacity)
             self._save_bg_config()
             self.update()
-            self.status_bar.showMessage(t("viewer.bg_opacity_set", value=value))
+            self.status_bar.showMessage(t("viewer.bg_opacity_set", value=final_val))
 
     # ─── 标签页切换 ────────────────────────────────────────────
 
