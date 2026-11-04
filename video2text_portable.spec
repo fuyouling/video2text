@@ -103,7 +103,10 @@ onnxruntime_bins = [
     if 'tensorrt' not in b[0].lower()
     and (not _exclude_cuda_provider or 'cuda' not in b[0].lower())
 ]
-onnxruntime_subs = _cache['onnxruntime_subs']
+onnxruntime_subs = [
+    m for m in _cache['onnxruntime_subs']
+    if not m.startswith(('onnxruntime.transformers', 'onnxruntime.quantization', 'onnxruntime.tools', 'onnxruntime.datasets'))
+]
 jieba_data = _cache['jieba_data']
 kaldi_bins = [tuple(b) for b in _cache['kaldi_bins']]
 kaldi_subs = _cache['kaldi_subs']
@@ -145,7 +148,6 @@ a = Analysis(
         'kaldi_native_fbank',
         'jieba',
         'sentencepiece',
-        'scipy',
         'soundfile',
         'yaml',
         'markdown',
@@ -200,6 +202,18 @@ a = Analysis(
         'torch',
         'torchvision',
         'torchaudio',
+        'transformers',
+        'modelscope',
+        'openai',
+        'sympy',
+        'pandas',
+        'sklearn',
+        'scikit-learn',
+        'timm',
+        'openpyxl',
+        'gradio',
+        'narwhals',
+        'PIL',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,

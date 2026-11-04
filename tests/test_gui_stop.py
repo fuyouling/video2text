@@ -18,7 +18,7 @@ from unittest.mock import MagicMock
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QObject, QThread, QTimer, Signal
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMainWindow
 
 from src.ui.gui import MainWindow
 
@@ -56,7 +56,9 @@ class _StubWorker(QObject):
 
 def _make_window() -> MainWindow:
     """构造一个只具备线程管理所需属性的 MainWindow（不执行完整 __init__）"""
+    _qapp()
     w = MainWindow.__new__(MainWindow)
+    QMainWindow.__init__(w)
     w._worker = None
     w._worker_thread = None
     w._streaming_video = None
@@ -137,3 +139,19 @@ class TestGuiStop:
         assert not thread.isRunning()
         w._worker = None
         w._worker_thread = None
+
+    def test_start_worker_natural_completion_no_crash(self):
+        """测试正常转写/总结完成时，_on_thread_finished 能够安全清理而不抛出 C++ object already deleted 异常"""
+        w = _make_window()
+        worker = _StubWorker(hold_seconds=0.02)
+        thread = QThread()
+        assert w._start_worker(thread, worker) is True
+
+        deadline = time.monotonic() + 3.0
+        while time.monotonic() < deadline and (thread.isRunning() or w._worker_thread is not None):
+            _qapp().processEvents()
+            time.sleep(0.01)
+
+        assert not thread.isRunning()
+        assert w._worker_thread is None
+        assert w._worker is None

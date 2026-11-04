@@ -1720,7 +1720,10 @@ class MainWindow(QMainWindow):
                     )
                     return False
             if old_worker is not None:
-                old_worker.deleteLater()
+                try:
+                    old_worker.deleteLater()
+                except RuntimeError:
+                    pass
             self._worker = None
             self._worker_thread = None
 
@@ -2365,11 +2368,22 @@ class MainWindow(QMainWindow):
                 thread.finished.disconnect(self._on_thread_finished)
             except (RuntimeError, TypeError):
                 pass
-            thread.wait(3000)
+            try:
+                thread.wait(3000)
+            except RuntimeError:
+                pass
         if worker is not None:
-            worker.deleteLater()
+            try:
+                worker.deleteLater()
+            except RuntimeError:
+                pass
 
-        is_cancelled = getattr(self, "_is_stopping", False) or (worker is not None and getattr(worker, "_cancelled", False))
+        try:
+            worker_cancelled = bool(worker is not None and getattr(worker, "_cancelled", False))
+        except RuntimeError:
+            worker_cancelled = False
+
+        is_cancelled = getattr(self, "_is_stopping", False) or worker_cancelled
         self._is_stopping = False
         if is_cancelled:
             self.status_bar.showMessage(t("main.task_stopped"))
@@ -2663,7 +2677,10 @@ class MainWindow(QMainWindow):
                     event.ignore()
                     return
             if self._worker is not None:
-                self._worker.deleteLater()
+                try:
+                    self._worker.deleteLater()
+                except RuntimeError:
+                    pass
             self._worker = None
             self._worker_thread = None
 

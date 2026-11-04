@@ -97,13 +97,23 @@ def get_file_hash(filepath):
     return h.hexdigest()
 
 
-def compute_build_hash(root, spec_file):
-    """联合计算 spec 文件、关键配置与 src/ 目录下所有源码与资源文件的 sha256 哈希值。"""
+def compute_build_hash(root, spec_file, cpu_only=False):
+    """联合计算 spec 文件、关键配置、assets 与 src/ 目录下所有源码与资源文件的 sha256 哈希值。"""
     h = hashlib.sha256()
-    for extra in [spec_file, root / "requirements.txt", root / "config_release.ini", root / "config_realease.ini"]:
+    if cpu_only:
+        h.update(b"cpu_only=True")
+
+    for extra in [spec_file, root / "requirements.txt", root / "config_release.ini"]:
         if extra.exists():
             h.update(extra.name.encode("utf-8"))
             h.update(get_file_hash(extra).encode())
+
+    assets_dir = root / "assets"
+    if assets_dir.is_dir():
+        for p in sorted(assets_dir.glob("*")):
+            if p.is_file():
+                h.update(p.name.encode("utf-8"))
+                h.update(get_file_hash(p).encode())
 
     src_dir = root / "src"
     if src_dir.is_dir():
@@ -176,9 +186,8 @@ def create_zip_with_progress(zip_path, source_dir, compress_level):
     excluded_dirs = {"models"}
     all_files = []
     for root_path, dirs, files in os.walk(source_dir):
-        rel = Path(root_path).relative_to(source_dir)
-        if rel.parts and rel.parts[0] in excluded_dirs:
-            continue
+        # 避免深入遍历被排除的子目录（如 models）
+        dirs[:] = [d for d in dirs if d not in excluded_dirs]
         for f in files:
             all_files.append(Path(root_path) / f)
 
@@ -187,7 +196,6 @@ def create_zip_with_progress(zip_path, source_dir, compress_level):
     log(f"  Packing {total} files ({total_size / (1024 * 1024):.1f} MB)...", "white")
 
     written = 0
-    compressed_size = 0
     with zipfile.ZipFile(
         zip_path, "w", zipfile.ZIP_DEFLATED, compresslevel=compress_level
     ) as zf:
@@ -208,8 +216,19 @@ def create_zip_with_progress(zip_path, source_dir, compress_level):
 
 
 def safe_rmtree(path):
+    def _onerror(func, p, exc_info):
+        import stat
+        try:
+            os.chmod(p, stat.S_IWRITE)
+            func(p)
+        except Exception:
+            pass
+
     try:
-        shutil.rmtree(path)
+        if sys.version_info >= (3, 12):
+            shutil.rmtree(path, onexc=lambda fn, p, err: _onerror(fn, p, None))
+        else:
+            shutil.rmtree(path, onerror=_onerror)
         return True
     except PermissionError:
         log(f"  [ERROR] Cannot delete: {path}", "red")
@@ -223,33 +242,67 @@ def safe_rmtree(path):
         return False
 
 
+def sync_file(src_file: Path, dst_file: Path):
+    """仅在目标文件不存在或大小/修改时间不一致时复制文件。"""
+    if dst_file.exists():
+        try:
+            src_stat = src_file.stat()
+            dst_stat = dst_file.stat()
+            if src_stat.st_size == dst_stat.st_size and abs(src_stat.st_mtime - dst_stat.st_mtime) < 1.0:
+                return False  # 内容与时间一致，跳过
+            dst_file.unlink()
+        except PermissionError:
+            log(f"  [ERROR] Cannot overwrite locked file: {dst_file}", "red")
+            log("  Please close video2text.exe or any programs using this file, then retry.", "red")
+            sys.exit(1)
+        except Exception:
+            pass
+    try:
+        shutil.copy2(src_file, dst_file)
+    except PermissionError:
+        log(f"  [ERROR] Cannot write to locked file: {dst_file}", "red")
+        log("  Please close video2text.exe or any programs using this file, then retry.", "red")
+        sys.exit(1)
+    return True
+
+
+def sync_dir(src_dir: Path, dst_dir: Path):
+    """增量镜像目录：Windows 下使用多线程 robocopy /MIR，其余平台回退。"""
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    if platform.system().lower() == "windows":
+        cmd = f'robocopy "{src_dir}" "{dst_dir}" /MIR /R:1 /W:1 /MT:16 /NP /NFL /NDL'
+        # robocopy 退出码 0-7 均代表正常执行（0=无差异, 1=已复制, 2=已删除多余, 3=复制+删除）
+        res = subprocess.run(cmd, shell=True, capture_output=True)
+        if res.returncode >= 8:
+            log(f"  [ERROR] Robocopy failed with code {res.returncode}", "red")
+            return False
+        return True
+    else:
+        shutil.copytree(src_dir, dst_dir, dirs_exist_ok=True)
+        return True
+
+
 def copy_dir_contents(src_dir, dst_dir):
     dst_dir.mkdir(parents=True, exist_ok=True)
     for item in src_dir.iterdir():
         dst = dst_dir / item.name
-        # 仅删除与目标中同名的项，避免残留；不删除目标里其它目录/文件
         if dst.exists():
-            if dst.is_dir():
-                cmd = f'rmdir /s /q "{dst}"'
-                log(f"  Command: {cmd}", "white")
+            if dst.is_file() and item.is_dir():
+                dst.unlink()
+            elif dst.is_dir() and item.is_file():
                 if not safe_rmtree(dst):
                     sys.exit(1)
-                log(f"  Deleted dir (stale): {dst}", "yellow")
-            else:
-                cmd = f'del /q "{dst}"'
-                log(f"  Command: {cmd}", "white")
-                dst.unlink()
-                log(f"  Deleted file (stale): {dst}", "yellow")
+
         if item.is_dir():
-            cmd = f'robocopy "{item}" "{dst}" /E /R:1 /W:1'
-            log(f"  Command: {cmd}", "white")
-            shutil.copytree(item, dst, dirs_exist_ok=True)
-            log(f"  Copied dir: {item.name} -> {dst}", "green")
+            log(f"  Syncing dir: {item.name} -> {dst}", "white")
+            if not sync_dir(item, dst):
+                sys.exit(1)
+            log(f"  Synced dir: {item.name} -> {dst}", "green")
         else:
-            cmd = f'copy /y "{item}" "{dst}"'
-            log(f"  Command: {cmd}", "white")
-            shutil.copy2(item, dst)
-            log(f"  Copied file: {item.name} -> {dst}", "green")
+            if sync_file(item, dst):
+                log(f"  Copied file: {item.name} -> {dst}", "green")
+            else:
+                log(f"  Unchanged file (skipped): {item.name}", "green")
     return True
 
 
@@ -409,19 +462,13 @@ def main():
             elif p.is_file():
                 p.unlink()
     else:
-        if portable_dir.exists():
-            if not safe_rmtree(portable_dir):
-                sys.exit(1)
-        log("  Preserved build/ cache (use --clean for full clean)", "green")
+        log("  Preserved build/ and dist/ cache (use --clean for full clean)", "green")
 
     # 步骤 3：检查依赖
     step_log(3, "Checking dependencies...")
-    required_pkgs = ["pyinstaller", "requests"]
-    result = run_cmd(
-        [sys.executable, "-m", "pip", "freeze"], check=False, verbose=args.verbose
-    )
-    installed = {line.split("==")[0].lower() for line in result.stdout.splitlines()}
-    missing = [pkg for pkg in required_pkgs if pkg.lower() not in installed]
+    import importlib.util
+    required_pkgs = {"PyInstaller": "pyinstaller", "requests": "requests"}
+    missing = [pip_name for mod_name, pip_name in required_pkgs.items() if importlib.util.find_spec(mod_name) is None]
     if missing:
         if args.dry_run:
             log(f"  [dry-run] Would install: {', '.join(missing)}", "white")
@@ -459,7 +506,7 @@ def main():
     if args.clean:
         needs_rebuild = True
     else:
-        current_build_hash = compute_build_hash(root, spec_file)
+        current_build_hash = compute_build_hash(root, spec_file, cpu_only=args.cpu_only)
         if cache_file.exists():
             cached_hash = cache_file.read_text(encoding="utf-8").strip()
             if current_build_hash != cached_hash:
@@ -483,7 +530,7 @@ def main():
                 str(spec_file),
             ]
             run_cmd_stream(pyinstaller_cmd, verbose=args.verbose)
-            current_build_hash = compute_build_hash(root, spec_file)
+            current_build_hash = compute_build_hash(root, spec_file, cpu_only=args.cpu_only)
             cache_file.write_text(current_build_hash, encoding="utf-8")
             log("  Build complete (cached for next run)", "green")
     else:
@@ -494,14 +541,14 @@ def main():
     if args.dry_run:
         log("  [dry-run] Would create portable directory structure", "white")
         log("  [dry-run] Would copy: assets/, docs/", "white")
-        log("  [dry-run] Would copy config_release.ini (or config_realease.ini) -> config.ini (release defaults)", "white")
+        log("  [dry-run] Would copy config_release.ini -> config.ini (release defaults)", "white")
         log("  [dry-run] Would copy README.md", "white")
         log("  [dry-run] Would copy ffmpeg/ (bundled FFmpeg)", "white")
     else:
         assets_src = root / "assets"
         if assets_src.exists():
             try:
-                shutil.copytree(assets_src, portable_dir / "assets", dirs_exist_ok=True)
+                sync_dir(assets_src, portable_dir / "assets")
                 log("  Copied: assets/ (for icons)", "green")
             except Exception as e:
                 log(f"  Warning: Failed to copy assets/: {e}", "yellow")
@@ -509,27 +556,25 @@ def main():
         docs_src = root / "docs"
         if docs_src.exists():
             try:
-                shutil.copytree(docs_src, portable_dir / "docs", dirs_exist_ok=True)
+                sync_dir(docs_src, portable_dir / "docs")
                 log("  Copied: docs/ (documentation)", "green")
             except Exception as e:
                 log(f"  Warning: Failed to copy docs/: {e}", "yellow")
 
         config_release = root / "config_release.ini"
-        config_fallback = root / "config_realease.ini"
-        config_src = config_release if config_release.exists() else (config_fallback if config_fallback.exists() else None)
         try:
-            if config_src:
-                shutil.copy2(config_src, portable_dir / "config.ini")
-                log(f"  Copied: {config_src.name} -> config.ini (release defaults)", "green")
+            if config_release.exists():
+                sync_file(config_release, portable_dir / "config.ini")
+                log(f"  Copied: {config_release.name} -> config.ini (release defaults)", "green")
             else:
-                log("  Warning: Neither config_release.ini nor config_realease.ini found, skipped", "yellow")
+                log("  Warning: config_release.ini not found, skipped", "yellow")
         except Exception as e:
             log(f"  Warning: Failed to copy config.ini: {e}", "yellow")
 
         readme_src = root / "README.md"
         if readme_src.exists():
             try:
-                shutil.copy2(readme_src, portable_dir / "README.md")
+                sync_file(readme_src, portable_dir / "README.md")
                 log("  Copied: README.md", "green")
             except Exception as e:
                 log(f"  Warning: Failed to copy README.md: {e}", "yellow")
@@ -552,8 +597,8 @@ start "" "%~dp0video2text.exe" %*
             if libs_src.is_dir():
                 for p in libs_src.iterdir():
                     if p.suffix.lower() == ".dll":
-                        shutil.copy2(p, dst / p.name)
-                        copied_count += 1
+                        if sync_file(p, dst / p.name):
+                            copied_count += 1
                 if copied_count > 0:
                     log(f"  Copied {copied_count} DLL(s) from local libs/", "green")
 
@@ -589,15 +634,18 @@ start "" "%~dp0video2text.exe" %*
                             for dll in bin_dir.glob("*.dll"):
                                 dll_lower = dll.name.lower()
                                 if any(fnmatch.fnmatch(dll_lower, pat.lower()) for pat in nvidia_patterns):
-                                    shutil.copy2(dll, dst / dll.name)
+                                    if sync_file(dll, dst / dll.name):
+                                        log(f"  Extracted NVIDIA DLL: {dll.name}", "green")
                                     nvidia_count += 1
-                                    log(f"  Extracted NVIDIA DLL: {dll.name}", "green")
 
             if copied_count == 0 and nvidia_count == 0:
                 log("  Notice: No CUDA DLLs found in libs/ or site-packages/nvidia/*/bin", "yellow")
             else:
                 log(f"  Copied: libs/ ({copied_count + nvidia_count} total DLLs, loaded at runtime)", "green")
         else:
+            libs_dst = portable_dir / "libs"
+            if libs_dst.exists():
+                safe_rmtree(libs_dst)
             log("  Skipped: libs/ (--not-copy-dll or --cpu-only specified)", "yellow")
 
         # 7za.exe：由 spec 的 datas ('7z/7za.exe', '.') 已打包进 _internal/，
@@ -618,11 +666,11 @@ start "" "%~dp0video2text.exe" %*
 
         dst = portable_dir / "ffmpeg"
         (dst / "bin").mkdir(parents=True, exist_ok=True)
-        shutil.copy2(ffmpeg_exe, dst / "bin" / "ffmpeg.exe")
-        shutil.copy2(ffprobe_exe, dst / "bin" / "ffprobe.exe")
+        sync_file(ffmpeg_exe, dst / "bin" / "ffmpeg.exe")
+        sync_file(ffprobe_exe, dst / "bin" / "ffprobe.exe")
         presets_src = root / "ffmpeg" / "presets"
         if presets_src.exists():
-            shutil.copytree(presets_src, dst / "presets", dirs_exist_ok=True)
+            sync_dir(presets_src, dst / "presets")
         log("  Copied: ffmpeg (ffmpeg.exe, ffprobe.exe, presets)", "green")
 
     # 步骤 6：打包 ZIP
